@@ -2,11 +2,26 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
+
+from .commands import cmd_check, cmd_sync
+from .errors import LoadoutError
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="loadout")
-    parser.add_subparsers(dest="command")
+    subparsers = parser.add_subparsers(dest="command")
+    for name, help_text in (
+        ("sync", "regenerate every generated file under the repo root"),
+        ("check", "exit 1 if any generated file has drifted"),
+    ):
+        sub = subparsers.add_parser(name, help=help_text)
+        sub.add_argument(
+            "--root",
+            type=Path,
+            default=Path.cwd(),
+            help="repository root holding global/fragments (default: cwd)",
+        )
     return parser
 
 
@@ -16,4 +31,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command is None:
         parser.print_usage(file=sys.stderr)
         return 2
-    return 0
+    handler = {"sync": cmd_sync, "check": cmd_check}[args.command]
+    try:
+        return handler(args.root.resolve())
+    except LoadoutError as error:
+        print(f"loadout: {error}", file=sys.stderr)
+        return 3
