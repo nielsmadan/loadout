@@ -5,16 +5,16 @@ import tempfile
 from pathlib import Path
 
 from .composition import render
-from .targets import TARGETS
+from .manifest import MANIFEST_NAME, load_manifest
 
 
-def fragments_dir(root: Path) -> Path:
-    return root / "global" / "fragments"
+def manifest_path(root: Path) -> Path:
+    return root / MANIFEST_NAME
 
 
 def render_all(root: Path) -> dict[Path, str]:
-    fragments = fragments_dir(root)
-    return {root / str(t.path): render(t, fragments) for t in TARGETS}
+    manifest = load_manifest(manifest_path(root))
+    return {root / str(t.path): render(t, manifest) for t in manifest.targets}
 
 
 def atomic_write(path: Path, content: str) -> None:

@@ -27,8 +27,11 @@ GOLDEN = Path(__file__).parent / "golden"
 def root(tmp_path: Path) -> Path:
     fragments = tmp_path / "global" / "fragments"
     fragments.mkdir(parents=True)
-    for src in (GOLDEN / "fragments").glob("*.md"):
+    for src in (GOLDEN / "global" / "fragments").glob("*.md"):
         (fragments / src.name).write_text(src.read_text())
+    (tmp_path / "loadout.toml").write_text(
+        (GOLDEN / "manifest.toml").read_text(encoding="utf-8"), encoding="utf-8"
+    )
     return tmp_path
 
 
@@ -52,15 +55,15 @@ def test_check_returns_1_and_diffs_on_drift(root: Path, capsys) -> None:
     assert "tampered" in err
 
 
-def test_missing_fragments_dir_returns_3(tmp_path: Path, capsys) -> None:
+def test_missing_manifest_returns_3(tmp_path: Path, capsys) -> None:
     assert loadout.main(["sync", "--root", str(tmp_path)]) == 3
-    assert "fragments" in capsys.readouterr().err
+    assert "manifest" in capsys.readouterr().err
 
 
 def test_missing_fragment_file_returns_3(root: Path, capsys) -> None:
     (root / "global" / "fragments" / "secrets.md").unlink()
     assert loadout.main(["sync", "--root", str(root)]) == 3
-    assert "secrets.md" in capsys.readouterr().err
+    assert "secrets" in capsys.readouterr().err
 
 
 def test_unexpected_exception_returns_4_with_traceback(root: Path, monkeypatch, capsys) -> None:

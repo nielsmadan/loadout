@@ -1,0 +1,28 @@
+[[source]]
+name = "ac"
+path = "."
+
+[instructions.claude]
+output       = "claude/CLAUDE.md"
+destinations = ["~/.claude/CLAUDE.md"]
+order = [
+    "intro-claude", "web-fetching", "video-content", "browser-automation",
+    "secrets", "git-policy", "git-commit-policy", "working-style",
+]
+
+[instructions.claude-autonomous]
+output       = "claude/CLAUDE.autonomous.md"
+destinations = ["~/.claude/CLAUDE.md"]
+profile      = "autonomous"
+order = [
+    "intro-claude", "web-fetching", "video-content", "browser-automation",
+    "secrets", "git-policy.autonomous", "git-commit-policy", "working-style",
+]
+
+[instructions.shared]
+output       = "global/AGENTS.md"
+destinations = ["~/.codex/AGENTS.md", "~/.gemini/GEMINI.md", "~/.pi/agent/AGENTS.md"]
+order = [
+    "intro-shared", "web-fetching.shared", "video-content", "browser-automation",
+    "secrets", "git-policy", "git-commit-policy", "working-style",
+]
