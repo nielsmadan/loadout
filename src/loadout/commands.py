@@ -6,6 +6,8 @@ from pathlib import Path
 
 from .emit import check_all, manifest_path, write_all
 from .errors import LoadoutError
+from .manifest import load_manifest
+from .resolve import resolve_fragment
 
 
 def _require_manifest(root: Path) -> None:
@@ -43,3 +45,37 @@ def cmd_check(root: Path) -> int:
         file=sys.stderr,
     )
     return 1
+
+
+def cmd_explain(root: Path, name: str) -> int:
+    _require_manifest(root)
+    manifest = load_manifest(manifest_path(root))
+    item = resolve_fragment(manifest.sources, name)
+
+    users: list[str] = []
+    unresolved: list[str] = []
+    for target in manifest.targets:
+        matched = False
+        for fragment in target.fragments:
+            try:
+                if resolve_fragment(manifest.sources, fragment).path == item.path:
+                    matched = True
+            except LoadoutError:
+                unresolved.append(f"{target.path}: {fragment}")
+        if matched:
+            users.append(str(target.path))
+
+    print(f"{item.name}")
+    print(f"  source: {item.source}")
+    print(f"  file:   {item.path}")
+    if users:
+        print("  used by:")
+        for target_path in users:
+            print(f"    {target_path}")
+    else:
+        print("  used by: (no target lists it)")
+    if unresolved:
+        print("  warning: other fragments in this manifest do not resolve:", file=sys.stderr)
+        for entry in unresolved:
+            print(f"    {entry}", file=sys.stderr)
+    return 0

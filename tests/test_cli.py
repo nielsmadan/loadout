@@ -86,6 +86,72 @@ def test_loadout_error_still_returns_3(root: Path, monkeypatch, capsys) -> None:
     assert "deliberate failure" in capsys.readouterr().err
 
 
+def test_explain_reports_the_source_and_path(root: Path, capsys) -> None:
+    assert loadout.main(["explain", "web-fetching", "--root", str(root)]) == 0
+    out = capsys.readouterr().out
+    assert "web-fetching" in out
+    assert "ac" in out
+
+
+def test_explain_lists_targets_that_use_the_fragment(root: Path, capsys) -> None:
+    assert loadout.main(["explain", "git-policy", "--root", str(root)]) == 0
+    out = capsys.readouterr().out
+    assert "claude/CLAUDE.md" in out
+    assert "claude/CLAUDE.autonomous.md" not in out
+
+
+def test_explain_survives_an_unrelated_unresolvable_fragment(root: Path, capsys) -> None:
+    manifest = root / "loadout.toml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace('"working-style"', '"no-such-fragment"', 1),
+        encoding="utf-8",
+    )
+    assert loadout.main(["explain", "git-policy", "--root", str(root)]) == 0
+    captured = capsys.readouterr()
+    assert "used by:" in captured.out
+    assert "no-such-fragment" in captured.err
+
+
+def test_explain_finds_users_when_queried_by_qualified_name(root: Path, capsys) -> None:
+    assert loadout.main(["explain", "ac/git-policy", "--root", str(root)]) == 0
+    out = capsys.readouterr().out
+    assert "claude/CLAUDE.md" in out
+    assert "no target lists it" not in out
+
+
+def test_explain_on_unknown_name_returns_3(root: Path, capsys) -> None:
+    assert loadout.main(["explain", "nope", "--root", str(root)]) == 3
+    assert "nope" in capsys.readouterr().err
+
+
+def test_sync_with_unknown_fragment_returns_3(root: Path, capsys) -> None:
+    manifest = root / "loadout.toml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace('"intro-claude"', '"no-such-fragment"'),
+        encoding="utf-8",
+    )
+    assert loadout.main(["sync", "--root", str(root)]) == 3
+    assert "no-such-fragment" in capsys.readouterr().err
+
+
+def test_sync_with_ambiguous_fragment_returns_3(root: Path, capsys) -> None:
+    second = root / "second" / "global" / "fragments"
+    second.mkdir(parents=True)
+    (second / "web-fetching.md").write_text("duplicate\n", encoding="utf-8")
+    manifest = root / "loadout.toml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            '[[source]]\nname = "ac"\npath = "."',
+            '[[source]]\nname = "ac"\npath = "."\n\n[[source]]\nname = "second"\npath = "second"',
+        ),
+        encoding="utf-8",
+    )
+    assert loadout.main(["sync", "--root", str(root)]) == 3
+    err = capsys.readouterr().err
+    assert "ac/web-fetching" in err
+    assert "second/web-fetching" in err
+
+
 def test_sync_succeeds_under_a_non_utf8_locale(root: Path, monkeypatch) -> None:
     # Fragments contain non-ASCII characters (em-dash, ellipsis). Under a
     # locale whose default encoding is ASCII, file I/O must still work
