@@ -4,11 +4,10 @@ from pathlib import Path, PurePosixPath
 
 import pytest
 
-from loadout.composition import render
+from loadout.composition import HEADER, render
 from loadout.errors import LoadoutError
 from loadout.manifest import InstructionTarget, Manifest
 from loadout.sources import ARTIFACT_TYPES, Source
-from loadout.targets import HEADER
 
 
 def make_source(tmp_path: Path, name: str, fragments: dict[str, str]) -> Source:

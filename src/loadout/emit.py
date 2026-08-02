@@ -5,11 +5,7 @@ import tempfile
 from pathlib import Path
 
 from .composition import render
-from .manifest import MANIFEST_NAME, load_manifest
-
-
-def manifest_path(root: Path) -> Path:
-    return root / MANIFEST_NAME
+from .manifest import load_manifest, manifest_path
 
 
 def render_all(root: Path) -> dict[Path, str]:
