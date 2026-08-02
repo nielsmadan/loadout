@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import traceback
 from pathlib import Path
 
 from .commands import cmd_check, cmd_sync
@@ -37,3 +38,6 @@ def main(argv: list[str] | None = None) -> int:
     except LoadoutError as error:
         print(f"loadout: {error}", file=sys.stderr)
         return 3
+    except Exception:
+        traceback.print_exc()
+        return 4

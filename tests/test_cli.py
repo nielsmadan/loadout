@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 import loadout
+from loadout.errors import LoadoutError
 
 
 def test_version_is_exposed() -> None:
@@ -60,6 +61,26 @@ def test_missing_fragment_file_returns_3(root: Path, capsys) -> None:
     (root / "global" / "fragments" / "secrets.md").unlink()
     assert loadout.main(["sync", "--root", str(root)]) == 3
     assert "secrets.md" in capsys.readouterr().err
+
+
+def test_unexpected_exception_returns_4_with_traceback(root: Path, monkeypatch, capsys) -> None:
+    def boom(_root: Path) -> int:
+        raise ValueError("kaboom")
+
+    monkeypatch.setattr(loadout.cli, "cmd_sync", boom)
+    assert loadout.main(["sync", "--root", str(root)]) == 4
+    err = capsys.readouterr().err
+    assert "Traceback (most recent call last)" in err
+    assert "ValueError: kaboom" in err
+
+
+def test_loadout_error_still_returns_3(root: Path, monkeypatch, capsys) -> None:
+    def fail(_root: Path) -> int:
+        raise LoadoutError("deliberate failure")
+
+    monkeypatch.setattr(loadout.cli, "cmd_sync", fail)
+    assert loadout.main(["sync", "--root", str(root)]) == 3
+    assert "deliberate failure" in capsys.readouterr().err
 
 
 def test_sync_succeeds_under_a_non_utf8_locale(root: Path, monkeypatch) -> None:
