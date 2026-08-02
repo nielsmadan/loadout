@@ -10,7 +10,7 @@ def load_fragment(fragments_dir: Path, name: str) -> str:
     path = fragments_dir / f"{name}.md"
     if not path.is_file():
         raise LoadoutError(f"fragment not found: {path}")
-    return path.read_text().strip()
+    return path.read_text(encoding="utf-8").strip()
 
 
 def render(target: Target, fragments_dir: Path) -> str:

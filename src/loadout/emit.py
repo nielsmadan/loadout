@@ -20,7 +20,7 @@ def render_all(root: Path) -> dict[Path, str]:
 def atomic_write(path: Path, content: str) -> None:
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".loadout-")
     try:
-        with os.fdopen(fd, "w") as handle:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(content)
         os.replace(tmp, path)
     except BaseException:
@@ -40,7 +40,7 @@ def write_all(root: Path) -> list[Path]:
 def check_all(root: Path) -> list[tuple[Path, str, str]]:
     drift: list[tuple[Path, str, str]] = []
     for path, expected in render_all(root).items():
-        actual = path.read_text() if path.is_file() else ""
+        actual = path.read_text(encoding="utf-8") if path.is_file() else ""
         if actual != expected:
             drift.append((path, actual, expected))
     return drift

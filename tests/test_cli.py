@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -58,3 +60,21 @@ def test_missing_fragment_file_returns_3(root: Path, capsys) -> None:
     (root / "global" / "fragments" / "secrets.md").unlink()
     assert loadout.main(["sync", "--root", str(root)]) == 3
     assert "secrets.md" in capsys.readouterr().err
+
+
+def test_sync_succeeds_under_a_non_utf8_locale(root: Path, monkeypatch) -> None:
+    # Fragments contain non-ASCII characters (em-dash, ellipsis). Under a
+    # locale whose default encoding is ASCII, file I/O must still work
+    # because loadout always opens files as UTF-8 explicitly.
+    monkeypatch.setenv("LC_ALL", "C")
+    monkeypatch.setenv("LANG", "C")
+    monkeypatch.setenv("PYTHONCOERCECLOCALE", "0")
+    monkeypatch.setenv("PYTHONUTF8", "0")
+    result = subprocess.run(
+        [sys.executable, "-m", "loadout", "sync", "--root", str(root)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert (root / "global" / "AGENTS.md").read_text(encoding="utf-8")
