@@ -105,3 +105,103 @@ order        = ["intro-claude"]
     with pytest.raises(LoadoutError) as excinfo:
         load_manifest(write_manifest(tmp_path, body))
     assert "source" in str(excinfo.value)
+
+
+def test_source_as_a_plain_array_is_a_loadout_error_not_a_crash(tmp_path: Path) -> None:
+    body = """
+source = ["a", "b"]
+
+[instructions.claude]
+output       = "claude/CLAUDE.md"
+destinations = ["~/.claude/CLAUDE.md"]
+order        = ["intro-claude"]
+"""
+    with pytest.raises(LoadoutError):
+        load_manifest(write_manifest(tmp_path, body))
+
+
+def test_absolute_output_is_an_error(tmp_path: Path) -> None:
+    body = """
+[[source]]
+name = "ac"
+path = "."
+
+[instructions.claude]
+output       = "/tmp/x.md"
+destinations = ["~/.claude/CLAUDE.md"]
+order        = ["intro-claude"]
+"""
+    with pytest.raises(LoadoutError) as excinfo:
+        load_manifest(write_manifest(tmp_path, body))
+    assert "output" in str(excinfo.value)
+
+
+def test_empty_output_is_an_error(tmp_path: Path) -> None:
+    body = """
+[[source]]
+name = "ac"
+path = "."
+
+[instructions.claude]
+output       = ""
+destinations = ["~/.claude/CLAUDE.md"]
+order        = ["intro-claude"]
+"""
+    with pytest.raises(LoadoutError) as excinfo:
+        load_manifest(write_manifest(tmp_path, body))
+    assert "output" in str(excinfo.value)
+
+
+def test_output_escaping_the_root_is_an_error(tmp_path: Path) -> None:
+    body = """
+[[source]]
+name = "ac"
+path = "."
+
+[instructions.claude]
+output       = "../escaped.md"
+destinations = ["~/.claude/CLAUDE.md"]
+order        = ["intro-claude"]
+"""
+    with pytest.raises(LoadoutError) as excinfo:
+        load_manifest(write_manifest(tmp_path, body))
+    assert "output" in str(excinfo.value)
+
+
+def test_zero_instruction_targets_is_an_error(tmp_path: Path) -> None:
+    # "instruction" (singular) is a typo for "instructions" — it must not
+    # silently parse as a manifest with zero targets.
+    body = """
+[[source]]
+name = "ac"
+path = "."
+
+[instruction.claude]
+output       = "claude/CLAUDE.md"
+destinations = ["~/.claude/CLAUDE.md"]
+order        = ["intro-claude"]
+"""
+    with pytest.raises(LoadoutError) as excinfo:
+        load_manifest(write_manifest(tmp_path, body))
+    assert "target" in str(excinfo.value)
+
+
+def test_two_targets_sharing_an_output_is_an_error(tmp_path: Path) -> None:
+    body = """
+[[source]]
+name = "ac"
+path = "."
+
+[instructions.claude]
+output       = "claude/CLAUDE.md"
+destinations = ["~/.claude/CLAUDE.md"]
+order        = ["intro-claude"]
+
+[instructions.other]
+output       = "claude/CLAUDE.md"
+destinations = ["~/.other/CLAUDE.md"]
+order        = ["intro-claude"]
+"""
+    with pytest.raises(LoadoutError) as excinfo:
+        load_manifest(write_manifest(tmp_path, body))
+    assert "claude/CLAUDE.md" in str(excinfo.value)

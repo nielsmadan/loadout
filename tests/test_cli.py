@@ -4,8 +4,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 import loadout
 from loadout.errors import LoadoutError
 
@@ -18,21 +16,6 @@ def test_version_is_exposed() -> None:
 def test_no_args_prints_usage_and_returns_2(capsys) -> None:
     assert loadout.main([]) == 2
     assert "usage" in capsys.readouterr().err.lower()
-
-
-GOLDEN = Path(__file__).parent / "golden"
-
-
-@pytest.fixture
-def root(tmp_path: Path) -> Path:
-    fragments = tmp_path / "global" / "fragments"
-    fragments.mkdir(parents=True)
-    for src in (GOLDEN / "global" / "fragments").glob("*.md"):
-        (fragments / src.name).write_text(src.read_text())
-    (tmp_path / "loadout.toml").write_text(
-        (GOLDEN / "manifest.toml").read_text(encoding="utf-8"), encoding="utf-8"
-    )
-    return tmp_path
 
 
 def test_sync_writes_files_and_returns_0(root: Path, capsys) -> None:
@@ -90,7 +73,7 @@ def test_explain_reports_the_source_and_path(root: Path, capsys) -> None:
     assert loadout.main(["explain", "web-fetching", "--root", str(root)]) == 0
     out = capsys.readouterr().out
     assert "web-fetching" in out
-    assert "ac" in out
+    assert "source: ac" in out
 
 
 def test_explain_lists_targets_that_use_the_fragment(root: Path, capsys) -> None:
@@ -150,6 +133,88 @@ def test_sync_with_ambiguous_fragment_returns_3(root: Path, capsys) -> None:
     err = capsys.readouterr().err
     assert "ac/web-fetching" in err
     assert "second/web-fetching" in err
+
+
+def test_source_as_a_plain_array_returns_3_not_4(root: Path, capsys) -> None:
+    manifest = root / "loadout.toml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            '[[source]]\nname = "ac"\npath = "."', 'source = ["a", "b"]'
+        ),
+        encoding="utf-8",
+    )
+    assert loadout.main(["sync", "--root", str(root)]) == 3
+    assert "traceback" not in capsys.readouterr().err.lower()
+
+
+def test_absolute_output_returns_3_and_writes_nothing_outside_root(
+    root: Path, tmp_path: Path, capsys
+) -> None:
+    escape_target = tmp_path.parent / "loadout-escape-absolute.md"
+    escape_target.unlink(missing_ok=True)
+    manifest = root / "loadout.toml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            'output       = "claude/CLAUDE.md"', f'output       = "{escape_target}"'
+        ),
+        encoding="utf-8",
+    )
+    assert loadout.main(["sync", "--root", str(root)]) == 3
+    assert not escape_target.exists()
+
+
+def test_empty_output_returns_3_not_4(root: Path, capsys) -> None:
+    manifest = root / "loadout.toml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            'output       = "claude/CLAUDE.md"', 'output       = ""'
+        ),
+        encoding="utf-8",
+    )
+    assert loadout.main(["sync", "--root", str(root)]) == 3
+    assert "traceback" not in capsys.readouterr().err.lower()
+
+
+def test_output_escaping_the_root_returns_3_and_writes_nothing_outside_root(
+    root: Path, capsys
+) -> None:
+    escape_target = root.parent / "escaped.md"
+    escape_target.unlink(missing_ok=True)
+    manifest = root / "loadout.toml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            'output       = "claude/CLAUDE.md"', 'output       = "../escaped.md"'
+        ),
+        encoding="utf-8",
+    )
+    assert loadout.main(["sync", "--root", str(root)]) == 3
+    assert not escape_target.exists()
+
+
+def test_zero_instruction_targets_returns_3_not_0(root: Path, capsys) -> None:
+    manifest = root / "loadout.toml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8")
+        .replace("[instructions.claude]", "[instruction.claude]")
+        .replace("[instructions.claude-autonomous]", "[instruction.claude-autonomous]")
+        .replace("[instructions.shared]", "[instruction.shared]"),
+        encoding="utf-8",
+    )
+    assert loadout.main(["sync", "--root", str(root)]) == 3
+    err = capsys.readouterr().err
+    assert "target" in err
+
+
+def test_duplicate_output_across_targets_returns_3_not_0(root: Path, capsys) -> None:
+    manifest = root / "loadout.toml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            'output       = "claude/CLAUDE.autonomous.md"', 'output       = "claude/CLAUDE.md"'
+        ),
+        encoding="utf-8",
+    )
+    assert loadout.main(["sync", "--root", str(root)]) == 3
+    assert "claude/CLAUDE.md" in capsys.readouterr().err
 
 
 def test_sync_succeeds_under_a_non_utf8_locale(root: Path, monkeypatch) -> None:

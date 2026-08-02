@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 from .errors import LoadoutError
@@ -16,8 +17,13 @@ class ResolvedItem:
     path: Path
 
 
+@lru_cache
+def _fragments_root(source: Source) -> Path:
+    return (source.path / "global" / "fragments").resolve()
+
+
 def _fragment_path(source: Source, name: str) -> Path:
-    base = (source.path / "global" / "fragments").resolve()
+    base = _fragments_root(source)
     candidate = (base / f"{name}.md").resolve()
     if candidate != base and base not in candidate.parents:
         raise LoadoutError(f"fragment name escapes its source: {name!r}")
@@ -41,15 +47,17 @@ def resolve_fragment(sources: tuple[Source, ...], name: str) -> ResolvedItem:
         return ResolvedItem(name=bare, source=source_name, path=path)
 
     hits: list[tuple[Source, Path]] = []
+    escaped: list[str] = []
     for s in usable:
         try:
             path = _fragment_path(s, name)
             hits.append((s, path))
         except LoadoutError:
-            pass
+            escaped.append(s.name)
     found = [(s, p) for s, p in hits if p.is_file()]
     if not found:
-        raise LoadoutError(f"fragment not found in any source: {name!r}")
+        detail = f" (rejected as escaping its source in: {', '.join(escaped)})" if escaped else ""
+        raise LoadoutError(f"fragment not found in any source: {name!r}{detail}")
     if len(found) > 1:
         names = ", ".join(sorted(f"{s.name}/{name}" for s, _ in found))
         raise LoadoutError(

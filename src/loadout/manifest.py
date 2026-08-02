@@ -10,6 +10,10 @@ from .sources import Source, parse_sources
 MANIFEST_NAME = "loadout.toml"
 
 
+def manifest_path(root: Path) -> Path:
+    return root / MANIFEST_NAME
+
+
 @dataclass(frozen=True)
 class InstructionTarget:
     """One generated instruction file, its fragment order, and where it deploys."""
@@ -63,6 +67,16 @@ def load_manifest(path: Path) -> Manifest:
         output = _require(block, "output", agent)
         if not isinstance(output, str):
             raise LoadoutError(f"instructions.{agent}: output must be a string")
+        out = PurePosixPath(output)
+        if out.is_absolute() or not output or ".." in out.parts or out == PurePosixPath("."):
+            raise LoadoutError(
+                f"instructions.{agent}: output must be a relative path inside the repo "
+                f"root, got {output!r}"
+            )
+        if any(t.path == out for t in targets):
+            raise LoadoutError(
+                f"instructions.{agent}: output {output!r} is already claimed by another target"
+            )
         order = _str_list(_require(block, "order", agent), agent, "order")
         destinations = _str_list(block.get("destinations", []), agent, "destinations")
         profile = block.get("profile")
@@ -70,10 +84,12 @@ def load_manifest(path: Path) -> Manifest:
             raise LoadoutError(f"instructions.{agent}: profile must be a string")
         targets.append(
             InstructionTarget(
-                path=PurePosixPath(output),
+                path=out,
                 fragments=order,
                 destinations=tuple(PurePosixPath(d) for d in destinations),
                 profile=profile,
             )
         )
+    if not targets:
+        raise LoadoutError(f"{path}: no [instructions.<agent>] targets declared")
     return Manifest(sources=sources, targets=tuple(targets))

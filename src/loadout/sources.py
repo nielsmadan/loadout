@@ -21,6 +21,8 @@ def parse_sources(entries: list[dict[str, object]], base: Path) -> tuple[Source,
     sources: list[Source] = []
     seen: set[str] = set()
     for entry in entries:
+        if not isinstance(entry, dict):
+            raise LoadoutError(f"[[source]] entries must be tables, got {entry!r}")
         name = entry.get("name")
         if not isinstance(name, str) or not name:
             raise LoadoutError(f"source entry is missing a name: {entry!r}")
@@ -40,8 +42,10 @@ def parse_sources(entries: list[dict[str, object]], base: Path) -> tuple[Source,
         if raw_use is None:
             use = ARTIFACT_TYPES
         else:
-            if not isinstance(raw_use, list):
-                raise LoadoutError(f"source {name!r}: use must be a list, got {raw_use!r}")
+            if not isinstance(raw_use, list) or not raw_use:
+                raise LoadoutError(
+                    f"source {name!r}: use must be a non-empty list, got {raw_use!r}"
+                )
             unknown = [u for u in raw_use if u not in ARTIFACT_TYPES]
             if unknown:
                 known = ", ".join(sorted(ARTIFACT_TYPES))

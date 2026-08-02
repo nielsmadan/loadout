@@ -98,3 +98,21 @@ def test_fragment_name_cannot_escape_its_source(tmp_path: Path) -> None:
     with pytest.raises(LoadoutError) as excinfo:
         resolve_fragment(sources, "company/../../outside")
     assert "escapes" in str(excinfo.value)
+
+
+def test_symlinked_fragment_file_is_rejected_with_a_reason_naming_the_escape(
+    tmp_path: Path,
+) -> None:
+    # A symlinked source or fragments *directory* is fine (the containment
+    # check resolves both sides). A symlinked individual fragment *file* is
+    # correctly rejected as escaping its source — but the unqualified lookup
+    # must say so, not report a bare "not found" that points at the wrong
+    # problem.
+    (tmp_path / "outside.md").write_text("secret\n", encoding="utf-8")
+    company = make_source(tmp_path, "company", ["security"])
+    (company.path / "global" / "fragments" / "spliced.md").symlink_to(tmp_path / "outside.md")
+    with pytest.raises(LoadoutError) as excinfo:
+        resolve_fragment((company,), "spliced")
+    message = str(excinfo.value)
+    assert "not found in any source" in message
+    assert "escaping its source in: company" in message
