@@ -29,7 +29,7 @@ Codex ships **two mutually exclusive permission schemas** — `default_permissio
 
 The rules file is Starlark-ish, not JSON or TOML:
 
-```python
+```
 prefix_rule(pattern = ["git", "push"], decision = "forbidden")
 ```
 
