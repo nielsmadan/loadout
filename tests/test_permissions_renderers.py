@@ -6,9 +6,11 @@ from loadout.permissions.renderers import (
     RENDERERS,
     JsonSpec,
     TextSpec,
+    antigravity_pattern,
     codex_rule,
     pi_mcp_patterns,
     pi_patterns,
+    render_antigravity,
     render_claude_mcp,
     render_codex,
     render_codex_mcp,
@@ -142,3 +144,32 @@ def test_codex_mcp_per_tool_sections_and_disabled_list() -> None:
 def test_codex_renderers_are_registered_as_text() -> None:
     assert isinstance(RENDERERS["codex"], TextSpec)
     assert isinstance(RENDERERS["codex-mcp"], TextSpec)
+
+
+def test_antigravity_wraps_entries_in_command_form() -> None:
+    assert antigravity_pattern("git status") == "command(git status)"
+
+
+def test_antigravity_skips_globs_its_matcher_cannot_express() -> None:
+    doc = render_antigravity(Rules(allow=("ls", "docker stop cc-workbench-*")), {})
+    assert doc["permissions"]["allow"] == ["command(ls)"]
+
+
+def test_antigravity_appends_mcp_entries_after_shell_entries() -> None:
+    rules = Rules(allow=("ls",), mcp_allow=("jina/*",))
+    assert render_antigravity(rules, {})["permissions"]["allow"] == [
+        "command(ls)",
+        "mcp(jina/*)",
+    ]
+
+
+def test_antigravity_emits_categories_in_order_on_an_empty_base() -> None:
+    doc = render_antigravity(Rules(allow=("ls",)), {})
+    assert list(doc) == ["permissions"]
+    assert list(doc["permissions"]) == ["allow", "deny", "ask"]
+
+
+def test_antigravity_does_not_mutate_its_base() -> None:
+    base: dict[str, Any] = {}
+    render_antigravity(Rules(allow=("ls",)), base)
+    assert base == {}

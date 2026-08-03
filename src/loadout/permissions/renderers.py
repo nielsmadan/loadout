@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -166,9 +167,32 @@ def render_codex_mcp(rules: Rules) -> str:
     return "\n".join(lines) + "\n"
 
 
+# --------------------------------------------------------------------------
+# antigravity — antigravity/settings.json. agy's schema wraps each entry in
+# command(...) form. Its docs only show literal command strings, so glob
+# entries are skipped as they are for Codex and fall through to runtime
+# approval.
+# --------------------------------------------------------------------------
+
+
+def antigravity_pattern(entry: str) -> str:
+    return f"command({entry})"
+
+
+def render_antigravity(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
+    settings = copy.deepcopy(base)
+    perms: dict[str, list[str]] = settings.setdefault("permissions", {})
+    for category in CATEGORIES:
+        perms[category] = [antigravity_pattern(e) for e in rules.shell(category) if not is_glob(e)]
+    for category in CATEGORIES:
+        perms[category] += [f"mcp({entry})" for entry in rules.mcp(category)]
+    return settings
+
+
 RENDERERS: dict[str, JsonSpec | TextSpec] = {
     "claude-mcp": JsonSpec(render_claude_mcp, ensure_ascii=True),
     "codex": TextSpec(render_codex),
     "codex-mcp": TextSpec(render_codex_mcp),
     "pi": JsonSpec(render_pi),
+    "antigravity": JsonSpec(render_antigravity),
 }
