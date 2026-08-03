@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from .rules import Rules, is_glob, mcp_parts
+from .rules import Rules, is_glob, mcp_native, mcp_parts
 
 JsonRenderer = Callable[[Rules, dict[str, Any]], dict[str, Any]]
 TextRenderer = Callable[[Rules], str]
@@ -189,7 +189,50 @@ def render_antigravity(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
     return settings
 
 
+# --------------------------------------------------------------------------
+# claude — claude/settings.json: replace permissions.allow / deny / ask and
+# preserve every other key. The base is a parameter, never a read of this
+# renderer's own output.
+#
+# The owned keys come FIRST inside `permissions`, with hand-maintained keys
+# such as defaultMode after them, so the object is constructed rather than
+# assigned into — assigning would append and change the order.
+# --------------------------------------------------------------------------
+
+
+def claude_pattern(entry: str) -> str:
+    # Colon form matches the command with args or bare; a glob entry is kept
+    # literal since Claude's matcher already understands `*`.
+    return f"Bash({entry})" if is_glob(entry) else f"Bash({entry}:*)"
+
+
+def render_claude(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
+    settings = copy.deepcopy(base)
+    base_perms: dict[str, Any] = settings.get("permissions", {})
+
+    perms: dict[str, Any] = {
+        "allow": (
+            [claude_pattern(e) for e in rules.allow]
+            + [mcp_native(e) for e in rules.mcp_allow]
+            + list(rules.claude_extra_allow)
+        ),
+        "deny": (
+            [claude_pattern(e) for e in rules.deny]
+            + [mcp_native(e) for e in rules.mcp_deny]
+            + list(rules.claude_extra_deny)
+        ),
+        "ask": ([claude_pattern(e) for e in rules.ask] + [mcp_native(e) for e in rules.mcp_ask]),
+    }
+    for key, value in base_perms.items():
+        if key not in perms:
+            perms[key] = value
+
+    settings["permissions"] = perms
+    return settings
+
+
 RENDERERS: dict[str, JsonSpec | TextSpec] = {
+    "claude": JsonSpec(render_claude),
     "claude-mcp": JsonSpec(render_claude_mcp, ensure_ascii=True),
     "codex": TextSpec(render_codex),
     "codex-mcp": TextSpec(render_codex_mcp),

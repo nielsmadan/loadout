@@ -7,10 +7,12 @@ from loadout.permissions.renderers import (
     JsonSpec,
     TextSpec,
     antigravity_pattern,
+    claude_pattern,
     codex_rule,
     pi_mcp_patterns,
     pi_patterns,
     render_antigravity,
+    render_claude,
     render_claude_mcp,
     render_codex,
     render_codex_mcp,
@@ -173,3 +175,66 @@ def test_antigravity_does_not_mutate_its_base() -> None:
     base: dict[str, Any] = {}
     render_antigravity(Rules(allow=("ls",)), base)
     assert base == {}
+
+
+def test_claude_pattern_appends_colon_star_to_a_prefix() -> None:
+    assert claude_pattern("git status") == "Bash(git status:*)"
+
+
+def test_claude_pattern_keeps_a_glob_literal() -> None:
+    assert claude_pattern("docker stop cc-workbench-*") == ("Bash(docker stop cc-workbench-*)")
+
+
+def test_claude_orders_owned_keys_before_hand_maintained_ones() -> None:
+    base = {"permissions": {"defaultMode": "auto"}}
+    doc = render_claude(Rules(allow=("ls",)), base)
+    assert list(doc["permissions"]) == ["allow", "deny", "ask", "defaultMode"]
+
+
+def test_claude_keeps_the_permissions_key_at_its_position_in_the_base() -> None:
+    base = {"$schema": "x", "env": {}, "permissions": {"defaultMode": "auto"}, "model": "y"}
+    doc = render_claude(Rules(allow=("ls",)), base)
+    assert list(doc) == ["$schema", "env", "permissions", "model"]
+
+
+def test_claude_concatenates_shell_then_mcp_then_extras() -> None:
+    rules = Rules(
+        allow=("ls",),
+        mcp_allow=("jina/search",),
+        claude_extra_allow=("WebSearch",),
+    )
+    doc = render_claude(rules, {"permissions": {}})
+    assert doc["permissions"]["allow"] == [
+        "Bash(ls:*)",
+        "mcp__jina__search",
+        "WebSearch",
+    ]
+
+
+def test_claude_ask_has_no_extras_channel() -> None:
+    rules = Rules(ask=("heroku",), mcp_ask=("jina/x",))
+    doc = render_claude(rules, {"permissions": {}})
+    assert doc["permissions"]["ask"] == ["Bash(heroku:*)", "mcp__jina__x"]
+
+
+def test_claude_with_empty_rules_empties_all_three_lists() -> None:
+    base = {"permissions": {"defaultMode": "auto"}}
+    doc = render_claude(EMPTY_RULES, base)
+    assert doc["permissions"] == {
+        "allow": [],
+        "deny": [],
+        "ask": [],
+        "defaultMode": "auto",
+    }
+
+
+def test_claude_does_not_mutate_its_base() -> None:
+    base: dict[str, Any] = {"permissions": {"defaultMode": "auto"}}
+    render_claude(Rules(allow=("ls",)), base)
+    assert base == {"permissions": {"defaultMode": "auto"}}
+
+
+def test_claude_never_reads_a_file() -> None:
+    """The base is a parameter; rendering must work with no filesystem at all."""
+    doc = render_claude(Rules(allow=("ls",)), {})
+    assert doc["permissions"]["allow"] == ["Bash(ls:*)"]
