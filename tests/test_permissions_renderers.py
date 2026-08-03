@@ -5,9 +5,13 @@ from typing import Any
 from loadout.permissions.renderers import (
     RENDERERS,
     JsonSpec,
+    TextSpec,
+    codex_rule,
     pi_mcp_patterns,
     pi_patterns,
     render_claude_mcp,
+    render_codex,
+    render_codex_mcp,
     render_pi,
 )
 from loadout.permissions.rules import EMPTY_RULES, Rules
@@ -85,3 +89,56 @@ def test_renderers_are_pure() -> None:
     assert render_pi(rules, base) == render_pi(rules, base)
     assert render_claude_mcp(rules, base) == render_claude_mcp(rules, base)
     assert base == {}
+
+
+def test_codex_rule_quotes_each_token_positionally() -> None:
+    assert codex_rule("git push", "forbidden") == (
+        'prefix_rule(pattern = ["git", "push"], decision = "forbidden")'
+    )
+
+
+def test_codex_maps_categories_to_its_own_decision_names() -> None:
+    out = render_codex(Rules(allow=("ls",), deny=("git push",), ask=("heroku",)))
+    assert 'pattern = ["ls"], decision = "allow"' in out
+    assert 'pattern = ["git", "push"], decision = "forbidden"' in out
+    assert 'pattern = ["heroku"], decision = "prompt"' in out
+
+
+def test_codex_skips_globs_and_lists_them_at_the_end() -> None:
+    out = render_codex(Rules(allow=("ls", "docker stop cc-workbench-*")))
+    assert 'pattern = ["docker", "stop", "cc-workbench-*"]' not in out
+    assert "# Skipped — glob entries Codex's token matcher can't express" in out
+    assert "#   docker stop cc-workbench-*" in out
+
+
+def test_codex_omits_the_skipped_block_when_there_are_no_globs() -> None:
+    assert "# Skipped" not in render_codex(Rules(allow=("ls",)))
+
+
+def test_codex_output_ends_with_a_single_newline() -> None:
+    out = render_codex(Rules(allow=("ls",)))
+    assert out.endswith("\n") and not out.endswith("\n\n")
+
+
+def test_codex_mcp_wildcard_deny_disables_the_server() -> None:
+    out = render_codex_mcp(Rules(mcp_deny=("jina/*",)))
+    assert '[mcp_servers."jina"]' in out
+    assert "enabled = false" in out
+
+
+def test_codex_mcp_wildcard_allow_sets_default_mode() -> None:
+    out = render_codex_mcp(Rules(mcp_allow=("jina/*",)))
+    assert 'default_tools_approval_mode = "approve"' in out
+
+
+def test_codex_mcp_per_tool_sections_and_disabled_list() -> None:
+    rules = Rules(mcp_allow=("jina/search",), mcp_deny=("jina/write",))
+    out = render_codex_mcp(rules)
+    assert 'disabled_tools = ["write"]' in out
+    assert '[mcp_servers."jina".tools."search"]' in out
+    assert 'approval_mode = "approve"' in out
+
+
+def test_codex_renderers_are_registered_as_text() -> None:
+    assert isinstance(RENDERERS["codex"], TextSpec)
+    assert isinstance(RENDERERS["codex-mcp"], TextSpec)

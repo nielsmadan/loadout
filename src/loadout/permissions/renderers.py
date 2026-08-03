@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -88,7 +89,86 @@ def render_pi(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# --------------------------------------------------------------------------
+# codex — codex/rules/permissions.rules: fully owned, Starlark-ish text.
+# Token-prefix matcher, so glob entries can't be expressed and are skipped.
+# --------------------------------------------------------------------------
+
+CODEX_DECISION = {"allow": "allow", "deny": "forbidden", "ask": "prompt"}
+
+
+def codex_rule(entry: str, decision: str) -> str:
+    tokens = ", ".join(json.dumps(t) for t in entry.split())
+    return f'prefix_rule(pattern = [{tokens}], decision = "{decision}")'
+
+
+def render_codex(rules: Rules) -> str:
+    lines = [f"# {line}" for line in HEADER_LINES]
+    lines += [
+        "#",
+        "# Read-only commands are allowed; remote-publishing and destructive",
+        "# ops are forbidden; `ask` commands prompt. Glob entries are skipped",
+        "# (see end of file) — Codex's token matcher can't express them.",
+    ]
+    skipped: list[str] = []
+    for category in CATEGORIES:
+        decision = CODEX_DECISION[category]
+        entries = rules.shell(category)
+        emitted = [e for e in entries if not is_glob(e)]
+        skipped += [e for e in entries if is_glob(e)]
+        if emitted:
+            lines.append("")
+            for entry in emitted:
+                lines.append(codex_rule(entry, decision))
+    if skipped:
+        lines.append("")
+        lines.append("# Skipped — glob entries Codex's token matcher can't express")
+        lines.append("# (these fall through to Codex's normal approval prompt):")
+        for entry in skipped:
+            lines.append(f"#   {entry}")
+    return "\n".join(lines) + "\n"
+
+
+# --------------------------------------------------------------------------
+# codex — codex/mcp-permissions.toml: fully owned, hand-rolled TOML text.
+# --------------------------------------------------------------------------
+
+
+def render_codex_mcp(rules: Rules) -> str:
+    decisions: dict[str, str] = {}
+    for category, mode in (("allow", "approve"), ("ask", "prompt"), ("deny", "deny")):
+        for entry in rules.mcp(category):
+            decisions[entry] = mode
+
+    servers: dict[str, dict[str, str]] = {}
+    for entry, mode in decisions.items():
+        server, tool = mcp_parts(entry)
+        servers.setdefault(server, {})[tool] = mode
+
+    lines = [f"# {line}" for line in HEADER_LINES]
+    for server in sorted(servers):
+        tools = servers[server]
+        wildcard = tools.get("*")
+        lines.append("")
+        lines.append(f"[mcp_servers.{json.dumps(server)}]")
+        if wildcard == "deny":
+            lines.append("enabled = false")
+        elif wildcard:
+            lines.append(f"default_tools_approval_mode = {json.dumps(wildcard)}")
+        denied = sorted(tool for tool, mode in tools.items() if tool != "*" and mode == "deny")
+        if denied:
+            values = ", ".join(json.dumps(tool) for tool in denied)
+            lines.append(f"disabled_tools = [{values}]")
+        for tool in sorted(tool for tool, mode in tools.items() if tool != "*" and mode != "deny"):
+            lines.append("")
+            lines.append(f"[mcp_servers.{json.dumps(server)}.tools.{json.dumps(tool)}]")
+            lines.append(f"approval_mode = {json.dumps(tools[tool])}")
+    return "\n".join(lines) + "\n"
+
+
 RENDERERS: dict[str, JsonSpec | TextSpec] = {
     "claude-mcp": JsonSpec(render_claude_mcp, ensure_ascii=True),
+    "codex": TextSpec(render_codex),
+    "codex-mcp": TextSpec(render_codex_mcp),
     "pi": JsonSpec(render_pi),
 }
