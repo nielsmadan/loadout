@@ -1,0 +1,95 @@
+# Harness reference
+
+How each supported agent harness handles permissions, and what `loadout` emits for it.
+
+One file per harness. Each records **what was verified** (with the date and version it
+was verified against) separately from **what upstream documents**. When a harness
+changes, re-check the verified claims first — they are the ones this project's output
+depends on, and the ones a docs page will not tell you have changed.
+
+| | [Claude](claude.md) | [Codex](codex.md) | [Antigravity](antigravity.md) | [OpenCode](opencode.md) | [Pi](pi.md) |
+|---|---|---|---|---|---|
+| resolution | deny → ask → allow | most-restrictive | deny > ask > allow | last match | last match |
+| specificity affects order | no | no | no | n/a | n/a |
+| glob patterns | yes | **no** | **no** | yes | yes (minimatch) |
+| bare matches with-args | yes, via `:*` | yes (prefix) | yes (prefix) | **no** | **no** |
+| permissions in own file | no | **yes** | no | no | **yes** |
+| emission order matters | no | no | no | **yes** | **yes** |
+
+## Cross-cutting rules
+
+### Order-independent vs last-match
+
+Claude, Codex and Antigravity resolve by decision priority, so emission order carries no
+meaning. OpenCode and Pi take the last matching rule, so **denies must be emitted after
+the allows they refine**. Both renderers do this, and Pi additionally deletes and
+reinserts a key to move it to the end of the map when a later category overwrites an
+earlier one.
+
+This is why `dedupe()` is order-preserving and never uses `set()`: on two of five
+harnesses, order is semantic.
+
+### Globs
+
+A source entry ending in `*` is a glob. Claude, OpenCode and Pi keep it literal — their
+matchers understand `*`. **Codex and Antigravity cannot express it**, so glob entries are
+skipped for those two and fall through to the harness's runtime approval prompt. Codex's
+docs are explicit: patterns are "literal strings or unions of literals". Antigravity's
+docs only ever show literal command strings.
+
+Skipping is fail-closed — the command prompts rather than being silently allowed.
+
+### Bare vs with-arguments
+
+Three matchers prefix-match, so `pwd` matches `pwd --help` for free. Two do not:
+
+- **Claude** needs the `:*` suffix, which matches both forms (verified — see
+  [claude.md](claude.md)).
+- **OpenCode and Pi** need **both** `<entry>` and `<entry> *` emitted, because their
+  matchers treat `foo *` as not matching a bare `foo`.
+
+Emitting only one form on OpenCode or Pi produces a rule that silently covers half of
+what it appears to. This is a live bug in `~/ac/permissions/manage.py`, whose local-scope
+renderer emits only the `<entry> *` form.
+
+### The wrapper-command bypass
+
+**Any allowlisted command that accepts another command as an argument voids every deny
+rule on a positionally-matching harness.** The matcher sees `["bash","-lc","touch
+forbidden"]`, which never matches a deny on `["touch","forbidden"]`.
+
+Verified live on 2026-08-01: `prefix_rule(pattern = ["env"], decision = "allow")` made
+all 42 deny rules bypassable on Codex. `env touch forbidden` created the file. Removed
+from `[shell] allow` the same day; `printenv` covers the legitimate read-only use.
+
+| probe | Claude | Codex |
+|---|---|---|
+| `bash -lc '<denied>'`, wrapper not allowlisted | denied | denied (prompts) |
+| `bash -lc '<denied>'`, wrapper allowlisted | **bypass** | **bypass** |
+| `env <denied>` | denied | **bypass** |
+
+Codex normalises one level — its own `/bin/zsh -lc` wrapper — but a nested explicit
+wrapper is not normalised.
+
+Still unresolved in `~/ac`, in the same class as the removed `env`: `find` (bare, and
+`-exec`), `git rebase` (`-x`), and `docker exec cc-workbench`. A deny rule structurally
+cannot fix this — the intended mechanism is a build-time `neverallow` ceiling that
+refuses to emit, which is milestone 4.
+
+## Upstream documentation
+
+Where each harness documents its permission surface. Check these when output stops
+matching what a harness actually enforces.
+
+| harness | permissions | config reference |
+|---|---|---|
+| Claude | https://code.claude.com/docs/en/iam | https://code.claude.com/docs/en/settings |
+| Codex | https://developers.openai.com/codex/agent-approvals-security | https://developers.openai.com/codex/config-reference |
+| Codex rules | https://developers.openai.com/codex/rules | |
+| OpenCode | https://opencode.ai/docs/permissions/ | https://opencode.ai/docs/config/ |
+| Antigravity | https://antigravity.google/docs/cli-features | |
+| Pi | `@gotgenes/pi-permission-system` package docs | |
+
+Upstream churn is the dominant ongoing cost: Claude's `settings.json` took roughly 164
+schema-affecting changes in 15 months. Codex ships two mutually exclusive permission
+schemas. OpenCode v2 renames nearly every key, including one silent boolean inversion.
