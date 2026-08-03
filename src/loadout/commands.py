@@ -19,7 +19,7 @@ def cmd_sync(root: Path) -> int:
 def cmd_check(root: Path) -> int:
     drift = check_all(root)
     if not drift:
-        print("global instruction files are up to date")
+        print("generated files are up to date")
         return 0
     for path, actual, expected in drift:
         rel = path.relative_to(root)
@@ -33,7 +33,7 @@ def cmd_check(root: Path) -> int:
             )
         )
     print(
-        f"\n{len(drift)} global instruction file(s) out of sync — run `loadout sync`.",
+        f"\n{len(drift)} generated file(s) out of sync — run `loadout sync`.",
         file=sys.stderr,
     )
     return 1

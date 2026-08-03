@@ -32,7 +32,7 @@ def test_written_files_are_owner_only(tmp_path: Path) -> None:
 
 def test_write_all_creates_every_target(root: Path) -> None:
     written = write_all(root)
-    assert len(written) == 3
+    assert len(written) == 11
     for path in written:
         assert path.is_file()
 
