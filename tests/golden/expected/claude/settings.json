@@ -1,0 +1,470 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "cleanupPeriodDays": 9999,
+  "skillListingBudgetFraction": 0.02,
+  "env": {
+    "CLAUDE_AFK_TIMEOUT_MS": "2147483647",
+    "CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN": "1"
+  },
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git remote -v:*)",
+      "Bash(git remote show:*)",
+      "Bash(git remote get-url:*)",
+      "Bash(git fetch:*)",
+      "Bash(git ls-files:*)",
+      "Bash(git ls-tree:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git rev-list:*)",
+      "Bash(git describe:*)",
+      "Bash(git blame:*)",
+      "Bash(git shortlog:*)",
+      "Bash(git tag -l:*)",
+      "Bash(git tag --list:*)",
+      "Bash(git config --get:*)",
+      "Bash(git config --list:*)",
+      "Bash(git cat-file:*)",
+      "Bash(git for-each-ref:*)",
+      "Bash(git name-rev:*)",
+      "Bash(git reflog:*)",
+      "Bash(git grep:*)",
+      "Bash(git range-diff:*)",
+      "Bash(git cherry:*)",
+      "Bash(git whatchanged:*)",
+      "Bash(git count-objects:*)",
+      "Bash(git worktree list:*)",
+      "Bash(git merge-base:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(git diff-tree:*)",
+      "Bash(git diff-index:*)",
+      "Bash(git ls-remote:*)",
+      "Bash(git symbolic-ref:*)",
+      "Bash(git version:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git mv:*)",
+      "Bash(git rm:*)",
+      "Bash(git switch:*)",
+      "Bash(git merge:*)",
+      "Bash(git rebase:*)",
+      "Bash(git cherry-pick:*)",
+      "Bash(git revert:*)",
+      "Bash(git stash:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr status:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh issue list:*)",
+      "Bash(gh issue view:*)",
+      "Bash(gh issue status:*)",
+      "Bash(gh repo list:*)",
+      "Bash(gh repo view:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh run watch:*)",
+      "Bash(gh workflow list:*)",
+      "Bash(gh workflow view:*)",
+      "Bash(gh release list:*)",
+      "Bash(gh release view:*)",
+      "Bash(gh search:*)",
+      "Bash(gh project list:*)",
+      "Bash(gh project view:*)",
+      "Bash(gh project field-list:*)",
+      "Bash(gh project item-list:*)",
+      "Bash(glab mr list:*)",
+      "Bash(glab mr view:*)",
+      "Bash(glab mr diff:*)",
+      "Bash(glab issue list:*)",
+      "Bash(glab issue view:*)",
+      "Bash(glab issue board:*)",
+      "Bash(glab ci list:*)",
+      "Bash(glab ci view:*)",
+      "Bash(glab ci status:*)",
+      "Bash(glab ci get:*)",
+      "Bash(glab ci lint:*)",
+      "Bash(glab ci trace:*)",
+      "Bash(glab release list:*)",
+      "Bash(glab release view:*)",
+      "Bash(glab label list:*)",
+      "Bash(glab milestone list:*)",
+      "Bash(glab repo view:*)",
+      "Bash(glab job list:*)",
+      "Bash(glab schedule list:*)",
+      "Bash(glab variable list:*)",
+      "Bash(ls:*)",
+      "Bash(pwd:*)",
+      "Bash(which:*)",
+      "Bash(whoami:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(less:*)",
+      "Bash(more:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(rg:*)",
+      "Bash(wc:*)",
+      "Bash(du:*)",
+      "Bash(df:*)",
+      "Bash(date:*)",
+      "Bash(uptime:*)",
+      "Bash(uname:*)",
+      "Bash(printenv:*)",
+      "Bash(file:*)",
+      "Bash(stat:*)",
+      "Bash(tree:*)",
+      "Bash(realpath:*)",
+      "Bash(dirname:*)",
+      "Bash(basename:*)",
+      "Bash(dig:*)",
+      "Bash(jq:*)",
+      "Bash(cp:*)",
+      "Bash(fd:*)",
+      "Bash(bat:*)",
+      "Bash(eza:*)",
+      "Bash(mdfind:*)",
+      "Bash(pbpaste:*)",
+      "Bash(plutil -p:*)",
+      "Bash(tar -tf:*)",
+      "Bash(tar -tzf:*)",
+      "Bash(tar --list:*)",
+      "Bash(unzip -l:*)",
+      "Bash(echo:*)",
+      "Bash(printf:*)",
+      "Bash(cut:*)",
+      "Bash(tr:*)",
+      "Bash(comm:*)",
+      "Bash(diff:*)",
+      "Bash(cmp:*)",
+      "Bash(column:*)",
+      "Bash(nl:*)",
+      "Bash(rev:*)",
+      "Bash(fold:*)",
+      "Bash(paste:*)",
+      "Bash(sort:*)",
+      "Bash(uniq:*)",
+      "Bash(xxd:*)",
+      "Bash(hexdump:*)",
+      "Bash(od:*)",
+      "Bash(strings:*)",
+      "Bash(shasum:*)",
+      "Bash(sha256sum:*)",
+      "Bash(md5:*)",
+      "Bash(cksum:*)",
+      "Bash(ps:*)",
+      "Bash(id:*)",
+      "Bash(groups:*)",
+      "Bash(hostname:*)",
+      "Bash(arch:*)",
+      "Bash(sw_vers:*)",
+      "Bash(readlink:*)",
+      "Bash(seq:*)",
+      "Bash(test:*)",
+      "Bash(pgrep:*)",
+      "Bash(lsof:*)",
+      "Bash(yarn --version:*)",
+      "Bash(npm --version:*)",
+      "Bash(node --version:*)",
+      "Bash(python --version:*)",
+      "Bash(ruby --version:*)",
+      "Bash(agent-browser:*)",
+      "Bash(npx agent-browser:*)",
+      "Bash(jina-fetch:*)",
+      "Bash(codex exec -s read-only:*)",
+      "Bash(opencode run:*)",
+      "Bash(claude --tools:*)",
+      "Bash(aiperm list:*)",
+      "Bash(aiperm sync:*)",
+      "Bash(docker exec cc-workbench:*)",
+      "Bash(docker exec cc-workbench-*)",
+      "Bash(docker stop cc-workbench:*)",
+      "Bash(docker stop cc-workbench-*)",
+      "Bash(docker rm cc-workbench:*)",
+      "Bash(docker rm cc-workbench-*)",
+      "Bash(docker start cc-workbench:*)",
+      "Bash(docker start cc-workbench-*)",
+      "Bash(docker info:*)",
+      "Bash(docker ps:*)",
+      "Bash(xcrun xcresulttool:*)",
+      "Bash(xcrun xccov view:*)",
+      "Bash(xcrun xccov diff:*)",
+      "Bash(xcrun xctrace list:*)",
+      "Bash(xcrun xctrace export:*)",
+      "Bash(xcrun simctl list:*)",
+      "Bash(xcrun simctl listapps:*)",
+      "Bash(xcrun simctl appinfo:*)",
+      "Bash(xcrun simctl getenv:*)",
+      "Bash(xcrun simctl get_app_container:*)",
+      "Bash(xcrun simctl help:*)",
+      "Bash(xcrun swift-demangle:*)",
+      "Bash(xcrun dwarfdump:*)",
+      "Bash(xcrun otool:*)",
+      "Bash(xcrun nm:*)",
+      "Bash(yt-dlp:*)",
+      "mcp__jina__*",
+      "Read(~/.claude/skills/*)",
+      "WebSearch",
+      "WebFetch",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__query-docs",
+      "Skill(code-review)",
+      "Skill(debug-log)",
+      "Skill(doc)",
+      "Skill(explain)",
+      "Skill(hard-fix)",
+      "Skill(ideation)",
+      "Skill(perf-test)",
+      "Skill(review-plan)",
+      "Skill(read-docs)",
+      "Skill(research-tech)",
+      "Skill(resolve-conflicts)",
+      "Skill(review-comments)",
+      "Skill(review-history)",
+      "Skill(review-perf)",
+      "Skill(review-security)",
+      "Skill(review-typescript)",
+      "Skill(review-project)",
+      "Skill(second-opinion)",
+      "Skill(skill-creator)",
+      "Skill(permission)",
+      "Skill(summary)",
+      "Skill(aiconf)",
+      "Skill(test)",
+      "Skill(workbench)",
+      "Skill(pre-existing)"
+    ],
+    "deny": [
+      "Bash(git push:*)",
+      "Bash(git branch -d:*)",
+      "Bash(git branch -D:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git mv -f:*)",
+      "Bash(git mv --force:*)",
+      "Bash(git rm -f:*)",
+      "Bash(git rm --force:*)",
+      "Bash(git rm -rf:*)",
+      "Bash(git rm -fr:*)",
+      "Bash(git rm -r -f:*)",
+      "Bash(git rm -r --force:*)",
+      "Bash(git switch -f:*)",
+      "Bash(git switch --force:*)",
+      "Bash(git switch --discard-changes:*)",
+      "Bash(git stash drop:*)",
+      "Bash(git stash clear:*)",
+      "Bash(git clean -f:*)",
+      "Bash(git clean -fd:*)",
+      "Bash(git clean -fdx:*)",
+      "Bash(git clean -fx:*)"
+    ],
+    "ask": [
+      "Bash(heroku:*)",
+      "Bash(vercel:*)",
+      "Bash(wrangler:*)",
+      "Bash(railway:*)"
+    ],
+    "defaultMode": "auto"
+  },
+  "model": "opus",
+  "hooks": {
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/enforce-fix-failures.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/juggler/notify.sh PostToolUseFailure",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/redirect-gh-api.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "WebFetch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/nudge-jina.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/juggler/notify.sh PreToolUse",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/juggler/notify.sh SessionStart",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/juggler/notify.sh SessionEnd",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/juggler/notify.sh UserPromptSubmit",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/juggler/notify.sh PostToolUse",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "mcp__*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/auto-approve-mcp.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/juggler/notify.sh PermissionRequest",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/juggler/notify.sh SubagentStart",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/juggler/notify.sh Stop",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/juggler/notify.sh PreCompact",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/juggler/notify.sh StopFailure",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "input=$(cat); model_name=$(echo \"$input\" | jq -r '.model.display_name // \"Unknown Model\"'); output_style=$(echo \"$input\" | jq -r '.output_style.name // \"default\"'); current_dir=$(echo \"$input\" | jq -r '.workspace.current_dir // .cwd'); dir_name=$(basename \"$current_dir\");git_info=\"\"; if git rev-parse --git-dir >/dev/null 2>&1; then branch=$(git branch --show-current 2>/dev/null || git rev-parse --short HEAD 2>/dev/null || \"detached\"); git_status=\"\"; if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then git_status=\"●\"; else git_status=\"✓\"; fi; untracked_count=$(git ls-files --others --exclude-standard | wc -l | xargs); if [ \"$untracked_count\" -gt 0 ]; then git_status=\"${git_status}+${untracked_count}\"; fi; ahead_behind=\"\"; upstream=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null); if [ -n \"$upstream\" ]; then ahead=$(git rev-list --count HEAD..@{u} 2>/dev/null || echo 0); behind=$(git rev-list --count @{u}..HEAD 2>/dev/null || echo 0); if [ \"$ahead\" -gt 0 ] && [ \"$behind\" -gt 0 ]; then ahead_behind=\"↕${behind}↑${ahead}↓\"; elif [ \"$ahead\" -gt 0 ]; then ahead_behind=\"↑${ahead}\"; elif [ \"$behind\" -gt 0 ]; then ahead_behind=\"↓${behind}\"; fi; fi; git_info=\"⎇ ${branch} ${git_status}${ahead_behind:+ $ahead_behind}\"; fi; project_type=\"\"; if [ -f \"$current_dir/pubspec.yaml\" ]; then if grep -q \"flutter:\" \"$current_dir/pubspec.yaml\" 2>/dev/null; then project_type=\"📱\"; else project_type=\"🎯\"; fi; fi; printf \"\\033[34m📁 %s\\033[0m\" \"$dir_name\"; printf \"\\033[2m │ \"; if [ -n \"$git_info\" ]; then printf \"\\033[32m%s\\033[0m\" \"$git_info\"; printf \"\\033[2m │ \"; fi; if [ -n \"$project_type\" ]; then printf \"\\033[35m%s Flutter\\033[0m\" \"$project_type\"; printf \"\\033[2m │ \"; fi; printf \"\\033[33m🤖 %s\\033[0m\" \"$model_name\"; printf \"\\033[2m │ \"; printf \"\\033[37m✨ %s\\033[0m\" \"$output_style\"; ctx_pct=$(echo \"$input\" | jq -r '.context_window.used_percentage // 0' | cut -d. -f1); if [ \"$ctx_pct\" -ge 80 ] 2>/dev/null; then ctx_color=\"\\033[31m\"; elif [ \"$ctx_pct\" -ge 50 ] 2>/dev/null; then ctx_color=\"\\033[33m\"; else ctx_color=\"\\033[32m\"; fi; printf \"\\033[2m │ \"; printf \"${ctx_color}🧠 %s%%\\033[0m\" \"$ctx_pct\"; printf \"\\033[0m\""
+  },
+  "enabledPlugins": {
+    "rust-analyzer-lsp@claude-plugins-official": true,
+    "swift-lsp@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true,
+    "telegram@claude-plugins-official": true,
+    "superpowers@claude-plugins-official": true
+  },
+  "sandbox": {
+    "filesystem": {
+      "allowWrite": [
+        "//tmp",
+        "//private/tmp"
+      ]
+    }
+  },
+  "effortLevel": "high",
+  "awaySummaryEnabled": false,
+  "autoMemoryEnabled": true,
+  "skipAutoPermissionPrompt": true,
+  "skipWorkflowUsageWarning": true
+}

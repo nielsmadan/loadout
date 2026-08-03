@@ -1,0 +1,350 @@
+# Single source of truth for agent shell-command and MCP permissions.
+#
+# Edit this file, then run `permissions/sync.py` (or `./install.sh`) to
+# regenerate every agent's permission config. NEVER hand-edit the generated
+# files — the lefthook pre-commit hook rejects drift.
+#
+# Generated files:
+#   claude/settings.json                  (permissions.allow / deny / ask)
+#   claude/mcp-permissions.json           (PermissionRequest hook policy)
+#   codex/rules/permissions.rules
+#   codex/mcp-permissions.toml
+#   antigravity/settings.json             (permissions.allow / deny / ask)
+#   opencode/opencode.json                (permission.bash / MCP tools)
+#   pi/permissions.json                   (@gotgenes/pi-permission-system)
+#
+# Entries in [shell] are command prefixes — emitted to ALL FIVE agents.
+# An entry ending in `*` is a glob: kept literally for Claude and OpenCode,
+# kept literally for Pi, and skipped for Codex and Antigravity (neither matcher
+# can express a mid-argument glob, so those commands fall through to runtime
+# prompts).
+
+[shell]
+
+# allow — run without prompting on every agent.
+allow = [
+  # git — read-only
+  "git status",
+  "git log",
+  "git diff",
+  "git show",
+  "git branch",
+  "git remote -v",
+  "git remote show",
+  "git remote get-url",
+  "git fetch",
+  "git ls-files",
+  "git ls-tree",
+  "git rev-parse",
+  "git rev-list",
+  "git describe",
+  "git blame",
+  "git shortlog",
+  "git tag -l",
+  "git tag --list",
+  "git config --get",
+  "git config --list",
+  "git cat-file",
+  "git for-each-ref",
+  "git name-rev",
+  "git reflog",
+  "git grep",
+  "git range-diff",
+  "git cherry",
+  "git whatchanged",
+  "git count-objects",
+  "git worktree list",
+  "git merge-base",
+  "git check-ignore",
+  "git diff-tree",
+  "git diff-index",
+  "git ls-remote",
+  "git symbolic-ref",
+  "git version",
+
+  # git — user-authorized local workflow
+  "git add",
+  "git commit",
+  "git mv",
+  "git rm",
+  "git switch",
+  "git merge",
+  "git rebase",
+  "git cherry-pick",
+  "git revert",
+  "git stash",
+
+  # gh — read-only
+  "gh pr list",
+  "gh pr view",
+  "gh pr status",
+  "gh pr diff",
+  "gh pr checks",
+  "gh issue list",
+  "gh issue view",
+  "gh issue status",
+  "gh repo list",
+  "gh repo view",
+  "gh run list",
+  "gh run view",
+  "gh run watch",
+  "gh workflow list",
+  "gh workflow view",
+  "gh release list",
+  "gh release view",
+  "gh search",
+  "gh project list",
+  "gh project view",
+  "gh project field-list",
+  "gh project item-list",
+
+  # glab — read-only
+  "glab mr list",
+  "glab mr view",
+  "glab mr diff",
+  "glab issue list",
+  "glab issue view",
+  "glab issue board",
+  "glab ci list",
+  "glab ci view",
+  "glab ci status",
+  "glab ci get",
+  "glab ci lint",
+  "glab ci trace",
+  "glab release list",
+  "glab release view",
+  "glab label list",
+  "glab milestone list",
+  "glab repo view",
+  "glab job list",
+  "glab schedule list",
+  "glab variable list",
+
+  # file inspection
+  "ls",
+  "pwd",
+  "which",
+  "whoami",
+  "cat",
+  "head",
+  "tail",
+  "less",
+  "more",
+  "find",
+  "grep",
+  "rg",
+  "wc",
+  "du",
+  "df",
+  "date",
+  "uptime",
+  "uname",
+  "printenv",
+  "file",
+  "stat",
+  "tree",
+  "realpath",
+  "dirname",
+  "basename",
+  "dig",
+  "jq",
+  "cp",
+  "fd",
+  "bat",
+  "eza",
+  "mdfind",
+  "pbpaste",
+  "plutil -p",
+  # archive listing only — `tar -t` alone would also prefix-match `tar -tx…`
+  "tar -tf",
+  "tar -tzf",
+  "tar --list",
+  "unzip -l",
+
+  # text output & processing. sort/uniq are included even though `sort -o` and
+  # `uniq in out` can write — `cp` above plus shell redirects already open that
+  # surface, so excluding them only bought prompts. sed/awk stay out: `sed -i`
+  # and awk's `print > file` mutate files with no redirect a reviewer can see.
+  "echo",
+  "printf",
+  "cut",
+  "tr",
+  "comm",
+  "diff",
+  "cmp",
+  "column",
+  "nl",
+  "rev",
+  "fold",
+  "paste",
+  "sort",
+  "uniq",
+
+  # binary / hash inspection
+  "xxd",
+  "hexdump",
+  "od",
+  "strings",
+  "shasum",
+  "sha256sum",
+  "md5",
+  "cksum",
+
+  # system / process info
+  "ps",
+  "id",
+  "groups",
+  "hostname",
+  "arch",
+  "sw_vers",
+  "readlink",
+  "seq",
+  "test",
+  "pgrep",
+  "lsof",
+
+  # version checks
+  "yarn --version",
+  "npm --version",
+  "node --version",
+  "python --version",
+  "ruby --version",
+
+  # browser automation — mandated by the global browser-automation fragment
+  "agent-browser",
+  "npx agent-browser",
+
+  # web fetching — mandated by the global web-fetching fragment
+  "jina-fetch",
+
+  # external advisor commands (used by /second-opinion)
+  "codex exec -s read-only",
+  "opencode run",
+  # Claude as an advisor for the non-Claude harnesses: read-only built-ins only.
+  "claude --tools",
+  "aiperm list",
+  "aiperm sync",
+  # NOTE: agy (Antigravity) was removed from /second-opinion — its headless mode
+  # can't read files without --dangerously-skip-permissions, so it was dropped
+  # rather than granted blanket write access. No agy allow-rule is needed here.
+
+  # docker — workbench container management
+  "docker exec cc-workbench",
+  "docker exec cc-workbench-*",
+  "docker stop cc-workbench",
+  "docker stop cc-workbench-*",
+  "docker rm cc-workbench",
+  "docker rm cc-workbench-*",
+  "docker start cc-workbench",
+  "docker start cc-workbench-*",
+  "docker info",
+  "docker ps",
+
+  # xcrun — read-only Xcode tooling
+  "xcrun xcresulttool",
+  "xcrun xccov view",
+  "xcrun xccov diff",
+  "xcrun xctrace list",
+  "xcrun xctrace export",
+  "xcrun simctl list",
+  "xcrun simctl listapps",
+  "xcrun simctl appinfo",
+  "xcrun simctl getenv",
+  "xcrun simctl get_app_container",
+  "xcrun simctl help",
+  "xcrun swift-demangle",
+  "xcrun dwarfdump",
+  "xcrun otool",
+  "xcrun nm",
+  "yt-dlp",
+]
+
+# deny — hard-blocked on every agent. Remote-publishing and destructive ops.
+deny = [
+  "git push",
+  "git branch -d",
+  "git branch -D",
+  "git reset --hard",
+  "git mv -f",
+  "git mv --force",
+  "git rm -f",
+  "git rm --force",
+  "git rm -rf",
+  "git rm -fr",
+  "git rm -r -f",
+  "git rm -r --force",
+  "git switch -f",
+  "git switch --force",
+  "git switch --discard-changes",
+  "git stash drop",
+  "git stash clear",
+  "git clean -f",
+  "git clean -fd",
+  "git clean -fdx",
+  "git clean -fx",
+]
+
+# ask — always prompt for confirmation, even in auto/auto-accept modes.
+ask = [
+  "heroku",
+  "vercel",
+  "wrangler",
+  "railway",
+]
+
+# MCP approvals shared by every harness. Targets use `server/tool`; `server/*`
+# applies to every tool on that server. Server provisioning remains separate.
+[mcp]
+
+allow = [
+  "jina/*",
+]
+
+deny = []
+
+ask = []
+
+# Tool-native permission entries with no cross-agent shell-command
+# equivalent. Emitted verbatim, only to the named tool.
+
+[claude.extra]
+# Appended as-is to claude/settings.json permissions.allow.
+allow = [
+  "Read(~/.claude/skills/*)",
+  "WebSearch",
+  "WebFetch",
+  "mcp__context7__resolve-library-id",
+  "mcp__context7__query-docs",
+  "Skill(code-review)",
+  "Skill(debug-log)",
+  "Skill(doc)",
+  "Skill(explain)",
+  "Skill(hard-fix)",
+  "Skill(ideation)",
+  "Skill(perf-test)",
+  "Skill(review-plan)",
+  "Skill(read-docs)",
+  "Skill(research-tech)",
+  "Skill(resolve-conflicts)",
+  "Skill(review-comments)",
+  "Skill(review-history)",
+  "Skill(review-perf)",
+  "Skill(review-security)",
+  "Skill(review-typescript)",
+  "Skill(review-project)",
+  "Skill(second-opinion)",
+  "Skill(skill-creator)",
+  "Skill(permission)",
+  "Skill(summary)",
+  "Skill(aiconf)",
+  "Skill(test)",
+  "Skill(workbench)",
+  "Skill(pre-existing)",
+]
+
+[opencode.extra]
+# Written to opencode.json permission.<key>.
+skill = "allow"
+webfetch = "allow"
+websearch = "allow"
+codesearch = "allow"

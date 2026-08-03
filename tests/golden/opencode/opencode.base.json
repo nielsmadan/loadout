@@ -1,0 +1,12 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "opencode/deepseek-v4-flash-free",
+  "provider": {
+    "openrouter": {
+      "models": {
+        "moonshotai/kimi-k3": {},
+        "z-ai/glm-5.2": {}
+      }
+    }
+  }
+}
