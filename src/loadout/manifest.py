@@ -70,10 +70,10 @@ def _output_path(output: object, label: str, claimed: set[PurePosixPath]) -> Pur
 
 
 def _parse_instructions(
-    raw_instructions: object, claimed: set[PurePosixPath]
+    raw_instructions: object, path: Path, claimed: set[PurePosixPath]
 ) -> tuple[InstructionTarget, ...]:
     if not isinstance(raw_instructions, dict):
-        raise LoadoutError("[instructions] must be a table")
+        raise LoadoutError(f"{path}: [instructions] must be a table")
 
     targets: list[InstructionTarget] = []
     for agent, block in sorted(raw_instructions.items()):
@@ -98,10 +98,10 @@ def _parse_instructions(
 
 
 def _parse_permissions(
-    raw_permissions: object, claimed: set[PurePosixPath]
+    raw_permissions: object, path: Path, claimed: set[PurePosixPath]
 ) -> tuple[PermissionTarget, ...]:
     if not isinstance(raw_permissions, dict):
-        raise LoadoutError("[permissions] must be a table")
+        raise LoadoutError(f"{path}: [permissions] must be a table")
 
     permissions: list[PermissionTarget] = []
     for name, block in sorted(raw_permissions.items()):
@@ -163,8 +163,8 @@ def load_manifest(path: Path) -> Manifest:
     sources = parse_sources(list(raw_sources), path.parent)
 
     claimed: set[PurePosixPath] = set()
-    targets = _parse_instructions(data.get("instructions", {}), claimed)
-    permissions = _parse_permissions(data.get("permissions", {}), claimed)
+    targets = _parse_instructions(data.get("instructions", {}), path, claimed)
+    permissions = _parse_permissions(data.get("permissions", {}), path, claimed)
 
     if not targets and not permissions:
         raise LoadoutError(

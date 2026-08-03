@@ -186,6 +186,41 @@ order        = ["intro-claude"]
     assert "target" in str(excinfo.value)
 
 
+def test_instructions_not_a_table_names_the_manifest_path(tmp_path: Path) -> None:
+    body = """
+instructions = "oops"
+
+[[source]]
+name = "ac"
+path = "."
+"""
+    manifest_toml = write_manifest(tmp_path, body)
+    with pytest.raises(LoadoutError) as excinfo:
+        load_manifest(manifest_toml)
+    assert str(manifest_toml) in str(excinfo.value)
+    assert "[instructions] must be a table" in str(excinfo.value)
+
+
+def test_permissions_not_a_table_names_the_manifest_path(tmp_path: Path) -> None:
+    body = """
+permissions = "oops"
+
+[[source]]
+name = "ac"
+path = "."
+
+[instructions.claude]
+output       = "claude/CLAUDE.md"
+destinations = ["~/.claude/CLAUDE.md"]
+order        = ["intro-claude"]
+"""
+    manifest_toml = write_manifest(tmp_path, body)
+    with pytest.raises(LoadoutError) as excinfo:
+        load_manifest(manifest_toml)
+    assert str(manifest_toml) in str(excinfo.value)
+    assert "[permissions] must be a table" in str(excinfo.value)
+
+
 def test_two_targets_sharing_an_output_is_an_error(tmp_path: Path) -> None:
     body = """
 [[source]]
