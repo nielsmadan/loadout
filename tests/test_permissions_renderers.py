@@ -73,6 +73,12 @@ def test_pi_document_shape() -> None:
     assert doc["permission"]["*"] == "allow"
 
 
+def test_pi_reorders_cross_key_entries_so_later_category_wins_position() -> None:
+    rules = Rules(allow=("foo", "bar"), deny=("foo",))
+    bash = render_pi(rules, {})["permission"]["bash"]
+    assert list(bash) == ["*", "bar", "bar *", "foo", "foo *"]
+
+
 def test_renderers_are_pure() -> None:
     rules = Rules(allow=("pwd",), mcp_allow=("jina/*",))
     base: dict[str, Any] = {}
