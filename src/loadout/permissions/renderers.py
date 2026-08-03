@@ -231,6 +231,39 @@ def render_claude(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
     return settings
 
 
+# --------------------------------------------------------------------------
+# opencode — opencode.json: replace the `permission` key, preserve model /
+# provider from the base. Last-match-wins, so deny is emitted after allow.
+# A plain prefix emits BOTH `<entry>` and `<entry> *`, because `pwd *` does
+# not match a bare `pwd` under OpenCode's matcher. A glob entry is kept literal.
+# --------------------------------------------------------------------------
+
+
+def opencode_patterns(entry: str) -> list[str]:
+    return [entry] if is_glob(entry) else [entry, f"{entry} *"]
+
+
+def render_opencode(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
+    config = copy.deepcopy(base)
+
+    bash: dict[str, str] = {"*": "ask"}
+    for category in CATEGORIES:
+        for entry in rules.shell(category):
+            for pattern in opencode_patterns(entry):
+                bash[pattern] = category
+
+    permission: dict[str, Any] = {"bash": bash}
+    for category in CATEGORIES:
+        for entry in rules.mcp(category):
+            server, tool = mcp_parts(entry)
+            permission[f"{server}_{tool}"] = category
+    for key, value in rules.opencode_extra.items():
+        permission[key] = value
+
+    config["permission"] = permission
+    return config
+
+
 RENDERERS: dict[str, JsonSpec | TextSpec] = {
     "claude": JsonSpec(render_claude),
     "claude-mcp": JsonSpec(render_claude_mcp, ensure_ascii=True),
@@ -238,4 +271,5 @@ RENDERERS: dict[str, JsonSpec | TextSpec] = {
     "codex-mcp": TextSpec(render_codex_mcp),
     "pi": JsonSpec(render_pi),
     "antigravity": JsonSpec(render_antigravity),
+    "opencode": JsonSpec(render_opencode),
 }

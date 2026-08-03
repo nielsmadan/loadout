@@ -9,6 +9,7 @@ from loadout.permissions.renderers import (
     antigravity_pattern,
     claude_pattern,
     codex_rule,
+    opencode_patterns,
     pi_mcp_patterns,
     pi_patterns,
     render_antigravity,
@@ -16,6 +17,7 @@ from loadout.permissions.renderers import (
     render_claude_mcp,
     render_codex,
     render_codex_mcp,
+    render_opencode,
     render_pi,
 )
 from loadout.permissions.rules import EMPTY_RULES, Rules
@@ -238,3 +240,45 @@ def test_claude_never_reads_a_file() -> None:
     """The base is a parameter; rendering must work with no filesystem at all."""
     doc = render_claude(Rules(allow=("ls",)), {})
     assert doc["permissions"]["allow"] == ["Bash(ls:*)"]
+
+
+def test_opencode_emits_both_bare_and_argument_forms() -> None:
+    assert opencode_patterns("pwd") == ["pwd", "pwd *"]
+
+
+def test_opencode_keeps_a_glob_literal() -> None:
+    assert opencode_patterns("docker stop cc-workbench-*") == ["docker stop cc-workbench-*"]
+
+
+def test_opencode_seeds_the_bash_catch_all_first() -> None:
+    doc = render_opencode(Rules(allow=("pwd",)), {})
+    assert next(iter(doc["permission"]["bash"])) == "*"
+
+
+def test_opencode_emits_deny_after_allow_for_last_match_wins() -> None:
+    bash = render_opencode(Rules(allow=("git",), deny=("git",)), {})["permission"]["bash"]
+    assert bash["git"] == "deny"
+
+
+def test_opencode_mcp_entries_become_top_level_permission_keys() -> None:
+    doc = render_opencode(Rules(mcp_allow=("jina/*",)), {})
+    assert doc["permission"]["jina_*"] == "allow"
+
+
+def test_opencode_extra_toggles_are_emitted_verbatim() -> None:
+    rules = Rules(opencode_extra={"webfetch": "allow", "skill": "allow"})
+    permission = render_opencode(rules, {})["permission"]
+    assert permission["webfetch"] == "allow"
+    assert permission["skill"] == "allow"
+
+
+def test_opencode_appends_permission_after_the_base_keys() -> None:
+    base = {"$schema": "x", "model": "m", "provider": {}}
+    doc = render_opencode(Rules(allow=("pwd",)), base)
+    assert list(doc) == ["$schema", "model", "provider", "permission"]
+
+
+def test_opencode_does_not_mutate_its_base() -> None:
+    base: dict[str, Any] = {"$schema": "x"}
+    render_opencode(Rules(allow=("pwd",)), base)
+    assert base == {"$schema": "x"}
