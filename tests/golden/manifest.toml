@@ -26,3 +26,40 @@ order = [
     "intro-shared", "web-fetching.shared", "video-content", "browser-automation",
     "secrets", "git-policy", "git-commit-policy", "working-style",
 ]
+
+[permissions.antigravity]
+output = "antigravity/settings.json"
+render = "antigravity"
+
+[permissions.claude]
+output = "claude/settings.json"
+render = "claude"
+base   = "claude/settings.base.json"
+
+[permissions.claude-autonomous]
+output = "claude/settings.autonomous.json"
+render = "claude"
+base   = "claude/settings.autonomous.base.json"
+rules  = []
+
+[permissions.claude-mcp]
+output = "claude/mcp-permissions.json"
+render = "claude-mcp"
+
+[permissions.codex]
+output = "codex/rules/permissions.rules"
+render = "codex"
+
+[permissions.codex-mcp]
+output = "codex/mcp-permissions.toml"
+render = "codex-mcp"
+
+[permissions.opencode]
+output   = "opencode/opencode.json"
+render   = "opencode"
+base     = "opencode/opencode.base.json"
+preserve = ["mcp"]
+
+[permissions.pi]
+output = "pi/permissions.json"
+render = "pi"

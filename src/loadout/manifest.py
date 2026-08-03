@@ -25,14 +25,27 @@ class InstructionTarget:
 
 
 @dataclass(frozen=True)
+class PermissionTarget:
+    """One generated permission file, its renderer, and its base document."""
+
+    name: str
+    path: PurePosixPath
+    renderer: str
+    base: PurePosixPath | None = None
+    preserve: tuple[str, ...] = ()
+    select_all: bool = True
+
+
+@dataclass(frozen=True)
 class Manifest:
     sources: tuple[Source, ...]
     targets: tuple[InstructionTarget, ...]
+    permissions: tuple[PermissionTarget, ...] = ()
 
 
-def _require(block: dict[str, object], key: str, agent: str) -> object:
+def _require(block: dict[str, object], key: str, label: str) -> object:
     if key not in block:
-        raise LoadoutError(f"instructions.{agent} is missing required key {key!r}")
+        raise LoadoutError(f"{label} is missing required key {key!r}")
     return block[key]
 
 
@@ -40,6 +53,99 @@ def _str_list(value: object, agent: str, key: str) -> tuple[str, ...]:
     if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
         raise LoadoutError(f"instructions.{agent}: {key} must be a list of strings")
     return tuple(str(v) for v in value)
+
+
+def _output_path(output: object, label: str, claimed: set[PurePosixPath]) -> PurePosixPath:
+    if not isinstance(output, str):
+        raise LoadoutError(f"{label}: output must be a string")
+    out = PurePosixPath(output)
+    if out.is_absolute() or not output or ".." in out.parts or out == PurePosixPath("."):
+        raise LoadoutError(
+            f"{label}: output must be a relative path inside the repo root, got {output!r}"
+        )
+    if out in claimed:
+        raise LoadoutError(f"{label}: output {output!r} is already claimed by another target")
+    claimed.add(out)
+    return out
+
+
+def _parse_instructions(
+    raw_instructions: object, claimed: set[PurePosixPath]
+) -> tuple[InstructionTarget, ...]:
+    if not isinstance(raw_instructions, dict):
+        raise LoadoutError("[instructions] must be a table")
+
+    targets: list[InstructionTarget] = []
+    for agent, block in sorted(raw_instructions.items()):
+        if not isinstance(block, dict):
+            raise LoadoutError(f"instructions.{agent} must be a table")
+        label = f"instructions.{agent}"
+        out = _output_path(_require(block, "output", label), label, claimed)
+        order = _str_list(_require(block, "order", agent), agent, "order")
+        destinations = _str_list(block.get("destinations", []), agent, "destinations")
+        profile = block.get("profile")
+        if profile is not None and not isinstance(profile, str):
+            raise LoadoutError(f"instructions.{agent}: profile must be a string")
+        targets.append(
+            InstructionTarget(
+                path=out,
+                fragments=order,
+                destinations=tuple(PurePosixPath(d) for d in destinations),
+                profile=profile,
+            )
+        )
+    return tuple(targets)
+
+
+def _parse_permissions(
+    raw_permissions: object, claimed: set[PurePosixPath]
+) -> tuple[PermissionTarget, ...]:
+    if not isinstance(raw_permissions, dict):
+        raise LoadoutError("[permissions] must be a table")
+
+    permissions: list[PermissionTarget] = []
+    for name, block in sorted(raw_permissions.items()):
+        label = f"permissions.{name}"
+        if not isinstance(block, dict):
+            raise LoadoutError(f"{label} must be a table")
+        out = _output_path(_require(block, "output", label), label, claimed)
+
+        renderer = block.get("render")
+        if not isinstance(renderer, str) or not renderer:
+            raise LoadoutError(f"{label}: render must be a non-empty string")
+
+        raw_base = block.get("base")
+        if raw_base is not None and not isinstance(raw_base, str):
+            raise LoadoutError(f"{label}: base must be a string")
+        base = PurePosixPath(raw_base) if raw_base else None
+        if base is not None and (base.is_absolute() or ".." in base.parts):
+            raise LoadoutError(f"{label}: base must be a relative path inside the repo root")
+
+        raw_preserve = block.get("preserve", [])
+        if not isinstance(raw_preserve, list) or not all(isinstance(v, str) for v in raw_preserve):
+            raise LoadoutError(f"{label}: preserve must be a list of strings")
+
+        select_all = True
+        if "rules" in block:
+            raw_rules = block["rules"]
+            if raw_rules != []:
+                raise LoadoutError(
+                    f"{label}: rules only supports [] (select nothing) in milestone 4; "
+                    f"named rule-set selection is not implemented"
+                )
+            select_all = False
+
+        permissions.append(
+            PermissionTarget(
+                name=name,
+                path=out,
+                renderer=renderer,
+                base=base,
+                preserve=tuple(raw_preserve),
+                select_all=select_all,
+            )
+        )
+    return tuple(permissions)
 
 
 def load_manifest(path: Path) -> Manifest:
@@ -56,40 +162,12 @@ def load_manifest(path: Path) -> Manifest:
         raise LoadoutError(f"{path}: at least one [[source]] entry is required")
     sources = parse_sources(list(raw_sources), path.parent)
 
-    raw_instructions = data.get("instructions", {})
-    if not isinstance(raw_instructions, dict):
-        raise LoadoutError(f"{path}: [instructions] must be a table")
+    claimed: set[PurePosixPath] = set()
+    targets = _parse_instructions(data.get("instructions", {}), claimed)
+    permissions = _parse_permissions(data.get("permissions", {}), claimed)
 
-    targets: list[InstructionTarget] = []
-    for agent, block in sorted(raw_instructions.items()):
-        if not isinstance(block, dict):
-            raise LoadoutError(f"instructions.{agent} must be a table")
-        output = _require(block, "output", agent)
-        if not isinstance(output, str):
-            raise LoadoutError(f"instructions.{agent}: output must be a string")
-        out = PurePosixPath(output)
-        if out.is_absolute() or not output or ".." in out.parts or out == PurePosixPath("."):
-            raise LoadoutError(
-                f"instructions.{agent}: output must be a relative path inside the repo "
-                f"root, got {output!r}"
-            )
-        if any(t.path == out for t in targets):
-            raise LoadoutError(
-                f"instructions.{agent}: output {output!r} is already claimed by another target"
-            )
-        order = _str_list(_require(block, "order", agent), agent, "order")
-        destinations = _str_list(block.get("destinations", []), agent, "destinations")
-        profile = block.get("profile")
-        if profile is not None and not isinstance(profile, str):
-            raise LoadoutError(f"instructions.{agent}: profile must be a string")
-        targets.append(
-            InstructionTarget(
-                path=out,
-                fragments=order,
-                destinations=tuple(PurePosixPath(d) for d in destinations),
-                profile=profile,
-            )
+    if not targets and not permissions:
+        raise LoadoutError(
+            f"{path}: no [instructions.<agent>] or [permissions.<name>] targets declared"
         )
-    if not targets:
-        raise LoadoutError(f"{path}: no [instructions.<agent>] targets declared")
-    return Manifest(sources=sources, targets=tuple(targets))
+    return Manifest(sources=sources, targets=targets, permissions=permissions)

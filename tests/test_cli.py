@@ -191,13 +191,14 @@ def test_output_escaping_the_root_returns_3_and_writes_nothing_outside_root(
     assert not escape_target.exists()
 
 
-def test_zero_instruction_targets_returns_3_not_0(root: Path, capsys) -> None:
+def test_zero_targets_of_either_kind_returns_3_not_0(root: Path, capsys) -> None:
     manifest = root / "loadout.toml"
     manifest.write_text(
         manifest.read_text(encoding="utf-8")
         .replace("[instructions.claude]", "[instruction.claude]")
         .replace("[instructions.claude-autonomous]", "[instruction.claude-autonomous]")
-        .replace("[instructions.shared]", "[instruction.shared]"),
+        .replace("[instructions.shared]", "[instruction.shared]")
+        .replace("[permissions.", "[permission."),
         encoding="utf-8",
     )
     assert loadout.main(["sync", "--root", str(root)]) == 3
