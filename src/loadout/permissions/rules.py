@@ -64,6 +64,16 @@ def _entries(block: Mapping[str, Any], key: str) -> tuple[str, ...]:
     return tuple(dedupe(value))
 
 
+def _mcp_entries(block: Mapping[str, Any], key: str, path: Path) -> tuple[str, ...]:
+    entries = _entries(block, key)
+    for entry in entries:
+        try:
+            mcp_parts(entry)
+        except ValueError as error:
+            raise LoadoutError(f"{path}: mcp.{key}: {error}") from error
+    return entries
+
+
 def parse_rules(path: Path) -> Rules:
     if not path.is_file():
         raise LoadoutError(f"permissions source not found: {path}")
@@ -86,9 +96,9 @@ def parse_rules(path: Path) -> Rules:
         allow=_entries(shell, "allow"),
         deny=_entries(shell, "deny"),
         ask=_entries(shell, "ask"),
-        mcp_allow=_entries(mcp, "allow"),
-        mcp_deny=_entries(mcp, "deny"),
-        mcp_ask=_entries(mcp, "ask"),
+        mcp_allow=_mcp_entries(mcp, "allow", path),
+        mcp_deny=_mcp_entries(mcp, "deny", path),
+        mcp_ask=_mcp_entries(mcp, "ask", path),
         claude_extra_allow=_entries(claude_extra, "allow"),
         claude_extra_deny=_entries(claude_extra, "deny"),
         opencode_extra=dict(opencode_extra),

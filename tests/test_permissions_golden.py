@@ -88,6 +88,14 @@ def test_preserve_non_object_json_is_an_error(root: Path) -> None:
         render_all(root)
 
 
+def test_preserve_naming_a_generated_key_is_rejected(root: Path) -> None:
+    text = (root / "loadout.toml").read_text(encoding="utf-8")
+    text = text.replace('preserve = ["mcp"]', 'preserve = ["permission"]')
+    (root / "loadout.toml").write_text(text, encoding="utf-8")
+    with pytest.raises(LoadoutError, match="generated key"):
+        render_all(root)
+
+
 def test_two_sources_offering_permissions_is_an_error(root: Path, tmp_path: Path) -> None:
     """Acceptance criterion 5 — merging is milestone 4."""
     second = tmp_path / "second"
@@ -119,6 +127,15 @@ def test_unknown_renderer_name_is_an_error(root: Path) -> None:
 def test_missing_base_file_is_an_error(root: Path) -> None:
     (root / "claude" / "settings.base.json").unlink()
     with pytest.raises(LoadoutError, match="base document not found"):
+        render_all(root)
+
+
+def test_base_permissions_key_must_be_an_object(root: Path) -> None:
+    base_path = root / "claude" / "settings.base.json"
+    doc = json.loads(base_path.read_text(encoding="utf-8"))
+    doc["permissions"] = "oops"
+    base_path.write_text(json.dumps(doc), encoding="utf-8")
+    with pytest.raises(LoadoutError, match="permissions"):
         render_all(root)
 
 

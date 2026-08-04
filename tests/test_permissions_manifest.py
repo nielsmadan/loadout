@@ -123,6 +123,16 @@ def test_manifest_with_no_targets_of_either_kind_is_rejected(tmp_path: Path) -> 
         load_manifest(path)
 
 
+def test_base_pointing_at_a_generated_output_is_rejected(tmp_path: Path) -> None:
+    path = write(
+        tmp_path,
+        '[permissions.claude]\noutput = "claude/settings.json"\nrender = "claude"\n'
+        'base   = "claude/settings.json"\n',
+    )
+    with pytest.raises(LoadoutError, match="generated output"):
+        load_manifest(path)
+
+
 def test_preserve_must_be_a_list_of_strings(tmp_path: Path) -> None:
     path = write(
         tmp_path,

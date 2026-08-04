@@ -166,6 +166,13 @@ def load_manifest(path: Path) -> Manifest:
     targets = _parse_instructions(data.get("instructions", {}), path, claimed)
     permissions = _parse_permissions(data.get("permissions", {}), path, claimed)
 
+    for target in permissions:
+        if target.base is not None and target.base in claimed:
+            raise LoadoutError(
+                f"permissions.{target.name}: base {str(target.base)!r} is a generated "
+                f"output; a base must be an input, never something loadout writes"
+            )
+
     if not targets and not permissions:
         raise LoadoutError(
             f"{path}: no [instructions.<agent>] or [permissions.<name>] targets declared"

@@ -45,6 +45,9 @@ def _load_base(path: Path) -> dict[str, Any]:
         raise LoadoutError(f"{path}: invalid JSON: {error}") from error
     if not isinstance(document, dict):
         raise LoadoutError(f"{path}: base document must be a JSON object")
+    permissions = document.get("permissions")
+    if permissions is not None and not isinstance(permissions, dict):
+        raise LoadoutError(f"{path}: base document's permissions must be a JSON object")
     return document
 
 
@@ -74,6 +77,12 @@ def render_permission_target(target: PermissionTarget, rules: Rules, root: Path)
 
     base = _load_base(root / str(target.base)) if target.base else {}
     document = spec.fn(effective, base)
+    overlap = [k for k in target.preserve if k in document]
+    if overlap:
+        raise LoadoutError(
+            f"permissions.{target.name}: preserve names generated key(s) "
+            f"{', '.join(overlap)}; preserve may only carry foreign keys"
+        )
     # Foreign keys are appended AFTER rendering so the owned key keeps its
     # position ahead of them.
     document.update(_preserved(root / str(target.path), target.preserve))

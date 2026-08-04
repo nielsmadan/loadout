@@ -77,6 +77,14 @@ def test_parse_rules_missing_file_raises(tmp_path: Path) -> None:
         parse_rules(tmp_path / "nope.toml")
 
 
+def test_parse_rules_rejects_a_malformed_mcp_target(tmp_path: Path) -> None:
+    bad = tmp_path / "permissions.toml"
+    bad.write_text('[mcp]\nallow = ["noslash"]\n', encoding="utf-8")
+    with pytest.raises(LoadoutError, match="noslash") as excinfo:
+        parse_rules(bad)
+    assert str(bad) in str(excinfo.value)
+
+
 def test_parse_rules_invalid_toml_raises(tmp_path: Path) -> None:
     bad = tmp_path / "permissions.toml"
     bad.write_text("[shell\n", encoding="utf-8")

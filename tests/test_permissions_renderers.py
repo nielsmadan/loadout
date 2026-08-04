@@ -278,6 +278,12 @@ def test_opencode_appends_permission_after_the_base_keys() -> None:
     assert list(doc) == ["$schema", "model", "provider", "permission"]
 
 
+def test_opencode_does_not_reorder_cross_key_entries() -> None:
+    """Deliberately unlike Pi — render_opencode assigns in place. Do not harmonise."""
+    bash = render_opencode(Rules(allow=("foo", "bar"), deny=("foo",)), {})["permission"]["bash"]
+    assert list(bash) == ["*", "foo", "foo *", "bar", "bar *"]
+
+
 def test_opencode_does_not_mutate_its_base() -> None:
     base: dict[str, Any] = {"$schema": "x"}
     render_opencode(Rules(allow=("pwd",)), base)
