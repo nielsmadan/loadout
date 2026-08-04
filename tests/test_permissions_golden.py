@@ -71,6 +71,23 @@ def test_preserve_omits_the_key_when_the_output_does_not_exist(root: Path) -> No
     assert list(doc) == ["$schema", "model", "provider", "permission"]
 
 
+def test_preserve_malformed_json_is_an_error(root: Path) -> None:
+    """A corrupt output file must never be silently overwritten — see task 8 fix round 1."""
+    out = root / "opencode" / "opencode.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text("{not valid json", encoding="utf-8")
+    with pytest.raises(LoadoutError, match="invalid JSON"):
+        render_all(root)
+
+
+def test_preserve_non_object_json_is_an_error(root: Path) -> None:
+    out = root / "opencode" / "opencode.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text("[]", encoding="utf-8")
+    with pytest.raises(LoadoutError, match="must be a JSON object"):
+        render_all(root)
+
+
 def test_two_sources_offering_permissions_is_an_error(root: Path, tmp_path: Path) -> None:
     """Acceptance criterion 5 — merging is milestone 4."""
     second = tmp_path / "second"
@@ -105,7 +122,7 @@ def test_missing_base_file_is_an_error(root: Path) -> None:
         render_all(root)
 
 
-def test_base_drift_guard(root: Path) -> None:
+def test_base_drift_guard() -> None:
     """Acceptance criterion 3 — the two Claude bases differ only by the AFK key."""
     interactive = json.loads((GOLDEN / "claude" / "settings.base.json").read_text(encoding="utf-8"))
     autonomous = json.loads(

@@ -53,10 +53,10 @@ def _preserved(path: Path, keys: tuple[str, ...]) -> dict[str, Any]:
         return {}
     try:
         existing = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return {}
+    except json.JSONDecodeError as error:
+        raise LoadoutError(f"{path}: invalid JSON: {error}") from error
     if not isinstance(existing, dict):
-        return {}
+        raise LoadoutError(f"{path}: existing output must be a JSON object")
     return {key: existing[key] for key in keys if key in existing}
 
 
