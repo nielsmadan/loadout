@@ -73,9 +73,34 @@ base-document input rather than reading its own previous output.
 
 The autonomous variant empties `allow`, `deny` and `ask` so the auto-mode classifier
 judges every call — clearing `deny` is what lets `git push` through, since deny overrides
-every mode. It also drops `env.CLAUDE_AFK_TIMEOUT_MS`: headless runs have no human to
-answer `AskUserQuestion`, and the 60s "proceed with best judgment" fall-through is what
-keeps them moving.
+every mode. It also drops `env.CLAUDE_AFK_TIMEOUT_MS`.
+
+## `CLAUDE_AFK_TIMEOUT_MS`
+
+Verified 2026-08-03 by inspecting the installed 2.1.220 bundle:
+
+```js
+enabled   = !… && !payload.hasExternalRacer && !… && (afkTimeoutMs !== null || Z.CLAUDE_AFK_TIMEOUT_MS !== void 0)
+timeoutMs = Z.CLAUDE_AFK_TIMEOUT_MS ?? props.timeoutMs ?? DEFAULT
+```
+
+- It governs **`AskUserQuestion` auto-submit**, not permission prompts — the surrounding
+  code is question-state machinery (`currentQuestionIndex`, `answersToSubmit`,
+  `setAnswer`). This is why permission prompts are never seen auto-forwarding.
+- The enabling test is strict `!== null`, so an **omitted** prop (`undefined`) passes.
+  The timer is therefore **on by default** unless a call site explicitly opts out
+  with `null`.
+- There is **no "off" value**. Setting the variable to anything force-enables the
+  machinery even where a caller opted out, and only changes the duration.
+
+`~/ac` sets it to `2147483647` (≈25 days) in the interactive profile, which does not
+disable the feature — it makes the fuse unreachable. Omitting the key from the autonomous
+profile is what restores the short default, so the delta between the two files is
+load-bearing. Mirroring the key into the autonomous file would give headless runs a
+25-day fuse.
+
+**Not verified:** whether the component mounts under `-p`, and the value of the default
+constant — so the "60s" figure in `~/ac`'s own comment is unconfirmed.
 
 ## Deployment
 
