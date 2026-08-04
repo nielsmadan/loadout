@@ -130,8 +130,8 @@ def _parse_permissions(
             raw_rules = block["rules"]
             if raw_rules != []:
                 raise LoadoutError(
-                    f"{label}: rules only supports [] (select nothing) in milestone 4; "
-                    f"named rule-set selection is not implemented"
+                    f"{label}: rules only supports [] (select nothing) in milestone 3; "
+                    f"named rule-set selection arrives in milestone 4"
                 )
             select_all = False
 

@@ -43,8 +43,48 @@ are pulled from. Each `[instructions.<agent>]` table declares one generated file
 where it is written, relative to the repo root (it may not be absolute, empty, or escape the
 root with `..`), `order` is the ordered list of fragment names composed into it, and
 `destinations` documents where the rendered file is deployed outside the repo. At least one
-source and at least one instructions target are required, and no two targets may share an
-`output` path.
+source is required, and at least one `[instructions.<agent>]` or `[permissions.<name>]` target
+must be declared; no two targets, of either kind, may share an `output` path.
+
+### `[permissions.<name>]`
+
+A source that declares `use = ["permissions"]` (or omits `use` entirely) may also provide a
+`permissions/permissions.toml` rule file. Each `[permissions.<name>]` table renders that rule
+file through one named renderer into one generated file:
+
+```toml
+[permissions.claude]
+output = "claude/settings.json"
+render = "claude"
+base   = "claude/settings.base.json"
+
+[permissions.opencode]
+output   = "opencode/opencode.json"
+render   = "opencode"
+base     = "opencode/opencode.base.json"
+preserve = ["mcp"]
+```
+
+- `output` — where the generated file is written, relative to the repo root. Subject to the
+  same rules as an instructions target's `output`.
+- `render` — the renderer name. One of: `claude`, `claude-mcp`, `codex`, `codex-mcp`, `pi`,
+  `antigravity`, `opencode`.
+- `base` — optional. A JSON file, relative to the repo root, that the renderer starts from —
+  hand-maintained keys in it (model, hooks, `defaultMode`, and so on) are carried through into
+  the output untouched. A `base` must be an existing input file; it may never point at a path
+  that is itself a generated `output` (that would reintroduce reading a renderer's own prior
+  output as its template, which this design deliberately avoids).
+- `preserve` — optional list of top-level keys to copy forward from the target's *existing*
+  output file, for keys owned by some other generator (for example, `mcp` in `opencode.json`,
+  owned by the MCP sync). A key named in `preserve` must not also be one the renderer generates.
+- `rules` — optional; the only accepted value today is `[]`, meaning "select nothing" — the
+  target renders with all rule categories empty. Named rule-set selection is not implemented yet.
+
+**Which file do I edit?** Generated permission files carry no in-file marker of that fact —
+`claude/settings.json` (generated) and `claude/settings.base.json` (hand-maintained, the
+`base`) look identical at a glance. Edit the `base` file, never the plain `output` file:
+anything you put directly into a generated output is silently discarded at the next
+`loadout sync`.
 
 ## Exit codes
 

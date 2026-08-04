@@ -236,6 +236,13 @@ def test_claude_does_not_mutate_its_base() -> None:
     assert base == {"permissions": {"defaultMode": "auto"}}
 
 
+def test_claude_discards_stale_generated_keys_from_a_base() -> None:
+    base = {"permissions": {"allow": ["STALE"], "defaultMode": "auto"}}
+    doc = render_claude(Rules(allow=("ls",)), base)
+    assert doc["permissions"]["allow"] == ["Bash(ls:*)"]
+    assert list(doc["permissions"]) == ["allow", "deny", "ask", "defaultMode"]
+
+
 def test_claude_never_reads_a_file() -> None:
     """The base is a parameter; rendering must work with no filesystem at all."""
     doc = render_claude(Rules(allow=("ls",)), {})
