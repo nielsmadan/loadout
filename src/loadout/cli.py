@@ -5,7 +5,7 @@ import sys
 import traceback
 from pathlib import Path
 
-from .commands import cmd_check, cmd_explain, cmd_sync
+from .commands import cmd_check, cmd_explain, cmd_harness_add, cmd_init, cmd_sync
 from .errors import LoadoutError
 
 
@@ -30,7 +30,37 @@ def build_parser() -> argparse.ArgumentParser:
     explain = subparsers.add_parser("explain", help="show where a fragment comes from")
     explain.add_argument("name", help="fragment name, optionally qualified as source/name")
     add_root(explain)
+
+    init = subparsers.add_parser("init", help="scaffold loadout/ for this project")
+    init.add_argument(
+        "--harness",
+        dest="harnesses",
+        action="append",
+        required=True,
+        help="harness to generate configuration for (repeatable)",
+    )
+    add_root(init)
+
+    harness = subparsers.add_parser("harness", help="manage this project's enabled harnesses")
+    harness_subparsers = harness.add_subparsers(dest="harness_command")
+    harness_add = harness_subparsers.add_parser(
+        "add", help="enable an additional harness for this project"
+    )
+    harness_add.add_argument("name", help="harness to enable")
+    add_root(harness_add)
+
     return parser
+
+
+def _dispatch(args: argparse.Namespace, root: Path) -> int:
+    if args.command == "explain":
+        return cmd_explain(root, args.name)
+    if args.command == "init":
+        return cmd_init(root, tuple(args.harnesses))
+    if args.command == "harness":
+        return cmd_harness_add(root, args.name)
+    handler = {"sync": cmd_sync, "check": cmd_check}[args.command]
+    return handler(root)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -39,12 +69,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.command is None:
         parser.print_usage(file=sys.stderr)
         return 2
+    if args.command == "harness" and args.harness_command != "add":
+        parser.print_usage(file=sys.stderr)
+        return 2
     root = args.root.resolve()
     try:
-        if args.command == "explain":
-            return cmd_explain(root, args.name)
-        handler = {"sync": cmd_sync, "check": cmd_check}[args.command]
-        return handler(root)
+        return _dispatch(args, root)
     except LoadoutError as error:
         print(f"loadout: {error}", file=sys.stderr)
         return 3

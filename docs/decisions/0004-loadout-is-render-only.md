@@ -27,3 +27,17 @@ Mutation is somebody else's job: a person editing the TOML, or a separate tool.
 - Cost: convenience UX ("allow this command") must live outside loadout. Judgement about
   *which* rule to add belongs in a skill; loadout only needs to answer whether a command
   currently matches, which is a read-only query.
+
+## Amendment (2026-08-06, milestone 4)
+
+`loadout init` and `loadout harness add` write configuration files, which the decision as
+originally worded appears to forbid.
+
+The safety argument was always about **rules**: there is no `loadout allow`, so no path
+exists by which an agent widens its own permissions through loadout — a live hazard in the
+system being replaced, where the mutation CLI was allowlisted bare and any agent could grant
+itself anything. Enabling a harness changes *where* existing rules are rendered, never *what*
+they permit.
+
+Amended to read: **loadout never mutates rules; scaffolding commands may write
+configuration.** Recorded as an amendment rather than a silent reinterpretation.

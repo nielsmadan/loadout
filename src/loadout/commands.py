@@ -8,6 +8,20 @@ from .emit import check_all, write_all
 from .errors import LoadoutError
 from .manifest import load_manifest, manifest_path
 from .resolve import resolve_fragment
+from .scaffold import add_harness, init_project
+
+
+def cmd_init(root: Path, harnesses: tuple[str, ...]) -> int:
+    for action in init_project(root, harnesses):
+        print(action)
+    print("\nEdit loadout/permissions.toml, then run `loadout sync`.")
+    return 0
+
+
+def cmd_harness_add(root: Path, harness: str) -> int:
+    for action in add_harness(root, harness):
+        print(action)
+    return 0
 
 
 def cmd_sync(root: Path) -> int:
