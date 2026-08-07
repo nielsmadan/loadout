@@ -24,6 +24,35 @@ def test_sync_writes_files_and_returns_0(root: Path, capsys) -> None:
     assert "AGENTS.md" in capsys.readouterr().out
 
 
+def test_sync_default_profile_omits_the_autonomous_target(root: Path, capsys) -> None:
+    assert loadout.main(["sync", "--root", str(root)]) == 0
+    assert (root / "claude" / "CLAUDE.md").is_file()
+    assert not (root / "claude" / "CLAUDE.autonomous.md").is_file()
+
+
+def test_sync_profile_autonomous_selects_the_autonomous_target(root: Path, capsys) -> None:
+    assert loadout.main(["sync", "--root", str(root), "--profile", "autonomous"]) == 0
+    assert (root / "claude" / "CLAUDE.autonomous.md").is_file()
+    # The real-world case profile filtering exists for: on a machine running the
+    # autonomous profile, every target that does NOT declare a profile must still
+    # render. Codex, OpenCode, Pi and Antigravity have no autonomous variant and
+    # must never disappear when the active profile changes.
+    unprofiled_outputs = (
+        "claude/CLAUDE.md",
+        "global/AGENTS.md",
+        "antigravity/settings.json",
+        "claude/settings.json",
+        "claude/settings.autonomous.json",
+        "claude/mcp-permissions.json",
+        "codex/rules/permissions.rules",
+        "codex/mcp-permissions.toml",
+        "opencode/opencode.json",
+        "pi/permissions.json",
+    )
+    for output in unprofiled_outputs:
+        assert (root / output).is_file(), output
+
+
 def test_check_returns_0_when_clean(root: Path) -> None:
     loadout.main(["sync", "--root", str(root)])
     assert loadout.main(["check", "--root", str(root)]) == 0
@@ -38,6 +67,20 @@ def test_check_returns_1_and_diffs_on_drift(root: Path, capsys) -> None:
     assert "tampered" in err
 
 
+def test_check_drift_depends_on_the_active_profile(root: Path, capsys) -> None:
+    """sync --root under the default profile never writes the autonomous-only target,
+    so check must be clean under 'default' but report drift once --profile autonomous
+    puts that target back in the render set."""
+    assert loadout.main(["sync", "--root", str(root)]) == 0
+    assert not (root / "claude" / "CLAUDE.autonomous.md").exists()
+    assert loadout.main(["check", "--root", str(root)]) == 0
+    capsys.readouterr()
+    assert loadout.main(["check", "--root", str(root), "--profile", "autonomous"]) == 1
+    err = capsys.readouterr().err
+    assert "DRIFT" in err
+    assert "claude/CLAUDE.autonomous.md" in err
+
+
 def test_missing_manifest_returns_3(tmp_path: Path, capsys) -> None:
     assert loadout.main(["sync", "--root", str(tmp_path)]) == 3
     assert "manifest" in capsys.readouterr().err
@@ -50,7 +93,7 @@ def test_missing_fragment_file_returns_3(root: Path, capsys) -> None:
 
 
 def test_unexpected_exception_returns_4_with_traceback(root: Path, monkeypatch, capsys) -> None:
-    def boom(_root: Path) -> int:
+    def boom(_root: Path, profile: str) -> int:
         raise ValueError("kaboom")
 
     monkeypatch.setattr(loadout.cli, "cmd_sync", boom)
@@ -61,7 +104,7 @@ def test_unexpected_exception_returns_4_with_traceback(root: Path, monkeypatch, 
 
 
 def test_loadout_error_still_returns_3(root: Path, monkeypatch, capsys) -> None:
-    def fail(_root: Path) -> int:
+    def fail(_root: Path, profile: str) -> int:
         raise LoadoutError("deliberate failure")
 
     monkeypatch.setattr(loadout.cli, "cmd_sync", fail)

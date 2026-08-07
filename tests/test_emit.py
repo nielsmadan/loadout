@@ -31,8 +31,10 @@ def test_written_files_are_owner_only(tmp_path: Path) -> None:
 
 
 def test_write_all_creates_every_target(root: Path) -> None:
+    # 10, not 11: instructions.claude-autonomous declares profile = "autonomous"
+    # in the golden manifest, so it is excluded under the default (no) profile.
     written = write_all(root)
-    assert len(written) == 11
+    assert len(written) == 10
     for path in written:
         assert path.is_file()
 

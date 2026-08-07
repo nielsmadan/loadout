@@ -25,14 +25,14 @@ def cmd_harness_add(root: Path, harness: str) -> int:
     return 0
 
 
-def cmd_sync(root: Path) -> int:
-    for path in write_all(root):
+def cmd_sync(root: Path, profile: str = "default") -> int:
+    for path in write_all(root, profile):
         print(f"wrote {path.relative_to(root)}")
     return 0
 
 
-def cmd_check(root: Path) -> int:
-    drift = check_all(root)
+def cmd_check(root: Path, profile: str = "default") -> int:
+    drift = check_all(root, profile)
     if not drift:
         print("generated files are up to date")
         return 0

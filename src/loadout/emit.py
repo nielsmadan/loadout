@@ -8,7 +8,14 @@ from typing import Any
 
 from .composition import render
 from .errors import LoadoutError
-from .manifest import MANIFEST_NAME, Manifest, PermissionTarget, load_manifest, manifest_path
+from .manifest import (
+    MANIFEST_NAME,
+    InstructionTarget,
+    Manifest,
+    PermissionTarget,
+    load_manifest,
+    manifest_path,
+)
 from .permissions.merge import merge_rules
 from .permissions.renderers import RENDERERS, JsonSpec, TextSpec
 from .permissions.rules import EMPTY_RULES, Rules, parse_rules
@@ -130,18 +137,36 @@ def render_permission_target(target: PermissionTarget, rules: Rules, root: Path)
     return _serialize_json(document, spec)
 
 
-def render_global(root: Path) -> dict[Path, str]:
+def _declared_profiles(manifest: Manifest) -> set[str]:
+    declared = {t.profile for t in manifest.targets if t.profile}
+    declared |= {t.profile for t in manifest.permissions if t.profile}
+    return declared
+
+
+def _selected(target: InstructionTarget | PermissionTarget, profile: str) -> bool:
+    return target.profile is None or target.profile == profile
+
+
+def render_global(root: Path, profile: str = "default") -> dict[Path, str]:
     manifest = load_manifest(manifest_path(root))
-    outputs: dict[Path, str] = {root / str(t.path): render(t, manifest) for t in manifest.targets}
-    if manifest.permissions:
+    declared = _declared_profiles(manifest)
+    if profile != "default" and profile not in declared:
+        known = ", ".join(sorted(declared)) or "none"
+        raise LoadoutError(f"unknown profile {profile!r} (declared: {known})")
+
+    outputs: dict[Path, str] = {
+        root / str(t.path): render(t, manifest) for t in manifest.targets if _selected(t, profile)
+    }
+    selected_permissions = [t for t in manifest.permissions if _selected(t, profile)]
+    if selected_permissions:
         source = permissions_source(manifest)
         rules = parse_rules(source.path.joinpath(*PERMISSIONS_SOURCE))
-        for target in manifest.permissions:
+        for target in selected_permissions:
             outputs[root / str(target.path)] = render_permission_target(target, rules, root)
     return outputs
 
 
-def render_all(root: Path) -> dict[Path, str]:
+def render_all(root: Path, profile: str = "default") -> dict[Path, str]:
     outputs: dict[Path, str] = {}
     has_global = manifest_path(root).is_file()
     has_project = project_config_path(root).is_file()
@@ -153,7 +178,7 @@ def render_all(root: Path) -> dict[Path, str]:
         )
 
     if has_global:
-        outputs.update(render_global(root))
+        outputs.update(render_global(root, profile))
     if has_project:
         project_outputs = render_project(root)
         collisions = sorted(str(p) for p in project_outputs if p in outputs)
@@ -201,18 +226,18 @@ def atomic_write(path: Path, content: str) -> None:
         raise
 
 
-def write_all(root: Path) -> list[Path]:
+def write_all(root: Path, profile: str = "default") -> list[Path]:
     written: list[Path] = []
-    for path, content in render_all(root).items():
+    for path, content in render_all(root, profile).items():
         path.parent.mkdir(parents=True, exist_ok=True)
         atomic_write(path, content)
         written.append(path)
     return written
 
 
-def check_all(root: Path) -> list[tuple[Path, str, str]]:
+def check_all(root: Path, profile: str = "default") -> list[tuple[Path, str, str]]:
     drift: list[tuple[Path, str, str]] = []
-    for path, expected in render_all(root).items():
+    for path, expected in render_all(root, profile).items():
         actual = path.read_text(encoding="utf-8") if path.is_file() else ""
         if actual != expected:
             drift.append((path, actual, expected))

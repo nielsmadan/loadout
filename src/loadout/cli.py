@@ -25,7 +25,13 @@ def build_parser() -> argparse.ArgumentParser:
         ("sync", "regenerate every generated file under the repo root"),
         ("check", "exit 1 if any generated file has drifted"),
     ):
-        add_root(subparsers.add_parser(name, help=help_text))
+        sub = subparsers.add_parser(name, help=help_text)
+        add_root(sub)
+        sub.add_argument(
+            "--profile",
+            default="default",
+            help="active profile to render (default: 'default')",
+        )
 
     explain = subparsers.add_parser("explain", help="show where a fragment comes from")
     explain.add_argument("name", help="fragment name, optionally qualified as source/name")
@@ -60,7 +66,7 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
     if args.command == "harness":
         return cmd_harness_add(root, args.name)
     handler = {"sync": cmd_sync, "check": cmd_check}[args.command]
-    return handler(root)
+    return handler(root, profile=args.profile)
 
 
 def main(argv: list[str] | None = None) -> int:

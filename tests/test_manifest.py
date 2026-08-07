@@ -240,3 +240,55 @@ order        = ["intro-claude"]
     with pytest.raises(LoadoutError) as excinfo:
         load_manifest(write_manifest(tmp_path, body))
     assert "claude/CLAUDE.md" in str(excinfo.value)
+
+
+def test_permission_target_profile_is_parsed(tmp_path: Path) -> None:
+    manifest = write_manifest(
+        tmp_path,
+        """
+        [[source]]
+        name = "s"
+        path = "."
+
+        [permissions.claude]
+        output  = "claude/settings.json"
+        render  = "claude"
+        profile = "autonomous"
+        """,
+    )
+    target = load_manifest(manifest).permissions[0]
+    assert target.profile == "autonomous"
+
+
+def test_permission_target_profile_defaults_to_none(tmp_path: Path) -> None:
+    manifest = write_manifest(
+        tmp_path,
+        """
+        [[source]]
+        name = "s"
+        path = "."
+
+        [permissions.claude]
+        output = "claude/settings.json"
+        render = "claude"
+        """,
+    )
+    assert load_manifest(manifest).permissions[0].profile is None
+
+
+def test_permission_target_profile_must_be_a_string(tmp_path: Path) -> None:
+    manifest = write_manifest(
+        tmp_path,
+        """
+        [[source]]
+        name = "s"
+        path = "."
+
+        [permissions.claude]
+        output  = "claude/settings.json"
+        render  = "claude"
+        profile = 3
+        """,
+    )
+    with pytest.raises(LoadoutError, match="profile must be a string"):
+        load_manifest(manifest)

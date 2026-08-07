@@ -9,7 +9,9 @@ One source of truth for AI coding-agent configuration, rendered out to every har
 ## Use
 
     loadout sync                  # regenerate generated files under the current repo
+    loadout sync --profile NAME   # regenerate under a specific active profile (see Profiles below)
     loadout check                 # exit 1 if any generated file has drifted
+    loadout check --profile NAME  # check drift under a specific active profile
     loadout explain <name>        # show which source a fragment resolves from, and which targets use it
 
 `explain` takes a fragment name, optionally qualified as `source/name` to disambiguate when more
@@ -46,6 +48,22 @@ root with `..`), `order` is the ordered list of fragment names composed into it,
 `destinations` documents where the rendered file is deployed outside the repo. At least one
 source is required, and at least one `[instructions.<agent>]` or `[permissions.<name>]` target
 must be declared; no two targets, of either kind, may share an `output` path.
+
+### Profiles
+
+Both `[instructions.<agent>]` and `[permissions.<name>]` targets accept an optional `profile`
+key, as `instructions.claude-autonomous` does above. It selects which targets render for the
+machine's **active profile**:
+
+- The active profile is the literal string `"default"` unless overridden with `--profile NAME`
+  on `sync` or `check`.
+- A target declaring `profile = X` renders only when the active profile is `X`.
+- A target with **no** `profile` renders under every active profile. This is what keeps the
+  rest of the manifest — `instructions.shared`, and every `[permissions.<name>]` target that
+  doesn't itself declare a profile — rendering unchanged when the machine switches to
+  `--profile autonomous`; only the targets that opt into a profile are gated by it.
+- An active profile that no target declares is a `LoadoutError` listing the profiles that are
+  declared, except `"default"`, which is always valid even if nothing declares it.
 
 ### `[permissions.<name>]`
 

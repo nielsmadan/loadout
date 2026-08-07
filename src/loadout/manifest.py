@@ -34,6 +34,7 @@ class PermissionTarget:
     base: PurePosixPath | None = None
     preserve: tuple[str, ...] = ()
     select_all: bool = True
+    profile: str | None = None
 
 
 @dataclass(frozen=True)
@@ -135,6 +136,10 @@ def _parse_permissions(
                 )
             select_all = False
 
+        profile = block.get("profile")
+        if profile is not None and not isinstance(profile, str):
+            raise LoadoutError(f"{label}: profile must be a string")
+
         permissions.append(
             PermissionTarget(
                 name=name,
@@ -143,6 +148,7 @@ def _parse_permissions(
                 base=base,
                 preserve=tuple(raw_preserve),
                 select_all=select_all,
+                profile=profile,
             )
         )
     return tuple(permissions)
