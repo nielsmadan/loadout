@@ -335,11 +335,12 @@ def test_pi_project_omits_schema_and_catch_alls() -> None:
     assert "*" not in doc["permission"]
 
 
-def test_pi_project_emits_only_the_argument_form() -> None:
-    """Reproduces manage.py:512 — the bare form is missing. Fixed in Task 8."""
-    assert pi_project_patterns("just build") == ["just build *"]
-    doc = render_pi_project(Rules(allow=("just build",)), {})
-    assert list(doc["permission"]["bash"]) == ["just build *"]
+def test_pi_project_emits_both_bare_and_argument_forms() -> None:
+    assert pi_project_patterns("just build") == ["just build", "just build *"]
+
+
+def test_pi_project_keeps_a_glob_literal() -> None:
+    assert pi_project_patterns("docker stop cc-*") == ["docker stop cc-*"]
 
 
 def test_pi_project_empty_rules_give_empty_maps() -> None:

@@ -276,8 +276,9 @@ def render_opencode(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
 
 # --------------------------------------------------------------------------
 # Project-scope variants. These reproduce ~/ac/permissions/manage.py exactly,
-# including two defects fixed in later, separately-reviewed commits (ADR 0003):
-# Codex does not skip globs, and Pi omits the bare command form.
+# including defects fixed in later, separately-reviewed commits (ADR 0003):
+# Codex does not skip globs (still open); Pi's missing bare command form was
+# fixed deliberately in Task 8.
 # --------------------------------------------------------------------------
 
 PROJECT_CATEGORIES = ("allow", "ask", "deny")
@@ -298,9 +299,13 @@ def render_codex_project(rules: Rules) -> str:
 
 
 def pi_project_patterns(entry: str) -> list[str]:
-    # Only the argument form — reproduces manage.py:512. The bare form is
-    # missing, so a granted command still prompts with no arguments.
-    return [f"{entry} *"]
+    """Identical to pi_patterns — Pi's minimatch semantics do not differ by scope.
+
+    Kept as a distinct name so render_pi_project reads clearly, delegating so the
+    two can never drift. They differed only while the project variant reproduced
+    manage.py's missing bare form, which this milestone fixed.
+    """
+    return pi_patterns(entry)
 
 
 def render_claude_project(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
