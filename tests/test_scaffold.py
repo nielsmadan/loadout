@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 import subprocess
 from pathlib import Path
 
@@ -60,12 +59,13 @@ def test_existing_gitignore_content_is_preserved(tmp_path: Path) -> None:
     assert "loadout/permissions.local.toml" in ignored
 
 
-def test_refuses_when_a_tracked_instruction_file_exists(tmp_path: Path) -> None:
+def test_warns_but_succeeds_when_a_tracked_instruction_file_exists(tmp_path: Path) -> None:
     root = git_repo(tmp_path)
     (root / "CLAUDE.md").write_text("# project rules\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(root), "add", "CLAUDE.md"], check=True)
-    with pytest.raises(LoadoutError, match=re.escape("CLAUDE.md")):
-        init_project(root, ("claude",))
+    actions = init_project(root, ("claude",))
+    assert (root / "loadout" / "config.toml").is_file()
+    assert any("CLAUDE.md" in a for a in actions)
 
 
 def test_an_untracked_instruction_file_does_not_block_init(tmp_path: Path) -> None:
@@ -76,12 +76,15 @@ def test_an_untracked_instruction_file_does_not_block_init(tmp_path: Path) -> No
 
 
 @pytest.mark.parametrize("name", ["AGENTS.md", "GEMINI.md"])
-def test_refuses_when_any_tracked_instruction_file_exists(tmp_path: Path, name: str) -> None:
+def test_warns_but_succeeds_when_any_tracked_instruction_file_exists(
+    tmp_path: Path, name: str
+) -> None:
     root = git_repo(tmp_path)
     (root / name).write_text("# project rules\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(root), "add", name], check=True)
-    with pytest.raises(LoadoutError, match=re.escape(name)):
-        init_project(root, ("claude",))
+    actions = init_project(root, ("claude",))
+    assert (root / "loadout" / "config.toml").is_file()
+    assert any(name in a for a in actions)
 
 
 @pytest.mark.parametrize("name", ["AGENTS.md", "GEMINI.md"])
@@ -144,6 +147,24 @@ def test_unknown_harness_is_rejected(tmp_path: Path) -> None:
     root = git_repo(tmp_path)
     with pytest.raises(LoadoutError, match="emacs"):
         init_project(root, ("emacs",))
+
+
+def test_duplicate_harness_is_rejected(tmp_path: Path) -> None:
+    """init_project used to bypass load_project_config's duplicate check by
+    constructing ProjectConfig directly — a `loadout init --harness claude
+    --harness claude` would succeed and then `loadout sync` would fail."""
+    root = git_repo(tmp_path)
+    with pytest.raises(LoadoutError, match="duplicate"):
+        init_project(root, ("claude", "claude"))
+    assert not (root / "loadout" / "config.toml").exists()
+
+
+def test_gitignore_additions_are_deduped_against_themselves(tmp_path: Path) -> None:
+    root = git_repo(tmp_path)
+    scaffold._append_gitignore(root, ["a", "b", "a"])
+    ignored = (root / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert ignored.count("a") == 1
+    assert ignored == ["a", "b"]
 
 
 def test_reports_every_action_taken(tmp_path: Path) -> None:

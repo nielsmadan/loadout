@@ -6,7 +6,8 @@ from pathlib import Path
 
 from .emit import check_all, write_all
 from .errors import LoadoutError
-from .manifest import load_manifest, manifest_path
+from .manifest import MANIFEST_NAME, load_manifest, manifest_path
+from .project import PROJECT_CONFIG_NAME, PROJECT_DIR, project_config_path
 from .resolve import resolve_fragment
 from .scaffold import add_harness, init_project
 
@@ -54,7 +55,14 @@ def cmd_check(root: Path) -> int:
 
 
 def cmd_explain(root: Path, name: str) -> int:
-    manifest = load_manifest(manifest_path(root))
+    root_manifest = manifest_path(root)
+    if not root_manifest.is_file() and project_config_path(root).is_file():
+        raise LoadoutError(
+            f"explain covers instruction fragments, which are global scope only "
+            f"({MANIFEST_NAME}); this repo has project scope only "
+            f"({PROJECT_DIR}/{PROJECT_CONFIG_NAME})."
+        )
+    manifest = load_manifest(root_manifest)
     item = resolve_fragment(manifest.sources, name)
 
     users: list[str] = []

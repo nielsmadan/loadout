@@ -14,9 +14,24 @@ KNOWN_HARNESSES = frozenset({"claude", "codex", "opencode", "pi", "antigravity"}
 
 @dataclass(frozen=True)
 class ProjectConfig:
-    """Which harnesses this project generates configuration for."""
+    """Which harnesses this project generates configuration for.
+
+    Validation lives here, not in load_project_config, so it cannot be bypassed
+    by constructing a ProjectConfig directly (as init_project used to) — see the
+    milestone 4 fix-wave note on the duplicate-harness defect this closed.
+    """
 
     harnesses: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not self.harnesses:
+            raise LoadoutError("at least one harness is required")
+        if len(set(self.harnesses)) != len(self.harnesses):
+            raise LoadoutError("duplicate harness in the list")
+        bad = sorted(set(self.harnesses) - KNOWN_HARNESSES)
+        if bad:
+            known = ", ".join(sorted(KNOWN_HARNESSES))
+            raise LoadoutError(f"unknown harness(es) {', '.join(bad)} (known: {known})")
 
 
 def project_config_path(root: Path) -> Path:
@@ -42,17 +57,11 @@ def load_project_config(path: Path) -> ProjectConfig:
     raw = data.get("harnesses")
     if not isinstance(raw, list) or not all(isinstance(h, str) for h in raw):
         raise LoadoutError(f"{path}: harnesses must be a list of strings")
-    if not raw:
-        raise LoadoutError(f"{path}: at least one harness is required")
-    if len(set(raw)) != len(raw):
-        raise LoadoutError(f"{path}: duplicate harness in the list")
 
-    bad = sorted(set(raw) - KNOWN_HARNESSES)
-    if bad:
-        known = ", ".join(sorted(KNOWN_HARNESSES))
-        raise LoadoutError(f"{path}: unknown harness(es) {', '.join(bad)} (known: {known})")
-
-    return ProjectConfig(harnesses=tuple(raw))
+    try:
+        return ProjectConfig(harnesses=tuple(raw))
+    except LoadoutError as error:
+        raise LoadoutError(f"{path}: {error}") from error
 
 
 @dataclass(frozen=True)

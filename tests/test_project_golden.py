@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
 from loadout.emit import render_all, render_project
 from loadout.errors import LoadoutError
+from loadout.project import PRESET, ProjectTarget
 
 GOLDEN = Path(__file__).parent / "golden" / "project"
 EXPECTED = GOLDEN / "expected"
@@ -154,6 +155,37 @@ def test_loadout_only_outputs_do_not_preserve_foreign_keys(project: Path) -> Non
         ]
     )
     assert "INJECTED" not in doc
+
+
+def test_malformed_existing_output_raises_and_tells_the_user_the_way_out(project: Path) -> None:
+    """A truncated write or bad hand-edit to a preserve_foreign target must not wedge
+    sync — the error must point at `loadout sync` as the remedy, since deleting the
+    file and re-running it is the only way out of the read-your-own-output loop."""
+    out = project / "opencode.json"
+    out.write_text("not json", encoding="utf-8")
+    with pytest.raises(LoadoutError, match="loadout sync"):
+        render_project(project)
+
+
+def test_non_dict_existing_output_raises_and_tells_the_user_the_way_out(project: Path) -> None:
+    out = project / "opencode.json"
+    out.write_text("[1, 2, 3]", encoding="utf-8")
+    with pytest.raises(LoadoutError, match="loadout sync"):
+        render_project(project)
+
+
+def test_project_unknown_renderer_raises_loadout_error_not_keyerror(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The project render path used to index RENDERERS directly, so a bad renderer
+    name raised a bare KeyError — exit 4, not the LoadoutError (exit 3) every other
+    failure raises. There is no manifest-driven way to inject a bad renderer name
+    into PRESET, so this patches the preset directly to exercise the path."""
+    bogus = (ProjectTarget(PurePosixPath("bogus.json"), "nope"),)
+    monkeypatch.setitem(PRESET, "claude", bogus)
+    (project / "loadout" / "config.toml").write_text('harnesses = ["claude"]\n', encoding="utf-8")
+    with pytest.raises(LoadoutError, match="unknown renderer"):
+        render_project(project)
 
 
 def test_absent_output_still_renders(project: Path) -> None:

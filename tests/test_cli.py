@@ -235,6 +235,58 @@ def test_init_sync_check_round_trips_for_a_project_only_repo(tmp_path: Path, cap
     assert loadout.main(["check", "--root", str(tmp_path)]) == 0
 
 
+def test_init_warns_but_succeeds_with_a_tracked_instruction_file_present(
+    tmp_path: Path, capsys
+) -> None:
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "CLAUDE.md").write_text("# project rules\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(tmp_path), "add", "CLAUDE.md"], check=True)
+
+    assert loadout.main(["init", "--harness", "claude", "--root", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "CLAUDE.md" in out
+    assert (tmp_path / "loadout" / "config.toml").is_file()
+
+
+def test_init_rejects_duplicate_harnesses(tmp_path: Path, capsys) -> None:
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+
+    assert (
+        loadout.main(
+            ["init", "--harness", "claude", "--harness", "claude", "--root", str(tmp_path)]
+        )
+        == 3
+    )
+    assert "duplicate" in capsys.readouterr().err
+    assert not (tmp_path / "loadout" / "config.toml").exists()
+
+
+def test_explain_in_a_project_only_repo_names_both_manifests(tmp_path: Path, capsys) -> None:
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    loadout.main(["init", "--harness", "claude", "--root", str(tmp_path)])
+    capsys.readouterr()
+
+    assert loadout.main(["explain", "foo", "--root", str(tmp_path)]) == 3
+    err = capsys.readouterr().err
+    assert "loadout.toml" in err
+    assert "loadout/config.toml" in err
+
+
+def test_check_returns_1_when_a_project_output_has_drifted(tmp_path: Path, capsys) -> None:
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    loadout.main(["init", "--harness", "claude", "--root", str(tmp_path)])
+    loadout.main(["sync", "--root", str(tmp_path)])
+    capsys.readouterr()
+
+    tampered = tmp_path / ".aiconf" / "mcp-permissions.json"
+    tampered.write_text("tampered\n", encoding="utf-8")
+
+    assert loadout.main(["check", "--root", str(tmp_path)]) == 1
+    err = capsys.readouterr().err
+    assert "DRIFT" in err
+    assert "tampered" in err
+
+
 def test_sync_succeeds_under_a_non_utf8_locale(root: Path, monkeypatch) -> None:
     # Fragments contain non-ASCII characters (em-dash, ellipsis). Under a
     # locale whose default encoding is ASCII, file I/O must still work

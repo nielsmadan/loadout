@@ -13,7 +13,8 @@ One source of truth for AI coding-agent configuration, rendered out to every har
     loadout explain <name>        # show which source a fragment resolves from, and which targets use it
 
 `explain` takes a fragment name, optionally qualified as `source/name` to disambiguate when more
-than one source declares a fragment with the same name.
+than one source declares a fragment with the same name. `explain` is global scope only —
+instruction fragments are not part of project scope (see below).
 
 ## `loadout.toml`
 

@@ -62,6 +62,13 @@ def test_duplicate_harness_is_rejected(tmp_path: Path) -> None:
         load_project_config(path)
 
 
+def test_validation_error_names_the_config_file(tmp_path: Path) -> None:
+    path = write(tmp_path, 'harnesses = ["claude", "claude"]\n')
+    with pytest.raises(LoadoutError) as caught:
+        load_project_config(path)
+    assert str(caught.value).startswith(f"{path}: ")
+
+
 def test_missing_file_raises(tmp_path: Path) -> None:
     with pytest.raises(LoadoutError, match="not found"):
         load_project_config(tmp_path / "loadout" / "config.toml")

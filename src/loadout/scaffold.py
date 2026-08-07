@@ -52,7 +52,12 @@ def _tracked(root: Path, relative: str) -> bool:
 def _append_gitignore(root: Path, entries: list[str]) -> bool:
     path = root / ".gitignore"
     existing = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
-    additions = [e for e in entries if e not in existing]
+    seen = set(existing)
+    additions: list[str] = []
+    for entry in entries:
+        if entry not in seen:
+            additions.append(entry)
+            seen.add(entry)
     if not additions:
         return False
     lines = existing + additions
@@ -61,12 +66,7 @@ def _append_gitignore(root: Path, entries: list[str]) -> bool:
 
 
 def init_project(root: Path, harnesses: tuple[str, ...]) -> list[str]:
-    bad = sorted(set(harnesses) - KNOWN_HARNESSES)
-    if bad:
-        known = ", ".join(sorted(KNOWN_HARNESSES))
-        raise LoadoutError(f"unknown harness(es) {', '.join(bad)} (known: {known})")
-    if not harnesses:
-        raise LoadoutError("at least one harness is required")
+    config = ProjectConfig(harnesses=harnesses)  # validates: non-empty, no duplicates, known
 
     config_path = project_config_path(root)
     project_dir = root / "loadout"
@@ -81,12 +81,10 @@ def init_project(root: Path, harnesses: tuple[str, ...]) -> list[str]:
     if not already_initialised:
         for name in INSTRUCTION_FILES:
             if (root / name).exists() and _tracked(root, name):
-                raise LoadoutError(
-                    f"{name} is tracked by git. loadout will generate project instruction "
-                    f"files in a later milestone, and generated files are gitignored — "
-                    f"initialising now would leave a tracked file that a future sync "
-                    f"overwrites. Move its content into loadout/ and untrack it first, "
-                    f"or remove it from this repository."
+                actions.append(
+                    f"note: {name} is tracked. loadout does not generate instruction "
+                    f"files yet; when it does, you will need to move this into loadout/ "
+                    f"first."
                 )
 
         project_dir.mkdir(parents=True, exist_ok=True)
@@ -112,7 +110,6 @@ def init_project(root: Path, harnesses: tuple[str, ...]) -> list[str]:
                 "recreated loadout/permissions.local.toml (was missing, personal, gitignored)"
             )
 
-    config = ProjectConfig(harnesses=harnesses)
     entries = ["loadout/permissions.local.toml"]
     entries += [str(t.path) for t in project_targets(config)]
     if _append_gitignore(root, entries):

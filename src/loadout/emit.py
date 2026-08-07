@@ -10,7 +10,7 @@ from .composition import render
 from .errors import LoadoutError
 from .manifest import MANIFEST_NAME, Manifest, PermissionTarget, load_manifest, manifest_path
 from .permissions.merge import merge_rules
-from .permissions.renderers import RENDERERS, TextSpec
+from .permissions.renderers import RENDERERS, JsonSpec, TextSpec
 from .permissions.rules import EMPTY_RULES, Rules, parse_rules
 from .project import (
     PROJECT_CONFIG_NAME,
@@ -73,9 +73,15 @@ def _load_existing(path: Path) -> dict[str, Any]:
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as error:
-        raise LoadoutError(f"{path}: invalid JSON: {error}") from error
+        raise LoadoutError(
+            f"{path}: invalid JSON: {error}. This is a generated file; delete it and "
+            f"re-run `loadout sync`."
+        ) from error
     if not isinstance(document, dict):
-        raise LoadoutError(f"{path}: existing output must be a JSON object")
+        raise LoadoutError(
+            f"{path}: existing output must be a JSON object. This is a generated file; "
+            f"delete it and re-run `loadout sync`."
+        )
     return document
 
 
@@ -91,13 +97,20 @@ def _preserved(path: Path, keys: tuple[str, ...]) -> dict[str, Any]:
     return {key: existing[key] for key in keys if key in existing}
 
 
-def render_permission_target(target: PermissionTarget, rules: Rules, root: Path) -> str:
-    spec = RENDERERS.get(target.renderer)
+def _resolve_renderer(name: str, label: str) -> JsonSpec | TextSpec:
+    spec = RENDERERS.get(name)
     if spec is None:
         known = ", ".join(sorted(RENDERERS))
-        raise LoadoutError(
-            f"permissions.{target.name}: unknown renderer {target.renderer!r} (known: {known})"
-        )
+        raise LoadoutError(f"{label}: unknown renderer {name!r} (known: {known})")
+    return spec
+
+
+def _serialize_json(document: dict[str, Any], spec: JsonSpec) -> str:
+    return json.dumps(document, indent=2, ensure_ascii=spec.ensure_ascii) + "\n"
+
+
+def render_permission_target(target: PermissionTarget, rules: Rules, root: Path) -> str:
+    spec = _resolve_renderer(target.renderer, f"permissions.{target.name}")
     effective = rules if target.select_all else EMPTY_RULES
 
     if isinstance(spec, TextSpec):
@@ -114,7 +127,7 @@ def render_permission_target(target: PermissionTarget, rules: Rules, root: Path)
     # Foreign keys are appended AFTER rendering so the owned key keeps its
     # position ahead of them.
     document.update(_preserved(root / str(target.path), target.preserve))
-    return json.dumps(document, indent=2, ensure_ascii=spec.ensure_ascii) + "\n"
+    return _serialize_json(document, spec)
 
 
 def render_global(root: Path) -> dict[Path, str]:
@@ -165,7 +178,7 @@ def render_project(root: Path) -> dict[Path, str]:
 
     outputs: dict[Path, str] = {}
     for target in project_targets(config):
-        spec = RENDERERS[target.renderer]
+        spec = _resolve_renderer(target.renderer, f"project target {target.path}")
         if isinstance(spec, TextSpec):
             outputs[root / str(target.path)] = spec.fn(rules)
         else:
@@ -173,9 +186,7 @@ def render_project(root: Path) -> dict[Path, str]:
             if target.preserve_foreign:
                 base = _load_existing(root / str(target.path))
             document = spec.fn(rules, base)
-            outputs[root / str(target.path)] = (
-                json.dumps(document, indent=2, ensure_ascii=spec.ensure_ascii) + "\n"
-            )
+            outputs[root / str(target.path)] = _serialize_json(document, spec)
     return outputs
 
 

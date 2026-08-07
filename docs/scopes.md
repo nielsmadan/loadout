@@ -76,7 +76,10 @@ Consequences:
   source plus every generated output to `.gitignore`; `loadout harness add <name>` enables one
   more harness on an already-initialised project and extends `.gitignore` the same way. A
   committed `.gitignore` rather than `.git/info/exclude`, which is per-clone and silently fails
-  to apply on a fresh checkout.
+  to apply on a fresh checkout. `init` warns when a tracked `CLAUDE.md`, `AGENTS.md` or
+  `GEMINI.md` exists and proceeds — nothing generated today collides with those files, but
+  project-scope instructions will, and moving them into `loadout/` is a prerequisite for that
+  milestone rather than for this one.
 - **Per-entry ownership tracking still is not needed, but "loadout is the sole writer of every
   generated file" turned out to be false for two of the five outputs.** `opencode.json` and
   `.claude/settings.json` are a harness's own multi-purpose config file — the ported system
