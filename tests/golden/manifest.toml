@@ -5,6 +5,7 @@ path = "."
 [instructions.claude]
 output       = "claude/CLAUDE.md"
 destinations = ["~/.claude/CLAUDE.md"]
+profile      = "default"
 order = [
     "intro-claude", "web-fetching", "video-content", "browser-automation",
     "secrets", "git-policy", "git-commit-policy", "working-style",

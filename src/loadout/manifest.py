@@ -35,6 +35,7 @@ class PermissionTarget:
     preserve: tuple[str, ...] = ()
     select_all: bool = True
     profile: str | None = None
+    destinations: tuple[PurePosixPath, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -50,10 +51,25 @@ def _require(block: dict[str, object], key: str, label: str) -> object:
     return block[key]
 
 
-def _str_list(value: object, agent: str, key: str) -> tuple[str, ...]:
+def _str_list(value: object, label: str, key: str) -> tuple[str, ...]:
     if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
-        raise LoadoutError(f"instructions.{agent}: {key} must be a list of strings")
+        raise LoadoutError(f"{label}: {key} must be a list of strings")
     return tuple(str(v) for v in value)
+
+
+def _destinations(value: object, label: str) -> tuple[PurePosixPath, ...]:
+    """Unlike output, a destination is legitimately absolute (it's a real machine path,
+    typically under `~`) — only reject an empty string or a '..' component."""
+    raw = _str_list(value, label, "destinations")
+    result: list[PurePosixPath] = []
+    for entry in raw:
+        dest = PurePosixPath(entry)
+        if not entry or ".." in dest.parts:
+            raise LoadoutError(
+                f"{label}: destination {entry!r} must be a non-empty path with no '..' components"
+            )
+        result.append(dest)
+    return tuple(result)
 
 
 def _output_path(output: object, label: str, claimed: set[PurePosixPath]) -> PurePosixPath:
@@ -82,8 +98,8 @@ def _parse_instructions(
             raise LoadoutError(f"instructions.{agent} must be a table")
         label = f"instructions.{agent}"
         out = _output_path(_require(block, "output", label), label, claimed)
-        order = _str_list(_require(block, "order", agent), agent, "order")
-        destinations = _str_list(block.get("destinations", []), agent, "destinations")
+        order = _str_list(_require(block, "order", agent), label, "order")
+        destinations = _destinations(block.get("destinations", []), label)
         profile = block.get("profile")
         if profile is not None and not isinstance(profile, str):
             raise LoadoutError(f"instructions.{agent}: profile must be a string")
@@ -91,7 +107,7 @@ def _parse_instructions(
             InstructionTarget(
                 path=out,
                 fragments=order,
-                destinations=tuple(PurePosixPath(d) for d in destinations),
+                destinations=destinations,
                 profile=profile,
             )
         )
@@ -140,6 +156,8 @@ def _parse_permissions(
         if profile is not None and not isinstance(profile, str):
             raise LoadoutError(f"{label}: profile must be a string")
 
+        destinations = _destinations(block.get("destinations", []), label)
+
         permissions.append(
             PermissionTarget(
                 name=name,
@@ -149,6 +167,7 @@ def _parse_permissions(
                 preserve=tuple(raw_preserve),
                 select_all=select_all,
                 profile=profile,
+                destinations=destinations,
             )
         )
     return tuple(permissions)

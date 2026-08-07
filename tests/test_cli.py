@@ -33,12 +33,15 @@ def test_sync_default_profile_omits_the_autonomous_target(root: Path, capsys) ->
 def test_sync_profile_autonomous_selects_the_autonomous_target(root: Path, capsys) -> None:
     assert loadout.main(["sync", "--root", str(root), "--profile", "autonomous"]) == 0
     assert (root / "claude" / "CLAUDE.autonomous.md").is_file()
+    # instructions.claude declares profile = "default", so it is mutually exclusive
+    # with instructions.claude-autonomous — both share the ~/.claude/CLAUDE.md
+    # destination, and only one of them may be selected at a time.
+    assert not (root / "claude" / "CLAUDE.md").is_file()
     # The real-world case profile filtering exists for: on a machine running the
     # autonomous profile, every target that does NOT declare a profile must still
     # render. Codex, OpenCode, Pi and Antigravity have no autonomous variant and
     # must never disappear when the active profile changes.
     unprofiled_outputs = (
-        "claude/CLAUDE.md",
         "global/AGENTS.md",
         "antigravity/settings.json",
         "claude/settings.json",

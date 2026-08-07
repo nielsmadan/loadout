@@ -147,6 +147,31 @@ def _selected(target: InstructionTarget | PermissionTarget, profile: str) -> boo
     return target.profile is None or target.profile == profile
 
 
+def _claim(path: Path, owner: str, claimed: dict[Path, str]) -> None:
+    previous = claimed.get(path)
+    if previous is not None:
+        raise LoadoutError(f"destination {path} is claimed by both {previous} and {owner}")
+    claimed[path] = owner
+
+
+def _expand(
+    target: InstructionTarget | PermissionTarget,
+    content: str,
+    root: Path,
+    outputs: dict[Path, str],
+    claimed: dict[Path, str],
+) -> None:
+    # own_output is claimed too, not just tracked in outputs, so a later target's
+    # destination that happens to name this exact path collides like any other.
+    own_output = root / str(target.path)
+    _claim(own_output, str(target.path), claimed)
+    outputs[own_output] = content
+    for destination in target.destinations:
+        resolved = Path(str(destination)).expanduser()
+        _claim(resolved, str(target.path), claimed)
+        outputs[resolved] = content
+
+
 def render_global(root: Path, profile: str = "default") -> dict[Path, str]:
     manifest = load_manifest(manifest_path(root))
     declared = _declared_profiles(manifest)
@@ -154,15 +179,18 @@ def render_global(root: Path, profile: str = "default") -> dict[Path, str]:
         known = ", ".join(sorted(declared)) or "none"
         raise LoadoutError(f"unknown profile {profile!r} (declared: {known})")
 
-    outputs: dict[Path, str] = {
-        root / str(t.path): render(t, manifest) for t in manifest.targets if _selected(t, profile)
-    }
+    outputs: dict[Path, str] = {}
+    claimed: dict[Path, str] = {}
+    for t in manifest.targets:
+        if _selected(t, profile):
+            _expand(t, render(t, manifest), root, outputs, claimed)
+
     selected_permissions = [t for t in manifest.permissions if _selected(t, profile)]
     if selected_permissions:
         source = permissions_source(manifest)
         rules = parse_rules(source.path.joinpath(*PERMISSIONS_SOURCE))
         for target in selected_permissions:
-            outputs[root / str(target.path)] = render_permission_target(target, rules, root)
+            _expand(target, render_permission_target(target, rules, root), root, outputs, claimed)
     return outputs
 
 
@@ -216,11 +244,15 @@ def render_project(root: Path) -> dict[Path, str]:
 
 
 def atomic_write(path: Path, content: str) -> None:
-    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".loadout-")
+    # A destination is often a symlink into the user's config repo (the pre-loadout
+    # deployment mechanism). os.replace() on a symlink replaces the link itself, not
+    # its target — write through the link instead, so the symlink survives sync.
+    target = path.resolve() if path.is_symlink() else path
+    fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=".loadout-")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(content)
-        os.replace(tmp, path)
+        os.replace(tmp, target)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
         raise

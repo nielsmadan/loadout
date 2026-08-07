@@ -32,6 +32,7 @@ path = "."
 [instructions.claude]
 output       = "claude/CLAUDE.md"
 destinations = ["~/.claude/CLAUDE.md"]
+profile      = "default"
 order        = ["intro-claude", "web-fetching", "git-policy"]
 
 [instructions.claude-autonomous]
@@ -41,13 +42,21 @@ profile      = "autonomous"
 order        = ["intro-claude", "web-fetching", "git-policy.autonomous"]
 ```
 
+(Both declare a `profile` here because they share a `destination` — see Profiles below. A
+target that doesn't share its destination with anyone else doesn't need one.)
+
 Each `[[source]]` is a named directory containing a `global/fragments/*.md` tree that fragments
 are pulled from. Each `[instructions.<agent>]` table declares one generated file: `output` is
 where it is written, relative to the repo root (it may not be absolute, empty, or escape the
 root with `..`), `order` is the ordered list of fragment names composed into it, and
-`destinations` documents where the rendered file is deployed outside the repo. At least one
-source is required, and at least one `[instructions.<agent>]` or `[permissions.<name>]` target
-must be declared; no two targets, of either kind, may share an `output` path.
+`destinations` is where else the same rendered bytes are written — real paths on the machine,
+such as `~/.claude/CLAUDE.md`, with `~` expanded to the user's home directory. `sync` and `check`
+write and diff every destination exactly like the in-repo `output`, so both stay byte-identical.
+`[permissions.<name>]` targets accept `destinations` the same way. At least one source is
+required, and at least one `[instructions.<agent>]` or `[permissions.<name>]` target must be
+declared; no two targets, of either kind, may share an `output` path, and — among the targets
+selected for the active profile — no two may share a `destination` either; that raises a
+`LoadoutError` naming both.
 
 ### Profiles
 
@@ -64,6 +73,11 @@ machine's **active profile**:
   `--profile autonomous`; only the targets that opt into a profile are gated by it.
 - An active profile that no target declares is a `LoadoutError` listing the profiles that are
   declared, except `"default"`, which is always valid even if nothing declares it.
+- Two targets may share a `destination` only if their `profile`s make them mutually exclusive.
+  A target with no `profile` is selected under every active profile, so it collides with *any*
+  other selected target naming the same destination — including a profiled one. To let two
+  targets take turns writing one destination, both must declare a `profile` (e.g. `"default"`
+  and `"autonomous"`), not just one of them.
 
 ### `[permissions.<name>]`
 

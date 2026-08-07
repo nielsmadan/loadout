@@ -25,9 +25,17 @@ def cmd_harness_add(root: Path, harness: str) -> int:
     return 0
 
 
+def _display(path: Path, root: Path) -> str:
+    """A destination may live outside root (e.g. under ~); relative_to() would raise."""
+    try:
+        return str(path.relative_to(root))
+    except ValueError:
+        return str(path)
+
+
 def cmd_sync(root: Path, profile: str = "default") -> int:
     for path in write_all(root, profile):
-        print(f"wrote {path.relative_to(root)}")
+        print(f"wrote {_display(path, root)}")
     return 0
 
 
@@ -37,7 +45,7 @@ def cmd_check(root: Path, profile: str = "default") -> int:
         print("generated files are up to date")
         return 0
     for path, actual, expected in drift:
-        rel = path.relative_to(root)
+        rel = _display(path, root)
         print(f"DRIFT: {rel}", file=sys.stderr)
         sys.stderr.writelines(
             difflib.unified_diff(

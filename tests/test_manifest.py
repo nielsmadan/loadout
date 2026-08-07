@@ -65,6 +65,30 @@ def test_malformed_toml_is_an_error(tmp_path: Path) -> None:
         load_manifest(write_manifest(tmp_path, "this is not = = toml"))
 
 
+def test_empty_string_destination_is_an_error(tmp_path: Path) -> None:
+    body = MINIMAL.replace('destinations = ["~/.claude/CLAUDE.md"]', 'destinations = [""]')
+    with pytest.raises(LoadoutError, match="destination"):
+        load_manifest(write_manifest(tmp_path, body))
+
+
+def test_destination_with_dotdot_is_an_error(tmp_path: Path) -> None:
+    body = MINIMAL.replace(
+        'destinations = ["~/.claude/CLAUDE.md"]', 'destinations = ["~/../etc/passwd"]'
+    )
+    with pytest.raises(LoadoutError, match="destination"):
+        load_manifest(write_manifest(tmp_path, body))
+
+
+def test_absolute_destination_is_allowed(tmp_path: Path) -> None:
+    """Unlike output, a destination is legitimately absolute after ~ expansion —
+    only emptiness and '..' are rejected, never the leading slash."""
+    body = MINIMAL.replace(
+        'destinations = ["~/.claude/CLAUDE.md"]', 'destinations = ["/etc/claude/CLAUDE.md"]'
+    )
+    manifest = load_manifest(write_manifest(tmp_path, body))
+    assert manifest.targets[0].destinations == (PurePosixPath("/etc/claude/CLAUDE.md"),)
+
+
 def test_target_without_order_is_an_error(tmp_path: Path) -> None:
     body = """
 [[source]]

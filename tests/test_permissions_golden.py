@@ -23,15 +23,21 @@ PERMISSION_OUTPUTS = (
 )
 
 
+def _repo_relative(rendered: dict[Path, str], root: Path) -> dict[str, str]:
+    """render_all also returns destination paths under ~; these tests only care
+    about the in-repo outputs, so drop anything not rooted under root."""
+    return {str(p.relative_to(root)): c for p, c in rendered.items() if root in p.parents}
+
+
 def test_every_permission_output_matches_its_frozen_golden(root: Path) -> None:
-    rendered = {str(p.relative_to(root)): c for p, c in render_all(root).items()}
+    rendered = _repo_relative(render_all(root), root)
     for name in PERMISSION_OUTPUTS:
         expected = (EXPECTED / name).read_text(encoding="utf-8")
         assert rendered[name] == expected, f"{name} differs from its golden"
 
 
 def test_all_eight_permission_targets_are_rendered(root: Path) -> None:
-    rendered = {str(p.relative_to(root)) for p in render_all(root)}
+    rendered = set(_repo_relative(render_all(root), root))
     for name in PERMISSION_OUTPUTS:
         assert name in rendered
 
@@ -40,7 +46,7 @@ def test_rendering_does_not_require_the_output_to_exist(root: Path) -> None:
     """Acceptance criterion 2 — a clean checkout must render."""
     for name in PERMISSION_OUTPUTS:
         (root / name).unlink(missing_ok=True)
-    rendered = {str(p.relative_to(root)): c for p, c in render_all(root).items()}
+    rendered = _repo_relative(render_all(root), root)
     for name in PERMISSION_OUTPUTS:
         if name != "opencode/opencode.json":
             assert rendered[name] == (EXPECTED / name).read_text(encoding="utf-8")
@@ -57,7 +63,7 @@ def test_preserve_keeps_a_foreign_key_at_the_right_index(root: Path) -> None:
         json.dumps({"mcp": {"jina": {"type": "remote"}}}, indent=2) + "\n",
         encoding="utf-8",
     )
-    rendered = {str(p.relative_to(root)): c for p, c in render_all(root).items()}
+    rendered = _repo_relative(render_all(root), root)
     doc = json.loads(rendered["opencode/opencode.json"])
     assert list(doc) == ["$schema", "model", "provider", "permission", "mcp"]
     assert doc["mcp"] == {"jina": {"type": "remote"}}
@@ -65,7 +71,7 @@ def test_preserve_keeps_a_foreign_key_at_the_right_index(root: Path) -> None:
 
 def test_preserve_omits_the_key_when_the_output_does_not_exist(root: Path) -> None:
     (root / "opencode" / "opencode.json").unlink(missing_ok=True)
-    rendered = {str(p.relative_to(root)): c for p, c in render_all(root).items()}
+    rendered = _repo_relative(render_all(root), root)
     doc = json.loads(rendered["opencode/opencode.json"])
     assert "mcp" not in doc
     assert list(doc) == ["$schema", "model", "provider", "permission"]

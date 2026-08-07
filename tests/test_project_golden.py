@@ -215,7 +215,9 @@ def test_render_all_unions_both_scopes_when_both_manifests_exist(root: Path, pro
     """root and project both scaffold onto the same tmp_path; render_all must return
     outputs from both, not just one — the union claim the task exists to prove."""
     assert root == project
-    rendered = {str(p.relative_to(root)) for p in render_all(root)}
+    # render_all also returns destination paths under ~; this test only cares
+    # about in-repo outputs, so drop anything not rooted under root.
+    rendered = {str(p.relative_to(root)) for p in render_all(root) if root in p.parents}
     assert "global/AGENTS.md" in rendered  # global-only output
     assert ".claude/settings.json" in rendered  # project-only output
     assert "opencode.json" in rendered  # project-only output
