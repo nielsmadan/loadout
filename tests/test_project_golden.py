@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from loadout.emit import render_project
+from loadout.emit import render_all, render_project
 from loadout.errors import LoadoutError
 
 GOLDEN = Path(__file__).parent / "golden" / "project"
@@ -160,3 +160,45 @@ def test_absent_output_still_renders(project: Path) -> None:
     (project / "opencode.json").unlink(missing_ok=True)
     rendered = {str(p.relative_to(project)): c for p, c in render_project(project).items()}
     assert json.loads(rendered["opencode.json"])["permission"]["bash"]
+
+
+def test_render_all_includes_project_outputs(project: Path) -> None:
+    """The seam: sync and check go through render_all, which must see project targets."""
+    rendered = {str(p.relative_to(project)) for p in render_all(project)}
+    assert ".claude/settings.json" in rendered
+    assert "opencode.json" in rendered
+
+
+def test_render_all_works_with_no_root_manifest(project: Path) -> None:
+    assert not (project / "loadout.toml").exists()
+    assert render_all(project)
+
+
+def test_render_all_errors_when_neither_manifest_exists(tmp_path: Path) -> None:
+    with pytest.raises(LoadoutError, match="no manifest"):
+        render_all(tmp_path)
+
+
+def test_render_all_unions_both_scopes_when_both_manifests_exist(root: Path, project: Path) -> None:
+    """root and project both scaffold onto the same tmp_path; render_all must return
+    outputs from both, not just one — the union claim the task exists to prove."""
+    assert root == project
+    rendered = {str(p.relative_to(root)) for p in render_all(root)}
+    assert "global/AGENTS.md" in rendered  # global-only output
+    assert ".claude/settings.json" in rendered  # project-only output
+    assert "opencode.json" in rendered  # project-only output
+
+
+def test_render_all_rejects_a_path_collision_between_scopes(root: Path, project: Path) -> None:
+    """A global permissions target pointed at the same path a project preset also
+    generates must raise, not silently overwrite — construct the collision explicitly
+    since the two scopes' natural presets never overlap on their own."""
+    manifest = root / "loadout.toml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            'output   = "opencode/opencode.json"', 'output   = "opencode.json"'
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(LoadoutError, match=r"opencode\.json"):
+        render_all(root)

@@ -55,6 +55,9 @@ Claude-style filename in another harness proves nothing.
 `cli.py` → `commands.py` → `emit.py` → `composition.py` (instructions) and
 `permissions/` (`rules.py` parses, `renderers.py` renders, keyed by name in `RENDERERS`).
 `manifest.py` parses `loadout.toml`; `sources.py` and `resolve.py` resolve fragments.
+`project.py` (harness preset) and `scaffold.py` (`init`, `harness add`) are project scope.
+`emit.py:render_project` renders it; `render_all` unions it with `render_global`'s global-scope
+output, so `sync`/`check` regenerate whichever scopes are present.
 
 ## Docs
 

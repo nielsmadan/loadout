@@ -88,10 +88,46 @@ anything you put directly into a generated output is silently discarded at the n
 
 ## Project scope
 
-`loadout` generates `.claude/settings.json` at project scope and leaves
-`.claude/settings.local.json` alone — Claude Code writes to that file itself when you choose
-"don't ask again", and Claude merges both at startup. A generator that owned it would delete
-those grants on every sync.
+Per-repo permissions, layered on top of the global manifest above. A repo opts in once:
+
+    loadout init --harness claude --harness opencode   # repeatable, one per harness
+    loadout harness add pi                             # enable one more, later
+
+`init` scaffolds `loadout/`:
+
+```text
+loadout/config.toml               enabled harnesses — the only key it accepts
+loadout/permissions.toml          committed, shared with everyone working in this repo
+loadout/permissions.local.toml    personal, gitignored
+```
+
+Both commands also add every output the enabled harnesses generate to `.gitignore`. Generated
+project files are **gitignored and never committed** — the merged output mixes in
+`permissions.local.toml`'s personal rules, so two people would conflict on every regeneration.
+
+**Which file do I edit?** `loadout/permissions.toml` (shared) or `loadout/permissions.local.toml`
+(personal) — never a generated output. Same rule as global scope: a generated file carries no
+marker that it's generated, and anything written directly into one is discarded the next time
+it's regenerated.
+
+Known harnesses and what each one generates:
+
+| harness | generates |
+| --- | --- |
+| `claude` | `.claude/settings.json`, `.aiconf/mcp-permissions.json` |
+| `codex` | `.codex/rules/aiconf.rules` |
+| `opencode` | `opencode.json` |
+| `pi` | `.pi/extensions/pi-permission-system/config.json` |
+| `antigravity` | nothing — `agy` has a project permission scope in its TUI, but the system loadout ported never wrote one and its storage path is unknown; the name is still accepted so a project's harness list can name every harness in use |
+
+`opencode.json` and `.claude/settings.json` are a harness's own multi-purpose config file, so
+loadout preserves any foreign top-level key already there (`$schema`, for example) instead of
+overwriting the whole document. The other three outputs are loadout-only and always render from
+a blank document.
+
+`.claude/settings.json` is loadout's Claude output at project scope; Claude Code writes to
+`.claude/settings.local.json` itself when you choose "don't ask again", and merges both at
+startup. A generator that owned `.local.json` would delete those grants on every sync.
 
 ## Exit codes
 

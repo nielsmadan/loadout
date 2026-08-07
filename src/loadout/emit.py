@@ -8,11 +8,17 @@ from typing import Any
 
 from .composition import render
 from .errors import LoadoutError
-from .manifest import Manifest, PermissionTarget, load_manifest, manifest_path
+from .manifest import MANIFEST_NAME, Manifest, PermissionTarget, load_manifest, manifest_path
 from .permissions.merge import merge_rules
 from .permissions.renderers import RENDERERS, TextSpec
 from .permissions.rules import EMPTY_RULES, Rules, parse_rules
-from .project import load_project_config, project_config_path, project_targets
+from .project import (
+    PROJECT_CONFIG_NAME,
+    PROJECT_DIR,
+    load_project_config,
+    project_config_path,
+    project_targets,
+)
 from .sources import Source
 
 PERMISSIONS_SOURCE = ("permissions", "permissions.toml")
@@ -111,7 +117,7 @@ def render_permission_target(target: PermissionTarget, rules: Rules, root: Path)
     return json.dumps(document, indent=2, ensure_ascii=spec.ensure_ascii) + "\n"
 
 
-def render_all(root: Path) -> dict[Path, str]:
+def render_global(root: Path) -> dict[Path, str]:
     manifest = load_manifest(manifest_path(root))
     outputs: dict[Path, str] = {root / str(t.path): render(t, manifest) for t in manifest.targets}
     if manifest.permissions:
@@ -119,6 +125,30 @@ def render_all(root: Path) -> dict[Path, str]:
         rules = parse_rules(source.path.joinpath(*PERMISSIONS_SOURCE))
         for target in manifest.permissions:
             outputs[root / str(target.path)] = render_permission_target(target, rules, root)
+    return outputs
+
+
+def render_all(root: Path) -> dict[Path, str]:
+    outputs: dict[Path, str] = {}
+    has_global = manifest_path(root).is_file()
+    has_project = project_config_path(root).is_file()
+
+    if not has_global and not has_project:
+        raise LoadoutError(
+            f"no manifest found in {root}: expected {MANIFEST_NAME} "
+            f"or {PROJECT_DIR}/{PROJECT_CONFIG_NAME}"
+        )
+
+    if has_global:
+        outputs.update(render_global(root))
+    if has_project:
+        project_outputs = render_project(root)
+        collisions = sorted(str(p) for p in project_outputs if p in outputs)
+        if collisions:
+            raise LoadoutError(
+                f"path collision between global and project scope: {', '.join(collisions)}"
+            )
+        outputs.update(project_outputs)
     return outputs
 
 

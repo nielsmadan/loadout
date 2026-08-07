@@ -43,7 +43,7 @@ to project scope:
   not: removing one entry from a rule list reads as one line changed in the source, and as 42
   deny rules going from bypassable to enforced in the output.
 
-### Project scope — designed, not yet built
+### Project scope — built (permissions only)
 
 Per-repo configuration, layered on top of global. Two sources per artifact type:
 
@@ -52,7 +52,11 @@ Per-repo configuration, layered on top of global. Two sources per artifact type:
 | project | yes | rules and instructions everyone working on this repo gets |
 | personal | **no** | your rules for this repo — machine paths, local tools |
 
-loadout merges the two and writes **one generated output per harness, always gitignored**.
+loadout merges the two and writes **one generated output per harness, always gitignored**. Five
+outputs across four harnesses (`claude`, `codex`, `opencode`, `pi`); `antigravity` is a valid
+harness name that currently generates nothing (see below). `.codex/config.toml`, in the system
+this replaces, turned out to be a one-byte leftover of the old tooling rather than a real output,
+so the port does not reproduce it.
 
 Generated project files are never committed, because the merged output contains personal
 content — two people would conflict on every regeneration. Shared content reaches other
@@ -68,15 +72,32 @@ adoption. Revisit only if that adoption model ever changes.
 
 Consequences:
 
-- `loadout init` scaffolds both sources and adds the personal source plus every generated
-  output to `.gitignore`. A committed `.gitignore` rather than `.git/info/exclude`, which is
-  per-clone and silently fails to apply on a fresh checkout.
-- No per-entry ownership tracking is needed: loadout is the sole writer of every generated
-  file, so there is nothing to avoid clobbering.
+- `loadout init --harness <name>` (repeatable) scaffolds both sources and adds the personal
+  source plus every generated output to `.gitignore`; `loadout harness add <name>` enables one
+  more harness on an already-initialised project and extends `.gitignore` the same way. A
+  committed `.gitignore` rather than `.git/info/exclude`, which is per-clone and silently fails
+  to apply on a fresh checkout.
+- **Per-entry ownership tracking still is not needed, but "loadout is the sole writer of every
+  generated file" turned out to be false for two of the five outputs.** `opencode.json` and
+  `.claude/settings.json` are a harness's own multi-purpose config file — the ported system
+  preserved foreign top-level keys in both (`$schema` in the former; `enabledPlugins`,
+  `sandbox`, `deny` in the latter), and rendering them from `{}` would silently delete that
+  content. loadout now reads the existing output as the renderer's base for those two targets
+  and carries forward any key it does not itself generate, an amendment to
+  [0001](decisions/0001-render-never-reads-its-own-output.md) rather than ownership tracking:
+  the owned subtree is still regenerated unconditionally on every render, so it can never feed
+  back — only foreign keys survive. The other three outputs are loadout-only and still render
+  from a blank document.
 
 ## Still open
 
-- Whether project scope ships permissions first or permissions and instructions together.
+- Project-scope *instructions* — the same two-tier source/personal machinery as permissions,
+  covering `CLAUDE.md`/`AGENTS.md` rather than permission rules. Deliberately built after
+  permissions so the oracle can distinguish a port bug from a new-feature bug; not started.
+- Antigravity project permissions. `antigravity` is a valid harness name — `agy` has a project
+  permission scope in its own TUI — but the system loadout ported never wrote one and its
+  storage path is unknown, so `PRESET["antigravity"]` is empty and the harness generates
+  nothing. Accepting the name without generating anything is deliberate, not an oversight.
 - Absorbing per-project-type template config, so template rules land in the project *source*
   rather than being written into harness outputs by a separate tool.
 - Build-time ceilings (`neverallow`) for the wrapper-command bypass described in

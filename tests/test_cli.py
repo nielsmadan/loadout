@@ -218,6 +218,23 @@ def test_duplicate_output_across_targets_returns_3_not_0(root: Path, capsys) -> 
     assert "claude/CLAUDE.md" in capsys.readouterr().err
 
 
+def test_init_sync_check_round_trips_for_a_project_only_repo(tmp_path: Path, capsys) -> None:
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    assert (
+        loadout.main(
+            ["init", "--harness", "claude", "--harness", "opencode", "--root", str(tmp_path)]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
+    assert (tmp_path / ".claude" / "settings.json").is_file()
+    assert (tmp_path / "opencode.json").is_file()
+
+    assert loadout.main(["check", "--root", str(tmp_path)]) == 0
+
+
 def test_sync_succeeds_under_a_non_utf8_locale(root: Path, monkeypatch) -> None:
     # Fragments contain non-ASCII characters (em-dash, ellipsis). Under a
     # locale whose default encoding is ASCII, file I/O must still work

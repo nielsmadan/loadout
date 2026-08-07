@@ -9,6 +9,6 @@ dist/
 htmlcov/
 
 # Golden fixtures mirror harness output paths, some of which a global
-# gitignore excludes (e.g. **/.claude/settings.local.json). Without this,
+# gitignore excludes (e.g. paths under .claude/, .codex/, .pi/). Without this,
 # `git add` skips them silently.
 !tests/golden/**
