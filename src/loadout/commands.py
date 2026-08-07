@@ -6,16 +6,32 @@ from pathlib import Path
 
 from .emit import check_all, write_all
 from .errors import LoadoutError
+from .machine import machine_config_path
 from .manifest import MANIFEST_NAME, load_manifest, manifest_path
 from .project import PROJECT_CONFIG_NAME, PROJECT_DIR, project_config_path
 from .resolve import resolve_fragment
-from .scaffold import add_harness, init_project
+from .scaffold import add_harness, init_global, init_project
 
 
 def cmd_init(root: Path, harnesses: tuple[str, ...]) -> int:
-    for action in init_project(root, harnesses):
+    for action in init_project(root, harnesses, machine_config_path=machine_config_path()):
         print(action)
     print("\nEdit loadout/permissions.toml, then run `loadout sync`.")
+    return 0
+
+
+def cmd_init_global(source: Path | None, force: bool = False) -> int:
+    if source is None:
+        if not sys.stdin.isatty():
+            raise LoadoutError(
+                "--source is required when not attached to a terminal "
+                "(loadout init --global --source <path>)"
+            )
+        default = Path.home() / "loadout"
+        response = input(f"Directory to hold the global loadout source [{default}]: ").strip()
+        source = Path(response) if response else default
+    for action in init_global(source.expanduser(), machine_config_path(), force=force):
+        print(action)
     return 0
 
 

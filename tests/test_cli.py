@@ -4,8 +4,20 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 import loadout
 from loadout.errors import LoadoutError
+
+
+def _write_machine_config(xdg_home: Path, source: Path, profile: str | None = None) -> Path:
+    config_path = xdg_home / "loadout" / "config.toml"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [f'source = "{source}"']
+    if profile is not None:
+        lines.append(f'profile = "{profile}"')
+    config_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return config_path
 
 
 def test_version_is_exposed() -> None:
@@ -333,6 +345,59 @@ def test_check_returns_1_when_a_project_output_has_drifted(tmp_path: Path, capsy
     assert "tampered" in err
 
 
+def test_global_without_a_machine_config_names_init(tmp_path, monkeypatch, capsys) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    assert loadout.main(["check", "--global"]) == 3
+    err = capsys.readouterr().err
+    assert str(tmp_path / "cfg" / "loadout" / "config.toml") in err
+    assert "loadout init --global" in err
+
+
+def test_global_and_root_are_mutually_exclusive(capsys) -> None:
+    with pytest.raises(SystemExit) as caught:
+        loadout.main(["sync", "--global", "--root", "."])
+    assert caught.value.code == 2
+
+
+def test_global_uses_the_configured_source(root: Path, tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    _write_machine_config(tmp_path / "xdg", root)
+
+    assert loadout.main(["sync", "--global"]) == 0
+    assert (root / "global" / "AGENTS.md").is_file()
+
+
+def test_global_applies_the_configured_profile(root: Path, tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    _write_machine_config(tmp_path / "xdg", root, profile="autonomous")
+
+    assert loadout.main(["sync", "--global"]) == 0
+    assert (root / "claude" / "CLAUDE.autonomous.md").is_file()
+    assert not (root / "claude" / "CLAUDE.md").is_file()
+
+
+def test_global_explicit_profile_overrides_the_machine_config(
+    root: Path, tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    _write_machine_config(tmp_path / "xdg", root, profile="autonomous")
+
+    assert loadout.main(["sync", "--global", "--profile", "default"]) == 0
+    assert (root / "claude" / "CLAUDE.md").is_file()
+    assert not (root / "claude" / "CLAUDE.autonomous.md").is_file()
+
+
+def test_global_with_no_configured_profile_falls_back_to_default(
+    root: Path, tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    _write_machine_config(tmp_path / "xdg", root)
+
+    assert loadout.main(["sync", "--global"]) == 0
+    assert (root / "claude" / "CLAUDE.md").is_file()
+    assert not (root / "claude" / "CLAUDE.autonomous.md").is_file()
+
+
 def test_sync_succeeds_under_a_non_utf8_locale(root: Path, monkeypatch) -> None:
     # Fragments contain non-ASCII characters (em-dash, ellipsis). Under a
     # locale whose default encoding is ASCII, file I/O must still work
@@ -349,3 +414,82 @@ def test_sync_succeeds_under_a_non_utf8_locale(root: Path, monkeypatch) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert (root / "global" / "AGENTS.md").read_text(encoding="utf-8")
+
+
+class _NoTTY:
+    def isatty(self) -> bool:
+        return False
+
+    def readline(self, *args: object, **kwargs: object) -> str:
+        raise AssertionError("must not read from stdin when it is not a TTY")
+
+
+def test_init_global_creates_the_source_and_machine_config(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    source_parent = tmp_path / "home"
+
+    assert loadout.main(["init", "--global", "--source", str(source_parent)]) == 0
+
+    out = capsys.readouterr().out
+    loadout_dir = source_parent / "loadout"
+    assert (loadout_dir / "loadout.toml").is_file()
+    assert (tmp_path / "cfg" / "loadout" / "config.toml").is_file()
+    assert "sync --global" in out
+
+
+def test_init_global_without_source_and_without_a_tty_errors(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    monkeypatch.setattr(sys, "stdin", _NoTTY())
+
+    assert loadout.main(["init", "--global"]) == 3
+
+    err = capsys.readouterr().err
+    assert "--source" in err
+    assert not (tmp_path / "cfg" / "loadout" / "config.toml").exists()
+
+
+def test_global_and_harness_are_mutually_exclusive() -> None:
+    with pytest.raises(SystemExit) as caught:
+        loadout.main(["init", "--global", "--harness", "claude"])
+    assert caught.value.code == 2
+
+
+def test_init_without_global_or_harness_still_requires_harness() -> None:
+    with pytest.raises(SystemExit) as caught:
+        loadout.main(["init"])
+    assert caught.value.code == 2
+
+
+def test_init_global_round_trips_to_sync_no_targets_declared(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """The honest test of the state init --global leaves behind: it declares a
+    source but no targets, so sync fails with load_manifest's existing,
+    actionable error rather than a broken or silently-empty sync."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    source_parent = tmp_path / "home"
+
+    assert loadout.main(["init", "--global", "--source", str(source_parent)]) == 0
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--global"]) == 3
+
+    err = capsys.readouterr().err
+    manifest_file = source_parent / "loadout" / "loadout.toml"
+    assert str(manifest_file) in err
+    assert "no [instructions.<agent>] or [permissions.<name>] targets declared" in err
+
+
+def test_init_notes_a_missing_machine_config(tmp_path: Path, monkeypatch, capsys) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+
+    assert loadout.main(["init", "--harness", "claude", "--root", str(tmp_path)]) == 0
+
+    out = capsys.readouterr().out
+    assert "init --global" in out
+    assert (tmp_path / "loadout" / "config.toml").is_file()

@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import subprocess
+import tomllib
 from pathlib import Path
 
 import pytest
 
 from loadout import scaffold
 from loadout.errors import LoadoutError
-from loadout.scaffold import add_harness, init_project
+from loadout.machine import load_machine_config
+from loadout.project import project_config_path
+from loadout.scaffold import add_harness, init_global, init_project
 
 
 def git_repo(tmp_path: Path) -> Path:
@@ -209,3 +212,101 @@ def test_adding_before_init_is_an_error(tmp_path: Path) -> None:
     root = git_repo(tmp_path)
     with pytest.raises(LoadoutError, match="not found"):
         add_harness(root, "codex")
+
+
+def test_init_global_creates_the_source_and_machine_config(tmp_path: Path) -> None:
+    source_parent = tmp_path / "home"
+    config_path = tmp_path / "cfg" / "loadout" / "config.toml"
+
+    actions = init_global(source_parent, config_path)
+
+    loadout_dir = source_parent / "loadout"
+    assert (loadout_dir / "loadout.toml").is_file()
+    assert (loadout_dir / "permissions.toml").is_file()
+    assert (loadout_dir / "fragments").is_dir()
+    assert (loadout_dir / "fragments" / ".gitkeep").is_file()
+    assert config_path.is_file()
+
+    config = load_machine_config(config_path)
+    assert config is not None
+    assert config.source == loadout_dir.resolve()
+    assert config.profile is None
+    assert any("loadout.toml" in a for a in actions)
+
+
+def test_init_global_manifest_is_parseable_toml(tmp_path: Path) -> None:
+    source_parent = tmp_path / "home"
+    config_path = tmp_path / "cfg" / "loadout" / "config.toml"
+
+    init_global(source_parent, config_path)
+
+    with (source_parent / "loadout" / "loadout.toml").open("rb") as handle:
+        data = tomllib.load(handle)
+    assert data["source"][0] == {"name": "global", "path": "."}
+
+
+def test_init_global_refuses_when_a_machine_config_exists(tmp_path: Path) -> None:
+    source_parent = tmp_path / "home"
+    config_path = tmp_path / "cfg" / "loadout" / "config.toml"
+    init_global(source_parent, config_path)
+
+    with pytest.raises(LoadoutError) as excinfo:
+        init_global(source_parent, config_path)
+
+    message = str(excinfo.value)
+    assert str(config_path) in message
+    assert "--force" in message
+
+
+def test_init_global_force_overwrites(tmp_path: Path) -> None:
+    source_parent = tmp_path / "home"
+    config_path = tmp_path / "cfg" / "loadout" / "config.toml"
+    init_global(source_parent, config_path)
+    original = config_path.read_text(encoding="utf-8")
+
+    actions = init_global(source_parent, config_path, force=True)
+
+    assert config_path.read_text(encoding="utf-8") == original
+    assert any("overwrote" in a and str(config_path) in a for a in actions)
+
+
+def test_init_global_does_not_clobber_an_existing_source_dir(tmp_path: Path) -> None:
+    source_parent = tmp_path / "home"
+    loadout_dir = source_parent / "loadout"
+    loadout_dir.mkdir(parents=True)
+    (loadout_dir / "loadout.toml").write_text(
+        '# hand-written\n[[source]]\nname = "mine"\npath = "."\n', encoding="utf-8"
+    )
+    (loadout_dir / "permissions.toml").write_text("# my rules\n", encoding="utf-8")
+
+    config_path = tmp_path / "cfg" / "loadout" / "config.toml"
+    actions = init_global(source_parent, config_path)
+
+    assert (loadout_dir / "loadout.toml").read_text(encoding="utf-8").startswith("# hand-written")
+    assert (loadout_dir / "permissions.toml").read_text(encoding="utf-8").startswith("# my rules")
+    assert (loadout_dir / "fragments" / ".gitkeep").is_file()
+    assert any("loadout.toml" in a and "already exists" in a for a in actions)
+    assert any("permissions.toml" in a and "already exists" in a for a in actions)
+
+
+def test_init_notes_a_missing_machine_config(tmp_path: Path) -> None:
+    root = git_repo(tmp_path)
+    missing_config = tmp_path / "cfg" / "loadout" / "config.toml"
+    actions = init_project(root, ("claude",), machine_config_path=missing_config)
+    assert any("init --global" in action for action in actions)
+
+
+def test_init_succeeds_without_a_machine_config(tmp_path: Path) -> None:
+    root = git_repo(tmp_path)
+    missing_config = tmp_path / "cfg" / "loadout" / "config.toml"
+    init_project(root, ("claude",), machine_config_path=missing_config)
+    assert project_config_path(root).is_file()
+
+
+def test_init_is_silent_when_a_machine_config_exists(tmp_path: Path) -> None:
+    root = git_repo(tmp_path)
+    config_path = tmp_path / "cfg" / "loadout" / "config.toml"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text('source = "."\n', encoding="utf-8")
+    actions = init_project(root, ("claude",), machine_config_path=config_path)
+    assert not any("init --global" in action for action in actions)

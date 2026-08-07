@@ -5,45 +5,74 @@ import sys
 import traceback
 from pathlib import Path
 
-from .commands import cmd_check, cmd_explain, cmd_harness_add, cmd_init, cmd_sync
+from .commands import cmd_check, cmd_explain, cmd_harness_add, cmd_init, cmd_init_global, cmd_sync
 from .errors import LoadoutError
+from .machine import load_machine_config, machine_config_path
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="loadout")
     subparsers = parser.add_subparsers(dest="command")
 
-    def add_root(sub: argparse.ArgumentParser) -> None:
-        sub.add_argument(
+    def add_root(sub: argparse.ArgumentParser, *, allow_global: bool = False) -> None:
+        target = sub.add_mutually_exclusive_group() if allow_global else sub
+        target.add_argument(
             "--root",
             type=Path,
             default=Path.cwd(),
             help="repository root holding loadout.toml (default: cwd)",
         )
+        if allow_global:
+            target.add_argument(
+                "--global",
+                dest="use_global",
+                action="store_true",
+                help="use this machine's configured global source instead of --root",
+            )
 
     for name, help_text in (
         ("sync", "regenerate every generated file under the repo root"),
         ("check", "exit 1 if any generated file has drifted"),
     ):
         sub = subparsers.add_parser(name, help=help_text)
-        add_root(sub)
+        add_root(sub, allow_global=True)
         sub.add_argument(
             "--profile",
-            default="default",
-            help="active profile to render (default: 'default')",
+            default=None,
+            help="active profile to render (default: 'default', or the machine "
+            "config's profile under --global)",
         )
 
     explain = subparsers.add_parser("explain", help="show where a fragment comes from")
     explain.add_argument("name", help="fragment name, optionally qualified as source/name")
     add_root(explain)
 
-    init = subparsers.add_parser("init", help="scaffold loadout/ for this project")
+    init = subparsers.add_parser(
+        "init", help="scaffold loadout/ for this project, or --global for this machine"
+    )
     init.add_argument(
         "--harness",
         dest="harnesses",
         action="append",
-        required=True,
-        help="harness to generate configuration for (repeatable)",
+        default=None,
+        help="harness to generate configuration for (repeatable); required unless --global",
+    )
+    init.add_argument(
+        "--global",
+        dest="use_global",
+        action="store_true",
+        help="scaffold this machine's global source instead of a project",
+    )
+    init.add_argument(
+        "--source",
+        type=Path,
+        default=None,
+        help="[--global] directory to hold the new global source; required unless stdin is a TTY",
+    )
+    init.add_argument(
+        "--force",
+        action="store_true",
+        help="[--global] overwrite an existing machine config",
     )
     add_root(init)
 
@@ -58,15 +87,31 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _dispatch(args: argparse.Namespace, root: Path) -> int:
+def _resolve_root_and_profile(args: argparse.Namespace) -> tuple[Path, str]:
+    """Precedence for profile: explicit --profile > machine config's profile > 'default'."""
+    if getattr(args, "use_global", False):
+        config_path = machine_config_path()
+        config = load_machine_config(config_path)
+        if config is None:
+            raise LoadoutError(
+                f"no machine config at {config_path}; run `loadout init --global` first"
+            )
+        return config.source, args.profile or config.profile or "default"
+    return args.root.resolve(), args.profile or "default"
+
+
+def _dispatch(args: argparse.Namespace) -> int:
     if args.command == "explain":
-        return cmd_explain(root, args.name)
+        return cmd_explain(args.root.resolve(), args.name)
     if args.command == "init":
-        return cmd_init(root, tuple(args.harnesses))
+        if args.use_global:
+            return cmd_init_global(args.source, force=args.force)
+        return cmd_init(args.root.resolve(), tuple(args.harnesses))
     if args.command == "harness":
-        return cmd_harness_add(root, args.name)
+        return cmd_harness_add(args.root.resolve(), args.name)
+    root, profile = _resolve_root_and_profile(args)
     handler = {"sync": cmd_sync, "check": cmd_check}[args.command]
-    return handler(root, profile=args.profile)
+    return handler(root, profile=profile)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -78,9 +123,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "harness" and args.harness_command != "add":
         parser.print_usage(file=sys.stderr)
         return 2
-    root = args.root.resolve()
+    if args.command == "init":
+        if args.use_global and args.harnesses:
+            parser.error("argument --global: not allowed with argument --harness")
+        if not args.use_global and not args.harnesses:
+            parser.error("the following arguments are required: --harness")
     try:
-        return _dispatch(args, root)
+        return _dispatch(args)
     except LoadoutError as error:
         print(f"loadout: {error}", file=sys.stderr)
         return 3

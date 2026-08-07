@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 
 from .errors import LoadoutError
+from .manifest import MANIFEST_NAME
 from .project import (
     KNOWN_HARNESSES,
     PRESET,
@@ -65,7 +66,9 @@ def _append_gitignore(root: Path, entries: list[str]) -> bool:
     return True
 
 
-def init_project(root: Path, harnesses: tuple[str, ...]) -> list[str]:
+def init_project(
+    root: Path, harnesses: tuple[str, ...], machine_config_path: Path | None = None
+) -> list[str]:
     config = ProjectConfig(harnesses=harnesses)  # validates: non-empty, no duplicates, known
 
     config_path = project_config_path(root)
@@ -115,6 +118,111 @@ def init_project(root: Path, harnesses: tuple[str, ...]) -> list[str]:
     if _append_gitignore(root, entries):
         actions.append(f"added {len(entries)} entries to .gitignore")
 
+    if machine_config_path is not None and not machine_config_path.is_file():
+        actions.append(
+            "note: global scope is not set up on this machine. Run `loadout init --global` "
+            "to set it up, or just use project scope as-is."
+        )
+
+    return actions
+
+
+GLOBAL_MANIFEST_SKELETON = """\
+# loadout's global manifest for this machine — instructions and permission
+# rules shared across every project. Declare at least one
+# [instructions.<agent>] or [permissions.<name>] block below, then run
+# `loadout sync --global`.
+#
+# Fragments for an [instructions.*] target belong under global/fragments/
+# relative to a source's path; permission rules belong under
+# permissions/permissions.toml. Move the files created alongside this
+# manifest into that layout once you have real content.
+
+[[source]]
+name = "global"
+path = "."
+
+# [instructions.claude]
+# output       = "claude/CLAUDE.md"
+# destinations = ["~/.claude/CLAUDE.md"]
+# order        = ["intro"]
+
+# [permissions.claude]
+# output = "claude/settings.json"
+# render = "claude"
+"""
+
+GLOBAL_SOURCE_HEADER = """\
+# This machine's global permission rules, applied across every project that
+# does not override them.
+#
+# Run `loadout sync --global` after editing.
+
+[shell]
+allow = []
+ask = []
+deny = []
+
+[mcp]
+allow = []
+ask = []
+deny = []
+"""
+
+
+def init_global(source_parent: Path, config_path: Path, force: bool = False) -> list[str]:
+    if config_path.exists() and not force:
+        raise LoadoutError(
+            f"{config_path} already exists; this machine is already initialised for "
+            f"global scope. Pass --force to reinitialise it."
+        )
+
+    loadout_dir = source_parent / "loadout"
+    actions: list[str] = []
+
+    if loadout_dir.is_dir():
+        actions.append(f"{loadout_dir} already exists")
+    else:
+        loadout_dir.mkdir(parents=True)
+        actions.append(f"created {loadout_dir}")
+
+    manifest_file = loadout_dir / MANIFEST_NAME
+    if manifest_file.is_file():
+        actions.append(f"{manifest_file} already exists, left untouched")
+    else:
+        manifest_file.write_text(GLOBAL_MANIFEST_SKELETON, encoding="utf-8")
+        actions.append(f"created {manifest_file}")
+
+    permissions_file = loadout_dir / "permissions.toml"
+    if permissions_file.is_file():
+        actions.append(f"{permissions_file} already exists, left untouched")
+    else:
+        permissions_file.write_text(GLOBAL_SOURCE_HEADER, encoding="utf-8")
+        actions.append(f"created {permissions_file}")
+
+    fragments_dir = loadout_dir / "fragments"
+    gitkeep = fragments_dir / ".gitkeep"
+    if fragments_dir.is_dir():
+        if gitkeep.is_file():
+            actions.append(f"{fragments_dir} already exists, left untouched")
+        else:
+            gitkeep.write_text("", encoding="utf-8")
+            actions.append(f"{fragments_dir} already exists; added missing .gitkeep")
+    else:
+        fragments_dir.mkdir()
+        gitkeep.write_text("", encoding="utf-8")
+        actions.append(f"created {fragments_dir}")
+
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    overwriting = config_path.exists()
+    config_path.write_text(f'source = "{loadout_dir.resolve()}"\n', encoding="utf-8")
+    actions.append(f"{'overwrote' if overwriting else 'created'} {config_path}")
+
+    actions.append(
+        f"{manifest_file} declares a source but no targets yet; add an "
+        f"[instructions.<agent>] or [permissions.<name>] block, then run "
+        f"`loadout sync --global`."
+    )
     return actions
 
 
