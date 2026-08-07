@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(just build:*)",
+      "Bash(just changelog:*)",
+      "Bash(just check:*)",
+      "Bash(just clean:*)",
+      "Bash(just cov:*)",
+      "Bash(just demo:*)",
+      "Bash(just docs:*)",
+      "Bash(just docs-build:*)",
+      "Bash(just fmt:*)",
+      "Bash(just hooks:*)",
+      "Bash(just install-local:*)",
+      "Bash(just lint:*)",
+      "Bash(just refresh-local:*)",
+      "Bash(just reset-local:*)",
+      "Bash(just test:*)",
+      "Bash(just test-verbose:*)",
+      "Bash(just typecheck:*)"
+    ],
+    "ask": [],
+    "deny": [
+      "Bash(just release:*)",
+      "Bash(just tag-release:*)",
+      "Bash(just tag-release-major:*)",
+      "Bash(just tag-release-minor:*)",
+      "Bash(just tag-release-patch:*)"
+    ]
+  }
+}

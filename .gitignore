@@ -7,3 +7,8 @@ __pycache__/
 dist/
 .coverage
 htmlcov/
+
+# Golden fixtures mirror harness output paths, some of which a global
+# gitignore excludes (e.g. **/.claude/settings.local.json). Without this,
+# `git add` skips them silently.
+!tests/golden/**

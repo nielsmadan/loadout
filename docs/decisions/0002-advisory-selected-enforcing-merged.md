@@ -26,8 +26,11 @@ how you drop it. An unqualified name that is ambiguous across sources is an erro
 last-source-wins. A name matching nothing is an error, so an upstream rename fails loudly
 instead of silently changing output.
 
-**Enforcing — union with deny-wins.** `deny > ask > allow`, commutative and associative, so a
-rule means the same thing regardless of which source contributed it.
+**Enforcing — union with deny-wins.** `deny > ask > allow`. An entry's final decision — the
+verdict it resolves to — is commutative and associative: it means the same thing regardless of
+which source contributed it or in what order sources are merged. This holds only for the
+decision, not for position: emission order within a category, and last-source-wins conflicts on
+map-shaped fields, follow source order and are not order-independent.
 
 Set-difference on command patterns is never computed. sudoers(5) documents why: `!`-subtraction
 is "generally not effective… a user can trivially circumvent this by copying the desired command
@@ -40,6 +43,8 @@ string is chosen by the caller.
   gets wrong (Docker Compose `!reset`, systemd empty `Key=`, Helm `null`, NixOS #114131).
 - A downstream layer structurally cannot weaken an upstream deny, so `prevent_global_weakening`
   becomes a property of the algebra rather than a validator to maintain.
-- Source order carries no meaning; sources are a set.
+- Source order carries no meaning for the decision each entry resolves to; sources are a set for
+  that purpose. It still governs emission order and map-key conflicts — callers pass a fixed
+  order (committed, then personal).
 - Cost: every fragment must be named explicitly, so manifests are verbose. Accepted
   deliberately — splicing can be added later, but cannot be removed once added.

@@ -1,0 +1,11 @@
+# Managed by aiperm.
+
+[shell]
+allow = ["just build", "just changelog", "just check", "just clean", "just cov", "just demo", "just docs", "just docs-build", "just fmt", "just hooks", "just install-local", "just lint", "just refresh-local", "just reset-local", "just test", "just test-verbose", "just typecheck"]
+ask = []
+deny = ["just release", "just tag-release", "just tag-release-major", "just tag-release-minor", "just tag-release-patch"]
+
+[mcp]
+allow = []
+ask = []
+deny = []

@@ -9,11 +9,15 @@ from typing import Any
 from .composition import render
 from .errors import LoadoutError
 from .manifest import Manifest, PermissionTarget, load_manifest, manifest_path
+from .permissions.merge import merge_rules
 from .permissions.renderers import RENDERERS, TextSpec
 from .permissions.rules import EMPTY_RULES, Rules, parse_rules
+from .project import load_project_config, project_config_path, project_targets
 from .sources import Source
 
 PERMISSIONS_SOURCE = ("permissions", "permissions.toml")
+PROJECT_SOURCE = "permissions.toml"
+PROJECT_LOCAL_SOURCE = "permissions.local.toml"
 
 
 def permissions_source(manifest: Manifest) -> Source:
@@ -97,6 +101,30 @@ def render_all(root: Path) -> dict[Path, str]:
         rules = parse_rules(source.path.joinpath(*PERMISSIONS_SOURCE))
         for target in manifest.permissions:
             outputs[root / str(target.path)] = render_permission_target(target, rules, root)
+    return outputs
+
+
+def render_project(root: Path) -> dict[Path, str]:
+    config = load_project_config(project_config_path(root))
+    project_dir = root / "loadout"
+
+    committed = parse_rules(project_dir / PROJECT_SOURCE)
+    local_path = project_dir / PROJECT_LOCAL_SOURCE
+    tiers = [committed]
+    if local_path.is_file():
+        tiers.append(parse_rules(local_path))
+    rules = merge_rules(*tiers)
+
+    outputs: dict[Path, str] = {}
+    for target in project_targets(config):
+        spec = RENDERERS[target.renderer]
+        if isinstance(spec, TextSpec):
+            outputs[root / str(target.path)] = spec.fn(rules)
+        else:
+            document = spec.fn(rules, {})
+            outputs[root / str(target.path)] = (
+                json.dumps(document, indent=2, ensure_ascii=spec.ensure_ascii) + "\n"
+            )
     return outputs
 
 
