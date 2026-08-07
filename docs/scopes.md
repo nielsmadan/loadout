@@ -101,8 +101,13 @@ Consequences:
   permission scope in its own TUI — but the system loadout ported never wrote one and its
   storage path is unknown, so `PRESET["antigravity"]` is empty and the harness generates
   nothing. Accepting the name without generating anything is deliberate, not an oversight.
-- Absorbing per-project-type template config, so template rules land in the project *source*
-  rather than being written into harness outputs by a separate tool.
+- Per-project-type templates (`aiconf`). A template carries four artifact types — permissions,
+  instructions, skills, MCP — so it is a dimension rather than a milestone: build the
+  mechanism once (a project declares a template; its content resolves from the global source
+  and merges as the lowest tier) alongside the first artifact type that can use it, and let
+  each later type plug into it. All four are in scope per
+  [0007](decisions/0007-loadout-owns-all-agent-configuration.md).
+- Skills and MCP server definitions, today owned by separate generators.
 - Build-time ceilings (`neverallow`) for the wrapper-command bypass described in
   [0005](decisions/0005-a-deny-cannot-carry-exceptions.md). The unresolved part is that a
   ceiling has to reason about command *shape* — "does this command take another command as
