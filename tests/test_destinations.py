@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from loadout.emit import render_global
+from loadout.emit import render_global, write_all
 from loadout.errors import LoadoutError
 
 MANIFEST_WITH_DESTINATIONS = """
@@ -138,3 +138,155 @@ def test_permission_target_destination_receives_the_same_bytes_as_the_output(
     root = build(tmp_path, MANIFEST_WITH_DESTINATIONS)
     rendered = render_global(root)
     assert rendered[root / "out/perm.rules"] == rendered[Path.home() / ".codex/perm.rules"]
+
+
+NO_OUTPUT_INSTRUCTION = """
+[[source]]
+name = "test"
+path = "."
+
+[instructions.solo]
+destinations = ["~/.claude/CLAUDE.md"]
+order = ["plain"]
+"""
+
+NO_OUTPUT_PERMISSION = """
+[[source]]
+name = "test"
+path = "."
+
+[permissions.codex]
+destinations = ["~/.codex/perm.rules"]
+render       = "codex"
+"""
+
+NO_OUTPUT_NO_DESTINATIONS = """
+[[source]]
+name = "test"
+path = "."
+
+[instructions.solo]
+order = ["plain"]
+"""
+
+MIXED_OUTPUT_AND_NO_OUTPUT = """
+[[source]]
+name = "test"
+path = "."
+
+[instructions.solo]
+output       = "out/CLAUDE.md"
+destinations = ["~/.claude/CLAUDE.md"]
+order = ["plain"]
+
+[instructions.shared]
+destinations = ["~/.codex/AGENTS.md"]
+order = ["plain"]
+
+[permissions.codex]
+output = "out/perm.rules"
+render = "codex"
+
+[permissions.pi]
+destinations = ["~/.pi/perm.json"]
+render       = "pi"
+"""
+
+COLLISION_DESTINATION_VS_OTHERS_OUTPUT = """
+[[source]]
+name = "test"
+path = "."
+
+[instructions.owner]
+output = "out/owner.md"
+order = ["plain"]
+
+[instructions.raider]
+destinations = ["{owner_output}"]
+order = ["plain"]
+"""
+
+COLLIDING_DESTINATIONS_NO_OUTPUT = """
+[[source]]
+name = "test"
+path = "."
+
+[instructions.one]
+destinations = ["~/.shared-dest.md"]
+order = ["plain"]
+
+[instructions.two]
+output       = "out/two.md"
+destinations = ["~/.shared-dest.md"]
+order = ["plain"]
+"""
+
+
+def test_instruction_target_without_output_renders_only_to_its_destination(
+    tmp_path: Path,
+) -> None:
+    root = build(tmp_path, NO_OUTPUT_INSTRUCTION)
+    rendered = render_global(root)
+    dest = Path.home() / ".claude/CLAUDE.md"
+    assert dest in rendered
+    assert rendered[dest] != ""
+    # No output path was declared, so nothing lands in the repo root at all.
+    assert not any(root in path.parents for path in rendered)
+
+
+def test_permission_target_without_output_renders_only_to_its_destination(
+    tmp_path: Path,
+) -> None:
+    root = build(tmp_path, NO_OUTPUT_PERMISSION)
+    rendered = render_global(root)
+    dest = Path.home() / ".codex/perm.rules"
+    assert dest in rendered
+    assert rendered[dest] != ""
+    assert not any(root in path.parents for path in rendered)
+
+
+def test_instruction_target_without_output_writes_no_file_at_the_repo_root(
+    tmp_path: Path,
+) -> None:
+    root = build(tmp_path, NO_OUTPUT_INSTRUCTION)
+    write_all(root)
+    assert not (root / "out").exists()
+    assert (Path.home() / ".claude/CLAUDE.md").is_file()
+
+
+def test_target_without_output_or_destinations_is_rejected(tmp_path: Path) -> None:
+    root = build(tmp_path, NO_OUTPUT_NO_DESTINATIONS)
+    with pytest.raises(LoadoutError, match=r"instructions\.solo"):
+        render_global(root)
+
+
+def test_mixed_manifest_renders_targets_with_and_without_output_together(
+    tmp_path: Path,
+) -> None:
+    root = build(tmp_path, MIXED_OUTPUT_AND_NO_OUTPUT)
+    rendered = render_global(root)
+
+    # Only the two targets that declared `output` land under the repo root.
+    under_root = {p for p in rendered if root in p.parents}
+    assert under_root == {root / "out/CLAUDE.md", root / "out/perm.rules"}
+
+    assert (Path.home() / ".claude/CLAUDE.md") in rendered
+    assert (Path.home() / ".codex/AGENTS.md") in rendered
+    assert (Path.home() / ".pi/perm.json") in rendered
+
+
+def test_destination_collides_with_anothers_output_even_without_its_own_output(
+    tmp_path: Path,
+) -> None:
+    owner_output = (tmp_path / "out" / "owner.md").as_posix()
+    root = build(tmp_path, COLLISION_DESTINATION_VS_OTHERS_OUTPUT.format(owner_output=owner_output))
+    with pytest.raises(LoadoutError, match="destination") as caught:
+        render_global(root)
+    assert "out/owner.md" in str(caught.value)
+
+
+def test_two_destinations_collide_when_one_target_has_no_output(tmp_path: Path) -> None:
+    root = build(tmp_path, COLLIDING_DESTINATIONS_NO_OUTPUT)
+    with pytest.raises(LoadoutError, match="destination") as caught:
+        render_global(root)
+    assert "out/two.md" in str(caught.value)

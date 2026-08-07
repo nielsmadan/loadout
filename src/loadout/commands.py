@@ -7,7 +7,7 @@ from pathlib import Path
 from .emit import check_all, write_all
 from .errors import LoadoutError
 from .machine import machine_config_path
-from .manifest import MANIFEST_NAME, load_manifest, manifest_path
+from .manifest import MANIFEST_NAME, InstructionTarget, load_manifest, manifest_path
 from .project import PROJECT_CONFIG_NAME, PROJECT_DIR, project_config_path
 from .resolve import resolve_fragment
 from .scaffold import add_harness, init_global, init_project
@@ -89,6 +89,11 @@ def cmd_explain(root: Path, name: str) -> int:
     manifest = load_manifest(root_manifest)
     item = resolve_fragment(manifest.sources, name)
 
+    def label(target: InstructionTarget) -> str:
+        if target.path is not None:
+            return str(target.path)
+        return f"destinations={', '.join(str(d) for d in target.destinations)}"
+
     users: list[str] = []
     unresolved: list[str] = []
     for target in manifest.targets:
@@ -98,9 +103,9 @@ def cmd_explain(root: Path, name: str) -> int:
                 if resolve_fragment(manifest.sources, fragment).path == item.path:
                     matched = True
             except LoadoutError:
-                unresolved.append(f"{target.path}: {fragment}")
+                unresolved.append(f"{label(target)}: {fragment}")
         if matched:
-            users.append(str(target.path))
+            users.append(label(target))
 
     print(f"{item.name}")
     print(f"  source: {item.source}")

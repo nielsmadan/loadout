@@ -131,8 +131,10 @@ def render_permission_target(target: PermissionTarget, rules: Rules, root: Path)
             f"{', '.join(overlap)}; preserve may only carry foreign keys"
         )
     # Foreign keys are appended AFTER rendering so the owned key keeps its
-    # position ahead of them.
-    document.update(_preserved(root / str(target.path), target.preserve))
+    # position ahead of them. A target with no in-repo output has nothing to
+    # read foreign keys back from.
+    preserved = _preserved(root / str(target.path), target.preserve) if target.path else {}
+    document.update(preserved)
     return _serialize_json(document, spec)
 
 
@@ -153,6 +155,14 @@ def _claim(path: Path, owner: str, claimed: dict[Path, str]) -> None:
     claimed[path] = owner
 
 
+def _owner_label(target: InstructionTarget | PermissionTarget) -> str:
+    if target.path is not None:
+        return str(target.path)
+    if isinstance(target, PermissionTarget):
+        return f"permissions.{target.name}"
+    return f"instructions[{', '.join(target.fragments)}]"
+
+
 def _expand(
     target: InstructionTarget | PermissionTarget,
     content: str,
@@ -160,14 +170,17 @@ def _expand(
     outputs: dict[Path, str],
     claimed: dict[Path, str],
 ) -> None:
+    owner = _owner_label(target)
     # own_output is claimed too, not just tracked in outputs, so a later target's
     # destination that happens to name this exact path collides like any other.
-    own_output = root / str(target.path)
-    _claim(own_output, str(target.path), claimed)
-    outputs[own_output] = content
+    # A target with no `output` contributes no output path — only destinations.
+    if target.path is not None:
+        own_output = root / str(target.path)
+        _claim(own_output, owner, claimed)
+        outputs[own_output] = content
     for destination in target.destinations:
         resolved = Path(str(destination)).expanduser()
-        _claim(resolved, str(target.path), claimed)
+        _claim(resolved, owner, claimed)
         outputs[resolved] = content
 
 

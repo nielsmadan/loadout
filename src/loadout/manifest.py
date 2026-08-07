@@ -16,9 +16,12 @@ def manifest_path(root: Path) -> Path:
 
 @dataclass(frozen=True)
 class InstructionTarget:
-    """One generated instruction file, its fragment order, and where it deploys."""
+    """One generated instruction file, its fragment order, and where it deploys.
 
-    path: PurePosixPath
+    `path` is the in-repo output location; it is None when the target only
+    deploys to `destinations` (see `_output_path`)."""
+
+    path: PurePosixPath | None
     fragments: tuple[str, ...]
     destinations: tuple[PurePosixPath, ...]
     profile: str | None = None
@@ -26,10 +29,13 @@ class InstructionTarget:
 
 @dataclass(frozen=True)
 class PermissionTarget:
-    """One generated permission file, its renderer, and its base document."""
+    """One generated permission file, its renderer, and its base document.
+
+    `path` is the in-repo output location; it is None when the target only
+    deploys to `destinations` (see `_output_path`)."""
 
     name: str
-    path: PurePosixPath
+    path: PurePosixPath | None
     renderer: str
     base: PurePosixPath | None = None
     preserve: tuple[str, ...] = ()
@@ -72,7 +78,19 @@ def _destinations(value: object, label: str) -> tuple[PurePosixPath, ...]:
     return tuple(result)
 
 
-def _output_path(output: object, label: str, claimed: set[PurePosixPath]) -> PurePosixPath:
+def _output_path(
+    output: object,
+    label: str,
+    claimed: set[PurePosixPath],
+    has_destinations: bool,
+) -> PurePosixPath | None:
+    if output is None:
+        if not has_destinations:
+            raise LoadoutError(
+                f"{label}: must declare 'output', a non-empty 'destinations', or both — "
+                f"otherwise it generates nothing"
+            )
+        return None
     if not isinstance(output, str):
         raise LoadoutError(f"{label}: output must be a string")
     out = PurePosixPath(output)
@@ -97,9 +115,9 @@ def _parse_instructions(
         if not isinstance(block, dict):
             raise LoadoutError(f"instructions.{agent} must be a table")
         label = f"instructions.{agent}"
-        out = _output_path(_require(block, "output", label), label, claimed)
-        order = _str_list(_require(block, "order", agent), label, "order")
         destinations = _destinations(block.get("destinations", []), label)
+        out = _output_path(block.get("output"), label, claimed, bool(destinations))
+        order = _str_list(_require(block, "order", agent), label, "order")
         profile = block.get("profile")
         if profile is not None and not isinstance(profile, str):
             raise LoadoutError(f"instructions.{agent}: profile must be a string")
@@ -125,7 +143,8 @@ def _parse_permissions(
         label = f"permissions.{name}"
         if not isinstance(block, dict):
             raise LoadoutError(f"{label} must be a table")
-        out = _output_path(_require(block, "output", label), label, claimed)
+        destinations = _destinations(block.get("destinations", []), label)
+        out = _output_path(block.get("output"), label, claimed, bool(destinations))
 
         renderer = block.get("render")
         if not isinstance(renderer, str) or not renderer:
@@ -155,8 +174,6 @@ def _parse_permissions(
         profile = block.get("profile")
         if profile is not None and not isinstance(profile, str):
             raise LoadoutError(f"{label}: profile must be a string")
-
-        destinations = _destinations(block.get("destinations", []), label)
 
         permissions.append(
             PermissionTarget(

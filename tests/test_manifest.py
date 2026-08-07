@@ -104,7 +104,7 @@ destinations = ["~/.claude/CLAUDE.md"]
     assert "order" in str(excinfo.value)
 
 
-def test_target_without_output_is_an_error(tmp_path: Path) -> None:
+def test_target_without_output_but_with_destinations_parses(tmp_path: Path) -> None:
     body = """
 [[source]]
 name = "ac"
@@ -114,9 +114,24 @@ path = "."
 destinations = ["~/.claude/CLAUDE.md"]
 order        = ["intro-claude"]
 """
+    manifest = load_manifest(write_manifest(tmp_path, body))
+    target = manifest.targets[0]
+    assert target.path is None
+    assert target.destinations == (PurePosixPath("~/.claude/CLAUDE.md"),)
+
+
+def test_target_without_output_or_destinations_is_an_error(tmp_path: Path) -> None:
+    body = """
+[[source]]
+name = "ac"
+path = "."
+
+[instructions.claude]
+order = ["intro-claude"]
+"""
     with pytest.raises(LoadoutError) as excinfo:
         load_manifest(write_manifest(tmp_path, body))
-    assert "output" in str(excinfo.value)
+    assert "instructions.claude" in str(excinfo.value)
 
 
 def test_no_sources_is_an_error(tmp_path: Path) -> None:

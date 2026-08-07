@@ -41,6 +41,23 @@ def test_permission_target_fields(tmp_path: Path) -> None:
     )
 
 
+def test_output_is_optional_when_destinations_is_non_empty(tmp_path: Path) -> None:
+    path = write(
+        tmp_path,
+        '[permissions.pi]\nrender = "pi"\ndestinations = ["~/.pi/permissions.json"]\n',
+    )
+    target = load_manifest(path).permissions[0]
+    assert target.path is None
+    assert target.destinations == (PurePosixPath("~/.pi/permissions.json"),)
+
+
+def test_neither_output_nor_destinations_is_rejected(tmp_path: Path) -> None:
+    path = write(tmp_path, '[permissions.pi]\nrender = "pi"\n')
+    with pytest.raises(LoadoutError) as excinfo:
+        load_manifest(path)
+    assert "permissions.pi" in str(excinfo.value)
+
+
 def test_base_and_preserve_default_to_empty(tmp_path: Path) -> None:
     path = write(
         tmp_path,
