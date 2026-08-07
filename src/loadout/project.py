@@ -59,15 +59,18 @@ def load_project_config(path: Path) -> ProjectConfig:
 class ProjectTarget:
     path: PurePosixPath
     renderer: str
+    preserve_foreign: bool = False
 
 
 PRESET: dict[str, tuple[ProjectTarget, ...]] = {
     "claude": (
-        ProjectTarget(PurePosixPath(".claude/settings.json"), "claude-project"),
+        ProjectTarget(
+            PurePosixPath(".claude/settings.json"), "claude-project", preserve_foreign=True
+        ),
         ProjectTarget(PurePosixPath(".aiconf/mcp-permissions.json"), "claude-mcp"),
     ),
     "codex": (ProjectTarget(PurePosixPath(".codex/rules/aiconf.rules"), "codex-project"),),
-    "opencode": (ProjectTarget(PurePosixPath("opencode.json"), "opencode"),),
+    "opencode": (ProjectTarget(PurePosixPath("opencode.json"), "opencode", preserve_foreign=True),),
     "pi": (
         ProjectTarget(
             PurePosixPath(".pi/extensions/pi-permission-system/config.json"),

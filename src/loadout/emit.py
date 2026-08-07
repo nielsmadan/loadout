@@ -55,6 +55,24 @@ def _load_base(path: Path) -> dict[str, Any]:
     return document
 
 
+def _load_existing(path: Path) -> dict[str, Any]:
+    """Foreign keys in a harness's own config file, carried forward.
+
+    Only keys loadout does not generate survive: every renderer assigns its owned
+    key unconditionally, so the owned subtree is always regenerated and can never
+    feed back. See ADR 0001's amendment.
+    """
+    if not path.is_file():
+        return {}
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        raise LoadoutError(f"{path}: invalid JSON: {error}") from error
+    if not isinstance(document, dict):
+        raise LoadoutError(f"{path}: existing output must be a JSON object")
+    return document
+
+
 def _preserved(path: Path, keys: tuple[str, ...]) -> dict[str, Any]:
     if not keys or not path.is_file():
         return {}
@@ -121,7 +139,10 @@ def render_project(root: Path) -> dict[Path, str]:
         if isinstance(spec, TextSpec):
             outputs[root / str(target.path)] = spec.fn(rules)
         else:
-            document = spec.fn(rules, {})
+            base: dict[str, Any] = {}
+            if target.preserve_foreign:
+                base = _load_existing(root / str(target.path))
+            document = spec.fn(rules, base)
             outputs[root / str(target.path)] = (
                 json.dumps(document, indent=2, ensure_ascii=spec.ensure_ascii) + "\n"
             )

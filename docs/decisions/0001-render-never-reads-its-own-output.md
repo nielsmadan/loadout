@@ -45,3 +45,24 @@ cannot corrupt them, and a `preserve` entry may not name a key the renderer prod
   manifest gives them.
 - Cost: hand-maintained content is duplicated between the interactive and autonomous Claude
   bases. Guarded by a test pinning their intended difference.
+
+## Amendment (2026-08-06, milestone 4)
+
+Project scope adds a second bounded exception, reached by a different route than `preserve`.
+
+Two of the five project outputs — `opencode.json` and `.claude/settings.json` — are a harness's
+*own* multi-purpose config file, not a loadout-only artifact. `opencode.json` can carry a
+top-level `$schema`; `.claude/settings.json` can carry `enabledPlugins`, `sandbox` and `deny`
+alongside `permissions`. The ported system (`manage.py:489`) read the existing file and
+preserved everything it did not own; rendering these from `{}` would silently delete that
+content.
+
+For targets with `preserve_foreign=True`, `render_project` reads the existing output file and
+passes it as the renderer's `base`, instead of `{}`. This is not a violation of the decision
+above: every renderer still assigns its owned subtree unconditionally on every render, so that
+subtree is always regenerated and can never feed back — only keys loadout does not generate
+survive. It is also what preserves key position: `copy.deepcopy(base)` followed by an in-place
+assignment of the owned key does not move a foreign key that came first, whereas appending
+preserved keys after rendering would.
+
+The other three project outputs are loadout-only and keep rendering from `{}`.

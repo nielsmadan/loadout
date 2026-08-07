@@ -98,3 +98,65 @@ def test_missing_committed_source_is_an_error(project: Path) -> None:
     (project / "loadout" / "permissions.toml").unlink()
     with pytest.raises(LoadoutError, match="not found"):
         render_project(project)
+
+
+def test_foreign_top_level_keys_survive_a_render(project: Path) -> None:
+    out = project / "opencode.json"
+    out.write_text(
+        json.dumps(
+            {"$schema": "https://opencode.ai/config.json", "permission": {"bash": {}}}, indent=2
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    doc = json.loads(
+        {str(p.relative_to(project)): c for p, c in render_project(project).items()}[
+            "opencode.json"
+        ]
+    )
+    assert doc["$schema"] == "https://opencode.ai/config.json"
+
+
+def test_a_foreign_key_keeps_its_position_ahead_of_the_owned_one(project: Path) -> None:
+    out = project / "opencode.json"
+    out.write_text(
+        json.dumps({"$schema": "x", "permission": {"bash": {}}}, indent=2) + "\n", encoding="utf-8"
+    )
+    doc = json.loads(
+        {str(p.relative_to(project)): c for p, c in render_project(project).items()}[
+            "opencode.json"
+        ]
+    )
+    assert list(doc) == ["$schema", "permission"]
+
+
+def test_the_owned_key_is_regenerated_not_carried_forward(project: Path) -> None:
+    """The owned subtree must never feed back — ADR 0001."""
+    out = project / "opencode.json"
+    out.write_text(
+        json.dumps({"permission": {"bash": {"STALE": "allow"}}}, indent=2) + "\n", encoding="utf-8"
+    )
+    doc = json.loads(
+        {str(p.relative_to(project)): c for p, c in render_project(project).items()}[
+            "opencode.json"
+        ]
+    )
+    assert "STALE" not in doc["permission"]["bash"]
+
+
+def test_loadout_only_outputs_do_not_preserve_foreign_keys(project: Path) -> None:
+    out = project / ".pi" / "extensions" / "pi-permission-system" / "config.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps({"INJECTED": 1, "permission": {}}, indent=2) + "\n", encoding="utf-8")
+    doc = json.loads(
+        {str(p.relative_to(project)): c for p, c in render_project(project).items()}[
+            ".pi/extensions/pi-permission-system/config.json"
+        ]
+    )
+    assert "INJECTED" not in doc
+
+
+def test_absent_output_still_renders(project: Path) -> None:
+    (project / "opencode.json").unlink(missing_ok=True)
+    rendered = {str(p.relative_to(project)): c for p, c in render_project(project).items()}
+    assert json.loads(rendered["opencode.json"])["permission"]["bash"]
