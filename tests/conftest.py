@@ -23,15 +23,13 @@ def fake_home(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.Monk
 
 @pytest.fixture
 def root(tmp_path: Path) -> Path:
-    fragments = tmp_path / "global" / "fragments"
-    fragments.mkdir(parents=True)
-    for src in (GOLDEN / "global" / "fragments").glob("*.md"):
-        (fragments / src.name).write_text(src.read_text())
+    instructions = tmp_path / "instructions"
+    instructions.mkdir(parents=True)
+    for src in (GOLDEN / "instructions").glob("*.md"):
+        (instructions / src.name).write_text(src.read_text())
 
-    permissions = tmp_path / "permissions"
-    permissions.mkdir(parents=True)
-    (permissions / "permissions.toml").write_text(
-        (GOLDEN / "permissions" / "permissions.toml").read_text(encoding="utf-8"),
+    (tmp_path / "permissions.toml").write_text(
+        (GOLDEN / "permissions.toml").read_text(encoding="utf-8"),
         encoding="utf-8",
     )
     for base in (

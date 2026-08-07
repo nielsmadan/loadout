@@ -65,13 +65,11 @@ order = ["plain"]
 
 def build(tmp_path: Path, manifest_body: str) -> Path:
     (tmp_path / "loadout.toml").write_text(manifest_body, encoding="utf-8")
-    fragments = tmp_path / "global" / "fragments"
+    fragments = tmp_path / "instructions"
     fragments.mkdir(parents=True, exist_ok=True)
     (fragments / "plain.md").write_text("plain fragment\n", encoding="utf-8")
 
-    permissions = tmp_path / "permissions"
-    permissions.mkdir(parents=True, exist_ok=True)
-    (permissions / "permissions.toml").write_text("[shell]\nallow = []\n", encoding="utf-8")
+    (tmp_path / "permissions.toml").write_text("[shell]\nallow = []\n", encoding="utf-8")
     return tmp_path
 
 

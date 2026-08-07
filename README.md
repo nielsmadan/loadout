@@ -45,7 +45,7 @@ order        = ["intro-claude", "web-fetching", "git-policy.autonomous"]
 (Both declare a `profile` here because they share a `destination` — see Profiles below. A
 target that doesn't share its destination with anyone else doesn't need one.)
 
-Each `[[source]]` is a named directory containing a `global/fragments/*.md` tree that fragments
+Each `[[source]]` is a named directory containing an `instructions/*.md` tree that fragments
 are pulled from. Each `[instructions.<agent>]` table declares one generated file: `output` is
 where it is written, relative to the repo root (it may not be absolute, empty, or escape the
 root with `..`), `order` is the ordered list of fragment names composed into it, and
@@ -82,7 +82,7 @@ machine's **active profile**:
 ### `[permissions.<name>]`
 
 A source that declares `use = ["permissions"]` (or omits `use` entirely) may also provide a
-`permissions/permissions.toml` rule file. Each `[permissions.<name>]` table renders that rule
+`permissions.toml` rule file. Each `[permissions.<name>]` table renders that rule
 file through one named renderer into one generated file:
 
 ```toml

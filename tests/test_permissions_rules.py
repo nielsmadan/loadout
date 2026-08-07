@@ -16,7 +16,7 @@ from loadout.permissions.rules import (
 )
 
 GOLDEN = Path(__file__).parent / "golden"
-SOURCE = GOLDEN / "permissions" / "permissions.toml"
+SOURCE = GOLDEN / "permissions.toml"
 
 
 def test_dedupe_preserves_order() -> None:

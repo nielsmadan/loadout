@@ -70,7 +70,7 @@ profile = "normal"
 
 def build(tmp_path: Path, manifest_body: str) -> Path:
     (tmp_path / "loadout.toml").write_text(manifest_body, encoding="utf-8")
-    fragments = tmp_path / "global" / "fragments"
+    fragments = tmp_path / "instructions"
     fragments.mkdir(parents=True, exist_ok=True)
     for name in ("plain", "normal", "auto"):
         (fragments / f"{name}.md").write_text(f"{name} fragment\n", encoding="utf-8")
@@ -102,9 +102,7 @@ def test_unprofiled_target_renders_under_a_non_default_profile(tmp_path: Path) -
 def test_unprofiled_permission_target_renders_under_a_non_default_profile(tmp_path: Path) -> None:
     """Guards rule 3 for permission targets specifically, not just instructions."""
     root = build(tmp_path, UNPROFILED_PERMISSION_MANIFEST)
-    permissions_dir = root / "permissions"
-    permissions_dir.mkdir(parents=True, exist_ok=True)
-    (permissions_dir / "permissions.toml").write_text("[shell]\nallow = []\n", encoding="utf-8")
+    (root / "permissions.toml").write_text("[shell]\nallow = []\n", encoding="utf-8")
     assert paths(render_global(root, profile="autonomous")) == {"out/auto.md", "out/perm.rules"}
 
 

@@ -223,8 +223,8 @@ def test_init_global_creates_the_source_and_machine_config(tmp_path: Path) -> No
     loadout_dir = source_parent / "loadout"
     assert (loadout_dir / "loadout.toml").is_file()
     assert (loadout_dir / "permissions.toml").is_file()
-    assert (loadout_dir / "fragments").is_dir()
-    assert (loadout_dir / "fragments" / ".gitkeep").is_file()
+    assert (loadout_dir / "instructions").is_dir()
+    assert (loadout_dir / "instructions" / ".gitkeep").is_file()
     assert config_path.is_file()
 
     config = load_machine_config(config_path)
@@ -284,7 +284,7 @@ def test_init_global_does_not_clobber_an_existing_source_dir(tmp_path: Path) -> 
 
     assert (loadout_dir / "loadout.toml").read_text(encoding="utf-8").startswith("# hand-written")
     assert (loadout_dir / "permissions.toml").read_text(encoding="utf-8").startswith("# my rules")
-    assert (loadout_dir / "fragments" / ".gitkeep").is_file()
+    assert (loadout_dir / "instructions" / ".gitkeep").is_file()
     assert any("loadout.toml" in a and "already exists" in a for a in actions)
     assert any("permissions.toml" in a and "already exists" in a for a in actions)
 

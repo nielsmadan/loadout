@@ -102,7 +102,7 @@ def test_missing_manifest_returns_3(tmp_path: Path, capsys) -> None:
 
 
 def test_missing_fragment_file_returns_3(root: Path, capsys) -> None:
-    (root / "global" / "fragments" / "secrets.md").unlink()
+    (root / "instructions" / "secrets.md").unlink()
     assert loadout.main(["sync", "--root", str(root)]) == 3
     assert "secrets" in capsys.readouterr().err
 
@@ -176,7 +176,7 @@ def test_sync_with_unknown_fragment_returns_3(root: Path, capsys) -> None:
 
 
 def test_sync_with_ambiguous_fragment_returns_3(root: Path, capsys) -> None:
-    second = root / "second" / "global" / "fragments"
+    second = root / "second" / "instructions"
     second.mkdir(parents=True)
     (second / "web-fetching.md").write_text("duplicate\n", encoding="utf-8")
     manifest = root / "loadout.toml"

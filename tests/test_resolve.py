@@ -13,7 +13,7 @@ def make_source(
     tmp_path: Path, name: str, fragments: list[str], use: frozenset[str] | None = None
 ) -> Source:
     root = tmp_path / name
-    frag_dir = root / "global" / "fragments"
+    frag_dir = root / "instructions"
     frag_dir.mkdir(parents=True, exist_ok=True)
     for fragment in fragments:
         (frag_dir / f"{fragment}.md").write_text(f"body of {name}/{fragment}\n", encoding="utf-8")
@@ -110,7 +110,7 @@ def test_symlinked_fragment_file_is_rejected_with_a_reason_naming_the_escape(
     # problem.
     (tmp_path / "outside.md").write_text("secret\n", encoding="utf-8")
     company = make_source(tmp_path, "company", ["security"])
-    (company.path / "global" / "fragments" / "spliced.md").symlink_to(tmp_path / "outside.md")
+    (company.path / "instructions" / "spliced.md").symlink_to(tmp_path / "outside.md")
     with pytest.raises(LoadoutError) as excinfo:
         resolve_fragment((company,), "spliced")
     message = str(excinfo.value)

@@ -133,9 +133,9 @@ GLOBAL_MANIFEST_SKELETON = """\
 # [instructions.<agent>] or [permissions.<name>] block below, then run
 # `loadout sync --global`.
 #
-# Fragments for an [instructions.*] target belong under global/fragments/
+# Fragments for an [instructions.*] target belong under instructions/
 # relative to a source's path; permission rules belong under
-# permissions/permissions.toml. Move the files created alongside this
+# permissions.toml. Move the files created alongside this
 # manifest into that layout once you have real content.
 
 [[source]]
@@ -200,18 +200,18 @@ def init_global(source_parent: Path, config_path: Path, force: bool = False) -> 
         permissions_file.write_text(GLOBAL_SOURCE_HEADER, encoding="utf-8")
         actions.append(f"created {permissions_file}")
 
-    fragments_dir = loadout_dir / "fragments"
-    gitkeep = fragments_dir / ".gitkeep"
-    if fragments_dir.is_dir():
+    instructions_dir = loadout_dir / "instructions"
+    gitkeep = instructions_dir / ".gitkeep"
+    if instructions_dir.is_dir():
         if gitkeep.is_file():
-            actions.append(f"{fragments_dir} already exists, left untouched")
+            actions.append(f"{instructions_dir} already exists, left untouched")
         else:
             gitkeep.write_text("", encoding="utf-8")
-            actions.append(f"{fragments_dir} already exists; added missing .gitkeep")
+            actions.append(f"{instructions_dir} already exists; added missing .gitkeep")
     else:
-        fragments_dir.mkdir()
+        instructions_dir.mkdir()
         gitkeep.write_text("", encoding="utf-8")
-        actions.append(f"created {fragments_dir}")
+        actions.append(f"created {instructions_dir}")
 
     config_path.parent.mkdir(parents=True, exist_ok=True)
     overwriting = config_path.exists()

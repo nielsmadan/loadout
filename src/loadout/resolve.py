@@ -19,7 +19,7 @@ class ResolvedItem:
 
 @lru_cache
 def _fragments_root(source: Source) -> Path:
-    return (source.path / "global" / "fragments").resolve()
+    return (source.path / "instructions").resolve()
 
 
 def _fragment_path(source: Source, name: str) -> Path:

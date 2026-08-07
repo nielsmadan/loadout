@@ -11,7 +11,7 @@ from loadout.sources import ARTIFACT_TYPES, Source
 
 
 def make_source(tmp_path: Path, name: str, fragments: dict[str, str]) -> Source:
-    frag_dir = tmp_path / name / "global" / "fragments"
+    frag_dir = tmp_path / name / "instructions"
     frag_dir.mkdir(parents=True, exist_ok=True)
     for fragment, body in fragments.items():
         (frag_dir / f"{fragment}.md").write_text(body, encoding="utf-8")

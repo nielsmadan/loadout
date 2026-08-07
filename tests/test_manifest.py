@@ -20,7 +20,7 @@ order        = ["intro-claude", "web-fetching"]
 
 
 def write_manifest(tmp_path: Path, body: str) -> Path:
-    (tmp_path / "global" / "fragments").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "instructions").mkdir(parents=True, exist_ok=True)
     path = tmp_path / "loadout.toml"
     path.write_text(body, encoding="utf-8")
     return path

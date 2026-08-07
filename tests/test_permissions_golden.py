@@ -105,10 +105,8 @@ def test_preserve_naming_a_generated_key_is_rejected(root: Path) -> None:
 def test_two_sources_offering_permissions_is_an_error(root: Path, tmp_path: Path) -> None:
     """Acceptance criterion 5 — merging is milestone 4."""
     second = tmp_path / "second"
-    (second / "permissions").mkdir(parents=True)
-    (second / "permissions" / "permissions.toml").write_text(
-        "[shell]\nallow = []\n", encoding="utf-8"
-    )
+    second.mkdir(parents=True)
+    (second / "permissions.toml").write_text("[shell]\nallow = []\n", encoding="utf-8")
     text = (root / "loadout.toml").read_text(encoding="utf-8")
     text = text.replace(
         '[[source]]\nname = "ac"\npath = "."\n',

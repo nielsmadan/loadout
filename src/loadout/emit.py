@@ -28,7 +28,7 @@ from .project import (
 )
 from .sources import Source
 
-PERMISSIONS_SOURCE = ("permissions", "permissions.toml")
+PERMISSIONS_SOURCE = ("permissions.toml",)
 PROJECT_SOURCE = "permissions.toml"
 PROJECT_LOCAL_SOURCE = "permissions.local.toml"
 
@@ -41,13 +41,12 @@ def permissions_source(manifest: Manifest) -> Source:
     ]
     if not offering:
         raise LoadoutError(
-            "no source provides permissions/permissions.toml, but the manifest "
-            "declares [permissions.*] targets"
+            "no source provides permissions.toml, but the manifest declares [permissions.*] targets"
         )
     if len(offering) > 1:
         names = ", ".join(sorted(s.name for s in offering))
         raise LoadoutError(
-            f"more than one source provides permissions/permissions.toml ({names}); "
+            f"more than one source provides permissions.toml ({names}); "
             f"merging permissions across sources is not implemented"
         )
     return offering[0]
