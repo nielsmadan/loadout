@@ -86,6 +86,13 @@ preserve = ["mcp"]
 anything you put directly into a generated output is silently discarded at the next
 `loadout sync`.
 
+## Project scope
+
+`loadout` generates `.claude/settings.json` at project scope and leaves
+`.claude/settings.local.json` alone — Claude Code writes to that file itself when you choose
+"don't ask again", and Claude merges both at startup. A generator that owned it would delete
+those grants on every sync.
+
 ## Exit codes
 
 | Code | Meaning |

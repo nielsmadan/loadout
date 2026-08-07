@@ -63,7 +63,7 @@ class ProjectTarget:
 
 PRESET: dict[str, tuple[ProjectTarget, ...]] = {
     "claude": (
-        ProjectTarget(PurePosixPath(".claude/settings.local.json"), "claude-project"),
+        ProjectTarget(PurePosixPath(".claude/settings.json"), "claude-project"),
         ProjectTarget(PurePosixPath(".aiconf/mcp-permissions.json"), "claude-mcp"),
     ),
     "codex": (ProjectTarget(PurePosixPath(".codex/rules/aiconf.rules"), "codex-project"),),
