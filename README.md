@@ -25,8 +25,10 @@ Generated files look like ordinary files, so they get hand-edited — and the ed
 on the next `sync`, silently. Before writing, `sync` compares each file against every output
 loadout itself could have produced: rendered from the committed source and from the working
 tree, under every declared profile. A file matching none of them was written by something
-else, so `sync` names it, changes nothing, and exits 1. Move the edit into the source, or pass
-`--force` to discard it.
+else, so `sync` names it, changes nothing, and exits 1. It prints a diff alongside the name —
+the `-` lines are the ones that exist only on disk, so a permission a harness granted itself at
+runtime is reported verbatim rather than silently discarded. Move the edit into the source, or
+pass `--force` to discard it.
 
 Comparison is by parsed document for JSON targets, not by bytes, so a harness re-serialising
 its own config in a different key order does not read as an edit.
@@ -69,9 +71,11 @@ Each `[[source]]` is a named directory containing an `instructions/*.md` tree th
 are pulled from. Each `[instructions.<agent>]` table declares one generated file: `output` is
 where it is written, relative to the repo root (it may not be absolute, empty, or escape the
 root with `..`), `order` is the ordered list of fragment names composed into it, and
-`destinations` is where else the same rendered bytes are written — real paths on the machine,
-such as `~/.claude/CLAUDE.md`, with `~` expanded to the user's home directory. `sync` and `check`
-write and diff every destination exactly like the in-repo `output`, so both stay byte-identical.
+`destinations` is where else the document is written — real paths on the machine, such as
+`~/.claude/CLAUDE.md`, with `~` expanded to the user's home directory. `sync` and `check` write
+and diff every destination exactly like the in-repo `output`. Each output path is rendered
+separately, so the bytes are identical everywhere unless `preserve` (below) carries different
+foreign keys into different files.
 `[permissions.<name>]` targets accept `destinations` the same way. At least one source is
 required, and at least one `[instructions.<agent>]` or `[permissions.<name>]` target must be
 declared; no two targets, of either kind, may share an `output` path, and — among the targets
@@ -127,9 +131,12 @@ preserve = ["mcp"]
   the output untouched. A `base` must be an existing input file; it may never point at a path
   that is itself a generated `output` (that would reintroduce reading a renderer's own prior
   output as its template, which this design deliberately avoids).
-- `preserve` — optional list of top-level keys to copy forward from the target's *existing*
-  output file, for keys owned by some other generator (for example, `mcp` in `opencode.json`,
+- `preserve` — optional list of top-level keys to copy forward out of the file about to be
+  overwritten, for keys owned by some other generator (for example, `mcp` in `opencode.json`,
   owned by the MCP sync). A key named in `preserve` must not also be one the renderer generates.
+  Each output path is read and rendered on its own, so a target writing several files carries
+  each one's foreign keys back into that same file — a co-owner that writes only the machine
+  destination keeps its key there, and needs no staged copy in the repo to write into.
 - `rules` — optional; the only accepted value today is `[]`, meaning "select nothing" — the
   target renders with all rule categories empty. Named rule-set selection is not implemented yet.
 

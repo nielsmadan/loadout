@@ -18,6 +18,8 @@ from .project import PROJECT_CONFIG_NAME, PROJECT_DIR, project_config_path
 from .resolve import resolve_fragment
 from .scaffold import add_harness, init_global, init_project
 
+_DIFF_LIMIT = 40
+
 
 def cmd_init(root: Path, harnesses: tuple[str, ...]) -> int:
     for action in init_project(root, harnesses, machine_config_path=machine_config_path()):
@@ -105,7 +107,7 @@ def _committed_variants(root: Path, profiles: Iterable[str]) -> dict[Path, set[s
         return _render_variants(Path(tmp_dir), profiles, rebase_to=root)
 
 
-def _modified_outside_loadout(root: Path, profile: str) -> list[Path] | None:
+def _modified_outside_loadout(root: Path, profile: str) -> list[tuple[Path, str, str]] | None:
     """Files matching no output loadout itself could have written — None if unknowable.
 
     The accept set spans the committed source, the working source, and every declared
@@ -120,14 +122,27 @@ def _modified_outside_loadout(root: Path, profile: str) -> list[Path] | None:
     for path, forms in _render_variants(root, profiles, rebase_to=root).items():
         acceptable.setdefault(path, set()).update(forms)
 
-    modified: list[Path] = []
-    for path in render_all(root, profile):
+    modified: list[tuple[Path, str, str]] = []
+    for path, expected in render_all(root, profile).items():
         forms = acceptable.get(path, set())
         if not path.is_file() or not forms:
             continue
-        if _normalise(path, path.read_text(encoding="utf-8")) not in forms:
-            modified.append(path)
+        actual = path.read_text(encoding="utf-8")
+        if _normalise(path, actual) not in forms:
+            modified.append((path, actual, expected))
     return modified
+
+
+def _diff(rel: str, actual: str, expected: str, context: int) -> list[str]:
+    return list(
+        difflib.unified_diff(
+            actual.splitlines(keepends=True),
+            expected.splitlines(keepends=True),
+            fromfile=f"{rel} (on disk)",
+            tofile=f"{rel} (expected)",
+            n=context,
+        )
+    )
 
 
 def cmd_sync(root: Path, profile: str = "default", force: bool = False) -> int:
@@ -136,13 +151,18 @@ def cmd_sync(root: Path, profile: str = "default", force: bool = False) -> int:
         if modified is None:
             print("note: no committed baseline — skipping the modified-file check", file=sys.stderr)
         elif modified:
-            for path in modified:
-                print(
-                    f"WARNING: {_display(path, root)} was modified outside loadout", file=sys.stderr
-                )
+            for path, actual, expected in modified:
+                rel = _display(path, root)
+                print(f"WARNING: {rel} was modified outside loadout", file=sys.stderr)
+                # Tight context: on a 16k settings.json the one runtime-added entry
+                # should be readable without scrolling past the whole document.
+                lines = _diff(rel, actual, expected, context=1)
+                sys.stderr.writelines(lines[:_DIFF_LIMIT])
+                if len(lines) > _DIFF_LIMIT:
+                    print(f"    ... {len(lines) - _DIFF_LIMIT} more diff line(s)", file=sys.stderr)
             print(
-                "\nSync aborted — move these edits into the source, "
-                "or run `loadout sync --force` to discard them.",
+                "\nSync aborted — the '-' lines above exist only on disk and would be lost. "
+                "Move them into the source, or run `loadout sync --force` to discard them.",
                 file=sys.stderr,
             )
             return 1
@@ -160,14 +180,7 @@ def cmd_check(root: Path, profile: str = "default") -> int:
     for path, actual, expected in drift:
         rel = _display(path, root)
         print(f"DRIFT: {rel}", file=sys.stderr)
-        sys.stderr.writelines(
-            difflib.unified_diff(
-                actual.splitlines(keepends=True),
-                expected.splitlines(keepends=True),
-                fromfile=f"{rel} (on disk)",
-                tofile=f"{rel} (expected)",
-            )
-        )
+        sys.stderr.writelines(_diff(rel, actual, expected, context=3))
     print(
         f"\n{len(drift)} generated file(s) out of sync — run `loadout sync`.",
         file=sys.stderr,

@@ -63,6 +63,32 @@ def test_hand_edited_output_blocks_sync(root: Path, capsys) -> None:
     assert output.read_text().endswith("hand-written line\n")
 
 
+def test_the_warning_names_what_would_be_lost(root: Path, capsys) -> None:
+    """A harness granting itself a permission at runtime must be named, not just counted."""
+    _adopt(root)
+    settings = root / "claude" / "settings.json"
+    granted = '      "Bash(terraform apply:*)",\n'
+    settings.write_text(
+        settings.read_text().replace('    "allow": [\n', '    "allow": [\n' + granted, 1),
+        encoding="utf-8",
+    )
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--root", str(root)]) == 1
+    err = capsys.readouterr().err
+    assert '-      "Bash(terraform apply:*)",' in err
+    assert "would be lost" in err
+
+
+def test_a_wholesale_rewrite_reports_how_much_it_truncated(root: Path, capsys) -> None:
+    _adopt(root)
+    (root / "global" / "AGENTS.md").write_text("nothing like the original\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--root", str(root)]) == 1
+    assert "more diff line(s)" in capsys.readouterr().err
+
+
 def test_force_overwrites_a_file_modified_outside_loadout(root: Path, capsys) -> None:
     _adopt(root)
     output = root / "global" / "AGENTS.md"

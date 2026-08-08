@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -63,6 +64,35 @@ order = ["plain"]
 """
 
 
+CO_OWNED_DESTINATIONS = """
+[[source]]
+name = "test"
+path = "."
+
+[permissions.opencode]
+output       = "out/opencode.json"
+destinations = ["~/.config/opencode/opencode.json", "~/.opencode-alt.json"]
+render       = "opencode"
+preserve     = ["mcp"]
+"""
+
+DESTINATION_ONLY_CO_OWNED = """
+[[source]]
+name = "test"
+path = "."
+
+[permissions.opencode]
+destinations = ["~/.config/opencode/opencode.json"]
+render       = "opencode"
+preserve     = ["mcp"]
+"""
+
+
+def seed_mcp(path: Path, server: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"mcp": {server: {}}}, indent=2) + "\n", encoding="utf-8")
+
+
 def build(tmp_path: Path, manifest_body: str) -> Path:
     (tmp_path / "loadout.toml").write_text(manifest_body, encoding="utf-8")
     fragments = tmp_path / "instructions"
@@ -85,6 +115,34 @@ def test_one_output_fans_out_to_every_destination(tmp_path: Path) -> None:
     expected = rendered[root / "out/AGENTS.md"]
     for name in (".codex/AGENTS.md", ".gemini/GEMINI.md", ".pi/agent/AGENTS.md"):
         assert rendered[Path.home() / name] == expected
+
+
+def test_each_destination_preserves_its_own_foreign_keys(tmp_path: Path) -> None:
+    """Rendering is per output path, so a co-owner writing one destination cannot
+    have its key stamped onto the others."""
+    root = build(tmp_path, CO_OWNED_DESTINATIONS)
+    seed_mcp(root / "out" / "opencode.json", "in_repo")
+    seed_mcp(Path.home() / ".config/opencode/opencode.json", "on_machine")
+    seed_mcp(Path.home() / ".opencode-alt.json", "elsewhere")
+
+    rendered = render_global(root)
+    assert json.loads(rendered[root / "out/opencode.json"])["mcp"] == {"in_repo": {}}
+    assert json.loads(rendered[Path.home() / ".config/opencode/opencode.json"])["mcp"] == {
+        "on_machine": {}
+    }
+    assert json.loads(rendered[Path.home() / ".opencode-alt.json"])["mcp"] == {"elsewhere": {}}
+
+
+def test_a_destination_only_target_preserves_from_the_destination(tmp_path: Path) -> None:
+    """With no in-repo output there is no staged copy to read foreign keys back from,
+    so the destination itself has to be the source of them."""
+    root = build(tmp_path, DESTINATION_ONLY_CO_OWNED)
+    destination = Path.home() / ".config/opencode/opencode.json"
+    seed_mcp(destination, "on_machine")
+
+    document = json.loads(render_global(root)[destination])
+    assert document["mcp"] == {"on_machine": {}}
+    assert list(document)[-1] == "mcp"
 
 
 def test_two_targets_sharing_a_destination_collide(tmp_path: Path) -> None:

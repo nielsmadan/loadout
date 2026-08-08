@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -115,7 +117,13 @@ def _serialize_json(document: dict[str, Any], spec: JsonSpec) -> str:
     return json.dumps(document, indent=2, ensure_ascii=spec.ensure_ascii) + "\n"
 
 
-def render_permission_target(target: PermissionTarget, rules: Rules, root: Path) -> str:
+def render_permission_target(target: PermissionTarget, rules: Rules, root: Path, path: Path) -> str:
+    """Render this target for one output path.
+
+    `path` is the file about to be overwritten, and the only file `preserve` reads.
+    Rendering per path rather than once per target is what lets two destinations of
+    one target hold different foreign keys — each co-owner writes its own copy.
+    """
     spec = _resolve_renderer(target.renderer, f"permissions.{target.name}")
     effective = rules if target.select_all else EMPTY_RULES
 
@@ -131,10 +139,8 @@ def render_permission_target(target: PermissionTarget, rules: Rules, root: Path)
             f"{', '.join(overlap)}; preserve may only carry foreign keys"
         )
     # Foreign keys are appended AFTER rendering so the owned key keeps its
-    # position ahead of them. A target with no in-repo output has nothing to
-    # read foreign keys back from.
-    preserved = _preserved(root / str(target.path), target.preserve) if target.path else {}
-    document.update(preserved)
+    # position ahead of them.
+    document.update(_preserved(path, target.preserve))
     return _serialize_json(document, spec)
 
 
@@ -163,9 +169,19 @@ def _owner_label(target: InstructionTarget | PermissionTarget) -> str:
     return f"instructions[{', '.join(target.fragments)}]"
 
 
+def _fixed(content: str) -> Callable[[Path], str]:
+    """An instruction document reads nothing from the file it overwrites, so it is
+    rendered once and every path it expands to gets the same bytes."""
+
+    def render_for(_path: Path) -> str:
+        return content
+
+    return render_for
+
+
 def _expand(
     target: InstructionTarget | PermissionTarget,
-    content: str,
+    render_for: Callable[[Path], str],
     root: Path,
     outputs: dict[Path, str],
     claimed: dict[Path, str],
@@ -174,14 +190,13 @@ def _expand(
     # own_output is claimed too, not just tracked in outputs, so a later target's
     # destination that happens to name this exact path collides like any other.
     # A target with no `output` contributes no output path — only destinations.
+    paths: list[Path] = []
     if target.path is not None:
-        own_output = root / str(target.path)
-        _claim(own_output, owner, claimed)
-        outputs[own_output] = content
-    for destination in target.destinations:
-        resolved = Path(str(destination)).expanduser()
-        _claim(resolved, owner, claimed)
-        outputs[resolved] = content
+        paths.append(root / str(target.path))
+    paths.extend(Path(str(destination)).expanduser() for destination in target.destinations)
+    for path in paths:
+        _claim(path, owner, claimed)
+        outputs[path] = render_for(path)
 
 
 def declared_profiles(root: Path) -> set[str]:
@@ -204,14 +219,15 @@ def render_global(root: Path, profile: str = "default") -> dict[Path, str]:
     claimed: dict[Path, str] = {}
     for t in manifest.targets:
         if _selected(t, profile):
-            _expand(t, render(t, manifest), root, outputs, claimed)
+            _expand(t, _fixed(render(t, manifest)), root, outputs, claimed)
 
     selected_permissions = [t for t in manifest.permissions if _selected(t, profile)]
     if selected_permissions:
         source = permissions_source(manifest)
         rules = parse_rules(source.path.joinpath(*PERMISSIONS_SOURCE))
         for target in selected_permissions:
-            _expand(target, render_permission_target(target, rules, root), root, outputs, claimed)
+            render_for = partial(render_permission_target, target, rules, root)
+            _expand(target, render_for, root, outputs, claimed)
     return outputs
 
 
