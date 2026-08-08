@@ -32,37 +32,38 @@ def test_no_args_prints_usage_and_returns_2(capsys) -> None:
 
 def test_sync_writes_files_and_returns_0(root: Path, capsys) -> None:
     assert loadout.main(["sync", "--root", str(root)]) == 0
-    assert (root / "global" / "AGENTS.md").is_file()
-    assert "AGENTS.md" in capsys.readouterr().out
+    assert (root / "out" / "shared.md").is_file()
+    assert "shared.md" in capsys.readouterr().out
 
 
-def test_sync_default_profile_omits_the_autonomous_target(root: Path, capsys) -> None:
+def test_sync_default_profile_omits_the_variant_target(root: Path, fake_home: Path) -> None:
     assert loadout.main(["sync", "--root", str(root)]) == 0
-    assert (root / "claude" / "CLAUDE.md").is_file()
-    assert not (root / "claude" / "CLAUDE.autonomous.md").is_file()
+    assert (root / "out" / "primary.md").is_file()
+    written = (fake_home / ".harness-a" / "PRIMARY.md").read_text(encoding="utf-8")
+    assert "The default variant." in written
 
 
-def test_sync_profile_autonomous_selects_the_autonomous_target(root: Path, capsys) -> None:
-    assert loadout.main(["sync", "--root", str(root), "--profile", "autonomous"]) == 0
-    assert (root / "claude" / "CLAUDE.autonomous.md").is_file()
-    # instructions.claude declares profile = "default", so it is mutually exclusive
-    # with instructions.claude-autonomous — both share the ~/.claude/CLAUDE.md
-    # destination, and only one of them may be selected at a time.
-    assert not (root / "claude" / "CLAUDE.md").is_file()
-    # The real-world case profile filtering exists for: on a machine running the
-    # autonomous profile, every target that does NOT declare a profile must still
-    # render. Codex, OpenCode, Pi and Antigravity have no autonomous variant and
-    # must never disappear when the active profile changes.
+def test_sync_profile_variant_selects_the_variant_target(root: Path, fake_home: Path) -> None:
+    assert loadout.main(["sync", "--root", str(root), "--profile", "variant"]) == 0
+    written = (fake_home / ".harness-a" / "PRIMARY.md").read_text(encoding="utf-8")
+    assert "The variant." in written
+    # instructions.primary declares profile = "default", so it is mutually exclusive
+    # with instructions.primary-variant — both name ~/.harness-a/PRIMARY.md, and only
+    # one of them may be selected at a time.
+    assert not (root / "out" / "primary.md").is_file()
+    # The real-world case profile filtering exists for: on a machine running a
+    # non-default profile, every target that does NOT declare one must still render
+    # and must never disappear when the active profile changes.
     unprofiled_outputs = (
-        "global/AGENTS.md",
-        "antigravity/settings.json",
-        "claude/settings.json",
-        "claude/settings.autonomous.json",
-        "claude/mcp-permissions.json",
-        "codex/rules/permissions.rules",
-        "codex/mcp-permissions.toml",
-        "opencode/opencode.json",
-        "pi/permissions.json",
+        "out/shared.md",
+        "perm/antigravity.json",
+        "perm/claude.json",
+        "perm/claude-empty.json",
+        "perm/claude-mcp.json",
+        "perm/codex.rules",
+        "perm/codex-mcp.toml",
+        "perm/opencode.json",
+        "perm/pi.json",
     )
     for output in unprofiled_outputs:
         assert (root / output).is_file(), output
@@ -75,7 +76,7 @@ def test_check_returns_0_when_clean(root: Path) -> None:
 
 def test_check_returns_1_and_diffs_on_drift(root: Path, capsys) -> None:
     loadout.main(["sync", "--root", str(root)])
-    (root / "global" / "AGENTS.md").write_text("tampered\n")
+    (root / "out" / "shared.md").write_text("tampered\n")
     assert loadout.main(["check", "--root", str(root)]) == 1
     err = capsys.readouterr().err
     assert "DRIFT" in err
@@ -83,17 +84,16 @@ def test_check_returns_1_and_diffs_on_drift(root: Path, capsys) -> None:
 
 
 def test_check_drift_depends_on_the_active_profile(root: Path, capsys) -> None:
-    """sync --root under the default profile never writes the autonomous-only target,
-    so check must be clean under 'default' but report drift once --profile autonomous
-    puts that target back in the render set."""
+    """Syncing under 'default' leaves the shared destination holding the default
+    document, so check is clean under 'default' and reports drift under 'variant',
+    which expects the other document at that same path."""
     assert loadout.main(["sync", "--root", str(root)]) == 0
-    assert not (root / "claude" / "CLAUDE.autonomous.md").exists()
     assert loadout.main(["check", "--root", str(root)]) == 0
     capsys.readouterr()
-    assert loadout.main(["check", "--root", str(root), "--profile", "autonomous"]) == 1
+    assert loadout.main(["check", "--root", str(root), "--profile", "variant"]) == 1
     err = capsys.readouterr().err
     assert "DRIFT" in err
-    assert "claude/CLAUDE.autonomous.md" in err
+    assert "PRIMARY.md" in err
 
 
 def test_missing_manifest_returns_3(tmp_path: Path, capsys) -> None:
@@ -102,9 +102,9 @@ def test_missing_manifest_returns_3(tmp_path: Path, capsys) -> None:
 
 
 def test_missing_fragment_file_returns_3(root: Path, capsys) -> None:
-    (root / "instructions" / "secrets.md").unlink()
+    (root / "instructions" / "shared.md").unlink()
     assert loadout.main(["sync", "--root", str(root)]) == 3
-    assert "secrets" in capsys.readouterr().err
+    assert "shared" in capsys.readouterr().err
 
 
 def test_unexpected_exception_returns_4_with_traceback(root: Path, monkeypatch, capsys) -> None:
@@ -128,35 +128,36 @@ def test_loadout_error_still_returns_3(root: Path, monkeypatch, capsys) -> None:
 
 
 def test_explain_reports_the_source_and_path(root: Path, capsys) -> None:
-    assert loadout.main(["explain", "web-fetching", "--root", str(root)]) == 0
+    assert loadout.main(["explain", "shared", "--root", str(root)]) == 0
     out = capsys.readouterr().out
-    assert "web-fetching" in out
-    assert "source: ac" in out
+    assert "shared" in out
+    assert "source: test" in out
 
 
 def test_explain_lists_targets_that_use_the_fragment(root: Path, capsys) -> None:
-    assert loadout.main(["explain", "git-policy", "--root", str(root)]) == 0
+    assert loadout.main(["explain", "policy", "--root", str(root)]) == 0
     out = capsys.readouterr().out
-    assert "claude/CLAUDE.md" in out
-    assert "claude/CLAUDE.autonomous.md" not in out
+    assert "out/primary.md" in out
+    # instructions.primary-variant composes policy.variant, not policy
+    assert "PRIMARY.md" not in out
 
 
 def test_explain_survives_an_unrelated_unresolvable_fragment(root: Path, capsys) -> None:
     manifest = root / "loadout.toml"
     manifest.write_text(
-        manifest.read_text(encoding="utf-8").replace('"working-style"', '"no-such-fragment"', 1),
+        manifest.read_text(encoding="utf-8").replace('"closing"', '"no-such-fragment"', 1),
         encoding="utf-8",
     )
-    assert loadout.main(["explain", "git-policy", "--root", str(root)]) == 0
+    assert loadout.main(["explain", "policy", "--root", str(root)]) == 0
     captured = capsys.readouterr()
     assert "used by:" in captured.out
     assert "no-such-fragment" in captured.err
 
 
 def test_explain_finds_users_when_queried_by_qualified_name(root: Path, capsys) -> None:
-    assert loadout.main(["explain", "ac/git-policy", "--root", str(root)]) == 0
+    assert loadout.main(["explain", "test/policy", "--root", str(root)]) == 0
     out = capsys.readouterr().out
-    assert "claude/CLAUDE.md" in out
+    assert "out/primary.md" in out
     assert "no target lists it" not in out
 
 
@@ -168,7 +169,7 @@ def test_explain_on_unknown_name_returns_3(root: Path, capsys) -> None:
 def test_sync_with_unknown_fragment_returns_3(root: Path, capsys) -> None:
     manifest = root / "loadout.toml"
     manifest.write_text(
-        manifest.read_text(encoding="utf-8").replace('"intro-claude"', '"no-such-fragment"'),
+        manifest.read_text(encoding="utf-8").replace('"intro"', '"no-such-fragment"'),
         encoding="utf-8",
     )
     assert loadout.main(["sync", "--root", str(root)]) == 3
@@ -178,26 +179,26 @@ def test_sync_with_unknown_fragment_returns_3(root: Path, capsys) -> None:
 def test_sync_with_ambiguous_fragment_returns_3(root: Path, capsys) -> None:
     second = root / "second" / "instructions"
     second.mkdir(parents=True)
-    (second / "web-fetching.md").write_text("duplicate\n", encoding="utf-8")
+    (second / "shared.md").write_text("duplicate\n", encoding="utf-8")
     manifest = root / "loadout.toml"
     manifest.write_text(
         manifest.read_text(encoding="utf-8").replace(
-            '[[source]]\nname = "ac"\npath = "."',
-            '[[source]]\nname = "ac"\npath = "."\n\n[[source]]\nname = "second"\npath = "second"',
+            '[[source]]\nname = "test"\npath = "."',
+            '[[source]]\nname = "test"\npath = "."\n\n[[source]]\nname = "second"\npath = "second"',
         ),
         encoding="utf-8",
     )
     assert loadout.main(["sync", "--root", str(root)]) == 3
     err = capsys.readouterr().err
-    assert "ac/web-fetching" in err
-    assert "second/web-fetching" in err
+    assert "test/shared" in err
+    assert "second/shared" in err
 
 
 def test_source_as_a_plain_array_returns_3_not_4(root: Path, capsys) -> None:
     manifest = root / "loadout.toml"
     manifest.write_text(
         manifest.read_text(encoding="utf-8").replace(
-            '[[source]]\nname = "ac"\npath = "."', 'source = ["a", "b"]'
+            '[[source]]\nname = "test"\npath = "."', 'source = ["a", "b"]'
         ),
         encoding="utf-8",
     )
@@ -213,7 +214,7 @@ def test_absolute_output_returns_3_and_writes_nothing_outside_root(
     manifest = root / "loadout.toml"
     manifest.write_text(
         manifest.read_text(encoding="utf-8").replace(
-            'output       = "claude/CLAUDE.md"', f'output       = "{escape_target}"'
+            'output       = "out/primary.md"', f'output       = "{escape_target}"'
         ),
         encoding="utf-8",
     )
@@ -225,7 +226,7 @@ def test_empty_output_returns_3_not_4(root: Path, capsys) -> None:
     manifest = root / "loadout.toml"
     manifest.write_text(
         manifest.read_text(encoding="utf-8").replace(
-            'output       = "claude/CLAUDE.md"', 'output       = ""'
+            'output       = "out/primary.md"', 'output       = ""'
         ),
         encoding="utf-8",
     )
@@ -241,7 +242,7 @@ def test_output_escaping_the_root_returns_3_and_writes_nothing_outside_root(
     manifest = root / "loadout.toml"
     manifest.write_text(
         manifest.read_text(encoding="utf-8").replace(
-            'output       = "claude/CLAUDE.md"', 'output       = "../escaped.md"'
+            'output       = "out/primary.md"', 'output       = "../escaped.md"'
         ),
         encoding="utf-8",
     )
@@ -253,8 +254,8 @@ def test_zero_targets_of_either_kind_returns_3_not_0(root: Path, capsys) -> None
     manifest = root / "loadout.toml"
     manifest.write_text(
         manifest.read_text(encoding="utf-8")
-        .replace("[instructions.claude]", "[instruction.claude]")
-        .replace("[instructions.claude-autonomous]", "[instruction.claude-autonomous]")
+        .replace("[instructions.primary]", "[instruction.primary]")
+        .replace("[instructions.primary-variant]", "[instruction.primary-variant]")
         .replace("[instructions.shared]", "[instruction.shared]")
         .replace("[permissions.", "[permission."),
         encoding="utf-8",
@@ -268,12 +269,12 @@ def test_duplicate_output_across_targets_returns_3_not_0(root: Path, capsys) -> 
     manifest = root / "loadout.toml"
     manifest.write_text(
         manifest.read_text(encoding="utf-8").replace(
-            'output       = "claude/CLAUDE.autonomous.md"', 'output       = "claude/CLAUDE.md"'
+            'output       = "out/shared.md"', 'output       = "out/primary.md"'
         ),
         encoding="utf-8",
     )
     assert loadout.main(["sync", "--root", str(root)]) == 3
-    assert "claude/CLAUDE.md" in capsys.readouterr().err
+    assert "out/primary.md" in capsys.readouterr().err
 
 
 def test_init_sync_check_round_trips_for_a_project_only_repo(tmp_path: Path, capsys) -> None:
@@ -364,38 +365,42 @@ def test_global_uses_the_configured_source(root: Path, tmp_path, monkeypatch) ->
     _write_machine_config(tmp_path / "xdg", root)
 
     assert loadout.main(["sync", "--global"]) == 0
-    assert (root / "global" / "AGENTS.md").is_file()
+    assert (root / "out" / "shared.md").is_file()
 
 
-def test_global_applies_the_configured_profile(root: Path, tmp_path, monkeypatch) -> None:
+def test_global_applies_the_configured_profile(
+    root: Path, tmp_path, monkeypatch, fake_home: Path
+) -> None:
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
-    _write_machine_config(tmp_path / "xdg", root, profile="autonomous")
+    _write_machine_config(tmp_path / "xdg", root, profile="variant")
 
     assert loadout.main(["sync", "--global"]) == 0
-    assert (root / "claude" / "CLAUDE.autonomous.md").is_file()
-    assert not (root / "claude" / "CLAUDE.md").is_file()
+    assert "The variant." in (fake_home / ".harness-a" / "PRIMARY.md").read_text(encoding="utf-8")
+    assert not (root / "out" / "primary.md").is_file()
 
 
 def test_global_explicit_profile_overrides_the_machine_config(
-    root: Path, tmp_path, monkeypatch
+    root: Path, tmp_path, monkeypatch, fake_home: Path
 ) -> None:
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
-    _write_machine_config(tmp_path / "xdg", root, profile="autonomous")
+    _write_machine_config(tmp_path / "xdg", root, profile="variant")
 
     assert loadout.main(["sync", "--global", "--profile", "default"]) == 0
-    assert (root / "claude" / "CLAUDE.md").is_file()
-    assert not (root / "claude" / "CLAUDE.autonomous.md").is_file()
+    assert (root / "out" / "primary.md").is_file()
+    written = (fake_home / ".harness-a" / "PRIMARY.md").read_text(encoding="utf-8")
+    assert "The default variant." in written
 
 
 def test_global_with_no_configured_profile_falls_back_to_default(
-    root: Path, tmp_path, monkeypatch
+    root: Path, tmp_path, monkeypatch, fake_home: Path
 ) -> None:
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     _write_machine_config(tmp_path / "xdg", root)
 
     assert loadout.main(["sync", "--global"]) == 0
-    assert (root / "claude" / "CLAUDE.md").is_file()
-    assert not (root / "claude" / "CLAUDE.autonomous.md").is_file()
+    assert (root / "out" / "primary.md").is_file()
+    written = (fake_home / ".harness-a" / "PRIMARY.md").read_text(encoding="utf-8")
+    assert "The default variant." in written
 
 
 def test_sync_succeeds_under_a_non_utf8_locale(root: Path, monkeypatch) -> None:
@@ -413,7 +418,7 @@ def test_sync_succeeds_under_a_non_utf8_locale(root: Path, monkeypatch) -> None:
         check=False,
     )
     assert result.returncode == 0, result.stderr
-    assert (root / "global" / "AGENTS.md").read_text(encoding="utf-8")
+    assert (root / "out" / "shared.md").read_text(encoding="utf-8")
 
 
 class _NoTTY:

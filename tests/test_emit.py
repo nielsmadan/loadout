@@ -50,11 +50,11 @@ def test_atomic_write_preserves_a_symlink(tmp_path: Path) -> None:
 
 def test_write_all_creates_every_target(root: Path) -> None:
     # 14, not 11: instructions.claude-autonomous declares profile = "autonomous"
-    # in the golden manifest, so it is excluded under the default (no) profile,
+    # in the fixture manifest, so it is excluded under the default (no) profile,
     # leaving 10 in-repo outputs plus the 4 destinations those 10 fan out to
     # (1 for claude/CLAUDE.md, 3 for global/AGENTS.md).
     written = write_all(root)
-    assert len(written) == 14
+    assert len(written) == 13
     for path in written:
         assert path.is_file()
 
@@ -66,7 +66,7 @@ def test_check_all_is_clean_right_after_write(root: Path) -> None:
 
 def test_check_all_reports_a_modified_file(root: Path) -> None:
     write_all(root)
-    victim = root / "global" / "AGENTS.md"
+    victim = root / "out" / "shared.md"
     victim.write_text("tampered\n")
     drift = check_all(root)
     assert [p for p, _, _ in drift] == [victim]
@@ -74,7 +74,7 @@ def test_check_all_reports_a_modified_file(root: Path) -> None:
 
 def test_check_all_reports_a_missing_file_as_empty_actual(root: Path) -> None:
     write_all(root)
-    (root / "global" / "AGENTS.md").unlink()
+    (root / "out" / "shared.md").unlink()
     drift = check_all(root)
     assert len(drift) == 1
     _, actual, expected = drift[0]

@@ -9,8 +9,7 @@ from loadout.emit import render_all, render_project
 from loadout.errors import LoadoutError
 from loadout.project import PRESET, ProjectTarget
 
-GOLDEN = Path(__file__).parent / "golden" / "project"
-EXPECTED = GOLDEN / "expected"
+EXPECTED = Path(__file__).parent / "fixtures" / "expected" / "project"
 
 OUTPUTS = (
     ".claude/settings.json",
@@ -21,22 +20,7 @@ OUTPUTS = (
 )
 
 
-@pytest.fixture
-def project(tmp_path: Path) -> Path:
-    d = tmp_path / "loadout"
-    d.mkdir(parents=True)
-    (d / "config.toml").write_text(
-        'harnesses = ["claude", "codex", "opencode", "pi"]\n', encoding="utf-8"
-    )
-    (d / "permissions.toml").write_text(
-        (GOLDEN / "source" / "permissions.toml").read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
-    (d / "permissions.local.toml").write_text("", encoding="utf-8")
-    return tmp_path
-
-
-def test_every_project_output_matches_its_frozen_golden(project: Path) -> None:
+def test_every_project_output_matches_the_expected_output(project: Path) -> None:
     rendered = {str(p.relative_to(project)): c for p, c in render_project(project).items()}
     for name in OUTPUTS:
         assert rendered[name] == (EXPECTED / name).read_text(encoding="utf-8"), name
@@ -73,11 +57,15 @@ def test_personal_deny_beats_committed_allow(project: Path) -> None:
 
 
 def test_missing_personal_tier_is_not_an_error(project: Path) -> None:
+    with_tier = json.loads(render_project(project)[project / ".claude/settings.json"])
     (project / "loadout" / "permissions.local.toml").unlink()
-    rendered = {str(p.relative_to(project)): c for p, c in render_project(project).items()}
-    assert rendered[".claude/settings.json"] == (EXPECTED / ".claude/settings.json").read_text(
-        encoding="utf-8"
-    )
+    without_tier = json.loads(render_project(project)[project / ".claude/settings.json"])
+
+    assert "Bash(kappa only-here:*)" in with_tier["permissions"]["allow"]
+    assert "Bash(kappa only-here:*)" not in without_tier["permissions"]["allow"]
+    # The committed tier's allow is only overridden while the personal deny is present.
+    assert "Bash(zeta:*)" in without_tier["permissions"]["allow"]
+    assert "Bash(zeta:*)" in with_tier["permissions"]["deny"]
 
 
 def test_claude_runtime_settings_file_is_not_a_loadout_output(project: Path) -> None:
@@ -218,7 +206,7 @@ def test_render_all_unions_both_scopes_when_both_manifests_exist(root: Path, pro
     # render_all also returns destination paths under ~; this test only cares
     # about in-repo outputs, so drop anything not rooted under root.
     rendered = {str(p.relative_to(root)) for p in render_all(root) if root in p.parents}
-    assert "global/AGENTS.md" in rendered  # global-only output
+    assert "out/shared.md" in rendered  # global-only output
     assert ".claude/settings.json" in rendered  # project-only output
     assert "opencode.json" in rendered  # project-only output
 
@@ -230,7 +218,7 @@ def test_render_all_rejects_a_path_collision_between_scopes(root: Path, project:
     manifest = root / "loadout.toml"
     manifest.write_text(
         manifest.read_text(encoding="utf-8").replace(
-            'output   = "opencode/opencode.json"', 'output   = "opencode.json"'
+            'output   = "perm/opencode.json"', 'output   = "opencode.json"'
         ),
         encoding="utf-8",
     )

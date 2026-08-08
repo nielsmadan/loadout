@@ -48,25 +48,25 @@ def test_first_sync_warns_before_taking_over_another_writer_s_file(root: Path, c
     """
     _commit_source(root)
     assert loadout.main(["sync", "--root", str(root)]) == 1
-    assert "opencode/opencode.json was modified outside loadout" in capsys.readouterr().err
+    assert "perm/opencode.json was modified outside loadout" in capsys.readouterr().err
 
 
 def test_hand_edited_output_blocks_sync(root: Path, capsys) -> None:
     _adopt(root)
-    output = root / "global" / "AGENTS.md"
+    output = root / "out" / "shared.md"
     output.write_text(output.read_text() + "\nhand-written line\n", encoding="utf-8")
     capsys.readouterr()
 
     assert loadout.main(["sync", "--root", str(root)]) == 1
     err = capsys.readouterr().err
-    assert "global/AGENTS.md was modified outside loadout" in err
+    assert "out/shared.md was modified outside loadout" in err
     assert output.read_text().endswith("hand-written line\n")
 
 
 def test_the_warning_names_what_would_be_lost(root: Path, capsys) -> None:
     """A harness granting itself a permission at runtime must be named, not just counted."""
     _adopt(root)
-    settings = root / "claude" / "settings.json"
+    settings = root / "perm" / "claude.json"
     granted = '      "Bash(terraform apply:*)",\n'
     settings.write_text(
         settings.read_text().replace('    "allow": [\n', '    "allow": [\n' + granted, 1),
@@ -82,7 +82,12 @@ def test_the_warning_names_what_would_be_lost(root: Path, capsys) -> None:
 
 def test_a_wholesale_rewrite_reports_how_much_it_truncated(root: Path, capsys) -> None:
     _adopt(root)
-    (root / "global" / "AGENTS.md").write_text("nothing like the original\n", encoding="utf-8")
+    # Comfortably more lines than _DIFF_LIMIT on their own, so the note appears
+    # whatever the rendered document happens to be.
+    bulk = {f"key-{index}": index for index in range(60)}
+    (root / "perm" / "opencode.json").write_text(
+        json.dumps(bulk, indent=2) + "\n", encoding="utf-8"
+    )
     capsys.readouterr()
 
     assert loadout.main(["sync", "--root", str(root)]) == 1
@@ -91,7 +96,7 @@ def test_a_wholesale_rewrite_reports_how_much_it_truncated(root: Path, capsys) -
 
 def test_force_overwrites_a_file_modified_outside_loadout(root: Path, capsys) -> None:
     _adopt(root)
-    output = root / "global" / "AGENTS.md"
+    output = root / "out" / "shared.md"
     output.write_text("clobber me\n", encoding="utf-8")
     capsys.readouterr()
 
@@ -101,12 +106,12 @@ def test_force_overwrites_a_file_modified_outside_loadout(root: Path, capsys) ->
 
 def test_unsynced_source_edit_does_not_block(root: Path, capsys) -> None:
     _adopt(root)
-    fragment = root / "instructions" / "secrets.md"
+    fragment = root / "instructions" / "shared.md"
     fragment.write_text(fragment.read_text() + "\nA freshly written sentence.\n", encoding="utf-8")
     capsys.readouterr()
 
     assert loadout.main(["sync", "--root", str(root)]) == 0
-    assert "A freshly written sentence." in (root / "global" / "AGENTS.md").read_text()
+    assert "A freshly written sentence." in (root / "out" / "shared.md").read_text()
 
 
 def test_source_edit_that_was_already_synced_does_not_block(root: Path, capsys) -> None:
@@ -116,7 +121,7 @@ def test_source_edit_that_was_already_synced_does_not_block(root: Path, capsys) 
     committed one, so a committed-only baseline would report every file as modified.
     """
     _adopt(root)
-    fragment = root / "instructions" / "secrets.md"
+    fragment = root / "instructions" / "shared.md"
     fragment.write_text(fragment.read_text() + "\nA freshly written sentence.\n", encoding="utf-8")
     assert loadout.main(["sync", "--root", str(root)]) == 0
     capsys.readouterr()
@@ -128,7 +133,7 @@ def test_source_edit_that_was_already_synced_does_not_block(root: Path, capsys) 
 def test_reordered_json_keys_do_not_block(root: Path, capsys) -> None:
     """A co-owning harness rewriting its own config reorders keys loadout owns."""
     _adopt(root)
-    settings = root / "claude" / "settings.json"
+    settings = root / "perm" / "claude.json"
     generated = settings.read_text()
     document = json.loads(generated)
     reordered = json.dumps({k: document[k] for k in reversed(list(document))}, indent=2)
@@ -141,16 +146,16 @@ def test_reordered_json_keys_do_not_block(root: Path, capsys) -> None:
 
 
 def test_profile_switch_does_not_block(root: Path, fake_home: Path, capsys) -> None:
-    """Both claude instruction targets share ~/.claude/CLAUDE.md, one per profile."""
+    """Both instruction targets share ~/.harness-a/PRIMARY.md, one per profile."""
     _commit_source(root)
-    assert loadout.main(["sync", "--root", str(root), "--profile", "autonomous", "--force"]) == 0
-    destination = fake_home / ".claude" / "CLAUDE.md"
-    autonomous = destination.read_text()
+    assert loadout.main(["sync", "--root", str(root), "--profile", "variant", "--force"]) == 0
+    destination = fake_home / ".harness-a" / "PRIMARY.md"
+    under_variant = destination.read_text()
     capsys.readouterr()
 
     assert loadout.main(["sync", "--root", str(root)]) == 0
     assert "modified outside loadout" not in capsys.readouterr().err
-    assert destination.read_text() != autonomous
+    assert destination.read_text() != under_variant
 
 
 def test_reverting_a_synced_source_edit_blocks(root: Path, capsys) -> None:
@@ -161,7 +166,7 @@ def test_reverting_a_synced_source_edit_blocks(root: Path, capsys) -> None:
     since the rewrite comes from the reverted source.
     """
     _adopt(root)
-    fragment = root / "instructions" / "secrets.md"
+    fragment = root / "instructions" / "shared.md"
     original = fragment.read_text()
     fragment.write_text(original + "\nA sentence I will take back.\n", encoding="utf-8")
     assert loadout.main(["sync", "--root", str(root)]) == 0
@@ -169,15 +174,15 @@ def test_reverting_a_synced_source_edit_blocks(root: Path, capsys) -> None:
     capsys.readouterr()
 
     assert loadout.main(["sync", "--root", str(root)]) == 1
-    assert "global/AGENTS.md was modified outside loadout" in capsys.readouterr().err
+    assert "out/shared.md was modified outside loadout" in capsys.readouterr().err
     assert loadout.main(["sync", "--root", str(root), "--force"]) == 0
-    assert "A sentence I will take back." not in (root / "global" / "AGENTS.md").read_text()
+    assert "A sentence I will take back." not in (root / "out" / "shared.md").read_text()
 
 
 def test_no_committed_baseline_skips_the_check(root: Path, capsys) -> None:
     """Without a committed render, an unsynced source edit looks exactly like a hand edit."""
     assert loadout.main(["sync", "--root", str(root)]) == 0
-    output = root / "global" / "AGENTS.md"
+    output = root / "out" / "shared.md"
     output.write_text("hand-written\n", encoding="utf-8")
     capsys.readouterr()
 

@@ -15,8 +15,8 @@ from loadout.permissions.rules import (
     parse_rules,
 )
 
-GOLDEN = Path(__file__).parent / "golden"
-SOURCE = GOLDEN / "permissions.toml"
+FIXTURES = Path(__file__).parent / "fixtures"
+SOURCE = FIXTURES / "permissions.toml"
 
 
 def test_dedupe_preserves_order() -> None:
@@ -24,15 +24,15 @@ def test_dedupe_preserves_order() -> None:
 
 
 def test_is_glob_detects_trailing_star() -> None:
-    assert is_glob("docker exec cc-workbench-*")
-    assert not is_glob("git status")
+    assert is_glob("gamma-*")
+    assert not is_glob("beta sub")
 
 
 def test_mcp_parts_splits_server_and_tool() -> None:
-    assert mcp_parts("jina/*") == ("jina", "*")
+    assert mcp_parts("svc/*") == ("svc", "*")
 
 
-@pytest.mark.parametrize("bad", ["jina", "/tool", "server/", ""])
+@pytest.mark.parametrize("bad", ["svc", "/tool", "server/", ""])
 def test_mcp_parts_rejects_malformed_targets(bad: str) -> None:
     with pytest.raises(ValueError):
         mcp_parts(bad)
@@ -44,11 +44,11 @@ def test_mcp_native_builds_claude_tool_name() -> None:
 
 def test_parse_rules_reads_every_section() -> None:
     rules = parse_rules(SOURCE)
-    assert "git status" in rules.allow
-    assert "git push" in rules.deny
-    assert "heroku" in rules.ask
-    assert rules.mcp_allow == ("jina/*",)
-    assert "WebSearch" in rules.claude_extra_allow
+    assert "alpha" in rules.allow
+    assert "iota push" in rules.deny
+    assert "theta check" in rules.ask
+    assert rules.mcp_allow == ("svc/*", "svc.two/read")
+    assert "Read(//tmp/**)" in rules.claude_extra_allow
     assert rules.opencode_extra["webfetch"] == "allow"
 
 
