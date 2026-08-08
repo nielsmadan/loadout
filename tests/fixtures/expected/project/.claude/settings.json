@@ -1,0 +1,21 @@
+{
+  "$schema": "https://example.invalid/claude.json",
+  "permissions": {
+    "allow": [
+      "Bash(alpha:*)",
+      "Bash(beta sub:*)",
+      "Bash(gamma-*)",
+      "Bash(kappa only-here:*)",
+      "mcp__svc__*"
+    ],
+    "ask": [
+      "Bash(theta check:*)",
+      "mcp__svc__write"
+    ],
+    "deny": [
+      "Bash(iota push:*)",
+      "Bash(zeta:*)",
+      "mcp__blocked__*"
+    ]
+  }
+}

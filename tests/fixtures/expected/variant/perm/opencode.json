@@ -1,0 +1,43 @@
+{
+  "$schema": "https://example.invalid/opencode.json",
+  "model": "example/model",
+  "provider": {
+    "example": {
+      "models": {
+        "one": {}
+      }
+    }
+  },
+  "permission": {
+    "bash": {
+      "*": "ask",
+      "alpha": "allow",
+      "alpha *": "allow",
+      "beta sub": "allow",
+      "beta sub *": "allow",
+      "gamma-*": "allow",
+      "delta run --tag=*": "allow",
+      "zeta": "deny",
+      "zeta *": "deny",
+      "eta": "allow",
+      "eta *": "allow",
+      "iota push": "deny",
+      "iota push *": "deny",
+      "theta check": "ask",
+      "theta check *": "ask"
+    },
+    "svc_*": "allow",
+    "svc.two_read": "allow",
+    "blocked_*": "deny",
+    "svc_purge": "deny",
+    "svc_write": "ask",
+    "webfetch": "allow"
+  },
+  "foreign": {
+    "written-by": "another generator",
+    "value": [
+      1,
+      2
+    ]
+  }
+}

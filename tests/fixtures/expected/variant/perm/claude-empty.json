@@ -1,0 +1,13 @@
+{
+  "$schema": "https://example.invalid/schema.json",
+  "beforeKey": "stays ahead of permissions",
+  "permissions": {
+    "allow": [],
+    "deny": [],
+    "ask": [],
+    "defaultMode": "hand-maintained, must survive after the owned lists"
+  },
+  "afterKey": {
+    "nested": true
+  }
+}

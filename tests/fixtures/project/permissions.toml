@@ -1,0 +1,28 @@
+# Synthetic committed tier. Shared with everyone working in the repo.
+#
+# Carries the same shape variety as the global fixture so project scope is not
+# tested more thinly than global scope — the old fixture held only two-word
+# `just` prefixes and exercised no glob, no MCP entry and no bare command.
+
+[shell]
+
+allow = [
+  "alpha",                 # bare command
+  "beta sub",              # multi-word prefix
+  "gamma-*",               # glob: the project Codex renderer does NOT skip these
+  "zeta",                  # overridden by the personal tier's deny
+]
+
+ask = [
+  "theta check",
+]
+
+deny = [
+  "iota push",
+]
+
+[mcp]
+
+allow = ["svc/*"]
+ask = ["svc/write"]
+deny = ["blocked/*"]

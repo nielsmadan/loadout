@@ -23,6 +23,31 @@ FOREIGN_OWNER = {"foreign": {"written-by": "another generator", "value": [1, 2]}
 PRESERVE_TARGET = "perm/opencode.json"
 
 
+PROJECT_FIXTURES = FIXTURES / "project"
+PROJECT_HARNESSES = ("claude", "codex", "opencode", "pi")
+
+# Both preserve_foreign project targets, seeded so the carry-through path runs.
+PROJECT_FOREIGN = {
+    ".claude/settings.json": {"$schema": "https://example.invalid/claude.json"},
+    "opencode.json": {"$schema": "https://example.invalid/opencode.json"},
+}
+
+
+def build_project_root(destination: Path) -> Path:
+    directory = destination / "loadout"
+    directory.mkdir(parents=True, exist_ok=True)
+    quoted = ", ".join(f'"{harness}"' for harness in PROJECT_HARNESSES)
+    (directory / "config.toml").write_text(f"harnesses = [{quoted}]\n", encoding="utf-8")
+    for name in ("permissions.toml", "permissions.local.toml"):
+        shutil.copy2(PROJECT_FIXTURES / name, directory / name)
+
+    for name, document in PROJECT_FOREIGN.items():
+        seeded = destination / name
+        seeded.parent.mkdir(parents=True, exist_ok=True)
+        seeded.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    return destination
+
+
 def build_root(destination: Path) -> Path:
     destination.mkdir(parents=True, exist_ok=True)
     for name in SOURCE_NAMES:

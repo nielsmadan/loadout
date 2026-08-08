@@ -1,0 +1,10 @@
+# Synthetic personal tier. Gitignored in a real repo.
+#
+# Holds an entry unique to it, and a deny that overrides the committed tier's
+# allow, so the merge is exercised as more than the identity function.
+
+[shell]
+
+allow = ["kappa only-here"]
+
+deny = ["zeta"]

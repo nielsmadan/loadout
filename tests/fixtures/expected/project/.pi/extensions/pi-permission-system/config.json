@@ -1,0 +1,31 @@
+{
+  "permission": {
+    "bash": {
+      "alpha": "allow",
+      "alpha *": "allow",
+      "beta sub": "allow",
+      "beta sub *": "allow",
+      "gamma-*": "allow",
+      "kappa only-here": "allow",
+      "kappa only-here *": "allow",
+      "theta check": "ask",
+      "theta check *": "ask",
+      "iota push": "deny",
+      "iota push *": "deny",
+      "zeta": "deny",
+      "zeta *": "deny"
+    },
+    "mcp": {
+      "svc_*": "allow",
+      "svc:*": "allow",
+      "mcp_server_svc": "allow",
+      "mcp_connect_svc": "allow",
+      "svc_write": "ask",
+      "svc:write": "ask",
+      "blocked_*": "deny",
+      "blocked:*": "deny",
+      "mcp_server_blocked": "deny",
+      "mcp_connect_blocked": "deny"
+    }
+  }
+}

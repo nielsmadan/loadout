@@ -1,0 +1,24 @@
+{
+  "$schema": "https://example.invalid/opencode.json",
+  "permission": {
+    "bash": {
+      "*": "ask",
+      "alpha": "allow",
+      "alpha *": "allow",
+      "beta sub": "allow",
+      "beta sub *": "allow",
+      "gamma-*": "allow",
+      "kappa only-here": "allow",
+      "kappa only-here *": "allow",
+      "iota push": "deny",
+      "iota push *": "deny",
+      "zeta": "deny",
+      "zeta *": "deny",
+      "theta check": "ask",
+      "theta check *": "ask"
+    },
+    "svc_*": "allow",
+    "blocked_*": "deny",
+    "svc_write": "ask"
+  }
+}

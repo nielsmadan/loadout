@@ -1,0 +1,32 @@
+{
+  "$schema": "https://example.invalid/schema.json",
+  "beforeKey": "stays ahead of permissions",
+  "permissions": {
+    "allow": [
+      "Bash(alpha:*)",
+      "Bash(beta sub:*)",
+      "Bash(gamma-*)",
+      "Bash(delta run --tag=*)",
+      "Bash(zeta:*)",
+      "Bash(eta:*)",
+      "mcp__svc__*",
+      "mcp__svc.two__read",
+      "Read(//tmp/**)"
+    ],
+    "deny": [
+      "Bash(zeta:*)",
+      "Bash(iota push:*)",
+      "mcp__blocked__*",
+      "mcp__svc__purge",
+      "Write(//etc/**)"
+    ],
+    "ask": [
+      "Bash(theta check:*)",
+      "mcp__svc__write"
+    ],
+    "defaultMode": "hand-maintained, must survive after the owned lists"
+  },
+  "afterKey": {
+    "nested": true
+  }
+}

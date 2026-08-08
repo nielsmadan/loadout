@@ -1,0 +1,40 @@
+{
+  "$schema": "https://cdn.jsdelivr.net/npm/@gotgenes/pi-permission-system@23.0.0/schemas/permissions.schema.json",
+  "permission": {
+    "*": "allow",
+    "bash": {
+      "*": "ask",
+      "alpha": "allow",
+      "alpha *": "allow",
+      "beta sub": "allow",
+      "beta sub *": "allow",
+      "gamma-*": "allow",
+      "delta run --tag=*": "allow",
+      "eta": "allow",
+      "eta *": "allow",
+      "theta check": "ask",
+      "theta check *": "ask",
+      "zeta": "deny",
+      "zeta *": "deny",
+      "iota push": "deny",
+      "iota push *": "deny"
+    },
+    "mcp": {
+      "*": "ask",
+      "svc_*": "allow",
+      "svc:*": "allow",
+      "mcp_server_svc": "allow",
+      "mcp_connect_svc": "allow",
+      "svc.two_read": "allow",
+      "svc.two:read": "allow",
+      "svc_write": "ask",
+      "svc:write": "ask",
+      "blocked_*": "deny",
+      "blocked:*": "deny",
+      "mcp_server_blocked": "deny",
+      "mcp_connect_blocked": "deny",
+      "svc_purge": "deny",
+      "svc:purge": "deny"
+    }
+  }
+}
