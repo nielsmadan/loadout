@@ -27,21 +27,49 @@ content can travel as *source* rather than as output.
 
 ### Global scope — shipped
 
-Machine-wide configuration: the rules and instructions that apply to every project. Source
-lives in one repo (`~/ac`); generated files are written there and deployed to each harness's
-home directory, mostly by symlink.
+Machine-wide configuration: the rules and instructions that apply to every project. The source
+lives in one repo (`~/ac`); generated files are written straight to each harness's home
+directory.
 
-Global outputs **are** committed. The reasoning is specific to this scope and does not carry
-to project scope:
+**A machine config says where that source is.** `$XDG_CONFIG_HOME/loadout/config.toml`, or
+`~/.config/loadout/config.toml`, names the directory holding the global `loadout.toml` and
+optionally the profile this machine runs. `loadout sync --global` and `loadout check --global`
+read it; `loadout init --global` writes it. Absent means "no global scope on this machine",
+which is a legitimate state, not an error — see
+[0010](decisions/0010-a-machine-config-locates-the-global-source.md).
 
-- The check treats a missing file as drift, so a fresh clone with uncommitted outputs fails
-  its own pre-commit hook until someone syncs.
-- The sync script's fallback — "loadout not found, using the committed files" — only means
-  something if those files exist.
-- Deployment is by symlink, so a missing file is a dangling link.
-- Permissions are enforcing, and the emitted diff carries information the source diff does
-  not: removing one entry from a rule list reads as one line changed in the source, and as 42
-  deny rules going from bypassable to enforced in the output.
+Everything the global scope owns lives under one directory it wholly owns, the same shape
+project scope already uses:
+
+```text
+~/ac/loadout.toml              the manifest — sources, targets, destinations
+~/ac/loadout/permissions.toml  global rules
+~/ac/loadout/instructions/     instruction fragments
+~/ac/loadout/bases/            hand-maintained base documents
+```
+
+`sync` writes each document to its **destinations** — the real paths harnesses read, declared
+per target in the manifest. There is no staging tree and no symlink layer. Two things follow.
+Each destination is rendered on its own, so a target co-owning a live config file carries that
+file's own foreign keys forward into it. And because the machine config already names the
+profile, only one variant of a profiled document is ever generated, so nothing downstream has
+to choose between staged alternatives.
+
+**Accepted trade-off:** a fresh clone with loadout not yet installed no longer yields working
+config. loadout is installed on every machine and `install.sh` is already a step, so this is
+cheap; the alternative was keeping a shadow tree in git to serve a case that does not arise.
+
+Whether global outputs stay committed is deliberately still open. Three of the four reasons
+this document once gave for committing them do not survive: two are circular — "the check
+treats a missing file as drift" and "a missing file is a dangling symlink" describe
+consequences of committing, not arguments for it — and the third names a fallback that exists
+only because the files are committed.
+[0010](decisions/0010-a-machine-config-locates-the-global-source.md) records the correction.
+The one real argument is that permissions are enforcing and the output diff shows blast radius
+the source diff hides:
+removing one entry from a rule list reads as one line changed in the source, and as 42 deny
+rules going from bypassable to enforced in the output. A `loadout diff` reporting that before
+writing would serve it better than a shadow tree.
 
 ### Project scope — built (permissions only)
 

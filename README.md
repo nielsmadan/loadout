@@ -9,9 +9,11 @@ One source of truth for AI coding-agent configuration, rendered out to every har
 ## Use
 
     loadout sync                  # regenerate generated files under the current repo
+    loadout sync --global         # regenerate this machine's global configuration
     loadout sync --profile NAME   # regenerate under a specific active profile (see Profiles below)
     loadout sync --force          # regenerate even over files modified outside loadout
     loadout check                 # exit 1 if any generated file has drifted
+    loadout check --global        # check drift in this machine's global configuration
     loadout check --profile NAME  # check drift under a specific active profile
     loadout explain <name>        # show which source a fragment resolves from, and which targets use it
 
@@ -40,10 +42,43 @@ that exists nowhere. And a file whose committed baseline is unavailable — outs
 or before the first commit — where an unsynced edit cannot be told from a hand edit, so the
 check is skipped entirely and says so.
 
+## Global scope
+
+Global scope is the configuration that applies to every project on this machine. A **machine
+config** says where its source lives:
+
+```toml
+# $XDG_CONFIG_HOME/loadout/config.toml, or ~/.config/loadout/config.toml
+source  = "~/ac"            # directory holding loadout.toml; ~ expanded; must exist
+profile = "autonomous"      # optional; the active profile (default: "default")
+```
+
+`source` and `profile` are the only accepted keys — anything else is an error, so a typo fails
+loudly. The file is machine state: never version-controlled, never generated, and the only
+place loadout keeps state that is not part of a source (see
+[0010](docs/decisions/0010-a-machine-config-locates-the-global-source.md) and
+[0008](docs/decisions/0008-generated-files-carry-no-machine-state.md)).
+
+    loadout init --global --source ~/ac    # scaffold a global source and write the machine config
+    loadout init --global --force          # reinitialise, overwriting an existing machine config
+
+`init --global` creates `<source>/loadout/` holding `loadout.toml`, `permissions.toml` and
+`instructions/`, then writes the machine config pointing at it. It refuses to overwrite an
+existing machine config without `--force`. It is non-interactive so it works in a script:
+`--source` is required unless stdin is a TTY, in which case it prompts with a default.
+
+A missing machine config is **not** an error — it means this machine has no global scope,
+which is correct for someone who only uses project scope. `loadout sync --global` without one
+fails and names the file to create. `loadout init` at project scope notes its absence and
+carries on.
+
+`--global` and `--root` are mutually exclusive; `--global` resolves the root from the machine
+config. `--profile` still wins over the machine config's `profile` when both are given.
+
 ## `loadout.toml`
 
-A repo's root `loadout.toml` declares the sources fragments come from and the instruction files
-to render from them:
+A repo's root `loadout.toml` — the global source's manifest, or a project's — declares the
+sources fragments come from and the instruction files to render from them:
 
 ```toml
 [[source]]
