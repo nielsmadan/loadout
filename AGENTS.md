@@ -18,17 +18,21 @@ These are not style preferences. Each one has already caused, or nearly caused, 
   equivalent" output is a failure. Content is a pure function of the source: never stamp a
   profile, commit, hash or timestamp into a generated file — see
   [0008](docs/decisions/0008-generated-files-carry-no-machine-state.md).
-- **`tests/golden/expected/` is frozen truth**, captured from the live system it replaced. If
-  a golden comparison fails, **the code is wrong**. Never edit a golden to make a test pass.
-  Changing one is a deliberate, separately-reviewed act — see
-  [0003](docs/decisions/0003-port-byte-identical-before-changing-behaviour.md).
+- **`tests/fixtures/expected/` is regenerated, never hand-edited.** Change a renderer, run
+  `tests/regenerate_expected.py`, and read the diff — the diff is the review. The script
+  refuses to run over unstaged changes there, so a regeneration is always its own commit. Never
+  edit an expected file directly to make a test pass. See
+  [0009](docs/decisions/0009-expected-output-is-reviewed-not-frozen.md).
+- **The fixture's reach is load-bearing.** `tests/fixtures/permissions.toml` exists to provoke
+  shapes, not to be realistic; `tests/test_fixture_shapes.py` fails if one is dropped, and
+  `docs/reference/coverage.md` maps every documented behaviour to the test that pins it. When a
+  test fails after a fixture change, ask whether the fixture stopped provoking the behaviour
+  before you touch the assertion.
 - **Key insertion order is load-bearing.** Python dicts preserve it and the output depends on
   it. Assigning into an existing dict appends; building a new one controls position. See
   `src/loadout/permissions/renderers.py:render_claude` for the case that forced this.
 - **`dedupe()` must stay order-preserving and must never become `set()`.** OpenCode and Pi
   resolve last-match-wins, so emission order decides which rule applies.
-- **Zero third-party runtime dependencies.** `tomllib` is stdlib and read-only. There is no
-  TOML writer — `codex/mcp-permissions.toml` is emitted as hand-built text on purpose.
 - **Renderers never read files.** A renderer takes `(rules, base)` and returns a document.
   The base is a parameter, never a read of the renderer's own prior output — see
   [0001](docs/decisions/0001-render-never-reads-its-own-output.md).
@@ -66,6 +70,7 @@ output, so `sync`/`check` regenerate whichever scopes are present.
 - `README.md` — commands, `loadout.toml` schema, exit codes
 - `docs/scopes.md` — what loadout is for, the scope model, committed vs personal
 - `docs/reference/` — per-harness matcher semantics, pattern shapes, verified quirks
+- `docs/reference/coverage.md` — every documented behaviour and the test that pins it
 - `docs/decisions/` — ADRs; append-only, superseded rather than edited
 
 When behaviour changes, update the doc that covers it in the same commit.

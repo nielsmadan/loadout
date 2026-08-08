@@ -7,6 +7,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+import tomlkit
+
 from .rules import Rules, is_glob, mcp_native, mcp_parts
 
 JsonRenderer = Callable[[Rules, dict[str, Any]], dict[str, Any]]
@@ -132,7 +134,7 @@ def render_codex(rules: Rules) -> str:
 
 
 # --------------------------------------------------------------------------
-# codex — codex/mcp-permissions.toml: fully owned, hand-rolled TOML text.
+# codex — codex/mcp-permissions.toml: fully owned, emitted with tomlkit.
 # --------------------------------------------------------------------------
 
 
@@ -147,25 +149,37 @@ def render_codex_mcp(rules: Rules) -> str:
         server, tool = mcp_parts(entry)
         servers.setdefault(server, {})[tool] = mode
 
-    lines = [f"# {line}" for line in HEADER_LINES]
+    document = tomlkit.document()
+    for line in HEADER_LINES:
+        document.add(tomlkit.comment(line))
+    if not servers:
+        return tomlkit.dumps(document)
+
+    # Super tables emit no header of their own, so `mcp_servers` and `tools` are
+    # only ever seen as the [mcp_servers.<name>] / .tools.<name> prefixes.
+    roots = tomlkit.table(is_super_table=True)
     for server in sorted(servers):
         tools = servers[server]
         wildcard = tools.get("*")
-        lines.append("")
-        lines.append(f"[mcp_servers.{json.dumps(server)}]")
+        block = tomlkit.table()
         if wildcard == "deny":
-            lines.append("enabled = false")
+            block["enabled"] = False
         elif wildcard:
-            lines.append(f"default_tools_approval_mode = {json.dumps(wildcard)}")
+            block["default_tools_approval_mode"] = wildcard
         denied = sorted(tool for tool, mode in tools.items() if tool != "*" and mode == "deny")
         if denied:
-            values = ", ".join(json.dumps(tool) for tool in denied)
-            lines.append(f"disabled_tools = [{values}]")
-        for tool in sorted(tool for tool, mode in tools.items() if tool != "*" and mode != "deny"):
-            lines.append("")
-            lines.append(f"[mcp_servers.{json.dumps(server)}.tools.{json.dumps(tool)}]")
-            lines.append(f"approval_mode = {json.dumps(tools[tool])}")
-    return "\n".join(lines) + "\n"
+            block["disabled_tools"] = denied
+        approved = sorted(tool for tool, mode in tools.items() if tool != "*" and mode != "deny")
+        if approved:
+            per_tool = tomlkit.table(is_super_table=True)
+            for tool in approved:
+                tool_table = tomlkit.table()
+                tool_table["approval_mode"] = tools[tool]
+                per_tool[tool] = tool_table
+            block["tools"] = per_tool
+        roots[server] = block
+    document["mcp_servers"] = roots
+    return tomlkit.dumps(document)
 
 
 # --------------------------------------------------------------------------

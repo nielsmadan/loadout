@@ -1,6 +1,8 @@
 # 0003 — Prove a port byte-identical before changing any behaviour
 
-**Status:** accepted (2026-08-02, milestone 1; reaffirmed milestone 3)
+**Status:** accepted (2026-08-02, milestone 1; reaffirmed milestone 3). The fixture-freeze
+clause below is superseded by [0009](0009-expected-output-is-reviewed-not-frozen.md) now that
+the port is complete; the byte-identical acceptance criterion still stands.
 
 ## Context
 

@@ -132,7 +132,7 @@ def test_codex_output_ends_with_a_single_newline() -> None:
 
 def test_codex_mcp_wildcard_deny_disables_the_server() -> None:
     out = render_codex_mcp(Rules(mcp_deny=("jina/*",)))
-    assert '[mcp_servers."jina"]' in out
+    assert "[mcp_servers.jina]" in out
     assert "enabled = false" in out
 
 
@@ -145,7 +145,7 @@ def test_codex_mcp_per_tool_sections_and_disabled_list() -> None:
     rules = Rules(mcp_allow=("jina/search",), mcp_deny=("jina/write",))
     out = render_codex_mcp(rules)
     assert 'disabled_tools = ["write"]' in out
-    assert '[mcp_servers."jina".tools."search"]' in out
+    assert "[mcp_servers.jina.tools.search]" in out
     assert 'approval_mode = "approve"' in out
 
 
