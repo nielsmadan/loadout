@@ -1,0 +1,11 @@
+{
+  "$schema": "https://example.invalid/opencode.json",
+  "model": "example/model",
+  "provider": {
+    "example": {
+      "models": {
+        "one": {}
+      }
+    }
+  }
+}

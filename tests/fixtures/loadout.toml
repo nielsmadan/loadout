@@ -1,0 +1,69 @@
+# Synthetic manifest. Declares one of every wiring shape the expected output has
+# to prove — see docs/reference/coverage.md, "Covered only by whole-document
+# comparison". Not a copy of anyone's real manifest.
+
+[[source]]
+name = "test"
+path = "."
+
+# output only, no destination — the shape codex-mcp uses in practice, where
+# another generator consumes the staged file.
+[instructions.primary]
+output  = "out/primary.md"
+profile = "default"
+order   = ["intro", "policy", "shared", "closing"]
+
+# Shares a destination with `primary` via mutually exclusive profiles, and swaps
+# one fragment for its `.variant` sibling. Destination-only: no in-repo output.
+[instructions.primary-variant]
+destinations = ["~/.harness-a/PRIMARY.md"]
+profile      = "variant"
+order        = ["intro", "policy.variant", "shared", "closing"]
+
+# Both output and destinations, and more than one destination, so the fan-out is
+# covered. No profile, so it renders under every profile.
+[instructions.shared]
+output       = "out/shared.md"
+destinations = ["~/.harness-b/SHARED.md", "~/.harness-c/SHARED.md"]
+order        = ["intro", "shared", "closing"]
+
+[permissions.antigravity]
+output = "perm/antigravity.json"
+render = "antigravity"
+
+[permissions.claude]
+output = "perm/claude.json"
+render = "claude"
+base   = "bases/claude.base.json"
+
+# rules = [] selects nothing, so all three lists render empty — the autonomous
+# profile's mechanism.
+[permissions.claude-empty]
+output = "perm/claude-empty.json"
+render = "claude"
+base   = "bases/claude.base.json"
+rules  = []
+
+[permissions.claude-mcp]
+output = "perm/claude-mcp.json"
+render = "claude-mcp"
+
+[permissions.codex]
+output = "perm/codex.rules"
+render = "codex"
+
+[permissions.codex-mcp]
+output = "perm/codex-mcp.toml"
+render = "codex-mcp"
+
+# The co-owned shape: a base plus a foreign key carried through from the file
+# being overwritten.
+[permissions.opencode]
+output   = "perm/opencode.json"
+render   = "opencode"
+base     = "bases/opencode.base.json"
+preserve = ["foreign"]
+
+[permissions.pi]
+output = "perm/pi.json"
+render = "pi"
