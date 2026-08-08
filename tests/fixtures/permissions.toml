@@ -1,0 +1,55 @@
+# Synthetic permission source. Nothing here is anyone's real configuration.
+#
+# Every entry exists to give the whole-document comparison a shape to carry
+# through the wiring — see docs/reference/coverage.md, "Covered only by
+# whole-document comparison". The matcher semantics themselves are pinned by
+# tests/test_permissions_renderers.py against inline Rules(...), not by this
+# file, so this stays small on purpose.
+#
+# tests/test_fixture_shapes.py fails if any shape below is dropped.
+
+[shell]
+
+allow = [
+  "alpha",                    # bare command
+  "beta sub",                 # multi-word prefix
+  "gamma-*",                  # trailing glob: literal on 3 harnesses, skipped on 2
+  "delta run --tag=*",        # glob that is not the whole final token
+  "zeta",                     # also in deny, and not last: shows Pi's key-move
+  "eta",                      # follows zeta, so "moved to the end" is observable
+]
+
+ask = [
+  "theta check",
+]
+
+deny = [
+  "zeta",                     # overwrites the allow above
+  "iota push",
+]
+
+[mcp]
+
+allow = [
+  "svc/*",                    # server-wide: Codex default_tools_approval_mode,
+                              # Pi mcp_server_/mcp_connect_ targets
+  "svc.two/read",             # server name with a dot: forces TOML table quoting
+]
+
+ask = [
+  "svc/write",                # per-tool, non-default mode
+]
+
+deny = [
+  "blocked/*",                # server-wide deny: Codex enabled = false
+  "svc/purge",                # per-tool deny: Codex disabled_tools
+]
+
+[claude.extra]
+
+allow = ["Read(//tmp/**)"]
+deny = ["Write(//etc/**)"]
+
+[opencode.extra]
+
+webfetch = "allow"
