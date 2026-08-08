@@ -6,15 +6,17 @@
 name = "test"
 path = "."
 
-# output only, no destination — the shape codex-mcp uses in practice, where
-# another generator consumes the staged file.
+# Takes turns writing ~/.harness-a/PRIMARY.md with `primary-variant`. Two targets
+# may share a destination only when their profiles make them mutually exclusive,
+# so this pair is what covers that rule.
 [instructions.primary]
-output  = "out/primary.md"
-profile = "default"
-order   = ["intro", "policy", "shared", "closing"]
+output       = "out/primary.md"
+destinations = ["~/.harness-a/PRIMARY.md"]
+profile      = "default"
+order        = ["intro", "policy", "shared", "closing"]
 
-# Shares a destination with `primary` via mutually exclusive profiles, and swaps
-# one fragment for its `.variant` sibling. Destination-only: no in-repo output.
+# Destination-only: no in-repo output at all. Swaps one fragment for its
+# `.variant` sibling, which is how a profile changes one block and nothing else.
 [instructions.primary-variant]
 destinations = ["~/.harness-a/PRIMARY.md"]
 profile      = "variant"
