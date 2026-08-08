@@ -15,7 +15,9 @@ These are not style preferences. Each one has already caused, or nearly caused, 
 
 - **Byte-identical output is the acceptance criterion.** Generated files must match their
   golden fixtures exactly — key order, whitespace, trailing newline. A "semantically
-  equivalent" output is a failure.
+  equivalent" output is a failure. Content is a pure function of the source: never stamp a
+  profile, commit, hash or timestamp into a generated file — see
+  [0008](docs/decisions/0008-generated-files-carry-no-machine-state.md).
 - **`tests/golden/expected/` is frozen truth**, captured from the live system it replaced. If
   a golden comparison fails, **the code is wrong**. Never edit a golden to make a test pass.
   Changing one is a deliberate, separately-reviewed act — see
@@ -47,7 +49,7 @@ that would not.
 
 loadout targets five harnesses whose mechanisms differ in shape, not just naming. Claude is
 the best-documented and easiest to inspect, which makes it a misleading default. Establish
-each harness's behaviour separately and record it in `docs/harnesses/`. Absence of a
+each harness's behaviour separately and record it in `docs/reference/`. Absence of a
 Claude-style filename in another harness proves nothing.
 
 ## Entry points
@@ -63,7 +65,7 @@ output, so `sync`/`check` regenerate whichever scopes are present.
 
 - `README.md` — commands, `loadout.toml` schema, exit codes
 - `docs/scopes.md` — what loadout is for, the scope model, committed vs personal
-- `docs/harnesses/` — per-harness matcher semantics, pattern shapes, verified quirks
+- `docs/reference/` — per-harness matcher semantics, pattern shapes, verified quirks
 - `docs/decisions/` — ADRs; append-only, superseded rather than edited
 
 When behaviour changes, update the doc that covers it in the same commit.

@@ -10,6 +10,7 @@ One source of truth for AI coding-agent configuration, rendered out to every har
 
     loadout sync                  # regenerate generated files under the current repo
     loadout sync --profile NAME   # regenerate under a specific active profile (see Profiles below)
+    loadout sync --force          # regenerate even over files modified outside loadout
     loadout check                 # exit 1 if any generated file has drifted
     loadout check --profile NAME  # check drift under a specific active profile
     loadout explain <name>        # show which source a fragment resolves from, and which targets use it
@@ -17,6 +18,25 @@ One source of truth for AI coding-agent configuration, rendered out to every har
 `explain` takes a fragment name, optionally qualified as `source/name` to disambiguate when more
 than one source declares a fragment with the same name. `explain` is global scope only —
 instruction fragments are not part of project scope (see below).
+
+### Files modified outside loadout
+
+Generated files look like ordinary files, so they get hand-edited — and the edit is then lost
+on the next `sync`, silently. Before writing, `sync` compares each file against every output
+loadout itself could have produced: rendered from the committed source and from the working
+tree, under every declared profile. A file matching none of them was written by something
+else, so `sync` names it, changes nothing, and exits 1. Move the edit into the source, or pass
+`--force` to discard it.
+
+Comparison is by parsed document for JSON targets, not by bytes, so a harness re-serialising
+its own config in a different key order does not read as an edit.
+
+Three cases warn without anything being wrong. The first `sync` over config that predates
+loadout — adoption is the one time loadout overwrites a file it has never written. Reverting
+an uncommitted source edit that was already synced, which leaves outputs from a source state
+that exists nowhere. And a file whose committed baseline is unavailable — outside a git repo,
+or before the first commit — where an unsynced edit cannot be told from a hand edit, so the
+check is skipped entirely and says so.
 
 ## `loadout.toml`
 

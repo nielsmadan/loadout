@@ -108,7 +108,7 @@ def test_missing_fragment_file_returns_3(root: Path, capsys) -> None:
 
 
 def test_unexpected_exception_returns_4_with_traceback(root: Path, monkeypatch, capsys) -> None:
-    def boom(_root: Path, profile: str) -> int:
+    def boom(_root: Path, *, profile: str, force: bool) -> int:
         raise ValueError("kaboom")
 
     monkeypatch.setattr(loadout.cli, "cmd_sync", boom)
@@ -119,7 +119,7 @@ def test_unexpected_exception_returns_4_with_traceback(root: Path, monkeypatch, 
 
 
 def test_loadout_error_still_returns_3(root: Path, monkeypatch, capsys) -> None:
-    def fail(_root: Path, profile: str) -> int:
+    def fail(_root: Path, *, profile: str, force: bool) -> int:
         raise LoadoutError("deliberate failure")
 
     monkeypatch.setattr(loadout.cli, "cmd_sync", fail)

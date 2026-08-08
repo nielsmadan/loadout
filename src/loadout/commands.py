@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import difflib
+import io
+import json
+import subprocess
 import sys
+import tarfile
+import tempfile
+from collections.abc import Iterable
 from pathlib import Path
 
-from .emit import check_all, write_all
+from .emit import check_all, declared_profiles, render_all, write_all
 from .errors import LoadoutError
 from .machine import machine_config_path
 from .manifest import MANIFEST_NAME, InstructionTarget, load_manifest, manifest_path
@@ -49,7 +55,98 @@ def _display(path: Path, root: Path) -> str:
         return str(path)
 
 
-def cmd_sync(root: Path, profile: str = "default") -> int:
+def _normalise(path: Path, content: str) -> str:
+    """Key order is load-bearing in output, but not in the question 'who wrote this?'.
+
+    Claude Code rewrites its own settings.json and reorders keys loadout owns; comparing
+    the parsed document keeps that from reading as a hand edit.
+    """
+    if path.suffix != ".json":
+        return content
+    try:
+        return json.dumps(json.loads(content), sort_keys=True)
+    except json.JSONDecodeError:
+        return content
+
+
+def _render_variants(
+    source_root: Path, profiles: Iterable[str], rebase_to: Path
+) -> dict[Path, set[str]]:
+    variants: dict[Path, set[str]] = {}
+    for profile in profiles:
+        try:
+            rendered = render_all(source_root, profile)
+        except LoadoutError:
+            continue
+        for path, content in rendered.items():
+            try:
+                key = rebase_to / path.relative_to(source_root)
+            except ValueError:
+                key = path  # a destination outside the root renders to the same path
+            variants.setdefault(key, set()).add(_normalise(key, content))
+    return variants
+
+
+def _committed_variants(root: Path, profiles: Iterable[str]) -> dict[Path, set[str]]:
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(root), "archive", "HEAD"], capture_output=True, check=False
+        )
+    except OSError:
+        return {}
+    if proc.returncode != 0:
+        return {}
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        try:
+            with tarfile.open(fileobj=io.BytesIO(proc.stdout), mode="r:") as tar:
+                tar.extractall(path=tmp_dir, filter="data")
+        except (tarfile.TarError, OSError):
+            return {}
+        return _render_variants(Path(tmp_dir), profiles, rebase_to=root)
+
+
+def _modified_outside_loadout(root: Path, profile: str) -> list[Path] | None:
+    """Files matching no output loadout itself could have written — None if unknowable.
+
+    The accept set spans the committed source, the working source, and every declared
+    profile, so an unsynced source edit, a synced one and a profile switch all match
+    something. Without a committed baseline an unsynced edit is indistinguishable from
+    a hand edit, so the caller must not block.
+    """
+    profiles = declared_profiles(root)
+    acceptable = _committed_variants(root, profiles)
+    if not acceptable:
+        return None
+    for path, forms in _render_variants(root, profiles, rebase_to=root).items():
+        acceptable.setdefault(path, set()).update(forms)
+
+    modified: list[Path] = []
+    for path in render_all(root, profile):
+        forms = acceptable.get(path, set())
+        if not path.is_file() or not forms:
+            continue
+        if _normalise(path, path.read_text(encoding="utf-8")) not in forms:
+            modified.append(path)
+    return modified
+
+
+def cmd_sync(root: Path, profile: str = "default", force: bool = False) -> int:
+    if not force:
+        modified = _modified_outside_loadout(root, profile)
+        if modified is None:
+            print("note: no committed baseline — skipping the modified-file check", file=sys.stderr)
+        elif modified:
+            for path in modified:
+                print(
+                    f"WARNING: {_display(path, root)} was modified outside loadout", file=sys.stderr
+                )
+            print(
+                "\nSync aborted — move these edits into the source, "
+                "or run `loadout sync --force` to discard them.",
+                file=sys.stderr,
+            )
+            return 1
+
     for path in write_all(root, profile):
         print(f"wrote {_display(path, root)}")
     return 0

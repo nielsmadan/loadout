@@ -42,6 +42,12 @@ def build_parser() -> argparse.ArgumentParser:
             help="active profile to render (default: 'default', or the machine "
             "config's profile under --global)",
         )
+        if name == "sync":
+            sub.add_argument(
+                "--force",
+                action="store_true",
+                help="overwrite generated files that were modified outside loadout",
+            )
 
     explain = subparsers.add_parser("explain", help="show where a fragment comes from")
     explain.add_argument("name", help="fragment name, optionally qualified as source/name")
@@ -110,8 +116,9 @@ def _dispatch(args: argparse.Namespace) -> int:
     if args.command == "harness":
         return cmd_harness_add(args.root.resolve(), args.name)
     root, profile = _resolve_root_and_profile(args)
-    handler = {"sync": cmd_sync, "check": cmd_check}[args.command]
-    return handler(root, profile=profile)
+    if args.command == "sync":
+        return cmd_sync(root, profile=profile, force=args.force)
+    return cmd_check(root, profile=profile)
 
 
 def main(argv: list[str] | None = None) -> int:

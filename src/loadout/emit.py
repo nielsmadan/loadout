@@ -184,6 +184,15 @@ def _expand(
         outputs[resolved] = content
 
 
+def declared_profiles(root: Path) -> set[str]:
+    """Every profile this root names, plus the implicit 'default'."""
+    profiles = {"default"}
+    path = manifest_path(root)
+    if path.is_file():
+        profiles |= _declared_profiles(load_manifest(path))
+    return profiles
+
+
 def render_global(root: Path, profile: str = "default") -> dict[Path, str]:
     manifest = load_manifest(manifest_path(root))
     declared = _declared_profiles(manifest)
