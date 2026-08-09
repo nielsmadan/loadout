@@ -18,6 +18,12 @@ A separate permissions file is possible only by using a *different location* —
 `OPENCODE_CONFIG` pointing at a generated file — at the cost of an env var on every
 invocation.
 
+The global location is `(XDG_CONFIG_HOME ?? ~/.config) / "opencode"`, so **`XDG_CONFIG_HOME`
+is the variable that moves the file loadout writes** — not `OPENCODE_CONFIG_DIR`, which adds
+a further `.opencode`-shaped directory that shadows the global config rather than replacing
+it. Verified 2026-08-09 against opencode 1.18.15's `globalConfigPath`. See
+[Relocating the config directory](README.md#relocating-the-config-directory).
+
 ## Resolution
 
 **Last matching rule wins.** Emission order is load-bearing: denies must be emitted after

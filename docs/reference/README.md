@@ -76,6 +76,38 @@ Still unresolved in `~/ac`, in the same class as the removed `env`: `find` (bare
 cannot fix this — the intended mechanism is a build-time `neverallow` ceiling that
 refuses to emit, which is milestone 4.
 
+### Relocating the config directory
+
+Four of the five let an environment variable move the directory `loadout` writes into.
+The variable differs in name *and in kind* — this is the case the "never generalise from
+Claude" rule exists for.
+
+| harness | variable | what it moves |
+|---|---|---|
+| Claude | `CLAUDE_CONFIG_DIR` | all of `~/.claude` — `settings.json`, `CLAUDE.md`, `ide/`, `teams/` — and `~/.claude.json` with it |
+| Codex | `CODEX_HOME` | `~/.codex`, so `rules/` moves too |
+| Pi | `PI_CODING_AGENT_DIR` | `~/.pi/agent`, and `extensions/` under it |
+| OpenCode | `XDG_CONFIG_HOME` | the global config dir: `(XDG_CONFIG_HOME ?? ~/.config) / "opencode"` |
+| Antigravity | **none** | `~/.gemini/antigravity-cli/settings.json` is built from `$HOME` and nothing else |
+
+**Verified 2026-08-09** by inspecting the installed binaries: Claude Code **2.1.226**
+(`function bcc(){return process.env.CLAUDE_CONFIG_DIR}`, feeding the `Hn()` used for every
+`~/.claude` path), Codex **0.147.0** via 60 `CODEX_HOME` references including `"CODEX_HOME
+points to "`, Pi **0.84.1** via `getAgentDir()` in its shipped source maps plus `extensions:
+join(globalBaseDir, "extensions")`, OpenCode **1.18.15** via `globalConfigPath`. The
+Antigravity negative is `agy` **1.1.11**, a scan of every `AGY_*` / `ANTIGRAVITY_*` /
+`GEMINI_*` name in the 170 MB binary; the only config-dir-shaped one,
+`ANTIGRAVITY_EXECUTABLE_DATA_DIR`, is the editor's data dir, not the CLI's settings path.
+
+**OpenCode has two decoys.** `OPENCODE_CONFIG` names a config *file*, and
+`OPENCODE_CONFIG_DIR` does **not** relocate anything — it adds a further `.opencode`-shaped
+directory, loaded after the global config, that shadows it. Only `XDG_CONFIG_HOME` moves the
+file `loadout` writes.
+
+A manifest destination follows these with `${VAR:-fallback}` — see the schema in the
+[README](../../README.md#loadouttoml). Nothing in `loadout` knows these variable names; the
+manifest does.
+
 ## Upstream documentation
 
 Where each harness documents its permission surface. Check these when output stops

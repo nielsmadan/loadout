@@ -61,8 +61,10 @@ Claude-style filename in another harness proves nothing.
 `cli.py` → `commands.py` → `emit.py` → `composition.py` (instructions) and
 `permissions/` (`rules.py` parses, `renderers.py` renders, keyed by name in `RENDERERS`).
 `manifest.py` parses `loadout.toml`; `sources.py` and `resolve.py` resolve fragments.
-`machine.py` reads `$XDG_CONFIG_HOME/loadout/config.toml` — the only place machine state
-lives, and what `--global` resolves the root and profile from.
+`machine.py` reads `$XDG_CONFIG_HOME/loadout/config.toml` — the only place machine state is
+*stored*, and what `--global` resolves the root and profile from. It is not the only machine
+state that is *read*: `manifest.py:resolve_destination` expands `${VAR}` in a destination
+against the environment, per [0011](docs/decisions/0011-a-destination-follows-a-relocated-harness.md).
 `project.py` (harness preset) is project scope; `scaffold.py` holds both scopes' scaffolding
 (`init`, `harness add`, `init --global`).
 `emit.py:render_project` renders it; `render_all` unions it with `render_global`'s global-scope

@@ -49,11 +49,14 @@ project scope already uses:
 ```
 
 `sync` writes each document to its **destinations** — the real paths harnesses read, declared
-per target in the manifest. There is no staging tree and no symlink layer. Two things follow.
+per target in the manifest. There is no staging tree and no symlink layer. Three things follow.
 Each destination is rendered on its own, so a target co-owning a live config file carries that
-file's own foreign keys forward into it. And because the machine config already names the
-profile, only one variant of a profiled document is ever generated, so nothing downstream has
-to choose between staged alternatives.
+file's own foreign keys forward into it. Because the machine config already names the profile,
+only one variant of a profiled document is ever generated, so nothing downstream has to choose
+between staged alternatives. And a destination is a *template*, not a fixed path: it may read
+`${VAR:-fallback}` so it follows a harness whose config directory has been moved, which makes
+the resolved path a third axis of "personal" alongside the source and the profile — see
+[0011](decisions/0011-a-destination-follows-a-relocated-harness.md).
 
 **Accepted trade-off:** a fresh clone with loadout not yet installed no longer yields working
 config. loadout is installed on every machine and `install.sh` is already a step, so this is

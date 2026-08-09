@@ -13,6 +13,10 @@ needs no base document.
 
 `codex/rules` is deployed as a **directory symlink**.
 
+`CODEX_HOME` replaces `~/.codex`, taking `rules/` with it. Verified 2026-08-09 against
+codex-cli 0.147.0. See
+[Relocating the config directory](README.md#relocating-the-config-directory).
+
 ## Resolution
 
 Most-restrictive wins: `forbidden > prompt > allow`. Emission order carries no meaning.

@@ -13,6 +13,10 @@ Pi is one of two harnesses whose permissions already live in their own file, so
 `loadout` fully owns this output and it needs no base document. The pinned version is a
 literal in the renderer — bumping the extension means bumping it there.
 
+`PI_CODING_AGENT_DIR` replaces `~/.pi/agent`, and `extensions/` is joined onto it, so this
+file moves with it. Verified 2026-08-09 against pi 0.84.1. See
+[Relocating the config directory](README.md#relocating-the-config-directory).
+
 ## Resolution
 
 **Last matching rule wins**; the package docs say "put broad catch-alls first."

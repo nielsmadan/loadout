@@ -9,6 +9,11 @@ regenerating it whole. That is a property of the current file, not a guarantee f
 Antigravity — if a hand-maintained key is ever added, this becomes a base-document case
 like Claude's.
 
+Alone among the five, Antigravity offers **no environment variable that relocates its config
+directory**: `~/.gemini/antigravity-cli/settings.json` is built from `$HOME` and nothing else.
+Verified 2026-08-09 against `agy` 1.1.11 by scanning every `AGY_*` / `ANTIGRAVITY_*` /
+`GEMINI_*` name in the binary. See [Relocating the config directory](README.md#relocating-the-config-directory).
+
 ## Resolution
 
 "Strictly evaluated in priority order: Deny > Ask > Allow." Emission order carries no

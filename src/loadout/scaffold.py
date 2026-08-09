@@ -144,7 +144,7 @@ path = "."
 
 # [instructions.claude]
 # output       = "claude/CLAUDE.md"
-# destinations = ["~/.claude/CLAUDE.md"]
+# destinations = ["${CLAUDE_CONFIG_DIR:-~/.claude}/CLAUDE.md"]
 # order        = ["intro"]
 
 # [permissions.claude]

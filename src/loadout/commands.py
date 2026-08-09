@@ -180,7 +180,10 @@ def cmd_check(root: Path, profile: str = "default") -> int:
     for path, actual, expected in drift:
         rel = _display(path, root)
         print(f"DRIFT: {rel}", file=sys.stderr)
-        sys.stderr.writelines(_diff(rel, actual, expected, context=3))
+        lines = list(_diff(rel, actual, expected, context=3))
+        sys.stderr.writelines(lines[:_DIFF_LIMIT])
+        if len(lines) > _DIFF_LIMIT:
+            print(f"    ... {len(lines) - _DIFF_LIMIT} more diff line(s)", file=sys.stderr)
     print(
         f"\n{len(drift)} generated file(s) out of sync — run `loadout sync`.",
         file=sys.stderr,

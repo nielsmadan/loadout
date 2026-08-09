@@ -18,6 +18,11 @@ Read in precedence order, highest first:
 MCP server configuration and per-project state live in `~/.claude.json`, not in
 `settings.json`. Project-scoped MCP servers live in `.mcp.json`.
 
+`CLAUDE_CONFIG_DIR` replaces `~/.claude` wherever it appears — `settings.json`, `CLAUDE.md`,
+`ide/`, `teams/` — and `~/.claude.json` moves with it, resolving to
+`$CLAUDE_CONFIG_DIR/.claude.json`. Verified 2026-08-09 against 2.1.226. See
+[Relocating the config directory](README.md#relocating-the-config-directory).
+
 ## Resolution
 
 `deny → ask → allow`, and **rule specificity does not change the order**. Two

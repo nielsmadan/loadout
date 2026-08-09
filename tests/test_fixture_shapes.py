@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from loadout.manifest import MANIFEST_NAME, load_manifest
 from loadout.permissions.rules import is_glob, mcp_parts, parse_rules
 
 FIXTURE = Path(__file__).parent / "fixtures" / "permissions.toml"
@@ -78,3 +79,12 @@ def test_both_extras_channels_are_populated() -> None:
     assert RULES.claude_extra_allow
     assert RULES.claude_extra_deny
     assert RULES.opencode_extra
+
+
+def test_a_destination_is_env_templated() -> None:
+    """The expansion path is otherwise reachable only from unit tests. Without a
+    templated destination here, the whole-document comparison would keep passing
+    while covering none of it."""
+    manifest = load_manifest(FIXTURE.parent / MANIFEST_NAME)
+    templates = [str(d) for target in manifest.targets for d in target.destinations]
+    assert [t for t in templates if "${" in t], "no destination exercises ${...} expansion"

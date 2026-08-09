@@ -17,6 +17,7 @@ from .manifest import (
     PermissionTarget,
     load_manifest,
     manifest_path,
+    resolve_destination,
 )
 from .permissions.merge import merge_rules
 from .permissions.renderers import RENDERERS, JsonSpec, TextSpec
@@ -161,12 +162,19 @@ def _claim(path: Path, owner: str, claimed: dict[Path, str]) -> None:
     claimed[path] = owner
 
 
+def _target_label(target: InstructionTarget | PermissionTarget) -> str:
+    """How the target is spelled in the manifest, for errors that send the reader there."""
+    if isinstance(target, PermissionTarget):
+        return f"permissions.{target.name}"
+    if target.name:
+        return f"instructions.{target.name}"
+    return f"instructions[{', '.join(target.fragments)}]"
+
+
 def _owner_label(target: InstructionTarget | PermissionTarget) -> str:
     if target.path is not None:
         return str(target.path)
-    if isinstance(target, PermissionTarget):
-        return f"permissions.{target.name}"
-    return f"instructions[{', '.join(target.fragments)}]"
+    return _target_label(target)
 
 
 def _fixed(content: str) -> Callable[[Path], str]:
@@ -193,7 +201,8 @@ def _expand(
     paths: list[Path] = []
     if target.path is not None:
         paths.append(root / str(target.path))
-    paths.extend(Path(str(destination)).expanduser() for destination in target.destinations)
+    label = _target_label(target)
+    paths.extend(resolve_destination(str(d), label) for d in target.destinations)
     for path in paths:
         _claim(path, owner, claimed)
         outputs[path] = render_for(path)

@@ -28,6 +28,14 @@ test is a gap.
 | `both-forms` | OpenCode and Pi need both `<entry>` and `<entry> *` | [README](README.md#bare-vs-with-arguments) | `test_opencode_emits_both_bare_and_argument_forms`, `test_pi_emits_both_bare_and_argument_forms` |
 | `purity` | renderers are pure and read no files | [ADR 0001](../decisions/0001-render-never-reads-its-own-output.md) | `test_renderers_are_pure`, `test_claude_never_reads_a_file` |
 | `no-base-mutation` | a renderer never mutates the base it was handed | [ADR 0001](../decisions/0001-render-never-reads-its-own-output.md) | `test_claude_does_not_mutate_its_base`, `test_opencode_does_not_mutate_its_base`, `test_antigravity_does_not_mutate_its_base` |
+| `dest-env-set` | a set `${VAR}` relocates the destination, mid-path as well as at the start | [ADR 0011](../decisions/0011-a-destination-follows-a-relocated-harness.md) | `test_a_set_variable_relocates_the_destination`, `test_a_permission_destination_expands_the_same_way`, `test_a_variable_substitutes_mid_path` |
+| `dest-env-fallback` | `${VAR:-path}` takes the fallback when unset, and when set-but-empty | [ADR 0011](../decisions/0011-a-destination-follows-a-relocated-harness.md) | `test_an_unset_variable_falls_back_to_the_default_path`, `test_an_empty_variable_counts_as_unset` |
+| `dest-env-required` | neither `${VAR}` with no fallback nor `${VAR:-}` may resolve to nothing | [ADR 0011](../decisions/0011-a-destination-follows-a-relocated-harness.md) | `test_a_variable_with_no_fallback_is_an_error_when_unset`, `test_an_empty_fallback_is_an_error_rather_than_expanding_to_nothing` |
+| `dest-env-grammar` | a brace form outside `${VAR}` / `${VAR:-x}` is an error, never literal path text | [ADR 0011](../decisions/0011-a-destination-follows-a-relocated-harness.md) | `test_a_reference_the_grammar_does_not_cover_is_an_error` |
+| `dest-absolute` | a resolved destination must be absolute with no `..`, checked after `~` | [ADR 0011](../decisions/0011-a-destination-follows-a-relocated-harness.md) | `test_a_destination_that_resolves_relative_is_an_error`, `test_an_expansion_containing_dot_dot_is_rejected`, `test_destination_with_dotdot_is_an_error` |
+| `dest-render-time` | resolution is per render, so an unselected profile's variable need not be set | [ADR 0011](../decisions/0011-a-destination-follows-a-relocated-harness.md) | `test_an_unselected_profiles_variable_does_not_have_to_be_set`, `test_the_target_holds_the_template_and_resolution_happens_per_render` |
+| `dest-collision-resolved` | collisions are detected on the resolved path, not the template | [README](../../README.md#loadouttoml) | `test_two_templates_that_expand_to_one_path_collide` |
+| `dest-env-literal` | only `${...}` substitutes; a bare `$` is left alone | [README](../../README.md#loadouttoml) | `test_a_destination_with_no_reference_is_left_alone` |
 
 ## Claude
 
@@ -98,6 +106,7 @@ list the expected-output files exist for, and the reason the comparison stays.
 | `wiring-header` | the generated-by header is present on the text outputs |
 | `wiring-composition` | instruction fragments compose in manifest order with the right separators |
 | `wiring-count` | every declared target produces an output |
+| `wiring-destination-env` | a `${VAR:-fallback}` destination reaches the renderer like a literal one | 
 
 ## Recorded but not testable at render time
 
@@ -108,3 +117,6 @@ list the expected-output files exist for, and the reason the comparison stays.
 | `claude-afk-delta` | the two Claude bases differ only by `CLAUDE_AFK_TIMEOUT_MS` | A property of `~/ac`'s own base documents, not of loadout. Pinned by `test_base_drift_guard`, which is meaningless against a synthetic fixture. |
 | `agy-headless` | `agy` soft-denies everything in headless mode regardless of the allowlist | Harness runtime behaviour; nothing is rendered differently. |
 | `oc-compound` | OpenCode takes the least-permitted verdict across a `;`/`&&`/`\|` chain | Harness runtime behaviour. |
+| `config-dir-vars` | which variable relocates each harness's config dir, and that Antigravity has none | Upstream facts about five binaries, recorded in [README](README.md#relocating-the-config-directory) with the version each was verified against. loadout renders the same bytes either way, so nothing observable at render time distinguishes a right answer from a wrong one. Re-verify by inspecting the binaries, not by running the suite. |
+| `dest-env-preserve` | with `preserve`, the environment selects which file's foreign keys are merged | Falls out of `preserve` reading the destination ([ADR 0011](../decisions/0011-a-destination-follows-a-relocated-harness.md)); pinned indirectly by `test_each_destination_preserves_its_own_foreign_keys`, which fixes the paths rather than varying the environment. |
+| `dest-env-orphan` | a destination the environment has moved away from leaves the path set, so `check` cannot see the stale file | Inherent to render-time resolution; the fix is the orphan sidecar [0008](../decisions/0008-generated-files-carry-no-machine-state.md) defers. Nothing is rendered differently. |

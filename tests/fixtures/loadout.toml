@@ -23,10 +23,13 @@ profile      = "variant"
 order        = ["intro", "policy.variant", "shared", "closing"]
 
 # Both output and destinations, and more than one destination, so the fan-out is
-# covered. No profile, so it renders under every profile.
+# covered. No profile, so it renders under every profile. The second destination is
+# env-templated: conftest clears LOADOUT_TEST_HARNESS_C, so it takes the fallback and
+# resolves to the same path a literal would — which is what keeps the expected tree
+# machine-independent while still routing the fixture through the expansion path.
 [instructions.shared]
 output       = "out/shared.md"
-destinations = ["~/.harness-b/SHARED.md", "~/.harness-c/SHARED.md"]
+destinations = ["~/.harness-b/SHARED.md", "${LOADOUT_TEST_HARNESS_C:-~/.harness-c}/SHARED.md"]
 order        = ["intro", "shared", "closing"]
 
 [permissions.antigravity]

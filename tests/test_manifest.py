@@ -5,7 +5,7 @@ from pathlib import Path, PurePosixPath
 import pytest
 
 from loadout.errors import LoadoutError
-from loadout.manifest import load_manifest
+from loadout.manifest import load_manifest, resolve_destination
 
 MINIMAL = """
 [[source]]
@@ -72,11 +72,15 @@ def test_empty_string_destination_is_an_error(tmp_path: Path) -> None:
 
 
 def test_destination_with_dotdot_is_an_error(tmp_path: Path) -> None:
+    """A destination is a template, so `..` is caught where it resolves, not where it
+    parses — `load_manifest` alone accepts it and `resolve_destination` refuses it."""
     body = MINIMAL.replace(
         'destinations = ["~/.claude/CLAUDE.md"]', 'destinations = ["~/../etc/passwd"]'
     )
-    with pytest.raises(LoadoutError, match="destination"):
-        load_manifest(write_manifest(tmp_path, body))
+    manifest = load_manifest(write_manifest(tmp_path, body))
+    template = str(manifest.targets[0].destinations[0])
+    with pytest.raises(LoadoutError, match=r"\.\."):
+        resolve_destination(template, "instructions.claude")
 
 
 def test_absolute_destination_is_allowed(tmp_path: Path) -> None:

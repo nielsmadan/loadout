@@ -55,9 +55,11 @@ profile = "autonomous"      # optional; the active profile (default: "default")
 
 `source` and `profile` are the only accepted keys — anything else is an error, so a typo fails
 loudly. The file is machine state: never version-controlled, never generated, and the only
-place loadout keeps state that is not part of a source (see
+place loadout *stores* state that is not part of a source (see
 [0010](docs/decisions/0010-a-machine-config-locates-the-global-source.md) and
-[0008](docs/decisions/0008-generated-files-carry-no-machine-state.md)).
+[0008](docs/decisions/0008-generated-files-carry-no-machine-state.md)). It is not the only
+machine state loadout *reads*: a destination template resolves environment variables at render
+time, per [0011](docs/decisions/0011-a-destination-follows-a-relocated-harness.md).
 
     loadout init --global --source ~/ac    # scaffold a global source and write the machine config
     loadout init --global --force          # reinitialise, overwriting an existing machine config
@@ -111,6 +113,38 @@ root with `..`), `order` is the ordered list of fragment names composed into it,
 and diff every destination exactly like the in-repo `output`. Each output path is rendered
 separately, so the bytes are identical everywhere unless `preserve` (below) carries different
 foreign keys into different files.
+
+A destination may also read an environment variable, as `${VAR}` or `${VAR:-fallback}`:
+
+```toml
+[instructions.claude]
+destinations = ["${CLAUDE_CONFIG_DIR:-~/.claude}/CLAUDE.md"]
+order        = ["intro-claude"]
+```
+
+This is how a destination follows a harness that has been told to keep its config somewhere
+other than the default — see [docs/reference](docs/reference/) for the variable each harness
+reads. A variable that is unset **or empty** takes the fallback, and an empty fallback counts
+as no fallback, so neither `${VAR}` nor `${VAR:-}` can quietly resolve to nothing.
+
+**A destination is a template, resolved once per render rather than when the manifest is
+parsed.** Three consequences:
+
+- Only the targets the active profile selects are resolved, so a variable a
+  profile you never run depends on does not have to be set on this machine.
+- `${...}` and `~` resolve together, and the result must be an **absolute path with no `..`
+  components** — a relative one would be written under whatever directory `loadout` happened
+  to be run from. Two destinations that resolve to the same file collide even when their
+  templates differ.
+- Every substitution is textual and single-pass: a variable's *value* is never rescanned for
+  further references.
+
+Only `${VAR}` and `${VAR:-fallback}` are substituted. Anything else brace-shaped —
+`${VAR-fallback}` without the colon, `${VAR:?msg}`, a nested `${A:-${B}}`, an unclosed
+`${` — is an **error**, not literal text, because silently leaving it in the path is how a
+template ends up being created as a directory. A bare `$` with no brace is left alone, so a
+literal `${` cannot be expressed in a destination.
+
 `[permissions.<name>]` targets accept `destinations` the same way. At least one source is
 required, and at least one `[instructions.<agent>]` or `[permissions.<name>]` target must be
 declared; no two targets, of either kind, may share an `output` path, and — among the targets
