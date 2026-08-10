@@ -1,7 +1,8 @@
 # AGENTS.md
 
-`loadout` renders one source of truth into config for five AI coding harnesses: Claude Code,
-Codex, Antigravity (`agy`), OpenCode and Pi.
+`loadout` renders one source of truth into config for four AI coding harnesses: Claude Code,
+Codex, OpenCode and Pi. Antigravity (`agy`) was dropped — see
+[0012](docs/decisions/0012-antigravity-is-dropped-until-it-matures.md).
 
 ## Commands
 
@@ -51,7 +52,7 @@ that would not.
 
 ## Never generalise from Claude Code
 
-loadout targets five harnesses whose mechanisms differ in shape, not just naming. Claude is
+loadout targets four harnesses whose mechanisms differ in shape, not just naming. Claude is
 the best-documented and easiest to inspect, which makes it a misleading default. Establish
 each harness's behaviour separately and record it in `docs/reference/`. Absence of a
 Claude-style filename in another harness proves nothing.

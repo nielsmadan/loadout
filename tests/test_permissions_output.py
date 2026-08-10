@@ -11,7 +11,6 @@ from loadout.errors import LoadoutError
 EXPECTED = Path(__file__).parent / "fixtures" / "expected" / "default"
 
 PERMISSION_OUTPUTS = (
-    "perm/antigravity.json",
     "perm/claude.json",
     "perm/claude-empty.json",
     "perm/claude-mcp.json",

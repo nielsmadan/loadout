@@ -1,5 +1,11 @@
 # Antigravity (`agy`)
 
+> **loadout no longer targets Antigravity** — see
+> [0012](../decisions/0012-antigravity-is-dropped-until-it-matures.md). This page is kept
+> because everything below was verified at cost and would have to be re-established to re-add
+> support; the ADR lists what has to become true first. Nothing here describes what loadout
+> emits, because it emits nothing.
+
 ## Config file
 
 `antigravity/settings.json` → `permissions.allow` / `deny` / `ask`.

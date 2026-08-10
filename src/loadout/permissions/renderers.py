@@ -183,28 +183,6 @@ def render_codex_mcp(rules: Rules) -> str:
 
 
 # --------------------------------------------------------------------------
-# antigravity — antigravity/settings.json. agy's schema wraps each entry in
-# command(...) form. Its docs only show literal command strings, so glob
-# entries are skipped as they are for Codex and fall through to runtime
-# approval.
-# --------------------------------------------------------------------------
-
-
-def antigravity_pattern(entry: str) -> str:
-    return f"command({entry})"
-
-
-def render_antigravity(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
-    settings = copy.deepcopy(base)
-    perms: dict[str, list[str]] = settings.setdefault("permissions", {})
-    for category in CATEGORIES:
-        perms[category] = [antigravity_pattern(e) for e in rules.shell(category) if not is_glob(e)]
-    for category in CATEGORIES:
-        perms[category] += [f"mcp({entry})" for entry in rules.mcp(category)]
-    return settings
-
-
-# --------------------------------------------------------------------------
 # claude — claude/settings.json: replace permissions.allow / deny / ask and
 # preserve every other key. The base is a parameter, never a read of this
 # renderer's own output.
@@ -352,7 +330,6 @@ RENDERERS: dict[str, JsonSpec | TextSpec] = {
     "codex": TextSpec(render_codex),
     "codex-mcp": TextSpec(render_codex_mcp),
     "pi": JsonSpec(render_pi),
-    "antigravity": JsonSpec(render_antigravity),
     "opencode": JsonSpec(render_opencode),
     "codex-project": TextSpec(render_codex_project),
     "pi-project": JsonSpec(render_pi_project),

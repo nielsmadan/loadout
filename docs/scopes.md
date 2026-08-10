@@ -2,10 +2,10 @@
 
 ## The problem
 
-Five AI coding harnesses each want the same information — which commands may run, what the
-agent should know about a project — in five different formats, with five different matchers
-and five different file layouts. Maintaining that by hand means five copies drifting apart.
-Maintaining it with five ad-hoc scripts means the same, plus the scripts drift from each
+Four AI coding harnesses each want the same information — which commands may run, what the
+agent should know about a project — in four different formats, with four different matchers
+and four different file layouts. Maintaining that by hand means four copies drifting apart.
+Maintaining it with four ad-hoc scripts means the same, plus the scripts drift from each
 other too: the system loadout replaced had two independent copies of its render logic, and
 they diverged into a real defect.
 
@@ -84,22 +84,20 @@ Per-repo configuration, layered on top of global. Two sources per artifact type:
 | personal | **no** | your rules for this repo — machine paths, local tools |
 
 loadout merges the two and writes **one generated output per harness, always gitignored**. Five
-outputs across four harnesses (`claude`, `codex`, `opencode`, `pi`); `antigravity` is a valid
-harness name that currently generates nothing (see below). `.codex/config.toml`, in the system
-this replaces, turned out to be a one-byte leftover of the old tooling rather than a real output,
-so the port does not reproduce it.
+outputs across four harnesses (`claude`, `codex`, `opencode`, `pi`). `.codex/config.toml`, in the
+system this replaces, turned out to be a one-byte leftover of the old tooling rather than a real
+output, so the port does not reproduce it.
 
 Generated project files are never committed, because the merged output contains personal
 content — two people would conflict on every regeneration. Shared content reaches other
 people through the committed *source*, which works precisely because adoption is
 all-or-nothing.
 
-**loadout merges the tiers itself rather than using each harness's native mechanism.** Four
-of the five do have one — Claude's `CLAUDE.local.md`, Codex's `AGENTS.override.md`,
-OpenCode's `instructions` config key, Antigravity's `.agents/rules/` directory — but they are
-four different shapes, Pi has none so the merge path must exist anyway, and the only thing
-native mechanisms would buy is committed outputs, which nobody needs given all-or-nothing
-adoption. Revisit only if that adoption model ever changes.
+**loadout merges the tiers itself rather than using each harness's native mechanism.** Three
+of the four do have one — Claude's `CLAUDE.local.md`, Codex's `AGENTS.override.md`, OpenCode's
+`instructions` config key — but they are three different shapes, Pi has none so the merge path
+must exist anyway, and the only thing native mechanisms would buy is committed outputs, which
+nobody needs given all-or-nothing adoption. Revisit only if that adoption model ever changes.
 
 Consequences:
 
@@ -128,10 +126,11 @@ Consequences:
 - Project-scope *instructions* — the same two-tier source/personal machinery as permissions,
   covering `CLAUDE.md`/`AGENTS.md` rather than permission rules. Deliberately built after
   permissions so the oracle can distinguish a port bug from a new-feature bug; not started.
-- Antigravity project permissions. `antigravity` is a valid harness name — `agy` has a project
-  permission scope in its own TUI — but the system loadout ported never wrote one and its
-  storage path is unknown, so `PRESET["antigravity"]` is empty and the harness generates
-  nothing. Accepting the name without generating anything is deliberate, not an oversight.
+- Antigravity, if it matures. `agy` was dropped as a target — its generated permissions file is
+  ignored in headless mode, it has no global skills mechanism and no config-directory variable,
+  and its plugin enablement was never established. `docs/reference/antigravity.md` keeps the
+  findings and [0012](decisions/0012-antigravity-is-dropped-until-it-matures.md) lists what has
+  to become true to re-add it.
 - Per-project-type templates (`aiconf`). A template carries four artifact types — permissions,
   instructions, skills, MCP — so it is a dimension rather than a milestone: build the
   mechanism once (a project declares a template; its content resolves from the global source

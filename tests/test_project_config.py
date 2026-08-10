@@ -22,7 +22,7 @@ def test_parses_the_harness_list(tmp_path: Path) -> None:
 
 
 def test_known_harnesses_are_the_five_supported_names() -> None:
-    assert frozenset({"claude", "codex", "opencode", "pi", "antigravity"}) == KNOWN_HARNESSES
+    assert frozenset({"claude", "codex", "opencode", "pi"}) == KNOWN_HARNESSES
 
 
 def test_preset_has_an_entry_for_every_known_harness() -> None:

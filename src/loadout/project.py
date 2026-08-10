@@ -9,7 +9,7 @@ from .errors import LoadoutError
 PROJECT_DIR = "loadout"
 PROJECT_CONFIG_NAME = "config.toml"
 
-KNOWN_HARNESSES = frozenset({"claude", "codex", "opencode", "pi", "antigravity"})
+KNOWN_HARNESSES = frozenset({"claude", "codex", "opencode", "pi"})
 
 
 @dataclass(frozen=True)
@@ -86,7 +86,6 @@ PRESET: dict[str, tuple[ProjectTarget, ...]] = {
             "pi-project",
         ),
     ),
-    "antigravity": (),
 }
 
 

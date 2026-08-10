@@ -54,7 +54,7 @@ def test_write_all_creates_every_target(root: Path) -> None:
     # leaving 10 in-repo outputs plus the 4 destinations those 10 fan out to
     # (1 for claude/CLAUDE.md, 3 for global/AGENTS.md).
     written = write_all(root)
-    assert len(written) == 13
+    assert len(written) == 12
     for path in written:
         assert path.is_file()
 

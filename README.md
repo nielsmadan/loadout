@@ -194,7 +194,7 @@ preserve = ["mcp"]
 - `output` — where the generated file is written, relative to the repo root. Subject to the
   same rules as an instructions target's `output`.
 - `render` — the renderer name. One of: `claude`, `claude-mcp`, `codex`, `codex-mcp`, `pi`,
-  `antigravity`, `opencode`.
+  `opencode`.
 - `base` — optional. A JSON file, relative to the repo root, that the renderer starts from —
   hand-maintained keys in it (model, hooks, `defaultMode`, and so on) are carried through into
   the output untouched. A `base` must be an existing input file; it may never point at a path
@@ -247,7 +247,6 @@ Known harnesses and what each one generates:
 | `codex` | `.codex/rules/aiconf.rules` |
 | `opencode` | `opencode.json` |
 | `pi` | `.pi/extensions/pi-permission-system/config.json` |
-| `antigravity` | nothing — `agy` has a project permission scope in its TUI, but the system loadout ported never wrote one and its storage path is unknown; the name is still accepted so a project's harness list can name every harness in use |
 
 `opencode.json` and `.claude/settings.json` are a harness's own multi-purpose config file, so
 loadout preserves any foreign top-level key already there (`$schema`, for example) instead of

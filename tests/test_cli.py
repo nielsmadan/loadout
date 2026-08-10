@@ -56,7 +56,6 @@ def test_sync_profile_variant_selects_the_variant_target(root: Path, fake_home: 
     # and must never disappear when the active profile changes.
     unprofiled_outputs = (
         "out/shared.md",
-        "perm/antigravity.json",
         "perm/claude.json",
         "perm/claude-empty.json",
         "perm/claude-mcp.json",

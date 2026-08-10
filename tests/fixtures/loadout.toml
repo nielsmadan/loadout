@@ -32,10 +32,6 @@ output       = "out/shared.md"
 destinations = ["~/.harness-b/SHARED.md", "${LOADOUT_TEST_HARNESS_C:-~/.harness-c}/SHARED.md"]
 order        = ["intro", "shared", "closing"]
 
-[permissions.antigravity]
-output = "perm/antigravity.json"
-render = "antigravity"
-
 [permissions.claude]
 output = "perm/claude.json"
 render = "claude"

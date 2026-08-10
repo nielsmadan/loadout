@@ -40,7 +40,7 @@ def test_a_multi_word_prefix_is_present() -> None:
 
 
 def test_a_glob_is_present_so_the_skip_path_runs() -> None:
-    """Codex and Antigravity skip these and emit a trailing comment block."""
+    """Codex skips these and emits a trailing comment block."""
     assert [entry for entry in RULES.allow if is_glob(entry)]
 
 

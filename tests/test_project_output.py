@@ -74,13 +74,14 @@ def test_claude_runtime_settings_file_is_not_a_loadout_output(project: Path) -> 
     assert ".claude/settings.local.json" not in rendered
 
 
-def test_antigravity_alone_renders_no_outputs(project: Path) -> None:
-    """antigravity maps to an empty tuple in PRESET — accepting the name without
-    generating anything is deliberate, not an oversight (see project.py PRESET)."""
+def test_a_dropped_harness_name_is_rejected(project: Path) -> None:
+    """antigravity was removed as a target — see docs/decisions/0012. The name must
+    now fail loudly rather than silently generating nothing."""
     (project / "loadout" / "config.toml").write_text(
         'harnesses = ["antigravity"]\n', encoding="utf-8"
     )
-    assert render_project(project) == {}
+    with pytest.raises(LoadoutError, match="antigravity"):
+        render_project(project)
 
 
 def test_missing_committed_source_is_an_error(project: Path) -> None:
