@@ -2,12 +2,21 @@
 
 How each supported agent harness handles permissions, and what `loadout` emits for it.
 
+[config.md](config.md) is the other axis: where each harness keeps each of the seven kinds of
+configuration — settings, instructions, permissions, hooks, mcp, plugins, skills — at global
+and project scope. Start there when the question is *which file*; start here when it is *what
+the matcher does*.
+
 One file per harness. Each records **what was verified** (with the date and version it
 was verified against) separately from **what upstream documents**. When a harness
 changes, re-check the verified claims first — they are the ones this project's output
 depends on, and the ones a docs page will not tell you have changed.
 
-| | [Claude](claude.md) | [Codex](codex.md) | [Antigravity](antigravity.md) | [OpenCode](opencode.md) | [Pi](pi.md) |
+**Antigravity is in these tables but is not a target.** loadout emits nothing for it — see
+[0012](../decisions/0012-antigravity-is-dropped-until-it-matures.md). Its rows are kept because
+the findings were expensive to establish and re-adding support depends on them.
+
+| | [Claude](claude-code.md) | [Codex](codex.md) | [Antigravity](antigravity.md) | [OpenCode](opencode.md) | [Pi](pi.md) |
 |---|---|---|---|---|---|
 | resolution | deny → ask → allow | most-restrictive | deny > ask > allow | last match | last match |
 | specificity affects order | no | no | no | n/a | n/a |
@@ -44,7 +53,7 @@ Skipping is fail-closed — the command prompts rather than being silently allow
 Three matchers prefix-match, so `pwd` matches `pwd --help` for free. Two do not:
 
 - **Claude** needs the `:*` suffix, which matches both forms (verified — see
-  [claude.md](claude.md)).
+  [claude-code.md](claude-code.md)).
 - **OpenCode and Pi** need **both** `<entry>` and `<entry> *` emitted, because their
   matchers treat `foo *` as not matching a bare `foo`.
 
