@@ -153,21 +153,40 @@ settings, which is why those targets need a `base` document and the rest do not.
 **Claude and Codex share an event vocabulary and an entry shape.** Both are a map of event name
 → list of entries, each `{matcher?, hooks: [{type, command, timeout}]}`. Observed events:
 
-- **Claude, from the 2.1.226 binary — 16 events:** `Notification`, `PermissionRequest`,
-  `PostCompact`, `PostToolUse`, `PostToolUseFailure`, `PreCompact`, `PreToolUse`, `SessionEnd`,
-  `SessionStart`, `Stop`, `StopFailure`, `SubagentStart`, `SubagentStop`, `UserPromptSubmit`,
-  `WorktreeCreate`, `WorktreeRemove`
-- **Codex, from the 0.147.0 binary — 11 events:** `PermissionRequest`, `PostCompact`,
-  `PostToolUse`, `PreCompact`, `PreToolUse`, `SessionEnd`, `SessionStart`, `Stop`,
-  `SubagentStart`, `SubagentStop`, `UserPromptSubmit`
+**Claude — 31 hook events**, from the 2.1.226 binary. Extracted by *shape*
+(`Name:{summary:"…"`), not by naming candidates, so the query could return names nobody
+predicted — and it did:
 
-**Codex's set is a strict subset of Claude's** — 11 shared, 5 Claude-only, none Codex-only. And
-Codex carries Claude's hook *I/O* vocabulary too (`hookSpecificOutput`, `permissionDecision`,
-`permissionDecisionReason`, `updatedInput`, `additionalContext`, `hook_event_name`, `tool_input`),
-and honours exit code 2. Codex implements Claude's hook protocol rather than a parallel one.
+`ConfigChange`, `CwdChanged`, `DirectoryAdded`, `Elicitation`, `ElicitationResult`,
+`FileChanged`, `InstructionsLoaded`, `MessageDisplay`, `Notification`, `PermissionDenied`,
+`PermissionRequest`, `PostCompact`, `PostToolBatch`, `PostToolUse`, `PostToolUseFailure`,
+`PreCompact`, `PreToolUse`, `SessionEnd`, `SessionStart`, `Setup`, `Stop`, `StopFailure`,
+`SubagentStart`, `SubagentStop`, `TaskCompleted`, `TaskCreated`, `TeammateIdle`,
+`UserPromptExpansion`, `UserPromptSubmit`, `WorktreeCreate`, `WorktreeRemove`
 
-Only 11 of Claude's 16 and 9 of Codex's 11 are configured on this machine; `WorktreeCreate`
-appears in no config here at all. **Configuration is a lower bound on capability, always.**
+Each carries a description — `PermissionDenied` is "After auto mode classifier denies a tool
+call", `Setup` is "Repo setup hooks for init and maintenance", `InstructionsLoaded` is "When an
+instruction file (CLAUDE.md or rule) is loaded". **20 of the 31 additionally have an
+event-specific output schema** (`hookEventName:<fn>("…")`), and those 20 are a clean subset — no
+event has a schema without a summary.
+
+**Codex — at least 11, and the real number is not established.** `PermissionRequest`,
+`PostCompact`, `PostToolUse`, `PreCompact`, `PreToolUse`, `SessionEnd`, `SessionStart`, `Stop`,
+`SubagentStart`, `SubagentStop`, `UserPromptSubmit`. Every one is also in Claude's list.
+
+That figure came from a query naming its own candidates, so it is a **lower bound, not an
+enumeration** — it could only return names already guessed. Codex is a Rust binary with no
+JS-style container to read openly, and locating its variant table was attempted and failed. So
+**"Codex has no events Claude lacks" is unsupported**: it holds only within the seeded
+intersection. An earlier version of this page asserted a strict subset. It should not have.
+
+Codex does carry Claude's hook *I/O* vocabulary — `hookSpecificOutput`, `permissionDecision`,
+`permissionDecisionReason`, `updatedInput`, `additionalContext`, `hook_event_name`, `tool_input`
+— and honours exit code 2. Those are **presence** claims, which a seeded query establishes
+perfectly well; it is completeness a seeded query cannot establish.
+
+Only 11 of Claude's 31 and 9 of Codex's 11 are configured on this machine. **Configuration is a
+lower bound on capability, and so is a search that names what it expects to find.**
 
 `matcher` appears only on Claude: every entry in `~/.codex/hooks.json` is `{hooks: [...]}` alone
 — though that is configuration again, so it is not proof Codex lacks the concept.
