@@ -28,7 +28,7 @@ filename in another harness proves nothing.
 | settings | ✓ | ✓ | ✓ | ✓ | ✓ |
 | instructions | ✓ | ✓ | ✓ | ✓ | ✓ |
 | permissions | ✓ | ✓ | ✓ | ✓ | ✓ |
-| hooks | ✓ | ✓ | — plugins | — extensions | ✓ |
+| hooks | ✓ declarative | ✓ declarative | ✓ **in code** | ✓ **in code** | ✓ declarative |
 | mcp | ✓ CLI only | ✓ | ✓ | ✓ | ✓ |
 | plugins | ✓ | ✓ | ✓ npm | ✓ | ✓ |
 | skills | ✓ | ✓ | ✓ | ✓ | ✓ project only |
@@ -46,9 +46,10 @@ one write covers three harnesses.
 (`hooks.json`) into three. Pi splits them four ways. Any design assuming one slice ↔ one file is
 wrong on three of five harnesses.
 
-**Hooks are declarative on three harnesses and code on two.** Claude, Codex and Antigravity each
-take a JSON document of events. OpenCode and Pi have no hooks file — the equivalent is a
-TypeScript plugin or extension.
+**All four supported harnesses have hooks; two declare them and two register them in code.**
+Claude and Codex take a JSON document of events. OpenCode and Pi have no hooks *file*, which is
+not the same as having no hooks — both expose a documented event API that a TypeScript
+plugin/extension subscribes to, and Pi's is larger than Claude's.
 
 **Only Claude and OpenCode have a machine-wide managed tier.** Codex, Pi and Antigravity have
 none.
@@ -145,8 +146,8 @@ settings, which is why those targets need a `base` document and the rest do not.
 |---|---|---|
 | Claude | `~/.claude/settings.json` → `hooks` | `.claude/settings.json` → `hooks` |
 | Codex | `~/.codex/hooks.json` → `hooks` | |
-| OpenCode | none — `~/.config/opencode/plugins/*.ts` | |
-| Pi | none — `~/.pi/agent/extensions/*.ts` | |
+| OpenCode | **in code** — `~/.config/opencode/plugins/*.ts` | |
+| Pi | **in code** — `~/.pi/agent/extensions/*.ts` | |
 | Antigravity | `~/.gemini/config/hooks.json` | `.agents/hooks.json` |
 
 **Claude and Codex share an event vocabulary and an entry shape.** Both are a map of event name
@@ -170,6 +171,24 @@ them as lower bounds until established from documentation or the binaries.
 
 On Claude, 6 of the 11 event lists contain entries with **no `matcher` key**, so `matcher` cannot
 serve as a merge key for those lists.
+
+### OpenCode and Pi register hooks in code
+
+Neither has a hooks *file*; both have a documented event API. This is a different mechanism, not
+a missing one — and Pi's surface is larger than Claude's.
+
+- **Pi** — `docs/extensions.md` (2,336 lines) documents ~24 events across eight groups:
+  `project_trust`, `resources_discover`, `session_start`, `session_info_changed`,
+  `session_before_switch`, `session_before_fork`, `session_before_compact`, `session_before_tree`,
+  `session_shutdown`, `before_agent_start`, `agent_start`, `turn_start`, `message_start`,
+  `tool_execution_start`, `context`, `before_provider_headers`, `before_provider_request`,
+  `after_provider_response`, `model_select`, `thinking_level_select`, `tool_call`, `tool_result`,
+  `user_bash`, `input`, `render`. Pi's own docs call these hooks.
+- **OpenCode** — a plugin returns handlers keyed `tool.execute.before`, `tool.execute.after`,
+  `chat.message`, `chat.params`, `permission.ask`, `auth`, plus a catch-all `event` stream.
+
+Several Pi events have no Claude analogue in either direction — `before_provider_request` can
+rewrite the system prompt, `render` transforms display — so this is not a subset relationship.
 
 ## mcp
 
