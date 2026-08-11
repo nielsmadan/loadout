@@ -11,7 +11,7 @@ the verified negatives below are precisely what a decision to re-add would have 
 This page records *where things are*. Matcher semantics and rendering behaviour live in the
 per-harness pages; [README.md](README.md) indexes those.
 
-**Verified 2026-08-09** against Claude Code 2.1.226, codex-cli 0.147.0, OpenCode 1.18.15, Pi
+**Verified 2026-08-09**, hooks section updated 2026-08-11, against Claude Code 2.1.226, codex-cli 0.147.0, OpenCode 1.18.15, Pi
 0.84.1 and Antigravity (`agy`) 1.1.11, by inspecting the installed binaries and shipped docs —
 not by reading upstream documentation. Method per harness: `strings` over the Claude, Codex,
 OpenCode and `agy` binaries; the JavaScript bundle and shipped `docs/` for Pi.
@@ -153,24 +153,27 @@ settings, which is why those targets need a `base` document and the rest do not.
 **Claude and Codex share an event vocabulary and an entry shape.** Both are a map of event name
 → list of entries, each `{matcher?, hooks: [{type, command, timeout}]}`. Observed events:
 
-- Claude: `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`,
-  `UserPromptSubmit`, `SessionStart`, `SessionEnd`, `SubagentStart`, `Stop`, `StopFailure`,
-  `PreCompact`
-- Codex: `PermissionRequest`, `PostCompact`, `PostToolUse`, `PreCompact`, `PreToolUse`,
-  `SessionEnd`, `SessionStart`, `Stop`, `UserPromptSubmit`
+- **Claude, from the 2.1.226 binary — 16 events:** `Notification`, `PermissionRequest`,
+  `PostCompact`, `PostToolUse`, `PostToolUseFailure`, `PreCompact`, `PreToolUse`, `SessionEnd`,
+  `SessionStart`, `Stop`, `StopFailure`, `SubagentStart`, `SubagentStop`, `UserPromptSubmit`,
+  `WorktreeCreate`, `WorktreeRemove`
+- **Codex, from the 0.147.0 binary — 11 events:** `PermissionRequest`, `PostCompact`,
+  `PostToolUse`, `PreCompact`, `PreToolUse`, `SessionEnd`, `SessionStart`, `Stop`,
+  `SubagentStart`, `SubagentStop`, `UserPromptSubmit`
 
-Eight overlap exactly. `PostToolUseFailure`, `StopFailure` and `SubagentStart` are Claude-only;
-`PostCompact` is Codex-only — Codex has **both** compact events, Claude only `PreCompact`. So a
-translation layer needs a per-harness event map with an explicit answer for "this harness has no
-equivalent", not a shared enum.
+**Codex's set is a strict subset of Claude's** — 11 shared, 5 Claude-only, none Codex-only. And
+Codex carries Claude's hook *I/O* vocabulary too (`hookSpecificOutput`, `permissionDecision`,
+`permissionDecisionReason`, `updatedInput`, `additionalContext`, `hook_event_name`, `tool_input`),
+and honours exit code 2. Codex implements Claude's hook protocol rather than a parallel one.
 
-`matcher` appears only on Claude: every entry in `~/.codex/hooks.json` is `{hooks: [...]}` alone.
+Only 11 of Claude's 16 and 9 of Codex's 11 are configured on this machine; `WorktreeCreate`
+appears in no config here at all. **Configuration is a lower bound on capability, always.**
 
-**Both lists are what is configured on this machine, not what each harness supports** — treat
-them as lower bounds until established from documentation or the binaries.
+`matcher` appears only on Claude: every entry in `~/.codex/hooks.json` is `{hooks: [...]}` alone
+— though that is configuration again, so it is not proof Codex lacks the concept.
 
-On Claude, 6 of the 11 event lists contain entries with **no `matcher` key**, so `matcher` cannot
-serve as a merge key for those lists.
+On Claude, 6 of the 11 configured event lists contain entries with **no `matcher` key**, so
+`matcher` cannot serve as a merge key for those lists.
 
 ### OpenCode and Pi register hooks in code
 
