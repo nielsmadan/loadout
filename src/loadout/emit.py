@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .composition import render
+from .documents import merge_documents
 from .errors import LoadoutError
 from .manifest import (
     MANIFEST_NAME,
@@ -29,6 +30,7 @@ from .project import (
     project_config_path,
     project_targets,
 )
+from .resolve import SETTINGS, resolve_item
 from .sources import Source
 
 PERMISSIONS_SOURCE = ("permissions.toml",)
@@ -119,7 +121,30 @@ def _serialize_json(document: dict[str, Any], spec: JsonSpec) -> str:
     return json.dumps(document, indent=2, ensure_ascii=spec.ensure_ascii) + "\n"
 
 
-def render_permission_target(target: PermissionTarget, rules: Rules, root: Path, path: Path) -> str:
+def settings_document(target: PermissionTarget, manifest: Manifest, root: Path) -> dict[str, Any]:
+    """The document this target's renderer writes its own keys into.
+
+    Settings is the **residual** slice, not a peer of the others: permissions
+    owns `permissions.allow`/`deny`/`ask`, and settings owns everything else in
+    the same file. Each owning slice regenerates its keys unconditionally, so
+    generated content can never feed back (ADR 0001) while hand-maintained keys
+    survive untouched.
+
+    `base` names a file and `settings` names fragments that compose into one —
+    two spellings of the same input, so at most one is set.
+    """
+    if target.settings:
+        parts = [
+            _load_base(resolve_item(manifest.sources, name, SETTINGS).path)
+            for name in target.settings
+        ]
+        return merge_documents(*parts)
+    return _load_base(root / str(target.base)) if target.base else {}
+
+
+def render_permission_target(
+    target: PermissionTarget, rules: Rules, base: dict[str, Any], root: Path, path: Path
+) -> str:
     """Render this target for one output path.
 
     `path` is the file about to be overwritten, and the only file `preserve` reads.
@@ -132,7 +157,6 @@ def render_permission_target(target: PermissionTarget, rules: Rules, root: Path,
     if isinstance(spec, TextSpec):
         return spec.fn(effective)
 
-    base = _load_base(root / str(target.base)) if target.base else {}
     document = spec.fn(effective, base)
     overlap = [k for k in target.preserve if k in document]
     if overlap:
@@ -239,7 +263,8 @@ def render_global(root: Path, profile: str = "default") -> dict[Path, str]:
         ]
         rules = merge_rules(*tiers)
         for target in selected_permissions:
-            render_for = partial(render_permission_target, target, rules, root)
+            base = settings_document(target, manifest, root)
+            render_for = partial(render_permission_target, target, rules, base, root)
             _expand(target, render_for, root, outputs, claimed)
     return outputs
 

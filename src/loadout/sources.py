@@ -5,7 +5,7 @@ from pathlib import Path
 
 from .errors import LoadoutError
 
-ARTIFACT_TYPES = frozenset({"instructions", "skills", "mcp", "permissions"})
+ARTIFACT_TYPES = frozenset({"instructions", "settings", "skills", "mcp", "permissions"})
 
 
 @dataclass(frozen=True)

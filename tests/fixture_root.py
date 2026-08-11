@@ -14,7 +14,7 @@ from pathlib import Path
 FIXTURES = Path(__file__).parent / "fixtures"
 EXPECTED = FIXTURES / "expected"
 
-SOURCE_NAMES = ("loadout.toml", "permissions.toml", "instructions", "bases")
+SOURCE_NAMES = ("loadout.toml", "permissions.toml", "instructions", "settings", "bases")
 
 # permissions.opencode declares preserve = ["foreign"]. Seeding the key models a
 # co-owner having already written it — without this the preserve path is never

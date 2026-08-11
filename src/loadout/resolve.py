@@ -17,21 +17,38 @@ class ResolvedItem:
     path: Path
 
 
+@dataclass(frozen=True)
+class Slice:
+    """Where one kind of artifact lives inside a source.
+
+    A slice is a directory, and the directory is the namespace: two slices may
+    hold the same name without colliding, because nothing resolves across them.
+    """
+
+    use: str
+    subdir: str
+    suffix: str
+
+
+INSTRUCTIONS = Slice(use="instructions", subdir="instructions", suffix=".md")
+SETTINGS = Slice(use="settings", subdir="settings", suffix=".json")
+
+
 @lru_cache
-def _fragments_root(source: Source) -> Path:
-    return (source.path / "instructions").resolve()
+def _slice_root(source: Source, subdir: str) -> Path:
+    return (source.path / subdir).resolve()
 
 
-def _fragment_path(source: Source, name: str) -> Path:
-    base = _fragments_root(source)
-    candidate = (base / f"{name}.md").resolve()
+def _item_path(source: Source, name: str, kind: Slice) -> Path:
+    base = _slice_root(source, kind.subdir)
+    candidate = (base / f"{name}{kind.suffix}").resolve()
     if candidate != base and base not in candidate.parents:
-        raise LoadoutError(f"fragment name escapes its source: {name!r}")
+        raise LoadoutError(f"{kind.use} name escapes its source: {name!r}")
     return candidate
 
 
-def resolve_fragment(sources: tuple[Source, ...], name: str) -> ResolvedItem:
-    usable = [s for s in sources if "instructions" in s.use]
+def resolve_item(sources: tuple[Source, ...], name: str, kind: Slice) -> ResolvedItem:
+    usable = [s for s in sources if kind.use in s.use]
 
     if "/" in name:
         source_name, _, bare = name.partition("/")
@@ -41,23 +58,23 @@ def resolve_fragment(sources: tuple[Source, ...], name: str) -> ResolvedItem:
             raise LoadoutError(
                 f"unknown source {source_name!r} in {name!r}; known sources: {known}"
             )
-        path = _fragment_path(matched[0], bare)
+        path = _item_path(matched[0], bare, kind)
         if not path.is_file():
-            raise LoadoutError(f"fragment not found: {name!r} (looked in {path})")
+            raise LoadoutError(f"{kind.use} not found: {name!r} (looked in {path})")
         return ResolvedItem(name=bare, source=source_name, path=path)
 
     hits: list[tuple[Source, Path]] = []
     escaped: list[str] = []
     for s in usable:
         try:
-            path = _fragment_path(s, name)
+            path = _item_path(s, name, kind)
             hits.append((s, path))
         except LoadoutError:
             escaped.append(s.name)
     found = [(s, p) for s, p in hits if p.is_file()]
     if not found:
         detail = f" (rejected as escaping its source in: {', '.join(escaped)})" if escaped else ""
-        raise LoadoutError(f"fragment not found in any source: {name!r}{detail}")
+        raise LoadoutError(f"{kind.use} not found in any source: {name!r}{detail}")
     if len(found) > 1:
         names = ", ".join(sorted(f"{s.name}/{name}" for s, _ in found))
         raise LoadoutError(
@@ -65,3 +82,7 @@ def resolve_fragment(sources: tuple[Source, ...], name: str) -> ResolvedItem:
         )
     source, path = found[0]
     return ResolvedItem(name=name, source=source.name, path=path)
+
+
+def resolve_fragment(sources: tuple[Source, ...], name: str) -> ResolvedItem:
+    return resolve_item(sources, name, INSTRUCTIONS)

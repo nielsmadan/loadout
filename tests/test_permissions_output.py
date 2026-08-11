@@ -148,15 +148,55 @@ def test_unknown_renderer_name_is_an_error(root: Path) -> None:
 
 
 def test_missing_base_file_is_an_error(root: Path) -> None:
-    (root / "bases" / "claude.base.json").unlink()
+    """`base` still names a path — permissions.opencode is the target that uses it."""
+    (root / "bases" / "opencode.base.json").unlink()
     with pytest.raises(LoadoutError, match="base document not found"):
         render_all(root)
 
 
 def test_base_permissions_key_must_be_an_object(root: Path) -> None:
-    base_path = root / "bases" / "claude.base.json"
+    base_path = root / "bases" / "opencode.base.json"
     doc = json.loads(base_path.read_text(encoding="utf-8"))
     doc["permissions"] = "oops"
     base_path.write_text(json.dumps(doc), encoding="utf-8")
     with pytest.raises(LoadoutError, match="permissions"):
+        render_all(root)
+
+
+def test_a_missing_settings_fragment_names_the_slice(root: Path) -> None:
+    (root / "settings" / "claude.json").unlink()
+    with pytest.raises(LoadoutError, match="settings not found in any source"):
+        render_all(root)
+
+
+def test_settings_composes_later_fragments_over_earlier_ones(root: Path) -> None:
+    """permissions.claude-empty names two fragments; the delta merges into a
+    nested map rather than replacing it."""
+    doc = json.loads(_repo_relative(render_all(root), root)["perm/claude-empty.json"])
+    assert doc["afkTimeoutMs"] == "2147483647"
+    assert doc["afterKey"] == {"nested": True, "addedByTheDelta": True}
+
+
+def test_one_settings_fragment_matches_the_base_spelling_byte_for_byte(root: Path) -> None:
+    """`settings = "claude"` and `base = "bases/claude.base.json"` are one input."""
+    rendered = _repo_relative(render_all(root), root)
+    text = (root / "loadout.toml").read_text(encoding="utf-8")
+    (root / "loadout.toml").write_text(
+        text.replace('settings = "claude"\n', 'base     = "bases/claude.base.json"\n', 1),
+        encoding="utf-8",
+    )
+    assert (
+        _repo_relative(render_all(root), root)["perm/claude.json"] == rendered["perm/claude.json"]
+    )
+
+
+def test_base_and_settings_together_is_an_error(root: Path) -> None:
+    text = (root / "loadout.toml").read_text(encoding="utf-8")
+    (root / "loadout.toml").write_text(
+        text.replace(
+            'settings = "claude"\n', 'settings = "claude"\nbase     = "bases/claude.base.json"\n', 1
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(LoadoutError, match="two spellings of the same input"):
         render_all(root)

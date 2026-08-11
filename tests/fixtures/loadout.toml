@@ -33,17 +33,21 @@ destinations = ["~/.harness-b/SHARED.md", "${LOADOUT_TEST_HARNESS_C:-~/.harness-
 order        = ["intro", "shared", "closing"]
 
 [permissions.claude]
-output = "perm/claude.json"
-render = "claude"
-base   = "bases/claude.base.json"
+output   = "perm/claude.json"
+render   = "claude"
+# The settings slice by name — byte-identical to the `base` path spelling it
+# replaced, which is what proves the two are one input.
+settings = "claude"
 
 # rules = [] selects nothing, so all three lists render empty — the autonomous
 # profile's mechanism.
 [permissions.claude-empty]
-output = "perm/claude-empty.json"
-render = "claude"
-base   = "bases/claude.base.json"
-rules  = []
+output   = "perm/claude-empty.json"
+render   = "claude"
+# Two fragments composing: the delta adds a key and merges into a nested map
+# rather than replacing it — a 208-line copy expressed as one small overlay.
+settings = ["claude", "claude-afk"]
+rules    = []
 
 [permissions.claude-mcp]
 output = "perm/claude-mcp.json"

@@ -37,12 +37,17 @@ class PermissionTarget:
     """One generated permission file, its renderer, and its base document.
 
     `path` is the in-repo output location; it is None when the target only
-    deploys to `destinations` (see `_output_path`)."""
+    deploys to `destinations` (see `_output_path`).
+
+    `base` names a file; `settings` names fragments of the settings slice that
+    compose into the same document. They are two spellings of one input and
+    cannot both be given."""
 
     name: str
     path: PurePosixPath | None
     renderer: str
     base: PurePosixPath | None = None
+    settings: tuple[str, ...] = ()
     preserve: tuple[str, ...] = ()
     select_all: bool = True
     profile: str | None = None
@@ -187,6 +192,28 @@ def _parse_instructions(
     return tuple(targets)
 
 
+def _parse_settings(raw: object, label: str, base: PurePosixPath | None) -> tuple[str, ...]:
+    """Fragment names of the settings slice — one input, two spellings.
+
+    A string is the single-fragment case; a list composes in order. `base` names
+    the same document by path, so giving both is ambiguous rather than additive.
+    """
+    if raw is None:
+        settings: tuple[str, ...] = ()
+    elif isinstance(raw, str):
+        settings = (raw,)
+    elif isinstance(raw, list) and all(isinstance(v, str) for v in raw):
+        settings = tuple(raw)
+    else:
+        raise LoadoutError(f"{label}: settings must be a string or a list of strings")
+    if settings and base is not None:
+        raise LoadoutError(
+            f"{label}: base and settings are two spellings of the same input; give one. "
+            f"`settings` names fragments of the settings slice, `base` names a file path."
+        )
+    return settings
+
+
 def _parse_permissions(
     raw_permissions: object, path: Path, claimed: set[PurePosixPath]
 ) -> tuple[PermissionTarget, ...]:
@@ -212,6 +239,8 @@ def _parse_permissions(
         if base is not None and (base.is_absolute() or ".." in base.parts):
             raise LoadoutError(f"{label}: base must be a relative path inside the repo root")
 
+        settings = _parse_settings(block.get("settings"), label, base)
+
         raw_preserve = block.get("preserve", [])
         if not isinstance(raw_preserve, list) or not all(isinstance(v, str) for v in raw_preserve):
             raise LoadoutError(f"{label}: preserve must be a list of strings")
@@ -236,6 +265,7 @@ def _parse_permissions(
                 path=out,
                 renderer=renderer,
                 base=base,
+                settings=settings,
                 preserve=tuple(raw_preserve),
                 select_all=select_all,
                 profile=profile,
