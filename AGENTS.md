@@ -89,6 +89,29 @@ Four wrong conclusions, each from reading absence off this machine:
 - "Inline substitution serves a case that occurs once" — counted `~/ac`, which was built to
   avoid the case.
 
+### A search seeded with the answer cannot enumerate
+
+The rule above catches absence read off a config file. It does not catch the same error wearing
+different clothes: **a query that names its own answers.** `grep -E 'Foo|Bar|Baz'` returns a
+subset of what you typed — the output is your input filtered, not a finding, and it cannot
+return anything you failed to think of.
+
+**Match the shape and let the data supply the names.** Extracting `hookEventName:<fn>("…")` from
+Claude's binary yields 20 events; an alternation of five guessed names yields at most five, and
+looks just as much like a result.
+
+The test, and it is quick: **if you can predict the maximum size of the result before running
+the query, you are confirming, not enumerating.**
+
+When you cannot guess the shape, use one known member to *locate* the container, then read the
+container openly. Searching for `PreToolUse:` found `PreToolUse:{summary:"Before tool
+execution"`, and extracting `[A-Za-z]+:{summary:"…"` then gave all 30 hook events without
+naming one of them.
+
+Both rules are one principle: **a method that could not have surprised you cannot establish a
+fact about the world.** Absence measured from your own machine, and presence measured from your
+own guesses, fail the same way.
+
 **In `docs/reference/`, a negative claim must carry its source inline** ("verified negative:
 no `~/.agents/` in the 1.1.11 binary"). A bare "none" is not reviewable, and this rule fails
 silently when it is left to memory.
