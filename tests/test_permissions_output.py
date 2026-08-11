@@ -100,11 +100,10 @@ def test_preserve_naming_a_generated_key_is_rejected(root: Path) -> None:
         render_all(root)
 
 
-def test_two_sources_offering_permissions_is_an_error(root: Path, tmp_path: Path) -> None:
-    """Acceptance criterion 5 — merging is milestone 4."""
+def _add_second_source(root: Path, tmp_path: Path, body: str) -> Path:
     second = tmp_path / "second"
-    second.mkdir(parents=True)
-    (second / "permissions.toml").write_text("[shell]\nallow = []\n", encoding="utf-8")
+    second.mkdir(parents=True, exist_ok=True)
+    (second / "permissions.toml").write_text(body, encoding="utf-8")
     text = (root / "loadout.toml").read_text(encoding="utf-8")
     text = text.replace(
         '[[source]]\nname = "test"\npath = "."\n',
@@ -112,8 +111,30 @@ def test_two_sources_offering_permissions_is_an_error(root: Path, tmp_path: Path
         1,
     )
     (root / "loadout.toml").write_text(text, encoding="utf-8")
-    with pytest.raises(LoadoutError, match="more than one source"):
-        render_all(root)
+    return second
+
+
+def test_a_second_source_contributes_its_allow_entries(root: Path, tmp_path: Path) -> None:
+    """Spec 1 §1 — a company or team repo is just another [[source]]."""
+    _add_second_source(root, tmp_path, '[shell]\nallow = ["from-second"]\n')
+    rendered = _repo_relative(render_all(root), root)
+    assert "Bash(from-second:*)" in rendered["perm/claude.json"]
+
+
+def test_a_later_source_deny_beats_an_earlier_source_allow(root: Path, tmp_path: Path) -> None:
+    """Deny wins across sources, not just within one — ADR 0002."""
+    _add_second_source(root, tmp_path, '[shell]\ndeny = ["alpha"]\n')
+    doc = json.loads(_repo_relative(render_all(root), root)["perm/claude.json"])
+    assert "Bash(alpha:*)" in doc["permissions"]["deny"]
+    assert "Bash(alpha:*)" not in doc["permissions"]["allow"]
+
+
+def test_source_order_sets_emission_order(root: Path, tmp_path: Path) -> None:
+    """OpenCode and Pi are last-match-wins, so tier order is manifest order."""
+    _add_second_source(root, tmp_path, '[shell]\nallow = ["from-second"]\n')
+    doc = json.loads(_repo_relative(render_all(root), root)["perm/claude.json"])
+    allow = doc["permissions"]["allow"]
+    assert allow.index("Bash(alpha:*)") < allow.index("Bash(from-second:*)")
 
 
 def test_unknown_renderer_name_is_an_error(root: Path) -> None:

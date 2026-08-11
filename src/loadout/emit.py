@@ -36,23 +36,24 @@ PROJECT_SOURCE = "permissions.toml"
 PROJECT_LOCAL_SOURCE = "permissions.local.toml"
 
 
-def permissions_source(manifest: Manifest) -> Source:
-    offering = [
+def permission_sources(manifest: Manifest) -> tuple[Source, ...]:
+    """Every source offering permissions.toml, in manifest order.
+
+    Order is load-bearing, not incidental: `merge_rules` resolves a decision
+    order-independently but keeps emission order from tier order, and OpenCode
+    and Pi are last-match-wins. So the manifest's `[[source]]` order is the tier
+    order — lowest priority first.
+    """
+    offering = tuple(
         source
         for source in manifest.sources
         if "permissions" in source.use and (source.path.joinpath(*PERMISSIONS_SOURCE)).is_file()
-    ]
+    )
     if not offering:
         raise LoadoutError(
             "no source provides permissions.toml, but the manifest declares [permissions.*] targets"
         )
-    if len(offering) > 1:
-        names = ", ".join(sorted(s.name for s in offering))
-        raise LoadoutError(
-            f"more than one source provides permissions.toml ({names}); "
-            f"merging permissions across sources is not implemented"
-        )
-    return offering[0]
+    return offering
 
 
 def _load_base(path: Path) -> dict[str, Any]:
@@ -232,8 +233,11 @@ def render_global(root: Path, profile: str = "default") -> dict[Path, str]:
 
     selected_permissions = [t for t in manifest.permissions if _selected(t, profile)]
     if selected_permissions:
-        source = permissions_source(manifest)
-        rules = parse_rules(source.path.joinpath(*PERMISSIONS_SOURCE))
+        tiers = [
+            parse_rules(source.path.joinpath(*PERMISSIONS_SOURCE))
+            for source in permission_sources(manifest)
+        ]
+        rules = merge_rules(*tiers)
         for target in selected_permissions:
             render_for = partial(render_permission_target, target, rules, root)
             _expand(target, render_for, root, outputs, claimed)

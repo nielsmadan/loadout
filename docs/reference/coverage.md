@@ -18,7 +18,7 @@ test is a gap.
 |---|---|---|---|
 | `last-match-opencode` | denies emitted after the allows they refine | [README](README.md#order-independent-vs-last-match) | `test_opencode_emits_deny_after_allow_for_last_match_wins` |
 | `last-match-pi` | deny emitted last | [pi](pi.md#resolution) | `test_pi_emits_deny_last_so_it_wins_under_last_match` |
-| `pi-moves-key` | Pi deletes and reinserts so an overwritten key moves to the end | [ADR 0006](../decisions/0006-faithful-ports-reproduce-upstream-quirks.md) | `test_pi_reorders_cross_key_entries_so_later_category_wins_position` |
+| `pi-moves-key` | Pi deletes and reinserts so an overwritten key moves to the end | [ADR 0006](../decisions/0006-faithful-ports-reproduce-upstream-quirks.md) | `test_pi_reorders_cross_key_entries_so_later_category_wins_position` — **unit test only; unreachable through the pipeline**, see below |
 | `opencode-keeps-key` | OpenCode assigns in place, so the key stays put — deliberately unlike Pi | [ADR 0006](../decisions/0006-faithful-ports-reproduce-upstream-quirks.md) | `test_opencode_does_not_reorder_cross_key_entries` |
 | `dedupe-order` | `dedupe()` is order-preserving and never `set()` | [README](README.md#order-independent-vs-last-match) | `test_dedupe_preserves_order` |
 | `glob-literal` | a trailing-`*` entry is kept literal on Claude, OpenCode, Pi | [README](README.md#globs) | `test_claude_pattern_keeps_a_glob_literal`, `test_opencode_keeps_a_glob_literal`, `test_pi_keeps_a_glob_literal` |
@@ -111,3 +111,22 @@ list the expected-output files exist for, and the reason the comparison stays.
 | `config-dir-vars` | which variable relocates each harness's config dir | Upstream facts about the binaries, recorded in [README](README.md#relocating-the-config-directory) with the version each was verified against. loadout renders the same bytes either way, so nothing observable at render time distinguishes a right answer from a wrong one. Re-verify by inspecting the binaries, not by running the suite. |
 | `dest-env-preserve` | with `preserve`, the environment selects which file's foreign keys are merged | Falls out of `preserve` reading the destination ([ADR 0011](../decisions/0011-a-destination-follows-a-relocated-harness.md)); pinned indirectly by `test_each_destination_preserves_its_own_foreign_keys`, which fixes the paths rather than varying the environment. |
 | `dest-env-orphan` | a destination the environment has moved away from leaves the path set, so `check` cannot see the stale file | Inherent to render-time resolution; the fix is the orphan sidecar [0008](../decisions/0008-generated-files-carry-no-machine-state.md) defers. Nothing is rendered differently. |
+
+## Reachable only by calling a renderer directly
+
+`pi-moves-key` is a faithful port of upstream behaviour that the current data flow cannot
+trigger. `render_pi` moves a key when the same entry appears in two categories of the `Rules` it
+is handed — but every path into a renderer now runs `merge_rules` first, and its deny-wins
+resolution guarantees no entry survives in two categories. `render_pi` also builds its `bash` and
+`mcp` maps from scratch rather than from `base`, so a base document cannot reintroduce the case
+either.
+
+Demonstrated when global scope began merging: the fixture has `zeta` in both allow and deny, and
+regenerating expected output changed Claude, Codex and OpenCode while **Pi's file was
+byte-identical** — the pop-and-reassign had been producing the same result as a single insert.
+OpenCode's entry did move, because assigning in place had been holding it at the earlier allow
+position (ADR 0006's other half).
+
+Keep the behaviour: it is a faithful port, it is pinned by a direct unit test, and it becomes
+observable again if resolution ever changes or a renderer is called outside the pipeline. But do
+not treat whole-document comparison as covering it.

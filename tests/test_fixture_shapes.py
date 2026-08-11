@@ -45,9 +45,15 @@ def test_a_glob_is_present_so_the_skip_path_runs() -> None:
 
 
 def test_an_entry_appears_in_two_categories_and_is_not_last() -> None:
-    """Pi moves the key to the end, OpenCode leaves it in place — ADR 0006.
+    """Provokes deny-wins resolution end to end — merge_rules must drop the
+    allow and keep the deny, and OpenCode's entry must move to the deny
+    position while Pi's output is unchanged.
 
-    Only observable if a later allow entry follows the shared one.
+    This guarded ADR 0006's key-move until global scope started merging. It no
+    longer can: after resolution no entry is in two categories, so render_pi's
+    pop-and-reassign never fires through the pipeline. The quirk is pinned by
+    test_pi_reorders_cross_key_entries_so_later_category_wins_position, which
+    builds Rules directly. See docs/reference/coverage.md.
     """
     shared = set(RULES.allow) & set(RULES.deny)
     assert shared, "no entry is in both allow and deny"

@@ -104,6 +104,28 @@ order        = ["intro-claude", "web-fetching", "git-policy.autonomous"]
 (Both declare a `profile` here because they share a `destination` — see Profiles below. A
 target that doesn't share its destination with anyone else doesn't need one.)
 
+### Several sources
+
+`[[source]]` is a list, and its **order is the tier order, lowest priority first**. A source that
+provides a `permissions.toml` contributes a tier; every contributing source is merged.
+
+```toml
+[[source]]
+name = "company"          # a repo you cloned — loadout never fetches it
+path = "~/src/acme-loadout"
+
+[[source]]
+name = "me"
+path = "."
+```
+
+Merging is union with **deny wins**: a deny in any source beats an allow in any other, whichever
+order they appear in. Order still matters for *emission* — OpenCode and Pi resolve last-match-wins
+— so entries from earlier sources are emitted first.
+
+loadout does not fetch, version or distribute a source. Getting the company repo onto your disk
+is git's job.
+
 Each `[[source]]` is a named directory containing an `instructions/*.md` tree that fragments
 are pulled from. Each `[instructions.<agent>]` table declares one generated file: `output` is
 where it is written, relative to the repo root (it may not be absolute, empty, or escape the
