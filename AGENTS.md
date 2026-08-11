@@ -50,12 +50,48 @@ Tests that assert values often fail to pin *order*. Before trusting a test named
 ordering property, check it would actually fail if the ordering broke — two have been found
 that would not.
 
-## Never generalise from Claude Code
+## This machine is not the world
 
-loadout targets four harnesses whose mechanisms differ in shape, not just naming. Claude is
-the best-documented and easiest to inspect, which makes it a misleading default. Establish
-each harness's behaviour separately and record it in `docs/reference/`. Absence of a
-Claude-style filename in another harness proves nothing.
+**The filesystem can only prove presence.** That a file exists here shows the harness reads it.
+That a file is *absent* here shows only that this machine never made one — nothing whatever
+about the harness. The same holds for content: `~/.claude/settings.json` lists the hook events
+**you configured**, never the events Claude **supports**.
+
+So **any claim that something does not exist needs a source that enumerates capability**. Look
+in this order:
+
+1. the harness's **shipped docs** — Pi ships 2,336 lines in `docs/extensions.md`, OpenCode and
+   Claude ship none, so this is worth checking first and is often decisive
+2. the **installed binary** — `strings`, bundled source maps
+3. upstream documentation
+4. **this machine's files — confirmatory only, and never sufficient for a negative**
+
+The cheapest check is the one that can only mislead, which is why it is last. Reaching for it
+first is the trigger to watch for in yourself.
+
+**One person's config is not demand, either.** `~/ac` has one cross-harness skill in
+forty-eight. That measures the cost of the missing mechanism, not the absence of need — a user
+who found something expensive avoided it, and the avoidance is what you are counting.
+
+**Claude is the most misleading default** — best documented, easiest to inspect, and the one
+whose shape everything else gets read through. The four harnesses differ in shape, not just
+naming.
+
+### What this has already cost
+
+Four wrong conclusions, each from reading absence off this machine:
+
+- "Pi and Antigravity have no skills" — none were *installed*. Both have skills.
+- "OpenCode and Pi have no hooks" — no hooks *file*. Both have documented event APIs, and
+  **Pi's is larger than Claude's**.
+- "Four of five harnesses have no personal-instructions tier" — grepping for `*.local.md`
+  found only Claude's naming. All had one, in four different shapes.
+- "Inline substitution serves a case that occurs once" — counted `~/ac`, which was built to
+  avoid the case.
+
+**In `docs/reference/`, a negative claim must carry its source inline** ("verified negative:
+no `~/.agents/` in the 1.1.11 binary"). A bare "none" is not reviewable, and this rule fails
+silently when it is left to memory.
 
 ## Entry points
 
