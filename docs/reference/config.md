@@ -216,8 +216,8 @@ layered set of paths, several of them **tool-agnostic**:
 | `~/.pi/agent/mcp.json` | Pi global override and compatibility imports |
 | `.pi/mcp.json` | Pi project override |
 
-`{"imports": ["claude-code"]}` in `~/.pi/agent/mcp.json` — what `~/ac` generates today — is a
-**compatibility import**, not the only option: `pi-mcp-adapter init` scans for host-specific
+`{"imports": ["claude-code"]}` in `~/.pi/agent/mcp.json` is a **compatibility import**, not the
+only option — `~/ac` generated one until 2026-08-11 and now emits real `mcpServers` instead: `pi-mcp-adapter init` scans for host-specific
 configs and adds them. The adapter also loads servers from Agent Plugins 1.0 packages
 (<https://agent-plugins.org/>), prefixed `<plugin>__<server>`.
 
