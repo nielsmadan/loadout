@@ -108,6 +108,17 @@ container openly. Searching for `PreToolUse:` found `PreToolUse:{summary:"Before
 execution"`, and extracting `[A-Za-z]+:{summary:"…"` then gave all 30 hook events without
 naming one of them.
 
+**A bound on the match is a seed too.** Enumerating those events with `[^"]{0,60}` returned 30,
+not 31 — `SubagentStop`'s description is 64 characters, so an arbitrary limit chosen for no
+reason deleted one member and manufactured a false anomaly that was nearly recorded as fact. The
+query named no answers and was still shaped by a parameter the data never agreed to. Prefer `*`
+to a guessed ceiling, and when a bound is unavoidable, verify the count is stable as it moves.
+
+**Seeded queries do prove presence.** That Codex's binary contains `hookSpecificOutput` and
+`permissionDecision` is established perfectly well by grepping those exact strings. What a seeded
+query cannot support is **completeness** — "and nothing else". Keep the distinction or the rule
+overcorrects into discarding good evidence.
+
 Both rules are one principle: **a method that could not have surprised you cannot establish a
 fact about the world.** Absence measured from your own machine, and presence measured from your
 own guesses, fail the same way.
