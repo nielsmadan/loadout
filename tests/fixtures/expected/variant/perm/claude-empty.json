@@ -8,6 +8,8 @@
     "defaultMode": "hand-maintained, must survive after the owned lists"
   },
   "afterKey": {
-    "nested": true
-  }
+    "nested": true,
+    "addedByTheDelta": true
+  },
+  "afkTimeoutMs": "2147483647"
 }
