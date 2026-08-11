@@ -222,6 +222,12 @@ preserve = ["mcp"]
   the output untouched. A `base` must be an existing input file; it may never point at a path
   that is itself a generated `output` (that would reintroduce reading a renderer's own prior
   output as its template, which this design deliberately avoids).
+- `settings` — optional. Fragment name(s) of the **settings slice**, resolved as
+  `<source>/settings/<name>.json` across every source that offers settings. A string names one
+  fragment; a list composes them in order with a deep merge (maps merge recursively, lists
+  concatenate, `null` removes a key). This is the same input as `base` by a different spelling,
+  so giving both is an error. Prefer it: expressing a profile's delta as
+  `settings = ["claude", "claude-afk"]` replaces copying a whole document to change one key.
 - `preserve` — optional list of top-level keys to copy forward out of the file about to be
   overwritten, for keys owned by some other generator (for example, `mcp` in `opencode.json`,
   owned by the MCP sync). A key named in `preserve` must not also be one the renderer generates.
