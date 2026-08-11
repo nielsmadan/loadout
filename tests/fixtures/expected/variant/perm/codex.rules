@@ -7,7 +7,6 @@
 
 prefix_rule(pattern = ["alpha"], decision = "allow")
 prefix_rule(pattern = ["beta", "sub"], decision = "allow")
-prefix_rule(pattern = ["zeta"], decision = "allow")
 prefix_rule(pattern = ["eta"], decision = "allow")
 
 prefix_rule(pattern = ["zeta"], decision = "forbidden")

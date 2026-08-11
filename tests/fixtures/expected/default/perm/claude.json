@@ -7,7 +7,6 @@
       "Bash(beta sub:*)",
       "Bash(gamma-*)",
       "Bash(delta run --tag=*)",
-      "Bash(zeta:*)",
       "Bash(eta:*)",
       "mcp__svc__*",
       "mcp__svc.two__read",
