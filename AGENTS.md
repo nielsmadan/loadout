@@ -52,80 +52,56 @@ that would not.
 
 ## This machine is not the world
 
-**The filesystem can only prove presence.** That a file exists here shows the harness reads it.
-That a file is *absent* here shows only that this machine never made one — nothing whatever
-about the harness. The same holds for content: `~/.claude/settings.json` lists the hook events
-**you configured**, never the events Claude **supports**.
+**The filesystem proves presence, never absence.** A file existing here shows the harness reads
+it; a file missing here shows only that this machine never made one. Same for content:
+`~/.claude/settings.json` lists the hook events *you configured*, never the ones Claude
+*supports*.
 
-So **any claim that something does not exist needs a source that enumerates capability**. Look
-in this order:
+So a claim that something does not exist needs a source that **enumerates capability**, in this
+order — **shipped docs** (Pi ships 2,336 lines in `docs/extensions.md`; it beat every grep),
+**the installed binary**, upstream docs, then this machine, which is confirmatory only. The
+cheapest check is the one that can only mislead, so reaching for it first is the trigger to
+notice in yourself.
 
-1. the harness's **shipped docs** — Pi ships 2,336 lines in `docs/extensions.md`, OpenCode and
-   Claude ship none, so this is worth checking first and is often decisive
-2. the **installed binary** — `strings`, bundled source maps
-3. upstream documentation
-4. **this machine's files — confirmatory only, and never sufficient for a negative**
+**A search seeded with the answer cannot enumerate.** `grep -E 'Foo|Bar|Baz'` returns your input
+filtered. Match the *shape* and let the data supply the names. Test: **if you can predict the
+result's maximum size before running the query, you are confirming, not enumerating.** When the
+shape is unknown, use one known member to *locate* the container, then read the container openly
+— seeding to locate is fine, seeding to enumerate is the error.
 
-The cheapest check is the one that can only mislead, which is why it is last. Reaching for it
-first is the trigger to watch for in yourself.
+**A bound is a seed too.** `[^"]{0,60}` returned 30 of 31 hook events because one description ran
+64 characters. The query named nothing and was still shaped by a number the data never agreed to.
+Prefer `*`; when a bound is unavoidable, **rerun at two bounds and check the count is stable.**
 
-**One person's config is not demand, either.** `~/ac` has one cross-harness skill in
-forty-eight. That measures the cost of the missing mechanism, not the absence of need — a user
-who found something expensive avoided it, and the avoidance is what you are counting.
+**Seeded queries do prove presence** — that Codex's binary contains `hookSpecificOutput` is
+established fine by grepping it. Only **completeness** is beyond them. Keep that distinction or
+the rule overcorrects into discarding good evidence.
 
-**Claude is the most misleading default** — best documented, easiest to inspect, and the one
-whose shape everything else gets read through. The four harnesses differ in shape, not just
-naming.
+**One person's config is not demand.** `~/ac` has one cross-harness skill in forty-eight; that
+measures the cost of a missing mechanism, not the absence of need.
 
-### What this has already cost
+**Claude is the most misleading default** — best documented, easiest to inspect, and the lens
+everything else gets read through.
 
-Four wrong conclusions, each from reading absence off this machine:
+### What has actually caught these
 
-- "Pi and Antigravity have no skills" — none were *installed*. Both have skills.
-- "OpenCode and Pi have no hooks" — no hooks *file*. Both have documented event APIs, and
-  **Pi's is larger than Claude's**.
-- "Four of five harnesses have no personal-instructions tier" — grepping for `*.local.md`
-  found only Claude's naming. All had one, in four different shapes.
-- "Inline substitution serves a case that occurs once" — counted `~/ac`, which was built to
-  avoid the case.
+Four wrong conclusions so far: Pi and Antigravity "have no skills" (none *installed*); OpenCode
+and Pi "have no hooks" (no hooks *file* — both have documented event APIs, Pi's larger than
+Claude's); "four of five harnesses have no personal-instructions tier" (grepped Claude's
+`*.local.md` naming); Claude "has 16 hook events" then "31, not 30" (a seeded alternation, then a
+bound).
 
-### A search seeded with the answer cannot enumerate
+**Every one was caught by a second party rerunning the query — never by the author's own review.**
+The rules above were written after each failure, by whoever failed. They explain the errors; they
+did not catch them.
 
-The rule above catches absence read off a config file. It does not catch the same error wearing
-different clothes: **a query that names its own answers.** `grep -E 'Foo|Bar|Baz'` returns a
-subset of what you typed — the output is your input filtered, not a finding, and it cannot
-return anything you failed to think of.
+Alone, the substitute is a check that does not depend on your judgement: **run the query two ways
+that should agree.** The bound sweep is the worked example — two runs, and the disagreement is
+the finding.
 
-**Match the shape and let the data supply the names.** Extracting `hookEventName:<fn>("…")` from
-Claude's binary yields 20 events; an alternation of five guessed names yields at most five, and
-looks just as much like a result.
-
-The test, and it is quick: **if you can predict the maximum size of the result before running
-the query, you are confirming, not enumerating.**
-
-When you cannot guess the shape, use one known member to *locate* the container, then read the
-container openly. Searching for `PreToolUse:` found `PreToolUse:{summary:"Before tool
-execution"`, and extracting `[A-Za-z]+:{summary:"…"` then gave all 30 hook events without
-naming one of them.
-
-**A bound on the match is a seed too.** Enumerating those events with `[^"]{0,60}` returned 30,
-not 31 — `SubagentStop`'s description is 64 characters, so an arbitrary limit chosen for no
-reason deleted one member and manufactured a false anomaly that was nearly recorded as fact. The
-query named no answers and was still shaped by a parameter the data never agreed to. Prefer `*`
-to a guessed ceiling, and when a bound is unavoidable, verify the count is stable as it moves.
-
-**Seeded queries do prove presence.** That Codex's binary contains `hookSpecificOutput` and
-`permissionDecision` is established perfectly well by grepping those exact strings. What a seeded
-query cannot support is **completeness** — "and nothing else". Keep the distinction or the rule
-overcorrects into discarding good evidence.
-
-Both rules are one principle: **a method that could not have surprised you cannot establish a
-fact about the world.** Absence measured from your own machine, and presence measured from your
-own guesses, fail the same way.
-
-**In `docs/reference/`, a negative claim must carry its source inline** ("verified negative:
-no `~/.agents/` in the 1.1.11 binary"). A bare "none" is not reviewable, and this rule fails
-silently when it is left to memory.
+**In `docs/reference/`, a negative claim carries its source inline** ("verified negative: no
+`~/.agents/` in the 1.1.11 binary"). A bare "none" is not reviewable, and this rule fails
+silently when left to memory.
 
 ## Entry points
 
