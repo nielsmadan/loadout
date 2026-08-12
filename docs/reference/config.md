@@ -216,7 +216,7 @@ rewrite the system prompt, `render` transforms display — so this is not a subs
 
 | harness | global | project |
 |---|---|---|
-| Claude | `claude mcp add-json` CLI; state in `~/.claude.json` | `.mcp.json` |
+| Claude | `claude mcp add-json` CLI; state in `${CLAUDE_CONFIG_DIR:-~}/.claude.json` | `.mcp.json` |
 | Codex | `~/.codex/config.toml` → `[mcp_servers.*]` | `.codex/config.toml` |
 | OpenCode | `~/.config/opencode/opencode.json` → `mcp` | `opencode.json` → `mcp` |
 | Pi | `~/.pi/agent/mcp.json` (+ shared paths below) | `.pi/mcp.json`, `.mcp.json` |
