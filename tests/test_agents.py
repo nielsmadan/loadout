@@ -1,0 +1,86 @@
+from __future__ import annotations
+
+import pytest
+
+from loadout.agents import GLOBAL_PRESET, agent_slices, known_agents
+from loadout.manifest import resolve_destination
+from loadout.permissions.renderers import RENDERERS
+
+RELOCATION_VARIABLE = {
+    "claude": "CLAUDE_CONFIG_DIR",
+    "codex": "CODEX_HOME",
+    "opencode": "XDG_CONFIG_HOME",
+    "pi": "PI_CODING_AGENT_DIR",
+}
+
+
+def test_the_preset_covers_exactly_the_supported_agents() -> None:
+    """antigravity was dropped (ADR 0012); nothing else has been added quietly."""
+    assert known_agents() == {"claude", "codex", "opencode", "pi"}
+
+
+@pytest.mark.parametrize("agent", sorted(GLOBAL_PRESET))
+def test_every_renderer_named_by_the_preset_exists(agent: str) -> None:
+    for name, output in agent_slices(agent).items():
+        if output.renderer is not None:
+            assert output.renderer in RENDERERS, f"{agent}.{name}"
+
+
+@pytest.mark.parametrize("agent", sorted(GLOBAL_PRESET))
+def test_a_slice_is_written_somewhere_exactly_one_way(agent: str) -> None:
+    """Either a destination or a staged output, never both and never neither."""
+    for name, output in agent_slices(agent).items():
+        assert (output.destination is None) != (output.output is None), f"{agent}.{name}"
+
+
+@pytest.mark.parametrize("agent", sorted(GLOBAL_PRESET))
+def test_destinations_follow_the_harness_config_variable(agent: str) -> None:
+    """ADR 0011's table lives here so a manifest never spells a variable out."""
+    variable = RELOCATION_VARIABLE[agent]
+    for name, output in agent_slices(agent).items():
+        if output.destination is not None:
+            assert output.destination.startswith(f"${{{variable}:-"), f"{agent}.{name}"
+
+
+@pytest.mark.parametrize("agent", sorted(GLOBAL_PRESET))
+def test_every_destination_resolves_to_the_documented_default(
+    agent: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With the variable unset the fallback must reproduce the harness's own
+    default path — the preset is only safe if it is a no-op unrelocated."""
+    defaults = {
+        "claude": "/.claude/",
+        "codex": "/.codex/",
+        "opencode": "/.config/opencode/",
+        "pi": "/.pi/agent/",
+    }
+    monkeypatch.delenv(RELOCATION_VARIABLE[agent], raising=False)
+    for name, output in agent_slices(agent).items():
+        if output.destination is None:
+            continue
+        resolved = str(resolve_destination(output.destination, f"{agent}.{name}"))
+        assert defaults[agent] in resolved, f"{agent}.{name} -> {resolved}"
+
+
+def test_a_set_variable_relocates_every_slice_of_that_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/moved")
+    resolved = [
+        str(resolve_destination(o.destination, "claude"))
+        for o in agent_slices("claude").values()
+        if o.destination is not None
+    ]
+    assert resolved and all(p.startswith("/moved/") for p in resolved)
+
+
+def test_codex_mcp_is_the_only_staged_slice() -> None:
+    """Its destination is another tool's merge step, not a file a harness reads.
+    Recorded as a shape rather than an exception so it is not lost."""
+    staged = {
+        (agent, name)
+        for agent, slices in GLOBAL_PRESET.items()
+        for name, output in slices.items()
+        if output.output is not None
+    }
+    assert staged == {("codex", "mcp")}
