@@ -175,6 +175,24 @@ selected for the active profile — no two may share a `destination` either; tha
 
 ### Profiles
 
+**A profile is a file.** `loadout.toml` *is* the default profile, and is also what marks a
+directory as a loadout source. Every other profile is a sibling beside it:
+
+```toml
+# autonomous.toml
+extends = "default"
+
+[instructions.claude]
+order = ["intro-claude", "web-fetching", "git-policy.autonomous"]
+```
+
+`extends` names the profile to start from, and the file states only what differs — sources and
+every target it does not name are inherited. A target it *does* name is replaced **wholesale**,
+not merged key by key: deep-merging would make an omitted `order` ambiguous between "inherit"
+and "empty". A cycle in `extends` is an error naming the cycle.
+
+The older spelling below still parses, so both work during the transition.
+
 Both `[instructions.<agent>]` and `[permissions.<name>]` targets accept an optional `profile`
 key, as `instructions.claude-autonomous` does above. It selects which targets render for the
 machine's **active profile**:

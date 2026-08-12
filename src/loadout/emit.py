@@ -16,7 +16,9 @@ from .manifest import (
     InstructionTarget,
     Manifest,
     PermissionTarget,
+    declared_profile_files,
     load_manifest,
+    load_profile,
     manifest_path,
     resolve_destination,
 )
@@ -239,12 +241,13 @@ def declared_profiles(root: Path) -> set[str]:
     path = manifest_path(root)
     if path.is_file():
         profiles |= _declared_profiles(load_manifest(path))
+        profiles |= declared_profile_files(root)
     return profiles
 
 
 def render_global(root: Path, profile: str = "default") -> dict[Path, str]:
-    manifest = load_manifest(manifest_path(root))
-    declared = _declared_profiles(manifest)
+    manifest = load_profile(root, profile)
+    declared = _declared_profiles(manifest) | declared_profile_files(root)
     if profile != "default" and profile not in declared:
         known = ", ".join(sorted(declared)) or "none"
         raise LoadoutError(f"unknown profile {profile!r} (declared: {known})")

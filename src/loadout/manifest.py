@@ -14,8 +14,30 @@ MANIFEST_NAME = "loadout.toml"
 _ENV_REFERENCE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
 
 
+DEFAULT_PROFILE = "default"
+
+
 def manifest_path(root: Path) -> Path:
     return root / MANIFEST_NAME
+
+
+def profile_path(root: Path, profile: str) -> Path:
+    """`loadout.toml` is the default profile and the marker of a loadout root.
+
+    Every other profile is a sibling beside it, so a source with one profile has
+    one file and root detection is unchanged.
+    """
+    if profile == DEFAULT_PROFILE:
+        return manifest_path(root)
+    return root / f"{profile}.toml"
+
+
+def declared_profile_files(root: Path) -> set[str]:
+    return {
+        p.stem
+        for p in root.glob("*.toml")
+        if p.name != MANIFEST_NAME and "extends" in _read_toml(p)
+    }
 
 
 @dataclass(frozen=True)
@@ -275,15 +297,75 @@ def _parse_permissions(
     return tuple(permissions)
 
 
-def load_manifest(path: Path) -> Manifest:
+def _read_toml(path: Path) -> dict[str, object]:
     if not path.is_file():
         raise LoadoutError(f"manifest not found: {path}")
     try:
         with path.open("rb") as handle:
-            data = tomllib.load(handle)
+            data: dict[str, object] = tomllib.load(handle)
     except tomllib.TOMLDecodeError as error:
         raise LoadoutError(f"{path}: invalid TOML: {error}") from error
+    return data
 
+
+def _resolve_extends(root: Path, profile: str) -> dict[str, object]:
+    """Flatten a profile onto the one it extends, so it states only deltas.
+
+    Targets override by name and wholesale, not key by key: a profile that
+    changes a target restates it. Deep-merging targets would make it ambiguous
+    whether an omitted `order` means "inherit" or "empty".
+    """
+    seen: list[str] = []
+    chain: list[dict[str, object]] = []
+    current = profile
+    while True:
+        if current in seen:
+            cycle = " -> ".join([*seen, current])
+            raise LoadoutError(f"profile extends cycle: {cycle}")
+        seen.append(current)
+        data = _read_toml(profile_path(root, current))
+        chain.append(data)
+        parent = data.get("extends")
+        if parent is None:
+            break
+        if not isinstance(parent, str):
+            raise LoadoutError(f"{profile_path(root, current)}: extends must be a string")
+        current = parent
+
+    merged: dict[str, object] = {}
+    for data in reversed(chain):
+        for key, value in data.items():
+            if key == "extends":
+                continue
+            existing = merged.get(key)
+            if key in ("instructions", "permissions") and isinstance(existing, dict):
+                assert isinstance(value, dict)
+                merged[key] = {**existing, **value}
+            else:
+                merged[key] = value
+    return merged
+
+
+def load_profile(root: Path, profile: str = DEFAULT_PROFILE) -> Manifest:
+    """The manifest for one profile.
+
+    A profile is a file — `loadout.toml` for the default, `<profile>.toml`
+    beside it otherwise. When that file is absent the profile is declared the
+    older way, with `profile = "<name>"` on individual targets inside
+    `loadout.toml`, so fall back to it and let target selection do the work.
+    Both spellings parse during the transition.
+    """
+    path = profile_path(root, profile)
+    if not path.is_file():
+        return load_manifest(manifest_path(root))
+    return _build_manifest(_resolve_extends(root, profile), path)
+
+
+def load_manifest(path: Path) -> Manifest:
+    return _build_manifest(_read_toml(path), path)
+
+
+def _build_manifest(data: dict[str, object], path: Path) -> Manifest:
     raw_sources = data.get("source")
     if not isinstance(raw_sources, list) or not raw_sources:
         raise LoadoutError(f"{path}: at least one [[source]] entry is required")
