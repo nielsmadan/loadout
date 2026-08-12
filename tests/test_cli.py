@@ -336,7 +336,7 @@ def test_check_returns_1_when_a_project_output_has_drifted(tmp_path: Path, capsy
     loadout.main(["sync", "--root", str(tmp_path)])
     capsys.readouterr()
 
-    tampered = tmp_path / ".aiconf" / "mcp-permissions.json"
+    tampered = tmp_path / ".claude" / "mcp-permissions.json"
     tampered.write_text("tampered\n", encoding="utf-8")
 
     assert loadout.main(["check", "--root", str(tmp_path)]) == 1

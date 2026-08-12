@@ -76,9 +76,9 @@ PRESET: dict[str, tuple[ProjectTarget, ...]] = {
         ProjectTarget(
             PurePosixPath(".claude/settings.json"), "claude-project", preserve_foreign=True
         ),
-        ProjectTarget(PurePosixPath(".aiconf/mcp-permissions.json"), "claude-mcp"),
+        ProjectTarget(PurePosixPath(".claude/mcp-permissions.json"), "claude-mcp"),
     ),
-    "codex": (ProjectTarget(PurePosixPath(".codex/rules/aiconf.rules"), "codex-project"),),
+    "codex": (ProjectTarget(PurePosixPath(".codex/rules/permissions.rules"), "codex-project"),),
     "opencode": (ProjectTarget(PurePosixPath("opencode.json"), "opencode", preserve_foreign=True),),
     "pi": (
         ProjectTarget(

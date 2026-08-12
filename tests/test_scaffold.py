@@ -41,7 +41,7 @@ def test_gitignores_the_personal_source_and_every_output(tmp_path: Path) -> None
     ignored = (root / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert "loadout/permissions.local.toml" in ignored
     assert ".claude/settings.json" in ignored
-    assert ".aiconf/mcp-permissions.json" in ignored
+    assert ".claude/mcp-permissions.json" in ignored
     assert ".pi/extensions/pi-permission-system/config.json" in ignored
 
 
@@ -191,7 +191,7 @@ def test_adds_the_new_harness_outputs_to_gitignore(tmp_path: Path) -> None:
     init_project(root, ("claude",))
     add_harness(root, "codex")
     ignored = (root / ".gitignore").read_text(encoding="utf-8").splitlines()
-    assert ".codex/rules/aiconf.rules" in ignored
+    assert ".codex/rules/permissions.rules" in ignored
 
 
 def test_adding_an_existing_harness_is_an_error(tmp_path: Path) -> None:

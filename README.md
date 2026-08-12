@@ -289,8 +289,8 @@ Known harnesses and what each one generates:
 
 | harness | generates |
 | --- | --- |
-| `claude` | `.claude/settings.json`, `.aiconf/mcp-permissions.json` |
-| `codex` | `.codex/rules/aiconf.rules` |
+| `claude` | `.claude/settings.json`, `.claude/mcp-permissions.json` |
+| `codex` | `.codex/rules/permissions.rules` |
 | `opencode` | `opencode.json` |
 | `pi` | `.pi/extensions/pi-permission-system/config.json` |
 

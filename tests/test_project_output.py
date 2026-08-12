@@ -13,10 +13,10 @@ EXPECTED = Path(__file__).parent / "fixtures" / "expected" / "project"
 
 OUTPUTS = (
     ".claude/settings.json",
-    ".codex/rules/aiconf.rules",
+    ".codex/rules/permissions.rules",
     "opencode.json",
     ".pi/extensions/pi-permission-system/config.json",
-    ".aiconf/mcp-permissions.json",
+    ".claude/mcp-permissions.json",
 )
 
 
@@ -34,7 +34,7 @@ def test_all_five_outputs_are_rendered(project: Path) -> None:
 def test_only_enabled_harnesses_are_rendered(project: Path) -> None:
     (project / "loadout" / "config.toml").write_text('harnesses = ["claude"]\n', encoding="utf-8")
     rendered = {str(p.relative_to(project)) for p in render_project(project)}
-    assert rendered == {".claude/settings.json", ".aiconf/mcp-permissions.json"}
+    assert rendered == {".claude/settings.json", ".claude/mcp-permissions.json"}
 
 
 def test_personal_tier_merges_into_the_output(project: Path) -> None:
