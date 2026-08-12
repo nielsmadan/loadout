@@ -1,0 +1,11 @@
+{
+  "allow": [
+    "svc/*"
+  ],
+  "ask": [
+    "svc/write"
+  ],
+  "deny": [
+    "blocked/*"
+  ]
+}

@@ -8,7 +8,13 @@ dist/
 .coverage
 htmlcov/
 
-# Golden fixtures mirror harness output paths, some of which a global
-# gitignore excludes (e.g. paths under .claude/, .codex/, .pi/). Without this,
-# `git add` skips them silently.
-!tests/golden/**
+# Expected output mirrors harness paths, some of which a global gitignore
+# excludes (.claude/, .codex/, .pi/, .aiconf/). Without this, `git add` skips
+# them silently and a fresh clone fails the comparison. This must be repointed
+# whenever the fixture tree moves — it was left aimed at tests/golden/ after the
+# move here, and one file went untracked for exactly that reason.
+!tests/fixtures/expected/**
+
+# A worktree is a separate repository; committing one loses work and confuses
+# every clone.
+.claude/worktrees/
