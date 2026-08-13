@@ -485,7 +485,7 @@ def test_init_global_round_trips_to_sync_no_targets_declared(
     err = capsys.readouterr().err
     manifest_file = source_parent / "loadout" / "loadout.toml"
     assert str(manifest_file) in err
-    assert "no [instructions.<agent>] or [permissions.<name>] targets declared" in err
+    assert "no [<agent>], [instructions.<agent>] or [permissions.<name>] targets declared" in err
 
 
 def test_init_notes_a_missing_machine_config(tmp_path: Path, monkeypatch, capsys) -> None:

@@ -173,6 +173,36 @@ declared; no two targets, of either kind, may share an `output` path, and — am
 selected for the active profile — no two may share a `destination` either; that raises a
 `LoadoutError` naming both.
 
+### Agent blocks
+
+An agent block names a harness and the slices it takes. Destinations come from a built-in preset,
+so a manifest never spells out a machine path:
+
+```toml
+[claude]
+instructions = ["intro-claude", "web-fetching", "git-policy"]
+settings     = "claude"
+
+[codex]
+[pi]
+```
+
+`[codex]` and `[pi]` with no keys are complete declarations. **`permissions` and `mcp` render
+without being asked for**, because neither has an authoring decision to make. `instructions` must
+be named — it needs an order, and alphabetical is wrong (see Profiles). `settings` must be named
+because it is an input rather than an output.
+
+An unknown agent name, or a slice an agent does not offer, is an error listing what is available.
+
+Each destination in the preset carries that harness's config-directory variable —
+`${CLAUDE_CONFIG_DIR:-~/.claude}`, `${CODEX_HOME:-~/.codex}`,
+`${PI_CODING_AGENT_DIR:-~/.pi/agent}`, `${XDG_CONFIG_HOME:-~/.config}/opencode` — so relocating a
+harness is followed automatically. With the variable unset each resolves to that harness's own
+default, so the preset changes nothing on a machine that has relocated nothing.
+
+The `[instructions.<agent>]` / `[permissions.<name>]` spelling below still works and can be mixed
+with agent blocks during the transition.
+
 ### Profiles
 
 **A profile is a file.** `loadout.toml` *is* the default profile, and is also what marks a

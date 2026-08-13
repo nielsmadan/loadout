@@ -6,6 +6,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+from .agents import GLOBAL_PRESET, known_agents
 from .errors import LoadoutError
 from .sources import Source, parse_sources
 
@@ -365,6 +366,91 @@ def load_manifest(path: Path) -> Manifest:
     return _build_manifest(_read_toml(path), path)
 
 
+RESERVED_KEYS = frozenset({"source", "instructions", "permissions", "extends", "variants"})
+
+# permissions and mcp render with no authoring decision to make, so an agent
+# block that names neither still gets them. instructions and settings must be
+# named: instructions need an `order` (spec 1 §7 — alphabetical demonstrably
+# fails), and settings names an input rather than an output.
+AUTOMATIC_SLICES = ("permissions", "mcp")
+
+
+def _agent_slice_names(agent: str, block: dict[str, object]) -> list[str]:
+    offered = GLOBAL_PRESET[agent]
+    named = [k for k in block if k in offered]
+    automatic = [s for s in AUTOMATIC_SLICES if s in offered and s not in block]
+    return named + automatic
+
+
+def _parse_agents(
+    data: dict[str, object], path: Path, claimed: set[PurePosixPath]
+) -> tuple[tuple[InstructionTarget, ...], tuple[PermissionTarget, ...]]:
+    """Agent-keyed blocks: `[claude]` with slices beneath it.
+
+    Each slice becomes the same target the older spelling declares by hand; the
+    preset supplies the renderer and destination so a manifest never repeats a
+    machine path. Both spellings coexist during the transition.
+    """
+    unknown = sorted(
+        k
+        for k, v in data.items()
+        if isinstance(v, dict) and k not in RESERVED_KEYS and k not in known_agents()
+    )
+    if unknown:
+        known = ", ".join(sorted(known_agents()))
+        raise LoadoutError(f"{path}: unknown agent(s) {', '.join(unknown)} (known: {known})")
+
+    targets: list[InstructionTarget] = []
+    permissions: list[PermissionTarget] = []
+    for agent in sorted(known_agents()):
+        block = data.get(agent)
+        if block is None:
+            continue
+        if not isinstance(block, dict):
+            raise LoadoutError(f"{path}: [{agent}] must be a table")
+        offered = GLOBAL_PRESET[agent]
+        stray = sorted(k for k in block if k not in offered and k not in ("settings", "preserve"))
+        if stray:
+            raise LoadoutError(
+                f"{agent}: unknown slice(s) {', '.join(stray)} "
+                f"(this agent offers: {', '.join(sorted(offered))})"
+            )
+        for slice_name in _agent_slice_names(agent, block):
+            spec = offered[slice_name]
+            label = f"{agent}.{slice_name}"
+            destinations = (
+                (PurePosixPath(spec.destination),) if spec.destination is not None else ()
+            )
+            out = PurePosixPath(spec.output) if spec.output is not None else None
+            if out is not None:
+                if out in claimed:
+                    raise LoadoutError(f"{label}: output {str(out)!r} is already claimed")
+                claimed.add(out)
+            if slice_name == "instructions":
+                targets.append(
+                    InstructionTarget(
+                        path=out,
+                        fragments=tuple(_str_list(block[slice_name], label, "instructions")),
+                        destinations=destinations,
+                        name=agent,
+                    )
+                )
+                continue
+            raw_select = block.get(slice_name)
+            permissions.append(
+                PermissionTarget(
+                    name=agent if slice_name == "permissions" else f"{agent}-{slice_name}",
+                    path=out,
+                    renderer=spec.renderer or "",
+                    settings=_parse_settings(block.get("settings"), label, None),
+                    preserve=tuple(_str_list(block.get("preserve", []), label, "preserve")),
+                    select_all=raw_select != [],
+                    destinations=destinations,
+                )
+            )
+    return tuple(targets), tuple(permissions)
+
+
 def _build_manifest(data: dict[str, object], path: Path) -> Manifest:
     raw_sources = data.get("source")
     if not isinstance(raw_sources, list) or not raw_sources:
@@ -374,6 +460,9 @@ def _build_manifest(data: dict[str, object], path: Path) -> Manifest:
     claimed: set[PurePosixPath] = set()
     targets = _parse_instructions(data.get("instructions", {}), path, claimed)
     permissions = _parse_permissions(data.get("permissions", {}), path, claimed)
+    agent_targets, agent_permissions = _parse_agents(data, path, claimed)
+    targets += agent_targets
+    permissions += agent_permissions
 
     for target in permissions:
         if target.base is not None and target.base in claimed:
@@ -384,6 +473,6 @@ def _build_manifest(data: dict[str, object], path: Path) -> Manifest:
 
     if not targets and not permissions:
         raise LoadoutError(
-            f"{path}: no [instructions.<agent>] or [permissions.<name>] targets declared"
+            f"{path}: no [<agent>], [instructions.<agent>] or [permissions.<name>] targets declared"
         )
     return Manifest(sources=sources, targets=targets, permissions=permissions)
