@@ -84,3 +84,28 @@ def test_codex_mcp_is_the_only_staged_slice() -> None:
         if output.output is not None
     }
     assert staged == {("codex", "mcp")}
+
+
+def test_only_slices_that_name_a_source_get_an_input_document() -> None:
+    """One agent's `settings` must not reach every slice that agent has.
+
+    `claude.mcp` renders from nothing; it looked harmless while it received the
+    settings document only because `render_claude_mcp` ignores its base — a
+    coincidence rather than a contract.
+    """
+    sourced = {
+        (agent, name)
+        for agent, slices in GLOBAL_PRESET.items()
+        for name, output in slices.items()
+        if output.source_slice is not None
+    }
+    assert sourced == {("claude", "permissions"), ("opencode", "permissions")}
+
+
+@pytest.mark.parametrize("agent", sorted(GLOBAL_PRESET))
+def test_a_named_source_slice_is_one_the_agent_could_declare(agent: str) -> None:
+    """`source_slice` names a slice, not an arbitrary key — otherwise a target
+    would read fragments from a block key that means something else."""
+    for name, output in agent_slices(agent).items():
+        if output.source_slice is not None:
+            assert output.source_slice in ("settings", *agent_slices(agent)), f"{agent}.{name}"

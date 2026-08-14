@@ -442,7 +442,11 @@ def _parse_agents(
                     name=agent if slice_name == "permissions" else f"{agent}-{slice_name}",
                     path=out,
                     renderer=spec.renderer or "",
-                    settings=_parse_settings(block.get("settings"), label, None),
+                    settings=(
+                        _parse_settings(block.get(spec.source_slice), label, None)
+                        if spec.source_slice is not None
+                        else ()
+                    ),
                     preserve=tuple(_str_list(block.get("preserve", []), label, "preserve")),
                     select_all=raw_select != [],
                     destinations=destinations,

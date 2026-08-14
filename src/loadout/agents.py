@@ -12,11 +12,17 @@ class SliceOutput:
     `destination` is a template resolved at render time, so a relocated harness
     is followed without editing a manifest — see ADR 0011. `output` is an
     in-repo staged path for the one case that has no destination at all.
+
+    `source_slice` names the slice supplying this one's input document — the
+    residual `settings` for a permissions target, `hooks` for a hooks target.
+    None means the renderer builds from nothing. Stating it per slice is what
+    stops one agent's `settings` reaching every slice that agent has.
     """
 
     renderer: str | None = None
     destination: str | None = None
     output: str | None = None
+    source_slice: str | None = None
 
 
 # Destinations carry each harness's config-directory variable rather than a
@@ -29,6 +35,7 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
         "permissions": SliceOutput(
             renderer="claude",
             destination="${CLAUDE_CONFIG_DIR:-~/.claude}/settings.json",
+            source_slice="settings",
         ),
         "mcp": SliceOutput(
             renderer="claude-mcp",
@@ -51,6 +58,7 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
         "permissions": SliceOutput(
             renderer="opencode",
             destination="${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json",
+            source_slice="settings",
         ),
     },
     "pi": {
