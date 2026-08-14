@@ -31,6 +31,11 @@ CATEGORIES = ("allow", "deny", "ask")
 class JsonSpec:
     fn: JsonRenderer
     ensure_ascii: bool = False
+    # True when the renderer builds its document from scratch rather than
+    # writing into the base it is handed. Such a file has exactly one owner, so
+    # it cannot compose with another slice — threading through it would silently
+    # discard everything rendered before it.
+    owns_whole_file: bool = False
 
 
 @dataclass(frozen=True)
@@ -326,12 +331,12 @@ def render_pi_project(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
 
 RENDERERS: dict[str, JsonSpec | TextSpec] = {
     "claude": JsonSpec(render_claude),
-    "claude-mcp": JsonSpec(render_claude_mcp, ensure_ascii=True),
+    "claude-mcp": JsonSpec(render_claude_mcp, ensure_ascii=True, owns_whole_file=True),
     "codex": TextSpec(render_codex),
     "codex-mcp": TextSpec(render_codex_mcp),
-    "pi": JsonSpec(render_pi),
+    "pi": JsonSpec(render_pi, owns_whole_file=True),
     "opencode": JsonSpec(render_opencode),
     "codex-project": TextSpec(render_codex_project),
-    "pi-project": JsonSpec(render_pi_project),
+    "pi-project": JsonSpec(render_pi_project, owns_whole_file=True),
     "claude-project": JsonSpec(render_claude_project),
 }

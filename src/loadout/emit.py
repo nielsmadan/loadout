@@ -4,7 +4,6 @@ import json
 import os
 import tempfile
 from collections.abc import Callable
-from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -144,31 +143,69 @@ def settings_document(target: PermissionTarget, manifest: Manifest, root: Path) 
     return _load_base(root / str(target.base)) if target.base else {}
 
 
-def render_permission_target(
-    target: PermissionTarget, rules: Rules, base: dict[str, Any], root: Path, path: Path
+def compose_permission_document(
+    contributors: list[tuple[PermissionTarget, dict[str, Any]]],
+    rules: Rules,
+    path: Path,
 ) -> str:
-    """Render this target for one output path.
+    """Render every slice that writes this one file, composed into one document.
 
-    `path` is the file about to be overwritten, and the only file `preserve` reads.
-    Rendering per path rather than once per target is what lets two destinations of
-    one target hold different foreign keys — each co-owner writes its own copy.
+    Slices **thread** rather than merge: each renderer takes the document built
+    so far and returns it with its own key written in, preserving everything
+    else. That is the contract renderers already had, and it is why composition
+    needs no merge rule — `render_claude` keeps `permissions` at its position in
+    the residual and puts the owned lists ahead of hand-maintained keys inside
+    it, which merging separate documents would undo.
+
+    **Order is residual-first, and it is load-bearing.** The settings slice
+    supplies the starting document; every owning slice overwrites its own key
+    afterwards, unconditionally. Run the other way round, a stale `hooks` key
+    left in a settings fragment would win against the hooks slice — ADR 0001
+    feeding back through a side door. Extraction produces exactly that fragment
+    on first run (spec 2), so this is a real case rather than a hypothetical.
     """
-    spec = _resolve_renderer(target.renderer, f"permissions.{target.name}")
-    effective = rules if target.select_all else EMPTY_RULES
+    first, _ = contributors[0]
+    spec = _resolve_renderer(first.renderer, f"permissions.{first.name}")
 
     if isinstance(spec, TextSpec):
-        return spec.fn(effective)
+        if len(contributors) > 1:
+            others = ", ".join(t.name for t, _ in contributors[1:])
+            raise LoadoutError(
+                f"permissions.{first.name}: {path} is rendered as text, so it cannot "
+                f"compose with {others}; a text target owns its whole file"
+            )
+        return spec.fn(rules if first.select_all else EMPTY_RULES)
 
-    document = spec.fn(effective, base)
-    overlap = [k for k in target.preserve if k in document]
+    document: dict[str, Any] = {}
+    preserve: tuple[str, ...] = ()
+    for target, residual in contributors:
+        target_spec = _resolve_renderer(target.renderer, f"permissions.{target.name}")
+        if isinstance(target_spec, TextSpec):
+            raise LoadoutError(
+                f"permissions.{target.name}: a text renderer cannot compose with "
+                f"another slice writing {path}"
+            )
+        if len(contributors) > 1 and target_spec.owns_whole_file:
+            raise LoadoutError(
+                f"permissions.{target.name}: its renderer builds {path} from scratch, so "
+                f"that file has one owner and cannot compose with another slice"
+            )
+        # The residual is the document to write into, so the first contributor
+        # seeds it and later ones build on what is already there.
+        base = document or residual
+        document = target_spec.fn(rules if target.select_all else EMPTY_RULES, base)
+        preserve += target.preserve
+        spec = target_spec
+
+    overlap = [k for k in preserve if k in document]
     if overlap:
         raise LoadoutError(
-            f"permissions.{target.name}: preserve names generated key(s) "
+            f"permissions.{first.name}: preserve names generated key(s) "
             f"{', '.join(overlap)}; preserve may only carry foreign keys"
         )
     # Foreign keys are appended AFTER rendering so the owned key keeps its
     # position ahead of them.
-    document.update(_preserved(path, target.preserve))
+    document.update(_preserved(path, preserve))
     return _serialize_json(document, spec)
 
 
@@ -212,6 +249,28 @@ def _fixed(content: str) -> Callable[[Path], str]:
         return content
 
     return render_for
+
+
+def _target_paths(target: InstructionTarget | PermissionTarget, root: Path) -> list[Path]:
+    paths: list[Path] = []
+    if target.path is not None:
+        paths.append(root / str(target.path))
+    label = _target_label(target)
+    paths.extend(resolve_destination(str(d), label) for d in target.destinations)
+    return paths
+
+
+def _require_same_owner(first: PermissionTarget, second: PermissionTarget, path: Path) -> None:
+    """Several slices of one agent may compose into one file; two owners may not.
+
+    `agent` is None for the hand-written spelling, where every target names its
+    own file, so any second contributor there is the collision it always was.
+    """
+    if first.agent is None or second.agent is None or first.agent != second.agent:
+        raise LoadoutError(
+            f"destination {path} is claimed by both permissions.{first.name} "
+            f"and permissions.{second.name}"
+        )
 
 
 def _expand(
@@ -265,10 +324,18 @@ def render_global(root: Path, profile: str = "default") -> dict[Path, str]:
             for source in permission_sources(manifest)
         ]
         rules = merge_rules(*tiers)
+        groups: dict[Path, list[tuple[PermissionTarget, dict[str, Any]]]] = {}
         for target in selected_permissions:
-            base = settings_document(target, manifest, root)
-            render_for = partial(render_permission_target, target, rules, base, root)
-            _expand(target, render_for, root, outputs, claimed)
+            residual = settings_document(target, manifest, root)
+            for path in _target_paths(target, root):
+                group = groups.setdefault(path, [])
+                if group:
+                    _require_same_owner(group[0][0], target, path)
+                else:
+                    _claim(path, _owner_label(target), claimed)
+                group.append((target, residual))
+        for path, contributors in groups.items():
+            outputs[path] = compose_permission_document(contributors, rules, path)
     return outputs
 
 

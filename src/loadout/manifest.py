@@ -75,6 +75,10 @@ class PermissionTarget:
     select_all: bool = True
     profile: str | None = None
     destinations: tuple[PurePosixPath, ...] = ()
+    # Which agent owns this target, when it came from an agent block. Several of
+    # one agent's slices may write one file and compose into it; two *different*
+    # owners naming one path is still a collision.
+    agent: str | None = None
 
 
 @dataclass(frozen=True)
@@ -439,6 +443,7 @@ def _parse_agents(
             raw_select = block.get(slice_name)
             permissions.append(
                 PermissionTarget(
+                    agent=agent,
                     name=agent if slice_name == "permissions" else f"{agent}-{slice_name}",
                     path=out,
                     renderer=spec.renderer or "",
