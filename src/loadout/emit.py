@@ -110,7 +110,7 @@ def _preserved(path: Path, keys: tuple[str, ...]) -> dict[str, Any]:
     return {key: existing[key] for key in keys if key in existing}
 
 
-def _resolve_renderer(name: str, label: str) -> JsonSpec | TextSpec:
+def _resolve_renderer(name: str, label: str) -> JsonSpec | TextSpec | ValueSpec:
     spec = RENDERERS.get(name)
     if spec is None:
         known = ", ".join(sorted(RENDERERS))
@@ -118,8 +118,14 @@ def _resolve_renderer(name: str, label: str) -> JsonSpec | TextSpec:
     return spec
 
 
-def _serialize_json(document: dict[str, Any], spec: JsonSpec) -> str:
-    return json.dumps(document, indent=2, ensure_ascii=spec.ensure_ascii) + "\n"
+def _serialize_json(document: dict[str, Any], ensure_ascii: bool = False) -> str:
+    """Serialisation is a property of the file, not of one contributing slice.
+
+    A document composed only of key contributors has no transformer to take a
+    setting from, so the default stands rather than being inherited from
+    whichever slice happened to run.
+    """
+    return json.dumps(document, indent=2, ensure_ascii=ensure_ascii) + "\n"
 
 
 def settings_document(target: PermissionTarget, manifest: Manifest, root: Path) -> dict[str, Any]:
@@ -228,7 +234,7 @@ def compose_permission_document(
     # Foreign keys are appended AFTER rendering so the owned key keeps its
     # position ahead of them.
     document.update(_preserved(path, preserve))
-    return _serialize_json(document, spec)
+    return _serialize_json(document, ensure_ascii=isinstance(spec, JsonSpec) and spec.ensure_ascii)
 
 
 def _declared_profiles(manifest: Manifest) -> set[str]:
@@ -403,7 +409,13 @@ def render_project(root: Path) -> dict[Path, str]:
 
     outputs: dict[Path, str] = {}
     for target in project_targets(config):
-        spec = _resolve_renderer(target.renderer, f"project target {target.path}")
+        label = f"project target {target.path}"
+        spec = _resolve_renderer(target.renderer, label)
+        if isinstance(spec, ValueSpec):
+            raise LoadoutError(
+                f"{label}: a value renderer contributes one key of a composed document, "
+                f"and project scope renders one target per file"
+            )
         if isinstance(spec, TextSpec):
             outputs[root / str(target.path)] = spec.fn(rules)
         else:
@@ -411,7 +423,7 @@ def render_project(root: Path) -> dict[Path, str]:
             if target.preserve_foreign:
                 base = _load_existing(root / str(target.path))
             document = spec.fn(rules, base)
-            outputs[root / str(target.path)] = _serialize_json(document, spec)
+            outputs[root / str(target.path)] = _serialize_json(document, spec.ensure_ascii)
     return outputs
 
 

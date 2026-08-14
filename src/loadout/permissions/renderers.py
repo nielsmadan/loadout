@@ -342,7 +342,7 @@ def render_pi_project(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
     return {"permission": {"bash": bash, "mcp": mcp}}
 
 
-RENDERERS: dict[str, JsonSpec | TextSpec] = {
+RENDERERS: dict[str, JsonSpec | TextSpec | ValueSpec] = {
     "claude": JsonSpec(render_claude),
     "claude-mcp": JsonSpec(render_claude_mcp, ensure_ascii=True, owns_whole_file=True),
     "codex": TextSpec(render_codex),
