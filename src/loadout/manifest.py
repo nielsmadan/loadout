@@ -53,6 +53,10 @@ class InstructionTarget:
     destinations: tuple[PurePosixPath, ...]
     name: str = ""
     profile: str | None = None
+    # Fragment swaps this target applies, declared in the manifest rather than
+    # inferred from a filename: {"git-policy": "git-policy.autonomous"}. Lets a
+    # profile change two entries of a ten-entry order without restating it.
+    substitute: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -227,6 +231,20 @@ def _parse_instructions(
     return tuple(targets)
 
 
+def _parse_substitute(raw: object, label: str) -> tuple[tuple[str, str], ...]:
+    """Fragment swaps, `{from = "to"}`.
+
+    Declared here rather than encoded in filenames: a name like
+    `git-policy.autonomous` is then just a name, and nothing has to infer which
+    part of it is a variant tag.
+    """
+    if raw is None:
+        return ()
+    if not isinstance(raw, dict) or not all(isinstance(v, str) for v in raw.values()):
+        raise LoadoutError(f"{label}: substitute must be a table of fragment -> fragment")
+    return tuple((str(k), v) for k, v in raw.items())
+
+
 def _parse_settings(raw: object, label: str, base: PurePosixPath | None) -> tuple[str, ...]:
     """Fragment names of the settings slice — one input, two spellings.
 
@@ -324,9 +342,10 @@ def _read_toml(path: Path) -> dict[str, object]:
 def _resolve_extends(root: Path, profile: str) -> dict[str, object]:
     """Flatten a profile onto the one it extends, so it states only deltas.
 
-    Targets override by name and wholesale, not key by key: a profile that
-    changes a target restates it. Deep-merging targets would make it ambiguous
-    whether an omitted `order` means "inherit" or "empty".
+    Blocks merge **per key**, so a profile naming one key inherits the rest —
+    otherwise adding a `substitute` would mean restating the instruction order
+    it exists to avoid restating. Absent means inherit; an explicit `[]` means
+    empty, which is the convention `permissions = []` already set.
     """
     seen: list[str] = []
     chain: list[dict[str, object]] = []
@@ -351,8 +370,7 @@ def _resolve_extends(root: Path, profile: str) -> dict[str, object]:
             if key == "extends":
                 continue
             existing = merged.get(key)
-            if key in ("instructions", "permissions") and isinstance(existing, dict):
-                assert isinstance(value, dict)
+            if isinstance(existing, dict) and isinstance(value, dict):
                 merged[key] = {**existing, **value}
             else:
                 merged[key] = value
@@ -378,7 +396,9 @@ def load_manifest(path: Path) -> Manifest:
     return _build_manifest(_read_toml(path), path)
 
 
-RESERVED_KEYS = frozenset({"source", "instructions", "permissions", "extends", "variants"})
+COMMON_BLOCK = "all"
+
+RESERVED_KEYS = frozenset({"source", "instructions", "permissions", "extends", COMMON_BLOCK})
 
 # permissions and mcp render with no authoring decision to make, so an agent
 # block that names neither still gets them. instructions and settings must be
@@ -412,21 +432,34 @@ def _parse_agents(
         known = ", ".join(sorted(known_agents()))
         raise LoadoutError(f"{path}: unknown agent(s) {', '.join(unknown)} (known: {known})")
 
+    common = data.get(COMMON_BLOCK, {})
+    if not isinstance(common, dict):
+        raise LoadoutError(f"{path}: [{COMMON_BLOCK}] must be a table")
+
     targets: list[InstructionTarget] = []
     permissions: list[PermissionTarget] = []
     for agent in sorted(known_agents()):
-        block = data.get(agent)
-        if block is None:
+        declared = data.get(agent)
+        if declared is None:
+            # [all] supplies defaults to the agents you named; it does not name
+            # them. Otherwise declaring it would silently enable every harness.
             continue
-        if not isinstance(block, dict):
+        if not isinstance(declared, dict):
             raise LoadoutError(f"{path}: [{agent}] must be a table")
+        block = {**common, **declared}
         offered = GLOBAL_PRESET[agent]
-        stray = sorted(k for k in block if k not in offered and k not in ("settings", "preserve"))
+        # Only what the agent block itself names is checked. A key from [all]
+        # that this agent has no slice for is simply not for it — [all] is a
+        # default, so it applies where it applies. An unknown key the agent
+        # named is still a typo worth catching.
+        extras = ("settings", "preserve", "substitute")
+        stray = sorted(k for k in declared if k not in offered and k not in extras)
         if stray:
             raise LoadoutError(
                 f"{agent}: unknown slice(s) {', '.join(stray)} "
                 f"(this agent offers: {', '.join(sorted(offered))})"
             )
+        block = {k: v for k, v in block.items() if k in offered or k in extras}
         for slice_name in _agent_slice_names(agent, block):
             spec = offered[slice_name]
             label = f"{agent}.{slice_name}"
@@ -445,6 +478,7 @@ def _parse_agents(
                         fragments=tuple(_str_list(block[slice_name], label, "instructions")),
                         destinations=destinations,
                         name=agent,
+                        substitute=_parse_substitute(block.get("substitute"), label),
                     )
                 )
                 continue
