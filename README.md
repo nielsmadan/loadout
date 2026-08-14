@@ -216,10 +216,36 @@ extends = "default"
 order = ["intro-claude", "web-fetching", "git-policy.autonomous"]
 ```
 
-`extends` names the profile to start from, and the file states only what differs — sources and
-every target it does not name are inherited. A target it *does* name is replaced **wholesale**,
-not merged key by key: deep-merging would make an omitted `order` ambiguous between "inherit"
-and "empty". A cycle in `extends` is an error naming the cycle.
+`extends` names the profile to start from, and the file states only what differs. Blocks merge
+**per key**: a block naming one key inherits the rest, so a profile can add a `substitute`
+without restating the instruction order it is substituting into. Absent means inherit; an
+explicit `[]` means empty, the convention `permissions = []` already set. A cycle in `extends`
+is an error naming the cycle.
+
+**`[all]` supplies defaults to the agents you declared**, so shared configuration is written
+once:
+
+```toml
+[all]
+instructions = ["intro-shared", "web-fetching.shared"]
+
+[codex]
+[pi]
+```
+
+It does not *declare* agents — an agent still has to be named, or adding `[all]` would silently
+enable every harness. A default an agent has no slice for is ignored rather than an error, since
+`[all]` applies where it applies; a key an agent block names itself is still checked.
+
+**`substitute` swaps one fragment for another** without restating a list:
+
+```toml
+[claude]
+substitute = { git-policy = "git-policy.autonomous" }
+```
+
+Nothing is inferred from a filename — `git-policy.autonomous.md` is just a name, and the swap is
+declared where it applies.
 
 The older spelling below still parses, so both work during the transition.
 
