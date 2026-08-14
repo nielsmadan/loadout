@@ -94,10 +94,6 @@ class Manifest:
     sources: tuple[Source, ...]
     targets: tuple[InstructionTarget, ...]
     permissions: tuple[PermissionTarget, ...] = ()
-    # Variant tags this profile wants, most specific first. A fragment resolves
-    # to `<name>.<variant>` when that file exists and to `<name>` otherwise, so a
-    # profile states the axis once instead of restating every slot that differs.
-    variants: tuple[str, ...] = ()
 
 
 def _require(block: dict[str, object], key: str, label: str) -> object:
@@ -495,10 +491,8 @@ def _build_manifest(data: dict[str, object], path: Path) -> Manifest:
                 f"output; a base must be an input, never something loadout writes"
             )
 
-    variants = _str_list(data.get("variants", []), str(path), "variants")
-
     if not targets and not permissions:
         raise LoadoutError(
             f"{path}: no [<agent>], [instructions.<agent>] or [permissions.<name>] targets declared"
         )
-    return Manifest(sources=sources, targets=targets, permissions=permissions, variants=variants)
+    return Manifest(sources=sources, targets=targets, permissions=permissions)

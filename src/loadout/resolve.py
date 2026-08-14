@@ -57,29 +57,7 @@ def _item_path(source: Source, name: str, kind: Slice) -> Path:
     return candidate
 
 
-def resolve_item(
-    sources: tuple[Source, ...],
-    name: str,
-    kind: Slice,
-    variants: tuple[str, ...] = (),
-) -> ResolvedItem:
-    """Resolve a name to a file, preferring a variant of it when one exists.
-
-    `variants` are tried most-specific first and fall back to the bare name, so
-    `variants=("autonomous",)` resolves `git-policy.autonomous.md` if it exists
-    and `git-policy.md` otherwise. That is resource-qualifier resolution — a
-    profile states which variants it wants once, rather than restating every
-    slot that happens to differ.
-
-    A name that already carries a suffix is taken literally: `git-policy.autonomous`
-    means that file, not "the autonomous variant of the autonomous variant".
-    """
-    for variant in variants:
-        suffixed = f"{name}.{variant}"
-        try:
-            return resolve_item(sources, suffixed, kind)
-        except LoadoutError:
-            continue
+def resolve_item(sources: tuple[Source, ...], name: str, kind: Slice) -> ResolvedItem:
     usable = [s for s in sources if kind.use in s.use]
 
     if "/" in name:
