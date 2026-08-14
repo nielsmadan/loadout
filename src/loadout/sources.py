@@ -5,7 +5,10 @@ from pathlib import Path
 
 from .errors import LoadoutError
 
-ARTIFACT_TYPES = frozenset({"instructions", "settings", "skills", "mcp", "permissions"})
+# The seven kinds of agent configuration — see docs/reference/config.md.
+ARTIFACT_TYPES = frozenset(
+    {"instructions", "settings", "permissions", "hooks", "mcp", "plugins", "skills"}
+)
 
 
 @dataclass(frozen=True)

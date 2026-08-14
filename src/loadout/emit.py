@@ -22,7 +22,7 @@ from .manifest import (
     resolve_destination,
 )
 from .permissions.merge import merge_rules
-from .permissions.renderers import RENDERERS, JsonSpec, TextSpec
+from .permissions.renderers import RENDERERS, JsonSpec, TextSpec, ValueSpec
 from .permissions.rules import EMPTY_RULES, Rules, parse_rules
 from .project import (
     PROJECT_CONFIG_NAME,
@@ -31,7 +31,7 @@ from .project import (
     project_config_path,
     project_targets,
 )
-from .resolve import SETTINGS, resolve_item
+from .resolve import SETTINGS, json_slice, resolve_item
 from .sources import Source
 
 PERMISSIONS_SOURCE = ("permissions.toml",)
@@ -143,8 +143,16 @@ def settings_document(target: PermissionTarget, manifest: Manifest, root: Path) 
     return _load_base(root / str(target.base)) if target.base else {}
 
 
+def slice_document(names: tuple[str, ...], slice_name: str, manifest: Manifest) -> dict[str, Any]:
+    """Compose one slice's fragments into a document."""
+    kind = json_slice(slice_name)
+    return merge_documents(
+        *(_load_base(resolve_item(manifest.sources, name, kind).path) for name in names)
+    )
+
+
 def compose_permission_document(
-    contributors: list[tuple[PermissionTarget, dict[str, Any]]],
+    contributors: list[tuple[PermissionTarget, dict[str, Any], dict[str, Any]]],
     rules: Rules,
     path: Path,
 ) -> str:
@@ -164,36 +172,50 @@ def compose_permission_document(
     feeding back through a side door. Extraction produces exactly that fragment
     on first run (spec 2), so this is a real case rather than a hypothetical.
     """
-    first, _ = contributors[0]
+    first, _, _ = contributors[0]
     spec = _resolve_renderer(first.renderer, f"permissions.{first.name}")
 
     if isinstance(spec, TextSpec):
         if len(contributors) > 1:
-            others = ", ".join(t.name for t, _ in contributors[1:])
+            others = ", ".join(t.name for t, _, _ in contributors[1:])
             raise LoadoutError(
                 f"permissions.{first.name}: {path} is rendered as text, so it cannot "
                 f"compose with {others}; a text target owns its whole file"
             )
         return spec.fn(rules if first.select_all else EMPTY_RULES)
 
-    document: dict[str, Any] = {}
+    # The residual is the whole file minus every owned key, and it is the same
+    # for each slice of an agent, so it is taken once rather than per slice.
+    document: dict[str, Any] = dict(contributors[0][1])
     preserve: tuple[str, ...] = ()
-    for target, residual in contributors:
-        target_spec = _resolve_renderer(target.renderer, f"permissions.{target.name}")
+    for target, _, content in contributors:
+        label = f"permissions.{target.name}"
+        target_spec = _resolve_renderer(target.renderer, label)
+        owned_key = target.owned_key
+
+        if isinstance(target_spec, ValueSpec):
+            if owned_key is None:
+                raise LoadoutError(
+                    f"{label}: its renderer produces one key's value, but the preset "
+                    f"names no owned_key for it to be written under"
+                )
+            document[owned_key] = target_spec.fn(content)
+            continue
+        if owned_key is not None:
+            raise LoadoutError(
+                f"{label}: the preset gives it owned_key {owned_key!r}, so its renderer "
+                f"must produce that key's value rather than a whole document"
+            )
         if isinstance(target_spec, TextSpec):
             raise LoadoutError(
-                f"permissions.{target.name}: a text renderer cannot compose with "
-                f"another slice writing {path}"
+                f"{label}: a text renderer cannot compose with another slice writing {path}"
             )
         if len(contributors) > 1 and target_spec.owns_whole_file:
             raise LoadoutError(
-                f"permissions.{target.name}: its renderer builds {path} from scratch, so "
-                f"that file has one owner and cannot compose with another slice"
+                f"{label}: its renderer builds {path} from scratch, so that file has one "
+                f"owner and cannot compose with another slice"
             )
-        # The residual is the document to write into, so the first contributor
-        # seeds it and later ones build on what is already there.
-        base = document or residual
-        document = target_spec.fn(rules if target.select_all else EMPTY_RULES, base)
+        document = target_spec.fn(rules if target.select_all else EMPTY_RULES, document)
         preserve += target.preserve
         spec = target_spec
 
@@ -324,16 +346,21 @@ def render_global(root: Path, profile: str = "default") -> dict[Path, str]:
             for source in permission_sources(manifest)
         ]
         rules = merge_rules(*tiers)
-        groups: dict[Path, list[tuple[PermissionTarget, dict[str, Any]]]] = {}
+        groups: dict[Path, list[tuple[PermissionTarget, dict[str, Any], dict[str, Any]]]] = {}
         for target in selected_permissions:
             residual = settings_document(target, manifest, root)
+            content = (
+                slice_document(target.content, target.content_slice, manifest)
+                if target.content_slice is not None
+                else {}
+            )
             for path in _target_paths(target, root):
                 group = groups.setdefault(path, [])
                 if group:
                     _require_same_owner(group[0][0], target, path)
                 else:
                     _claim(path, _owner_label(target), claimed)
-                group.append((target, residual))
+                group.append((target, residual, content))
         for path, contributors in groups.items():
             outputs[path] = compose_permission_document(contributors, rules, path)
     return outputs

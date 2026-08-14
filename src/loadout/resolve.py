@@ -34,6 +34,16 @@ INSTRUCTIONS = Slice(use="instructions", subdir="instructions", suffix=".md")
 SETTINGS = Slice(use="settings", subdir="settings", suffix=".json")
 
 
+def json_slice(name: str) -> Slice:
+    """The slice a name refers to, by convention: the directory is the namespace.
+
+    A fragment name says nothing about which directory holds it, so a resolver
+    needs the slice as well as the name — two slices may hold the same name
+    without colliding.
+    """
+    return SETTINGS if name == SETTINGS.use else Slice(use=name, subdir=name, suffix=".json")
+
+
 @lru_cache
 def _slice_root(source: Source, subdir: str) -> Path:
     return (source.path / subdir).resolve()

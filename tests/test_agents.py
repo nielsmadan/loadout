@@ -86,20 +86,29 @@ def test_codex_mcp_is_the_only_staged_slice() -> None:
     assert staged == {("codex", "mcp")}
 
 
-def test_only_slices_that_name_a_source_get_an_input_document() -> None:
-    """One agent's `settings` must not reach every slice that agent has.
+def test_settings_is_never_a_source_slice() -> None:
+    """Settings is the residual every file starts from, not one slice's input.
 
-    `claude.mcp` renders from nothing; it looked harmless while it received the
-    settings document only because `render_claude_mcp` ignores its base — a
-    coincidence rather than a contract.
+    It was a `source_slice` briefly; that made it one contributor among many, so
+    whichever slice sorted first supplied the document and the rest of the file
+    was lost. The residual is taken once, ahead of every slice.
     """
-    sourced = {
-        (agent, name)
-        for agent, slices in GLOBAL_PRESET.items()
-        for name, output in slices.items()
+    named = {
+        output.source_slice
+        for slices in GLOBAL_PRESET.values()
+        for output in slices.values()
         if output.source_slice is not None
     }
-    assert sourced == {("claude", "permissions"), ("opencode", "permissions")}
+    assert "settings" not in named
+
+
+def test_a_contributor_names_where_its_content_comes_from() -> None:
+    """`owned_key` makes a slice produce one key's value; it needs its own
+    fragments to produce it from, so the two always travel together."""
+    for agent, slices in GLOBAL_PRESET.items():
+        for name, output in slices.items():
+            if output.owned_key is not None:
+                assert output.source_slice is not None, f"{agent}.{name}"
 
 
 @pytest.mark.parametrize("agent", sorted(GLOBAL_PRESET))

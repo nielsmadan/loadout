@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -7,7 +8,7 @@ import pytest
 from loadout.agents import GLOBAL_PRESET, SliceOutput
 from loadout.emit import render_global
 from loadout.errors import LoadoutError
-from loadout.permissions.renderers import RENDERERS, JsonSpec
+from loadout.permissions.renderers import RENDERERS, JsonSpec, ValueSpec
 
 SOURCE = """
 [[source]]
@@ -173,3 +174,53 @@ def test_a_whole_file_renderer_refuses_to_compose(tmp_path: Path) -> None:
             render_global(root)
     finally:
         del GLOBAL_PRESET["pi"]["marker"]
+
+
+def test_a_contributor_writes_one_key_and_the_residual_survives(tmp_path: Path) -> None:
+    """The shape Claude's hooks needs: settings supplies the whole file, a
+    contributor supplies one key's value, and neither loses to the other.
+
+    Before the split, whichever slice sorted first supplied the document — so a
+    contributor running first put its content at top level and the settings
+    fragment vanished entirely.
+    """
+    GLOBAL_PRESET["opencode"]["hooks"] = SliceOutput(
+        renderer="hooks-test",
+        destination=GLOBAL_PRESET["opencode"]["permissions"].destination,
+        source_slice="hooks",
+        owned_key="hooks",
+    )
+    RENDERERS["hooks-test"] = ValueSpec(lambda content: content)
+    try:
+        root = build(tmp_path, '\n[opencode]\nsettings = "opencode"\nhooks = ["a"]\n')
+        (root / "settings").mkdir(exist_ok=True)
+        (root / "settings" / "opencode.json").write_text('{"model": "kept"}\n', encoding="utf-8")
+        (root / "hooks").mkdir(exist_ok=True)
+        (root / "hooks" / "a.json").write_text('{"hello": "world"}\n', encoding="utf-8")
+
+        doc = json.loads(next(t for p, t in rendered(root).items() if p.endswith("opencode.json")))
+        assert doc["hooks"] == {"hello": "world"}, "contributor value under its owned key"
+        assert doc["model"] == "kept", "the settings residual must reach the file"
+        assert "alpha" in json.dumps(doc["permission"]), "permissions still rendered"
+        assert "hello" not in doc, "contributor content must not leak to top level"
+    finally:
+        del GLOBAL_PRESET["opencode"]["hooks"]
+        del RENDERERS["hooks-test"]
+
+
+def test_a_value_renderer_without_an_owned_key_is_rejected(tmp_path: Path) -> None:
+    """The two renderer kinds are distinguishable at registration, so a mismatch
+    fails rather than quietly writing the wrong shape."""
+    GLOBAL_PRESET["opencode"]["hooks"] = SliceOutput(
+        renderer="hooks-test",
+        destination=GLOBAL_PRESET["opencode"]["permissions"].destination,
+        source_slice="hooks",
+    )
+    RENDERERS["hooks-test"] = ValueSpec(lambda content: content)
+    try:
+        root = build(tmp_path, "\n[opencode]\nhooks = []\n")
+        with pytest.raises(LoadoutError, match="names no owned_key"):
+            render_global(root)
+    finally:
+        del GLOBAL_PRESET["opencode"]["hooks"]
+        del RENDERERS["hooks-test"]

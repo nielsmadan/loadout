@@ -71,6 +71,14 @@ class PermissionTarget:
     renderer: str
     base: PurePosixPath | None = None
     settings: tuple[str, ...] = ()
+    # This slice's own fragments, when it contributes one key rather than
+    # transforming the document. Distinct from `settings`, which is the residual
+    # the whole file starts from and is the same for every slice of an agent.
+    content: tuple[str, ...] = ()
+    # Set when this slice contributes one key's value rather than transforming
+    # the whole document.
+    owned_key: str | None = None
+    content_slice: str | None = None
     preserve: tuple[str, ...] = ()
     select_all: bool = True
     profile: str | None = None
@@ -447,11 +455,14 @@ def _parse_agents(
                     name=agent if slice_name == "permissions" else f"{agent}-{slice_name}",
                     path=out,
                     renderer=spec.renderer or "",
-                    settings=(
+                    settings=_parse_settings(block.get("settings"), label, None),
+                    content=(
                         _parse_settings(block.get(spec.source_slice), label, None)
                         if spec.source_slice is not None
                         else ()
                     ),
+                    owned_key=spec.owned_key,
+                    content_slice=spec.source_slice,
                     preserve=tuple(_str_list(block.get("preserve", []), label, "preserve")),
                     select_all=raw_select != [],
                     destinations=destinations,

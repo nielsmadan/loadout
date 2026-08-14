@@ -39,6 +39,19 @@ class JsonSpec:
 
 
 @dataclass(frozen=True)
+class ValueSpec:
+    """A renderer that produces the *value* of one key, not a whole document.
+
+    The composing loop assigns it under the key the preset names, so it never
+    sees the rest of the file and cannot depend on running before or after
+    another slice. Distinguished at registration rather than by convention: a
+    value renderer handed a whole document would do the wrong thing silently.
+    """
+
+    fn: Callable[[dict[str, Any]], Any]
+
+
+@dataclass(frozen=True)
 class TextSpec:
     fn: TextRenderer
 
