@@ -7,6 +7,7 @@ import pytest
 from loadout.errors import LoadoutError
 from loadout.resolve import Slice, resolve_item
 from loadout.sources import ARTIFACT_TYPES, Source
+from loadout.templates import HASH_PREFIX, template_files, tree_hash
 
 TREE = Slice(use="templates", subdir="templates", suffix="", directory=True)
 
@@ -71,3 +72,77 @@ def test_a_slashed_escape_is_read_as_a_source_qualifier_and_refused(tmp_path: Pa
     source = _source(tmp_path, "company", "web")
     with pytest.raises(LoadoutError, match="unknown source"):
         resolve_item((source,), "../../etc", TREE)
+
+
+def _tree(base: Path, **files: str) -> Path:
+    for relative, text in files.items():
+        path = base / relative.replace("__", "/")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    return base
+
+
+def test_the_hash_is_prefixed_with_its_algorithm(tmp_path: Path) -> None:
+    digest = tree_hash(_tree(tmp_path / "web", permissions_toml="a\n"))
+    assert digest.startswith(HASH_PREFIX)
+    assert len(digest) == len(HASH_PREFIX) + 64
+
+
+def test_the_same_content_hashes_the_same_from_a_different_directory(tmp_path: Path) -> None:
+    """No absolute path in the digest — otherwise vendoring would change the hash,
+    and one recorded value could not compare a copy against its upstream."""
+    first = _tree(tmp_path / "upstream", permissions_toml="a\n", skills__s__SKILL_md="b\n")
+    second = _tree(
+        tmp_path / "loadout" / "templates" / "web",
+        permissions_toml="a\n",
+        skills__s__SKILL_md="b\n",
+    )
+    assert tree_hash(first) == tree_hash(second)
+
+
+def test_changing_a_byte_changes_the_hash(tmp_path: Path) -> None:
+    before = tree_hash(_tree(tmp_path / "web", permissions_toml="a\n"))
+    after = tree_hash(_tree(tmp_path / "web", permissions_toml="b\n"))
+    assert before != after
+
+
+def test_moving_content_between_files_changes_the_hash(tmp_path: Path) -> None:
+    """The relative path is hashed alongside the bytes, so a rename is a change."""
+    before = tree_hash(_tree(tmp_path / "a", one_toml="x\n", two_toml=""))
+    after = tree_hash(_tree(tmp_path / "b", one_toml="", two_toml="x\n"))
+    assert before != after
+
+
+def test_a_file_boundary_cannot_be_forged_by_rearranging_bytes(tmp_path: Path) -> None:
+    """The byte length is hashed, so two short files cannot collide with one long one."""
+    before = tree_hash(_tree(tmp_path / "a", one_toml="xy", two_toml=""))
+    after = tree_hash(_tree(tmp_path / "b", one_toml="x", two_toml="y"))
+    assert before != after
+
+
+def test_the_executable_bit_is_part_of_the_hash(tmp_path: Path) -> None:
+    tree = _tree(tmp_path / "web", scripts__run_sh="#!/bin/sh\n")
+    before = tree_hash(tree)
+    (tree / "scripts" / "run_sh").chmod(0o755)
+    assert tree_hash(tree) != before
+
+
+def test_build_artifacts_are_excluded_from_the_hash(tmp_path: Path) -> None:
+    tree = _tree(tmp_path / "web", permissions_toml="a\n")
+    clean = tree_hash(tree)
+    (tree / "__pycache__").mkdir()
+    (tree / "__pycache__" / "x.pyc").write_bytes(b"\x00")
+    (tree / ".DS_Store").write_bytes(b"\x00")
+    assert tree_hash(tree) == clean
+
+
+def test_template_files_are_relative_and_sorted(tmp_path: Path) -> None:
+    tree = _tree(tmp_path / "web", b_toml="", a__c_toml="", a__b_toml="")
+    assert template_files(tree) == (Path("a/b_toml"), Path("a/c_toml"), Path("b_toml"))
+
+
+def test_an_empty_tree_hashes_rather_than_failing(tmp_path: Path) -> None:
+    """`railway` in the live source carries one slice; an empty one must not crash."""
+    empty = tmp_path / "railway"
+    empty.mkdir()
+    assert tree_hash(empty).startswith(HASH_PREFIX)
