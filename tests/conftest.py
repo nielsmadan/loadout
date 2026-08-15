@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import pytest
 
-from fixture_root import build_project_root, build_root
+from fixture_root import PROJECT_HARNESSES, build_project_root, build_root
 
 HARNESS_VARIABLES = (
     "CLAUDE_CONFIG_DIR",
@@ -42,3 +43,17 @@ def root(tmp_path: Path) -> Path:
 @pytest.fixture
 def project(tmp_path: Path) -> Path:
     return build_project_root(tmp_path)
+
+
+@pytest.fixture
+def bare_project(project: Path) -> Path:
+    """The project fixture with its vendored template stripped out.
+
+    The shared fixture carries one so the expected output proves a template
+    reaches the generated files at all. A test about a template *arriving* has to
+    start from none, or it is asserting against a template it did not put there.
+    """
+    shutil.rmtree(project / "loadout" / "templates")
+    quoted = ", ".join(f'"{harness}"' for harness in PROJECT_HARNESSES)
+    (project / "loadout" / "config.toml").write_text(f"harnesses = [{quoted}]\n", encoding="utf-8")
+    return project

@@ -227,75 +227,75 @@ def test_render_all_rejects_a_path_collision_between_scopes(root: Path, project:
         render_all(root)
 
 
-def _vendor(project: Path, name: str, permissions: str) -> Path:
-    tree = project / "loadout" / "templates" / name
+def _vendor(bare_project: Path, name: str, permissions: str) -> Path:
+    tree = bare_project / "loadout" / "templates" / name
     tree.mkdir(parents=True)
     (tree / "permissions.toml").write_text(permissions, encoding="utf-8")
     return tree
 
 
-def _declare(project: Path, *names: str) -> None:
-    config = project / "loadout" / "config.toml"
+def _declare(bare_project: Path, *names: str) -> None:
+    config = bare_project / "loadout" / "config.toml"
     quoted = ", ".join(f'"{name}"' for name in names)
     config.write_text(
         config.read_text(encoding="utf-8") + f"templates = [{quoted}]\n", encoding="utf-8"
     )
 
 
-def test_a_template_rule_reaches_the_output(project: Path) -> None:
-    _vendor(project, "web", '[shell]\nallow = ["vite build"]\n')
-    _declare(project, "web")
-    doc = json.loads(render_project(project)[project / ".claude/settings.json"])
+def test_a_template_rule_reaches_the_output(bare_project: Path) -> None:
+    _vendor(bare_project, "web", '[shell]\nallow = ["vite build"]\n')
+    _declare(bare_project, "web")
+    doc = json.loads(render_project(bare_project)[bare_project / ".claude/settings.json"])
     assert "Bash(vite build:*)" in doc["permissions"]["allow"]
 
 
-def test_a_project_deny_beats_a_template_allow(project: Path) -> None:
+def test_a_project_deny_beats_a_template_allow(bare_project: Path) -> None:
     """The template is the lowest tier, so deny-wins resolves against it.
 
     The second rule is what makes this a real test: without it, the assertions
     pass whether or not the template merged at all, because an unmerged allow is
     also an absent allow.
     """
-    _vendor(project, "web", '[shell]\nallow = ["vite build", "vite preview"]\n')
-    _declare(project, "web")
-    (project / "loadout" / "permissions.local.toml").write_text(
+    _vendor(bare_project, "web", '[shell]\nallow = ["vite build", "vite preview"]\n')
+    _declare(bare_project, "web")
+    (bare_project / "loadout" / "permissions.local.toml").write_text(
         '[shell]\ndeny = ["vite build"]\n', encoding="utf-8"
     )
-    doc = json.loads(render_project(project)[project / ".claude/settings.json"])
+    doc = json.loads(render_project(bare_project)[bare_project / ".claude/settings.json"])
     assert "Bash(vite preview:*)" in doc["permissions"]["allow"]
     assert "Bash(vite build:*)" in doc["permissions"]["deny"]
     assert "Bash(vite build:*)" not in doc["permissions"]["allow"]
 
 
-def test_templates_merge_in_declared_order(project: Path) -> None:
+def test_templates_merge_in_declared_order(bare_project: Path) -> None:
     """Emission order decides which rule applies on OpenCode and Pi, so the
     declared order has to survive into the output."""
-    _vendor(project, "one", '[shell]\nallow = ["one-tool"]\n')
-    _vendor(project, "two", '[shell]\nallow = ["two-tool"]\n')
-    _declare(project, "one", "two")
-    doc = json.loads(render_project(project)[project / ".claude/settings.json"])
+    _vendor(bare_project, "one", '[shell]\nallow = ["one-tool"]\n')
+    _vendor(bare_project, "two", '[shell]\nallow = ["two-tool"]\n')
+    _declare(bare_project, "one", "two")
+    doc = json.loads(render_project(bare_project)[bare_project / ".claude/settings.json"])
     allow = doc["permissions"]["allow"]
     assert allow.index("Bash(one-tool:*)") < allow.index("Bash(two-tool:*)")
 
 
-def test_a_template_rule_is_emitted_before_the_projects_own(project: Path) -> None:
+def test_a_template_rule_is_emitted_before_the_projects_own(bare_project: Path) -> None:
     """Lowest tier first, because OpenCode and Pi are last-match-wins."""
-    _vendor(project, "web", '[shell]\nallow = ["vite build"]\n')
-    _declare(project, "web")
-    doc = json.loads(render_project(project)[project / "opencode.json"])
+    _vendor(bare_project, "web", '[shell]\nallow = ["vite build"]\n')
+    _declare(bare_project, "web")
+    doc = json.loads(render_project(bare_project)[bare_project / "opencode.json"])
     keys = list(doc["permission"]["bash"])
     assert keys.index("vite build") < keys.index("alpha")
 
 
-def test_a_template_carrying_no_permissions_is_not_an_error(project: Path) -> None:
+def test_a_template_carrying_no_permissions_is_not_an_error(bare_project: Path) -> None:
     """`railway` in the live source offers skills only; a source's `use` already
     covers that shape, so a template offering one slice needs no special case."""
-    (project / "loadout" / "templates" / "railway" / "skills").mkdir(parents=True)
-    _declare(project, "railway")
-    assert render_project(project)
+    (bare_project / "loadout" / "templates" / "railway" / "skills").mkdir(parents=True)
+    _declare(bare_project, "railway")
+    assert render_project(bare_project)
 
 
-def test_an_unresolvable_template_fails_the_render(project: Path) -> None:
-    _declare(project, "missing")
+def test_an_unresolvable_template_fails_the_render(bare_project: Path) -> None:
+    _declare(bare_project, "missing")
     with pytest.raises(LoadoutError, match="no machine config"):
-        render_project(project)
+        render_project(bare_project)

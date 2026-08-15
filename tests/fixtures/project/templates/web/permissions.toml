@@ -1,0 +1,15 @@
+# A vendored template's contribution to the project fixture. Vendored rather than
+# declared on purpose: resolution then reads no machine config, so the expected
+# tree stays machine-independent and reproducible in CI.
+#
+# Synthetic, and shaped to provoke rather than to be realistic — see
+# tests/test_fixture_shapes.py, which fails if this reach is lost. Every entry
+# here is absent from both project tiers, so a template that stopped merging
+# would change the expected output rather than passing quietly.
+
+[shell]
+allow = ["omicron build"]
+deny  = ["omicron publish"]
+
+[mcp]
+allow = ["tmpl_server/*"]

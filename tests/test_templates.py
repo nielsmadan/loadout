@@ -237,67 +237,71 @@ def test_a_source_offering_no_templates_is_left_out_of_the_search(
         resolve_template("web", tmp_path)
 
 
-def test_declare_appends_to_an_absent_templates_key(project: Path) -> None:
-    assert declare(project, "web") is True
-    assert load_project_config(project_config_path(project)).templates == ("web",)
+def test_declare_appends_to_an_absent_templates_key(bare_project: Path) -> None:
+    assert declare(bare_project, "web") is True
+    assert load_project_config(project_config_path(bare_project)).templates == ("web",)
 
 
-def test_declare_appends_to_an_existing_list_and_keeps_order(project: Path) -> None:
-    declare(project, "web")
-    declare(project, "railway")
-    assert load_project_config(project_config_path(project)).templates == ("web", "railway")
+def test_declare_appends_to_an_existing_list_and_keeps_order(bare_project: Path) -> None:
+    declare(bare_project, "web")
+    declare(bare_project, "railway")
+    assert load_project_config(project_config_path(bare_project)).templates == ("web", "railway")
 
 
-def test_declare_is_idempotent(project: Path) -> None:
-    declare(project, "web")
-    assert declare(project, "web") is False
-    assert load_project_config(project_config_path(project)).templates == ("web",)
+def test_declare_is_idempotent(bare_project: Path) -> None:
+    declare(bare_project, "web")
+    assert declare(bare_project, "web") is False
+    assert load_project_config(project_config_path(bare_project)).templates == ("web",)
 
 
-def test_declare_lands_above_a_table_rather_than_inside_it(project: Path) -> None:
+def test_declare_lands_above_a_table_rather_than_inside_it(bare_project: Path) -> None:
     """A top-level key written after a table header would be parsed as part of it."""
-    path = project_config_path(project)
+    path = project_config_path(bare_project)
     path.write_text(
         'harnesses = ["claude"]\ntemplates = ["web"]\n\n[template.web]\nvendored = "sha256:a"\n',
         encoding="utf-8",
     )
-    declare(project, "railway")
+    declare(bare_project, "railway")
     config = load_project_config(path)
     assert config.templates == ("web", "railway")
     assert config.vendored_hash("web") == "sha256:a"
 
 
-def test_declare_leaves_the_rest_of_the_file_alone(project: Path) -> None:
-    path = project_config_path(project)
+def test_declare_leaves_the_rest_of_the_file_alone(bare_project: Path) -> None:
+    path = project_config_path(bare_project)
     path.write_text(
         "# a comment its author chose\n" + path.read_text(encoding="utf-8"), encoding="utf-8"
     )
-    declare(project, "web")
+    declare(bare_project, "web")
     assert "# a comment its author chose" in path.read_text(encoding="utf-8")
 
 
-def test_record_hash_round_trips(project: Path) -> None:
-    declare(project, "web")
-    record_hash(project, "web", "sha256:abc")
-    assert load_project_config(project_config_path(project)).vendored_hash("web") == "sha256:abc"
+def test_record_hash_round_trips(bare_project: Path) -> None:
+    declare(bare_project, "web")
+    record_hash(bare_project, "web", "sha256:abc")
+    assert (
+        load_project_config(project_config_path(bare_project)).vendored_hash("web") == "sha256:abc"
+    )
 
 
-def test_record_hash_replaces_rather_than_appends(project: Path) -> None:
-    declare(project, "web")
-    record_hash(project, "web", "sha256:abc")
-    record_hash(project, "web", "sha256:def")
-    text = project_config_path(project).read_text(encoding="utf-8")
+def test_record_hash_replaces_rather_than_appends(bare_project: Path) -> None:
+    declare(bare_project, "web")
+    record_hash(bare_project, "web", "sha256:abc")
+    record_hash(bare_project, "web", "sha256:def")
+    text = project_config_path(bare_project).read_text(encoding="utf-8")
     assert text.count("[template.web]") == 1
-    assert load_project_config(project_config_path(project)).vendored_hash("web") == "sha256:def"
+    assert (
+        load_project_config(project_config_path(bare_project)).vendored_hash("web") == "sha256:def"
+    )
 
 
-def test_record_hash_leaves_another_templates_block_alone(project: Path) -> None:
-    declare(project, "web")
-    declare(project, "railway")
-    record_hash(project, "web", "sha256:abc")
-    record_hash(project, "railway", "sha256:def")
-    record_hash(project, "web", "sha256:ghi")
-    config = load_project_config(project_config_path(project))
+def test_record_hash_leaves_another_templates_block_alone(bare_project: Path) -> None:
+    declare(bare_project, "web")
+    declare(bare_project, "railway")
+    record_hash(bare_project, "web", "sha256:abc")
+    record_hash(bare_project, "railway", "sha256:def")
+    record_hash(bare_project, "web", "sha256:ghi")
+    config = load_project_config(project_config_path(bare_project))
     assert config.vendored_hash("railway") == "sha256:def"
     assert config.vendored_hash("web") == "sha256:ghi"
 

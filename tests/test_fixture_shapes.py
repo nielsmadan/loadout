@@ -94,3 +94,33 @@ def test_a_destination_is_env_templated() -> None:
     manifest = load_manifest(FIXTURE.parent / MANIFEST_NAME)
     templates = [str(d) for target in manifest.targets for d in target.destinations]
     assert [t for t in templates if "${" in t], "no destination exercises ${...} expansion"
+
+
+PROJECT_FIXTURES = Path(__file__).parent / "fixtures" / "project"
+TEMPLATE_RULES = parse_rules(PROJECT_FIXTURES / "templates" / "web" / "permissions.toml")
+
+
+def test_the_project_fixture_carries_a_vendored_template() -> None:
+    """Without it, the expected project output never proves a template reaches it."""
+    assert TEMPLATE_RULES.allow, "the fixture template contributes no allow rule"
+    assert TEMPLATE_RULES.deny, "the fixture template contributes no deny rule"
+    assert TEMPLATE_RULES.mcp_allow, "the fixture template contributes no MCP entry"
+
+
+def test_every_template_rule_is_absent_from_the_other_project_tiers() -> None:
+    """A rule a project tier already carries would render identically whether or not
+    the template merged, so the comparison would pass with templates switched off."""
+    committed = parse_rules(PROJECT_FIXTURES / "permissions.toml")
+    local = parse_rules(PROJECT_FIXTURES / "permissions.local.toml")
+    others = set(
+        committed.allow
+        + committed.deny
+        + committed.ask
+        + local.allow
+        + local.deny
+        + local.ask
+        + committed.mcp_allow
+        + local.mcp_allow
+    )
+    template = set(TEMPLATE_RULES.allow + TEMPLATE_RULES.deny + TEMPLATE_RULES.mcp_allow)
+    assert not (template & others), f"already in another tier: {sorted(template & others)}"

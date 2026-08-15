@@ -26,6 +26,11 @@ PRESERVE_TARGET = "perm/opencode.json"
 PROJECT_FIXTURES = FIXTURES / "project"
 PROJECT_HARNESSES = ("claude", "codex", "opencode", "pi")
 
+# Vendored, so resolution reads no machine config and the expected tree stays
+# machine-independent. It is what puts a template's contribution into the
+# byte-compared output at all.
+PROJECT_TEMPLATES = ("web",)
+
 # Both preserve_foreign project targets, seeded so the carry-through path runs.
 PROJECT_FOREIGN = {
     ".claude/settings.json": {"$schema": "https://example.invalid/claude.json"},
@@ -37,7 +42,16 @@ def build_project_root(destination: Path) -> Path:
     directory = destination / "loadout"
     directory.mkdir(parents=True, exist_ok=True)
     quoted = ", ".join(f'"{harness}"' for harness in PROJECT_HARNESSES)
-    (directory / "config.toml").write_text(f"harnesses = [{quoted}]\n", encoding="utf-8")
+    templates = ", ".join(f'"{name}"' for name in PROJECT_TEMPLATES)
+    (directory / "config.toml").write_text(
+        f"harnesses = [{quoted}]\ntemplates = [{templates}]\n", encoding="utf-8"
+    )
+    for name in PROJECT_TEMPLATES:
+        shutil.copytree(
+            PROJECT_FIXTURES / "templates" / name,
+            directory / "templates" / name,
+            dirs_exist_ok=True,
+        )
     for name in ("permissions.toml", "permissions.local.toml"):
         shutil.copy2(PROJECT_FIXTURES / name, directory / name)
 
