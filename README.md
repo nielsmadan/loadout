@@ -335,9 +335,10 @@ Per-repo permissions, layered on top of the global manifest above. A repo opts i
 `init` scaffolds `loadout/`:
 
 ```text
-loadout/config.toml               enabled harnesses — the only key it accepts
+loadout/config.toml               enabled harnesses, and any templates this repo opts into
 loadout/permissions.toml          committed, shared with everyone working in this repo
 loadout/permissions.local.toml    personal, gitignored
+loadout/templates/<name>/         a vendored template, committed — see Templates below
 ```
 
 Both commands also add every output the enabled harnesses generate to `.gitignore`. Generated
@@ -367,12 +368,44 @@ a blank document.
 `.claude/settings.local.json` itself when you choose "don't ask again", and merges both at
 startup. A generator that owned `.local.json` would delete those grants on every sync.
 
+### Templates
+
+A template is shared configuration for a *kind* of project (`web`, `flutter`, `railway`) that a
+repo opts into. It is a source, merged **beneath** both project tiers, so anything this repo
+declares outranks it.
+
+    loadout template add web       # declare it; it resolves from a source on every render
+    loadout template vendor web    # copy it into loadout/templates/web/ and record its hash
+    loadout template sync web      # update that vendored copy from its source
+    loadout template list          # every declared template, and how each resolves
+
+```toml
+# loadout/config.toml
+harnesses = ["claude", "codex"]
+templates = ["web", "railway"]
+
+[template.web]              # written by `template vendor`; only `vendored` is accepted
+vendored = "sha256:9f2a1c4e…"
+```
+
+Templates are referenced **by name, never by path** — a path in a committed file means nothing on
+a colleague's machine. A name resolves to `loadout/templates/<name>/` if this repo vendored it,
+and otherwise to the `templates/` directory of a source the machine's global manifest declares.
+Two sources offering one name is an error, not a silent preference.
+
+`template sync` is **refuse-and-diff**: it updates an unmodified copy, and on a copy you have
+edited it prints the diff and exits 1 without changing anything. `loadout check` reports such a
+copy but does not fail — a vendored template is source, not generated output
+([0014](docs/decisions/0014-a-vendored-template-is-source-not-output.md)).
+
+Full detail, including the content-hash definition: [docs/reference/templates.md](docs/reference/templates.md).
+
 ## Exit codes
 
 | Code | Meaning |
 | ---- | ------- |
 | 0 | clean — nothing to do, or drift check found no differences |
-| 1 | drift — generated files are out of date, run `loadout sync` |
+| 1 | drift — generated files are out of date, run `loadout sync`; or `template sync` refused a modified vendored copy |
 | 2 | usage error — invalid or missing command-line arguments |
 | 3 | source error — the manifest, a source, or a fragment is missing or invalid |
 | 4 | internal error — an unexpected exception; a traceback is printed to stderr |

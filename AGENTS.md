@@ -122,6 +122,10 @@ state that is *read*: `manifest.py:resolve_destination` expands `${VAR}` in a de
 against the environment, per [0011](docs/decisions/0011-a-destination-follows-a-relocated-harness.md).
 `project.py` (harness preset) is project scope; `scaffold.py` holds both scopes' scaffolding
 (`init`, `harness add`, `init --global`).
+`templates.py` resolves a template *name* — the project's vendored copy first, then the
+`templates/` directory of every source the machine's global manifest declares — and owns the tree
+hash `template sync` compares a vendored copy against. A template is a source, so it merges
+through the slice's own operator and adds no merge rule.
 `emit.py:render_project` renders it; `render_all` unions it with `render_global`'s global-scope
 output, so `sync`/`check` regenerate whichever scopes are present.
 
@@ -131,6 +135,7 @@ output, so `sync`/`check` regenerate whichever scopes are present.
 - `docs/scopes.md` — what loadout is for, the scope model, committed vs personal
 - `docs/reference/` — per-harness matcher semantics, pattern shapes, verified quirks
 - `docs/reference/extraction.md` — the renderers run backwards: what round-trips, what is reported
+- `docs/reference/templates.md` — declared vs vendored, name resolution, the content hash, sync
 - `docs/reference/coverage.md` — every documented behaviour and the test that pins it
 - `docs/decisions/` — ADRs; append-only, superseded rather than edited
 

@@ -146,6 +146,33 @@ composition untouched, and that a file's *mode* survives a copy.
 | `s-copy-symlink` | a copy writes *through* a destination symlink rather than replacing it | `test_copy_writes_through_a_symlink` |
 | `s-mode-drift` | matching bytes with a differing mode is drift — the case a text comparison cannot see | `test_drift_when_only_the_mode_differs` |
 
+## Templates
+
+A template is a *source* referenced by name, so the slice pins two things nothing else does:
+that a name resolves the same way a fragment name does one level up, and that a vendored copy is
+source rather than generated output. See [templates](templates.md) and
+[ADR 0014](../decisions/0014-a-vendored-template-is-source-not-output.md).
+
+| id | behaviour | pinned by |
+|---|---|---|
+| `t-vendored-first` | a vendored copy stops resolution before the machine config is read — what lets a clone build without the template repo | `test_a_vendored_copy_resolves_with_no_machine_config_at_all`, `test_a_vendored_copy_wins_and_stops_resolution` |
+| `t-declared-source` | a declared name resolves through the machine config's global manifest, honouring each source's `use` | `test_a_declared_template_resolves_from_the_global_source`, `test_a_source_offering_no_templates_is_left_out_of_the_search` |
+| `t-ambiguous` | two sources offering one name is an error, never a silent preference; `source/name` disambiguates | `test_two_sources_offering_one_template_name_is_refused`, `test_a_qualified_name_disambiguates_a_collision` |
+| `t-search-reported` | an unresolvable name names every place searched, vendored path included | `test_an_unresolvable_template_names_every_place_searched` |
+| `t-no-escape` | a directory slice needs the escape guard `is_file()` gave a document slice for free | `test_a_template_name_may_not_escape_its_source` |
+| `t-lowest-tier` | a template merges beneath both project tiers, so a project deny beats a template allow | `test_a_project_deny_beats_a_template_allow` |
+| `t-order` | declared order survives into emission order, which decides the winner on OpenCode and Pi | `test_templates_merge_in_declared_order`, `test_a_template_rule_is_emitted_before_the_projects_own` |
+| `t-one-slice` | a template offering no permissions contributes no tier rather than failing — `railway`'s shape | `test_a_template_carrying_no_permissions_is_not_an_error` |
+| `t-hash-relocatable` | the hash covers relative paths only, so vendoring does not change it | `test_the_same_content_hashes_the_same_from_a_different_directory` |
+| `t-hash-boundary` | path, byte length and exec bit are all hashed, so a rename, a re-split or a chmod is a change | `test_moving_content_between_files_changes_the_hash`, `test_a_file_boundary_cannot_be_forged_by_rearranging_bytes`, `test_the_executable_bit_is_part_of_the_hash` |
+| `t-hash-artifacts` | build output is excluded, or a fresh checkout would never compare equal | `test_build_artifacts_are_excluded_from_the_hash` |
+| `t-no-path-in-config` | `[template.<name>]` accepts only `vendored`, so a local path cannot be committed | `test_a_template_block_may_not_carry_a_path` |
+| `t-orphan-provenance` | provenance for an undeclared template is refused rather than left as dead state | `test_provenance_for_an_undeclared_template_is_refused` |
+| `t-sync-refuses` | a modified copy is refused, the diff is shown, and nothing is written | `test_sync_refuses_a_modified_copy_and_changes_nothing`, `test_sync_shows_the_diff_it_refused_to_apply` |
+| `t-sync-replaces` | sync carries an added file and drops a removed one, then re-records the hash | `test_sync_carries_a_file_the_upstream_added`, `test_sync_drops_a_file_the_upstream_removed`, `test_sync_rerecords_the_hash_so_the_copy_stays_clean` |
+| `t-check-notes` | divergence is reported, never failed, and never swallows real drift (ADR 0014) | `test_check_notes_a_modified_vendored_template_without_failing`, `test_check_still_fails_on_real_drift_alongside_a_diverged_template` |
+| `t-fixture-reach` | the project fixture carries a vendored template whose rules no other tier has | `test_the_project_fixture_carries_a_vendored_template`, `test_every_template_rule_is_absent_from_the_other_project_tiers` |
+
 ## Generated hook adapters
 
 Everything below lives in emitted JavaScript, so a Python assertion can only inspect it as a

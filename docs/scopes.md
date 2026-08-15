@@ -131,12 +131,17 @@ Consequences:
   and its plugin enablement was never established. `docs/reference/antigravity.md` keeps the
   findings and [0012](decisions/0012-antigravity-is-dropped-until-it-matures.md) lists what has
   to become true to re-add it.
-- Per-project-type templates (`aiconf`). A template carries four artifact types — permissions,
-  instructions, skills, MCP — so it is a dimension rather than a milestone: build the
-  mechanism once (a project declares a template; its content resolves from the global source
-  and merges as the lowest tier) alongside the first artifact type that can use it, and let
-  each later type plug into it. All four are in scope per
-  [0007](decisions/0007-loadout-owns-all-agent-configuration.md).
+- Per-project-type templates (`aiconf`) — **the mechanism is built; the remaining artifact types
+  are not.** A template carries four — permissions, instructions, skills, MCP — so it was always
+  a dimension rather than a milestone: build the mechanism once alongside the first artifact type
+  that can use it, and let each later type plug into it. That first type is **permissions**, the
+  only one project scope has. A project declares `templates = ["web"]`, the name resolves against
+  a vendored copy and then the global source's sources, and the result merges as the lowest tier.
+  What is still open is each further type plugging into the same resolution as project scope grows
+  it. All four remain in scope per
+  [0007](decisions/0007-loadout-owns-all-agent-configuration.md). See
+  [reference/templates.md](reference/templates.md) and
+  [0014](decisions/0014-a-vendored-template-is-source-not-output.md).
 - Skills and MCP server definitions, today owned by separate generators.
 - Build-time ceilings (`neverallow`) for the wrapper-command bypass described in
   [0005](decisions/0005-a-deny-cannot-carry-exceptions.md). The unresolved part is that a
