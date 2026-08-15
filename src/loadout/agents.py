@@ -34,6 +34,7 @@ class SliceOutput:
 # was verified. Keeping them here means a manifest never spells one out.
 GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
     "claude": {
+        "skills": SliceOutput(destination="${CLAUDE_CONFIG_DIR:-~/.claude}/skills"),
         "instructions": SliceOutput(destination="${CLAUDE_CONFIG_DIR:-~/.claude}/CLAUDE.md"),
         "permissions": SliceOutput(
             renderer="claude",
@@ -53,6 +54,7 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
         ),
     },
     "codex": {
+        "skills": SliceOutput(destination="${CODEX_HOME:-~/.codex}/skills"),
         "instructions": SliceOutput(destination="${CODEX_HOME:-~/.codex}/AGENTS.md"),
         "permissions": SliceOutput(
             renderer="codex",
@@ -80,12 +82,14 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
         "mcp": SliceOutput(renderer="codex-mcp", output="codex/mcp-permissions.toml"),
     },
     "opencode": {
+        "skills": SliceOutput(destination="${XDG_CONFIG_HOME:-~/.config}/opencode/skills"),
         "permissions": SliceOutput(
             renderer="opencode",
             destination="${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json",
         ),
     },
     "pi": {
+        "skills": SliceOutput(destination="${PI_CODING_AGENT_DIR:-~/.pi/agent}/skills"),
         "instructions": SliceOutput(destination="${PI_CODING_AGENT_DIR:-~/.pi/agent}/AGENTS.md"),
         "permissions": SliceOutput(
             renderer="pi",

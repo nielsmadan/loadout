@@ -17,6 +17,7 @@ from .manifest import (
     InstructionTarget,
     Manifest,
     PermissionTarget,
+    SkillsTarget,
     declared_profile_files,
     load_manifest,
     load_profile,
@@ -34,6 +35,7 @@ from .project import (
     project_targets,
 )
 from .resolve import SETTINGS, json_slice, resolve_item
+from .skills import SKILL_DOCUMENT, Skill, discover_skills, render_skill
 from .sources import Source
 
 PERMISSIONS_SOURCE = ("permissions.toml",)
@@ -387,7 +389,59 @@ def render_global(root: Path, profile: str = "default") -> dict[Path, Output]:
                 group.append((target, residual, content))
         for path, contributors in groups.items():
             outputs[path] = compose_permission_document(contributors, rules, path)
+
+    for skills_target in manifest.skills:
+        _expand_skills(skills_target, manifest, outputs, claimed)
     return outputs
+
+
+SKILLS_SUBDIR = "skills"
+
+
+def skill_trees(manifest: Manifest) -> tuple[Skill, ...]:
+    """Every skill offered by every source, by name, rejecting collisions.
+
+    Two sources offering the same skill is ambiguous in the same way two sources
+    offering one fragment name is, and is refused for the same reason: silently
+    preferring one would make the winner depend on manifest order rather than on
+    anything the author wrote.
+    """
+    seen: dict[str, str] = {}
+    collected: list[Skill] = []
+    for source in manifest.sources:
+        if SKILLS_SUBDIR not in source.use:
+            continue
+        for skill in discover_skills(source.path / SKILLS_SUBDIR):
+            if skill.name in seen:
+                raise LoadoutError(
+                    f"skill {skill.name!r} is offered by both {seen[skill.name]!r} and "
+                    f"{source.name!r}; rename one, or drop it from a source's `use`"
+                )
+            seen[skill.name] = source.name
+            collected.append(skill)
+    return tuple(sorted(collected, key=lambda s: s.name))
+
+
+def _expand_skills(
+    target: SkillsTarget,
+    manifest: Manifest,
+    outputs: dict[Path, Output],
+    claimed: dict[Path, str],
+) -> None:
+    trees = skill_trees(manifest)
+    if not trees:
+        return
+    for destination in target.destinations:
+        base = resolve_destination(str(destination), f"{target.agent}.skills")
+        for skill in trees:
+            directory = base / skill.name
+            document = directory / SKILL_DOCUMENT
+            _claim(document, f"{target.agent}.skills", claimed)
+            outputs[document] = render_skill(skill, target.agent)
+            for relative in skill.supporting:
+                path = directory / relative
+                _claim(path, f"{target.agent}.skills", claimed)
+                outputs[path] = Copied(source=skill.document.parent / relative)
 
 
 def render_all(root: Path, profile: str = "default") -> dict[Path, Output]:
