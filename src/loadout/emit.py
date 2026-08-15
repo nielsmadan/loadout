@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import tempfile
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +39,22 @@ from .sources import Source
 PERMISSIONS_SOURCE = ("permissions.toml",)
 PROJECT_SOURCE = "permissions.toml"
 PROJECT_LOCAL_SOURCE = "permissions.local.toml"
+
+
+@dataclass(frozen=True)
+class Copied:
+    """A file reproduced from a source path rather than rendered from rules.
+
+    A skill is a tree and only `SKILL.md` goes through composition; the rest is
+    carried across untouched. Naming the source instead of its decoded text is
+    what lets a byte be a byte: `scripts/` files are executable in three skills
+    today, and a mode does not survive a `str`.
+    """
+
+    source: Path
+
+
+Output = str | Copied
 
 
 def permission_sources(manifest: Manifest) -> tuple[Source, ...]:
@@ -305,7 +323,7 @@ def _expand(
     target: InstructionTarget | PermissionTarget,
     render_for: Callable[[Path], str],
     root: Path,
-    outputs: dict[Path, str],
+    outputs: dict[Path, Output],
     claimed: dict[Path, str],
 ) -> None:
     owner = _owner_label(target)
@@ -332,14 +350,14 @@ def declared_profiles(root: Path) -> set[str]:
     return profiles
 
 
-def render_global(root: Path, profile: str = "default") -> dict[Path, str]:
+def render_global(root: Path, profile: str = "default") -> dict[Path, Output]:
     manifest = load_profile(root, profile)
     declared = _declared_profiles(manifest) | declared_profile_files(root)
     if profile != "default" and profile not in declared:
         known = ", ".join(sorted(declared)) or "none"
         raise LoadoutError(f"unknown profile {profile!r} (declared: {known})")
 
-    outputs: dict[Path, str] = {}
+    outputs: dict[Path, Output] = {}
     claimed: dict[Path, str] = {}
     for t in manifest.targets:
         if _selected(t, profile):
@@ -372,8 +390,8 @@ def render_global(root: Path, profile: str = "default") -> dict[Path, str]:
     return outputs
 
 
-def render_all(root: Path, profile: str = "default") -> dict[Path, str]:
-    outputs: dict[Path, str] = {}
+def render_all(root: Path, profile: str = "default") -> dict[Path, Output]:
+    outputs: dict[Path, Output] = {}
     has_global = manifest_path(root).is_file()
     has_project = project_config_path(root).is_file()
 
@@ -396,7 +414,7 @@ def render_all(root: Path, profile: str = "default") -> dict[Path, str]:
     return outputs
 
 
-def render_project(root: Path) -> dict[Path, str]:
+def render_project(root: Path) -> dict[Path, Output]:
     config = load_project_config(project_config_path(root))
     project_dir = root / "loadout"
 
@@ -407,7 +425,7 @@ def render_project(root: Path) -> dict[Path, str]:
         tiers.append(parse_rules(local_path))
     rules = merge_rules(*tiers)
 
-    outputs: dict[Path, str] = {}
+    outputs: dict[Path, Output] = {}
     for target in project_targets(config):
         label = f"project target {target.path}"
         spec = _resolve_renderer(target.renderer, label)
@@ -442,11 +460,29 @@ def atomic_write(path: Path, content: str) -> None:
         raise
 
 
+def atomic_copy(path: Path, source: Path) -> None:
+    target = path.resolve() if path.is_symlink() else path
+    fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=".loadout-")
+    try:
+        os.close(fd)
+        # copymode after the bytes, before the rename: an executable script must
+        # never be observable at its destination without its exec bit.
+        shutil.copyfile(source, tmp)
+        shutil.copymode(source, tmp)
+        os.replace(tmp, target)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
 def write_all(root: Path, profile: str = "default") -> list[Path]:
     written: list[Path] = []
     for path, content in render_all(root, profile).items():
         path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write(path, content)
+        if isinstance(content, Copied):
+            atomic_copy(path, content.source)
+        else:
+            atomic_write(path, content)
         written.append(path)
     return written
 
@@ -454,7 +490,32 @@ def write_all(root: Path, profile: str = "default") -> list[Path]:
 def check_all(root: Path, profile: str = "default") -> list[tuple[Path, str, str]]:
     drift: list[tuple[Path, str, str]] = []
     for path, expected in render_all(root, profile).items():
+        if isinstance(expected, Copied):
+            if _copy_drifted(path, expected.source):
+                drift.append((path, _describe(path), _describe(expected.source)))
+            continue
         actual = path.read_text(encoding="utf-8") if path.is_file() else ""
         if actual != expected:
             drift.append((path, actual, expected))
     return drift
+
+
+def _copy_drifted(path: Path, source: Path) -> bool:
+    if not path.is_file():
+        return True
+    if path.read_bytes() != source.read_bytes():
+        return True
+    return _executable(path) != _executable(source)
+
+
+def _executable(path: Path) -> bool:
+    return bool(path.stat().st_mode & 0o111)
+
+
+def _describe(path: Path) -> str:
+    # Drift on a copied file reports a summary, not the content: a tree carries
+    # binaries, and a byte diff of one is noise rather than a review.
+    if not path.is_file():
+        return "(absent)"
+    suffix = " (executable)" if _executable(path) else ""
+    return f"{path.stat().st_size} bytes{suffix}"

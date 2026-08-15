@@ -10,7 +10,7 @@ import tempfile
 from collections.abc import Iterable
 from pathlib import Path
 
-from .emit import check_all, declared_profiles, render_all, write_all
+from .emit import Copied, check_all, declared_profiles, render_all, write_all
 from .errors import LoadoutError
 from .machine import machine_config_path
 from .manifest import MANIFEST_NAME, InstructionTarget, load_manifest, manifest_path
@@ -81,6 +81,8 @@ def _render_variants(
         except LoadoutError:
             continue
         for path, content in rendered.items():
+            if isinstance(content, Copied):
+                continue  # verbatim by definition, so it has no per-profile form to vary
             try:
                 key = rebase_to / path.relative_to(source_root)
             except ValueError:
@@ -124,6 +126,8 @@ def _modified_outside_loadout(root: Path, profile: str) -> list[tuple[Path, str,
 
     modified: list[tuple[Path, str, str]] = []
     for path, expected in render_all(root, profile).items():
+        if isinstance(expected, Copied):
+            continue  # a drifted copy is already byte-compared by check_all
         forms = acceptable.get(path, set())
         if not path.is_file() or not forms:
             continue
