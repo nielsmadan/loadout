@@ -54,6 +54,27 @@ plugin/extension subscribes to, and Pi's is larger than Claude's.
 **Only Claude and OpenCode have a machine-wide managed tier.** Codex, Pi and Antigravity have
 none.
 
+## What loadout writes is narrower than this page, and the gaps are build order
+
+`GLOBAL_PRESET` in `src/loadout/agents.py` is lopsided, and reading it as a capability map gets
+three answers wrong. Every gap below is **unbuilt, not absent** — the mechanism exists and is
+documented in the per-slice sections here:
+
+| gap | mechanism | why it is unbuilt |
+|---|---|---|
+| `opencode.instructions` | `instructions` key in `opencode.json` | needs a shape loadout has not written: a *list of paths in another slice's document*, not a document at a path |
+| `opencode.mcp` | `opencode.json` → `mcp` | another writer owns it today; the manifest carries `preserve = ["mcp"]` so loadout passes it through untouched |
+| `pi.mcp` | `~/.pi/agent/mcp.json` | still deployed by the pre-loadout symlink layer |
+
+The first is the interesting one. Claude, Codex and Pi each take instructions as a document at a
+path; OpenCode takes a **list of paths inside a settings key**, so loadout would write the
+composed document somewhere and then contribute a key pointing at it. `ValueSpec` already does
+exactly that for hooks and plugins, so the machinery exists and has simply not been aimed here.
+
+Recorded because the preset is the artifact a reader reaches for first, and it is the one that
+cannot distinguish "this harness cannot" from "nobody has built it yet" — the same trap the rest
+of this page exists to close.
+
 ## The `.agents/` convention
 
 Four of the five harnesses read a shared, harness-neutral directory — `~/.agents/` globally and
