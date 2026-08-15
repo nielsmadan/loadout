@@ -24,9 +24,11 @@ from .manifest import (
     manifest_path,
     resolve_destination,
 )
+from .notices import Notice, notices_for
 from .permissions.merge import merge_rules
 from .permissions.renderers import RENDERERS, DocumentTextSpec, JsonSpec, TextSpec, ValueSpec
 from .permissions.rules import EMPTY_RULES, Rules, parse_rules
+from .plugins import marketplaces
 from .project import (
     PROJECT_CONFIG_NAME,
     PROJECT_DIR,
@@ -362,6 +364,53 @@ def declared_profiles(root: Path) -> set[str]:
         profiles |= _declared_profiles(load_manifest(path))
         profiles |= declared_profile_files(root)
     return profiles
+
+
+CLAUDE_MARKETPLACES = "${CLAUDE_CONFIG_DIR:-~/.claude}/plugins/known_marketplaces.json"
+
+
+def _known_marketplaces(agent: str, document: dict[str, Any]) -> frozenset[str]:
+    """What counts as registered, which is a different question per harness.
+
+    Codex's registrations are ordinary configuration in a file loadout stages, so
+    the source answers for itself. Claude's live in a registry the harness
+    maintains, carrying timestamps and install paths — machine state a generated
+    file must not hold (ADR 0008) — so it is read here and never written. A
+    renderer could not do this at all (ADR 0001); a caller may.
+    """
+    if agent != "claude":
+        return frozenset(marketplaces(document))
+    try:
+        path = resolve_destination(CLAUDE_MARKETPLACES, "plugins.known_marketplaces")
+        registry = json.loads(path.read_text(encoding="utf-8"))
+    except (LoadoutError, OSError, json.JSONDecodeError):
+        # A machine that has never registered one is the bootstrap case, not an
+        # error: the report exists to say what to run.
+        return frozenset()
+    return frozenset(registry) if isinstance(registry, dict) else frozenset()
+
+
+def collect_notices(root: Path, profile: str = "default") -> tuple[Notice, ...]:
+    """Advisory findings about a source that rendered while doing less than it says."""
+    manifest = load_profile(root, profile)
+    found: list[Notice] = []
+    for target in manifest.permissions:
+        # A legacy `[permissions.*]` target names no agent and carries no slice
+        # content, so there is nothing to report about it.
+        if target.agent is None or target.content_slice is None:
+            continue
+        if not _selected(target, profile):
+            continue
+        document = slice_document(target.content, target.content_slice, manifest)
+        found.extend(
+            notices_for(
+                target.agent,
+                target.content_slice,
+                document,
+                _known_marketplaces(target.agent, document),
+            )
+        )
+    return tuple(found)
 
 
 def render_global(root: Path, profile: str = "default") -> dict[Path, Output]:

@@ -63,17 +63,42 @@ documented in the per-slice sections here:
 | gap | mechanism | why it is unbuilt |
 |---|---|---|
 | `opencode.instructions` | `instructions` key in `opencode.json` | needs a shape loadout has not written: a *list of paths in another slice's document*, not a document at a path |
-| `opencode.mcp` | `opencode.json` → `mcp` | another writer owns it today; the manifest carries `preserve = ["mcp"]` so loadout passes it through untouched |
-| `pi.mcp` | `~/.pi/agent/mcp.json` | still deployed by the pre-loadout symlink layer |
 
-The first is the interesting one. Claude, Codex and Pi each take instructions as a document at a
-path; OpenCode takes a **list of paths inside a settings key**, so loadout would write the
-composed document somewhere and then contribute a key pointing at it. `ValueSpec` already does
-exactly that for hooks and plugins, so the machinery exists and has simply not been aimed here.
+Claude, Codex and Pi each take instructions as a document at a path; OpenCode takes a **list of
+paths inside a settings key**, so loadout would write the composed document somewhere and then
+contribute a key pointing at it. `ValueSpec` already contributes a key to a shared document, so
+the machinery exists and has simply not been aimed here.
 
-Recorded because the preset is the artifact a reader reaches for first, and it is the one that
-cannot distinguish "this harness cannot" from "nobody has built it yet" — the same trap the rest
-of this page exists to close.
+### `mcp` names two different things, and this page is half the reason
+
+**The mcp table above lists where server *definitions* live. The `mcp` slice in `GLOBAL_PRESET`
+renders tool-approval *policy*.** Both are accurate in isolation, and read together they
+manufacture a gap that does not exist while hiding the one that does.
+
+The policy half is complete on all four harnesses. It renders from `permissions.toml`'s `[mcp]`
+section — `claude-mcp` to `mcp-permissions.json`, `codex-mcp` to a staged TOML, and on OpenCode
+and Pi it lands *inside the permissions document* as `jina_search`-style keys rather than a file
+of its own. So OpenCode and Pi have no missing mcp destination; their policy is already written,
+just not where a reader scanning for a filename would look.
+
+The definitions half is **an unbuilt slice, not a missing destination**. loadout has no model of
+a server: `mcpServers` appears nowhere in `src/`, and entries carry `url`, `command`, `args` and
+`bearerTokenEnv`, none of which exist in `Rules`. It would need a new input, four renderers — one
+of them CLI-mediated on Claude, which collides with
+[0004](../decisions/0004-loadout-is-render-only.md) — and a name that is not `mcp`, because
+`mcp` is taken.
+
+`~/ac/mcp/servers.toml` already keeps the two apart in its own header: *"This file defines which
+servers EXIST. Which of their tools may be called is the separate `[mcp]` section of
+permissions/permissions.toml"*. The distinction is load-bearing in the live system and was
+missing here.
+
+An earlier version of this section listed `opencode.mcp` and `pi.mcp` as unbuilt destinations. It
+was wrong, and wrong in the way this page exists to prevent: it read a capability table and a
+build artifact as though one word meant the same thing in both, and produced a confident gap from
+the mismatch. The preset is the artifact a reader reaches for first and it cannot distinguish
+"this harness cannot" from "nobody has built it yet" — but neither can a table whose column
+headings quietly disagree with the code's vocabulary.
 
 ## The `.agents/` convention
 
