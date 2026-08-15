@@ -1,0 +1,162 @@
+"""The hooks slice from manifest to rendered file.
+
+Everything else about hooks is tested as pure functions. This is the one that
+proves `loadout` actually writes `~/.codex/hooks.json` — a slice nothing calls
+is a library, not a feature.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from loadout.emit import render_global
+from loadout.errors import LoadoutError
+
+MANIFEST = """\
+[[source]]
+name = "test"
+path = "."
+
+[codex]
+hooks = ["notify"]
+"""
+
+NOTIFY = {
+    "PreToolUse": [
+        {
+            "matcher": "Bash",
+            "hooks": [{"type": "command", "command": "notify.sh PreToolUse", "timeout": 5}],
+        }
+    ]
+}
+
+
+def build(root: Path, fragments: dict[str, dict], manifest: str = MANIFEST) -> Path:
+    (root / "hooks").mkdir(parents=True, exist_ok=True)
+    for name, body in fragments.items():
+        (root / "hooks" / f"{name}.json").write_text(json.dumps(body), encoding="utf-8")
+    (root / "permissions.toml").write_text("[shell]\nallow = []\n", encoding="utf-8")
+    (root / "loadout.toml").write_text(manifest, encoding="utf-8")
+    return root
+
+
+def codex_hooks(outputs: dict[Path, str]) -> tuple[Path, dict]:
+    written = {p: c for p, c in outputs.items() if p.name == "hooks.json"}
+    assert len(written) == 1, f"expected one hooks.json, got {sorted(written)}"
+    path, content = next(iter(written.items()))
+    return path, json.loads(content)
+
+
+def test_a_hooks_fragment_renders_to_codexs_own_file(tmp_path: Path) -> None:
+    outputs = render_global(build(tmp_path, {"notify": NOTIFY}), "default")
+    path, document = codex_hooks(outputs)
+    assert path.parts[-2:] == (".codex", "hooks.json")
+    assert document == {"hooks": NOTIFY}
+
+
+def test_two_fragments_compose_into_one_document(tmp_path: Path) -> None:
+    """The slice's whole point: a second fragment adds to an event rather than
+    replacing it (spec 1 §8, lists concatenate)."""
+    extra = {
+        "PreToolUse": [
+            {"matcher": "WebFetch", "hooks": [{"type": "command", "command": "nudge.sh"}]}
+        ]
+    }
+    root = build(tmp_path, {"notify": NOTIFY, "nudge": extra})
+    (root / "loadout.toml").write_text(
+        MANIFEST.replace('hooks = ["notify"]', 'hooks = ["notify", "nudge"]'), encoding="utf-8"
+    )
+    _, document = codex_hooks(render_global(root, "default"))
+    assert [e["matcher"] for e in document["hooks"]["PreToolUse"]] == ["Bash", "WebFetch"]
+
+
+def test_the_destination_follows_codexs_config_variable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ADR 0011 — the preset carries `${CODEX_HOME:-~/.codex}`, so a relocated
+    harness is followed without editing a manifest."""
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "elsewhere"))
+    path, _ = codex_hooks(render_global(build(tmp_path, {"notify": NOTIFY}), "default"))
+    assert path == tmp_path / "elsewhere" / "hooks.json"
+
+
+def test_a_claude_only_variable_fails_the_render(tmp_path: Path) -> None:
+    """The dangerous case, end to end: unresolved on Codex, the command exits 2,
+    which Codex reads as block. Refused rather than written."""
+    bad = {
+        "PreToolUse": [
+            {"hooks": [{"type": "command", "command": '"$CLAUDE_PROJECT_DIR"/guard.sh'}]}
+        ]
+    }
+    with pytest.raises(LoadoutError, match=r"CLAUDE_PROJECT_DIR"):
+        render_global(build(tmp_path, {"notify": bad}), "default")
+
+
+def test_an_agent_without_a_hooks_slice_rejects_the_key(tmp_path: Path) -> None:
+    """Pi has no hooks destination in the preset, so naming one is an error
+    rather than a silently ignored key."""
+    root = build(tmp_path, {"notify": NOTIFY}, MANIFEST.replace("[codex]", "[pi]"))
+    with pytest.raises(LoadoutError, match=r"unknown slice"):
+        render_global(root, "default")
+
+
+CLAUDE_MANIFEST = """\
+[[source]]
+name = "test"
+path = "."
+
+[claude]
+settings = ["claude"]
+hooks    = ["notify"]
+"""
+
+
+def build_claude(root: Path) -> Path:
+    build(root, {"notify": NOTIFY}, CLAUDE_MANIFEST)
+    (root / "settings").mkdir(exist_ok=True)
+    (root / "settings" / "claude.json").write_text(
+        json.dumps({"model": "opus", "env": {"X": "1"}}), encoding="utf-8"
+    )
+    (root / "permissions.toml").write_text("[shell]\nallow = ['ls']\n", encoding="utf-8")
+    return root
+
+
+def claude_settings(outputs: dict[Path, str]) -> dict:
+    written = {p: c for p, c in outputs.items() if p.name == "settings.json"}
+    assert len(written) == 1, f"expected one settings.json, got {sorted(written)}"
+    return json.loads(next(iter(written.values())))
+
+
+def test_claude_hooks_compose_with_permissions_and_the_settings_residual(
+    tmp_path: Path,
+) -> None:
+    """Four slices, one file. This failed twice before `ValueSpec` existed: the
+    hooks content leaked to top level and the settings residual was lost."""
+    document = claude_settings(render_global(build_claude(tmp_path), "default"))
+    assert document["hooks"] == NOTIFY
+    assert document["model"] == "opus" and document["env"] == {"X": "1"}
+    assert document["permissions"]["allow"] == ["Bash(ls:*)"]
+
+
+def test_hooks_content_does_not_leak_to_the_top_level(tmp_path: Path) -> None:
+    """The visible symptom of the earlier bug: `PreToolUse` sitting beside
+    `model` instead of under `hooks`."""
+    document = claude_settings(render_global(build_claude(tmp_path), "default"))
+    assert "PreToolUse" not in document
+
+
+def test_a_stale_hooks_key_in_a_settings_fragment_loses_to_the_hooks_slice(
+    tmp_path: Path,
+) -> None:
+    """Extraction produces exactly this on first run — `~/.claude/settings.json`
+    verbatim carries `hooks`, which the hooks slice owns (spec 2)."""
+    root = build_claude(tmp_path)
+    (root / "settings" / "claude.json").write_text(
+        json.dumps({"model": "opus", "hooks": {"Stop": [{"hooks": [{"command": "STALE"}]}]}}),
+        encoding="utf-8",
+    )
+    document = claude_settings(render_global(root, "default"))
+    assert document["hooks"] == NOTIFY

@@ -9,6 +9,7 @@ from typing import Any
 
 import tomlkit
 
+from ..hooks import render_claude_hooks, render_codex_hooks
 from .rules import Rules, is_glob, mcp_native, mcp_parts
 
 JsonRenderer = Callable[[Rules, dict[str, Any]], dict[str, Any]]
@@ -342,8 +343,21 @@ def render_pi_project(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
     return {"permission": {"bash": bash, "mcp": mcp}}
 
 
+# --------------------------------------------------------------------------
+# hooks — the slice's renderers live in `hooks.py`, which knows nothing about
+# permissions. Both are value renderers: each returns what goes under the
+# `hooks` key, and the composing loop puts it there.
+#
+# On Claude that key sits beside `permissions` and the settings residual in
+# settings.json. On Codex it is the only key in hooks.json. Neither renderer
+# knows or cares — that difference is entirely the preset's.
+# --------------------------------------------------------------------------
+
+
 RENDERERS: dict[str, JsonSpec | TextSpec | ValueSpec] = {
     "claude": JsonSpec(render_claude),
+    "claude-hooks": ValueSpec(render_claude_hooks),
+    "codex-hooks": ValueSpec(render_codex_hooks),
     "claude-mcp": JsonSpec(render_claude_mcp, ensure_ascii=True, owns_whole_file=True),
     "codex": TextSpec(render_codex),
     "codex-mcp": TextSpec(render_codex_mcp),

@@ -27,6 +27,22 @@ __all__ = [
 # all 263 hook objects in a 22-repository survey. Reading it beats inferring the
 # kind from which other keys happen to be set.
 #
+# On Codex not defining a project root, stated as narrowly as the evidence
+# allows: enumerating `CODEX_*` in the 0.147.0 binary gives 16 names, all
+# config-dir, auth or protocol, and no ALL_CAPS token ends `_PROJECT_DIR`.
+#
+# **Both are lower bounds, not proof.** Each assumes a spelling — the first a
+# namespace prefix, the second a suffix — and a search that assumes its answer
+# cannot establish absence (AGENTS.md). Codex could name such a thing anything,
+# or substitute a token without an environment variable at all. A bare
+# `_PROJECT_DIR` string does appear, in `external-agent-migration/src/
+# hooks_common.rs`, which is consistent with Codex handling *Claude's* variable
+# when importing — close to the opposite of Codex having one.
+#
+# What actually decides the rejection below is narrower and untested: whether
+# `CLAUDE_PROJECT_DIR` is set when Codex runs a hook. Settling that needs a live
+# probe, not a grep.
+#
 # `http` and `prompt` are Claude's types and render to Claude untouched. Whether
 # Codex honours them is **unknown** — its binary shares Claude's event names and
 # output-schema vocabulary, and every entry in the one `hooks.json` seen is

@@ -43,12 +43,35 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
             renderer="claude-mcp",
             destination="${CLAUDE_CONFIG_DIR:-~/.claude}/mcp-permissions.json",
         ),
+        # Shares settings.json with permissions and the settings residual, so it
+        # contributes one key rather than transforming the document.
+        "hooks": SliceOutput(
+            renderer="claude-hooks",
+            destination="${CLAUDE_CONFIG_DIR:-~/.claude}/settings.json",
+            source_slice="hooks",
+            owned_key="hooks",
+        ),
     },
     "codex": {
         "instructions": SliceOutput(destination="${CODEX_HOME:-~/.codex}/AGENTS.md"),
         "permissions": SliceOutput(
             renderer="codex",
             destination="${CODEX_HOME:-~/.codex}/rules/permissions.rules",
+        ),
+        # Codex is the one harness whose hooks have a file of their own, so this
+        # lands without agent-first rendering. Claude's `hooks` key shares
+        # settings.json with permissions and settings, which needs two slices to
+        # compose into one document — spec 1 §3, not yet built.
+        # `hooks` is the only key loadout writes here, so the residual is empty.
+        # That is a claim about what loadout writes, not about the file: a
+        # hand-made hooks.json may carry keys neither of us anticipated — Cursor's
+        # equivalent has a `version` — and this drops them. `preserve` is the
+        # mechanism if one is ever identified; none is, so none is named.
+        "hooks": SliceOutput(
+            renderer="codex-hooks",
+            destination="${CODEX_HOME:-~/.codex}/hooks.json",
+            source_slice="hooks",
+            owned_key="hooks",
         ),
         # The one slice with no destination: sync_config.py reads this staged
         # file and merges it into ~/.codex/config.toml, which holds keys loadout
