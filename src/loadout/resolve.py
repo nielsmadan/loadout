@@ -23,11 +23,15 @@ class Slice:
 
     A slice is a directory, and the directory is the namespace: two slices may
     hold the same name without colliding, because nothing resolves across them.
+
+    `directory` makes the *item* a tree rather than a document — a template is a
+    bundle of slices, so it has no suffix and no single file to read.
     """
 
     use: str
     subdir: str
     suffix: str
+    directory: bool = False
 
 
 INSTRUCTIONS = Slice(use="instructions", subdir="instructions", suffix=".md")
@@ -57,6 +61,10 @@ def _item_path(source: Source, name: str, kind: Slice) -> Path:
     return candidate
 
 
+def _present(path: Path, kind: Slice) -> bool:
+    return path.is_dir() if kind.directory else path.is_file()
+
+
 def resolve_item(sources: tuple[Source, ...], name: str, kind: Slice) -> ResolvedItem:
     usable = [s for s in sources if kind.use in s.use]
 
@@ -69,7 +77,7 @@ def resolve_item(sources: tuple[Source, ...], name: str, kind: Slice) -> Resolve
                 f"unknown source {source_name!r} in {name!r}; known sources: {known}"
             )
         path = _item_path(matched[0], bare, kind)
-        if not path.is_file():
+        if not _present(path, kind):
             raise LoadoutError(f"{kind.use} not found: {name!r} (looked in {path})")
         return ResolvedItem(name=bare, source=source_name, path=path)
 
@@ -81,7 +89,7 @@ def resolve_item(sources: tuple[Source, ...], name: str, kind: Slice) -> Resolve
             hits.append((s, path))
         except LoadoutError:
             escaped.append(s.name)
-    found = [(s, p) for s, p in hits if p.is_file()]
+    found = [(s, p) for s, p in hits if _present(p, kind)]
     if not found:
         detail = f" (rejected as escaping its source in: {', '.join(escaped)})" if escaped else ""
         raise LoadoutError(f"{kind.use} not found in any source: {name!r}{detail}")

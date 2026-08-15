@@ -5,9 +5,19 @@ from pathlib import Path
 
 from .errors import LoadoutError
 
-# The seven kinds of agent configuration — see docs/reference/config.md.
+# The seven kinds of agent configuration — see docs/reference/config.md — plus
+# templates, which is a bundle of them rather than an eighth kind.
 ARTIFACT_TYPES = frozenset(
-    {"instructions", "settings", "permissions", "hooks", "mcp", "plugins", "skills"}
+    {
+        "instructions",
+        "settings",
+        "permissions",
+        "hooks",
+        "mcp",
+        "plugins",
+        "skills",
+        "templates",
+    }
 )
 
 
