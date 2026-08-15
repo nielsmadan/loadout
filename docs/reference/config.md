@@ -242,6 +242,10 @@ a missing one — and Pi's surface is larger than Claude's.
 Several Pi events have no Claude analogue in either direction — `before_provider_request` can
 rewrite the system prompt, `render` transforms display — so this is not a subset relationship.
 
+loadout bridges both by **generating the code**: a plugin for OpenCode, an extension for Pi. The
+event mapping, what each can and cannot express, and the payload fields neither can supply are in
+[hooks-adapters.md](hooks-adapters.md).
+
 ## mcp
 
 | harness | global | project |

@@ -37,7 +37,13 @@ CATEGORIES = ("allow", "ask", "deny")
 # two `ValueSpec` hook renderers are inverted by VALUE_EXTRACTORS and covered by
 # tests/test_extract_hooks.py, because a value renderer takes no base and its
 # inverse holds no residual. A renderer inverted by neither must fail this file.
-NOT_INVERTED: set[str] = set()
+# The generated adapters, and the only entries here that are **permanent**
+# rather than deferred. Every other renderer writes a data format, so inverting
+# it is work someone could do. These write JavaScript and TypeScript: a hooks
+# document is recoverable from loadout's own output only because loadout put it
+# there, and a plugin a user wrote by hand — the case extraction exists for — is
+# a program, not a document. There is nothing to parse back.
+NOT_INVERTED: set[str] = {"opencode-hooks", "pi-hooks"}
 
 INVERTED = sorted(EXTRACTORS)
 

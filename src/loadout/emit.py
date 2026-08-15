@@ -25,7 +25,7 @@ from .manifest import (
     resolve_destination,
 )
 from .permissions.merge import merge_rules
-from .permissions.renderers import RENDERERS, JsonSpec, TextSpec, ValueSpec
+from .permissions.renderers import RENDERERS, DocumentTextSpec, JsonSpec, TextSpec, ValueSpec
 from .permissions.rules import EMPTY_RULES, Rules, parse_rules
 from .project import (
     PROJECT_CONFIG_NAME,
@@ -130,7 +130,7 @@ def _preserved(path: Path, keys: tuple[str, ...]) -> dict[str, Any]:
     return {key: existing[key] for key in keys if key in existing}
 
 
-def _resolve_renderer(name: str, label: str) -> JsonSpec | TextSpec | ValueSpec:
+def _resolve_renderer(name: str, label: str) -> JsonSpec | TextSpec | ValueSpec | DocumentTextSpec:
     spec = RENDERERS.get(name)
     if spec is None:
         known = ", ".join(sorted(RENDERERS))
@@ -210,6 +210,17 @@ def compose_permission_document(
             )
         return spec.fn(rules if first.select_all else EMPTY_RULES)
 
+    if isinstance(spec, DocumentTextSpec):
+        # A generated adapter is a JavaScript module: there is no second slice to
+        # compose into it, and no residual it could preserve.
+        if len(contributors) > 1:
+            others = ", ".join(t.name for t, _, _ in contributors[1:])
+            raise LoadoutError(
+                f"permissions.{first.name}: {path} is generated source, so it cannot "
+                f"compose with {others}; a generated file owns itself"
+            )
+        return spec.fn(contributors[0][2])
+
     # The residual is the whole file minus every owned key, and it is the same
     # for each slice of an agent, so it is taken once rather than per slice.
     document: dict[str, Any] = dict(contributors[0][1])
@@ -232,7 +243,7 @@ def compose_permission_document(
                 f"{label}: the preset gives it owned_key {owned_key!r}, so its renderer "
                 f"must produce that key's value rather than a whole document"
             )
-        if isinstance(target_spec, TextSpec):
+        if isinstance(target_spec, TextSpec | DocumentTextSpec):
             raise LoadoutError(
                 f"{label}: a text renderer cannot compose with another slice writing {path}"
             )
@@ -487,6 +498,11 @@ def render_project(root: Path) -> dict[Path, Output]:
             raise LoadoutError(
                 f"{label}: a value renderer contributes one key of a composed document, "
                 f"and project scope renders one target per file"
+            )
+        if isinstance(spec, DocumentTextSpec):
+            raise LoadoutError(
+                f"{label}: it renders from a source slice, and project scope has no "
+                f"slices — it renders permission rules"
             )
         if isinstance(spec, TextSpec):
             outputs[root / str(target.path)] = spec.fn(rules)

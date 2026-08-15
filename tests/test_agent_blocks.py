@@ -90,7 +90,8 @@ def test_an_unknown_agent_is_rejected_with_the_known_ones(tmp_path: Path) -> Non
 
 
 def test_an_unknown_slice_names_what_the_agent_offers(tmp_path: Path) -> None:
-    root = build(tmp_path, "\n[opencode]\nhooks = []\n")
+    # `mcp`, not `hooks` — OpenCode gained a hooks slice with the adapters.
+    root = build(tmp_path, "\n[opencode]\nmcp = []\n")
     with pytest.raises(LoadoutError, match="unknown slice"):
         render_global(root)
 
@@ -184,6 +185,7 @@ def test_a_contributor_writes_one_key_and_the_residual_survives(tmp_path: Path) 
     contributor running first put its content at top level and the settings
     fragment vanished entirely.
     """
+    real = GLOBAL_PRESET["opencode"]["hooks"]
     GLOBAL_PRESET["opencode"]["hooks"] = SliceOutput(
         renderer="hooks-test",
         destination=GLOBAL_PRESET["opencode"]["permissions"].destination,
@@ -204,13 +206,17 @@ def test_a_contributor_writes_one_key_and_the_residual_survives(tmp_path: Path) 
         assert "alpha" in json.dumps(doc["permission"]), "permissions still rendered"
         assert "hello" not in doc, "contributor content must not leak to top level"
     finally:
-        del GLOBAL_PRESET["opencode"]["hooks"]
+        # Restore, never delete. OpenCode has a real hooks slice now, and a
+        # `del` here removed it for every test that ran afterwards — passing
+        # alone and failing in the suite.
+        GLOBAL_PRESET["opencode"]["hooks"] = real
         del RENDERERS["hooks-test"]
 
 
 def test_a_value_renderer_without_an_owned_key_is_rejected(tmp_path: Path) -> None:
     """The two renderer kinds are distinguishable at registration, so a mismatch
     fails rather than quietly writing the wrong shape."""
+    real = GLOBAL_PRESET["opencode"]["hooks"]
     GLOBAL_PRESET["opencode"]["hooks"] = SliceOutput(
         renderer="hooks-test",
         destination=GLOBAL_PRESET["opencode"]["permissions"].destination,
@@ -222,5 +228,5 @@ def test_a_value_renderer_without_an_owned_key_is_rejected(tmp_path: Path) -> No
         with pytest.raises(LoadoutError, match="names no owned_key"):
             render_global(root)
     finally:
-        del GLOBAL_PRESET["opencode"]["hooks"]
+        GLOBAL_PRESET["opencode"]["hooks"] = real
         del RENDERERS["hooks-test"]

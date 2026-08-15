@@ -87,6 +87,14 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
             renderer="opencode",
             destination="${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json",
         ),
+        # No hooks *file* — OpenCode registers hooks in code, so loadout
+        # generates the code. The file is a plugin, auto-discovered from
+        # `plugins/`, and it owns itself: nothing composes into a JS module.
+        "hooks": SliceOutput(
+            renderer="opencode-hooks",
+            destination=("${XDG_CONFIG_HOME:-~/.config}/opencode/plugins/loadout-hooks.js"),
+            source_slice="hooks",
+        ),
     },
     "pi": {
         "skills": SliceOutput(destination="${PI_CODING_AGENT_DIR:-~/.pi/agent}/skills"),
@@ -96,6 +104,14 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
             destination=(
                 "${PI_CODING_AGENT_DIR:-~/.pi/agent}/extensions/pi-permission-system/config.json"
             ),
+        ),
+        # Pi's extension directory, the same one the permission system lives in.
+        # A single `.ts` file is Pi's documented simplest extension shape, and
+        # jiti loads it without a build step.
+        "hooks": SliceOutput(
+            renderer="pi-hooks",
+            destination="${PI_CODING_AGENT_DIR:-~/.pi/agent}/extensions/loadout-hooks.ts",
+            source_slice="hooks",
         ),
     },
 }

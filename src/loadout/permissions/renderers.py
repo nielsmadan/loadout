@@ -9,6 +9,7 @@ from typing import Any
 
 import tomlkit
 
+from ..adapters import render_opencode_adapter, render_pi_adapter
 from ..hooks import render_claude_hooks, render_codex_hooks
 from .rules import Rules, is_glob, mcp_native, mcp_parts
 
@@ -55,6 +56,22 @@ class ValueSpec:
 @dataclass(frozen=True)
 class TextSpec:
     fn: TextRenderer
+
+
+@dataclass(frozen=True)
+class DocumentTextSpec:
+    """A renderer that turns one slice's content into a whole text file.
+
+    `TextSpec` renders from `Rules`; this renders from the document a
+    `source_slice` supplies. The two cannot be merged: a generated adapter reads
+    hooks and knows nothing of permissions, and a renderer handed the wrong one
+    of those would produce a plausible file with the wrong content in it.
+
+    Like `TextSpec` it owns its file outright — there is no composing a second
+    slice into a JavaScript module.
+    """
+
+    fn: Callable[[dict[str, Any]], str]
 
 
 # --------------------------------------------------------------------------
@@ -357,10 +374,12 @@ def render_pi_project(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
 # --------------------------------------------------------------------------
 
 
-RENDERERS: dict[str, JsonSpec | TextSpec | ValueSpec] = {
+RENDERERS: dict[str, JsonSpec | TextSpec | ValueSpec | DocumentTextSpec] = {
     "claude": JsonSpec(render_claude),
     "claude-hooks": ValueSpec(render_claude_hooks),
     "codex-hooks": ValueSpec(render_codex_hooks),
+    "opencode-hooks": DocumentTextSpec(render_opencode_adapter),
+    "pi-hooks": DocumentTextSpec(render_pi_adapter),
     "claude-mcp": JsonSpec(render_claude_mcp, ensure_ascii=True, owns_whole_file=True),
     "codex": TextSpec(render_codex),
     "codex-mcp": TextSpec(render_codex_mcp),

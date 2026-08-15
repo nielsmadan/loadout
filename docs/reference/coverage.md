@@ -112,7 +112,7 @@ Every row is pinned by `tests/test_extract_roundtrip.py`, `tests/test_extract_me
 | `x-idempotent` | a second extraction of the re-rendered document finds the same rules | `test_extraction_is_idempotent` |
 | `x-shipped-bytes` | every artifact in `tests/fixtures/expected/` round-trips, or is on a named list | `test_a_shipped_artifact_extracts_and_renders_back_to_itself`, `test_only_the_listed_artifacts_report_a_loss` |
 | `x-every-renderer` | every inverted renderer has a capability and a projection, and round-trips an empty source | `test_every_inverted_renderer_round_trips_an_empty_source`, `test_every_inverted_renderer_declares_a_capability`, `test_every_inverted_renderer_has_a_declared_projection` |
-| `x-named-gap` | a renderer inverted by neither `EXTRACTORS` nor `VALUE_EXTRACTORS` must be named in `NOT_INVERTED`, which is currently empty — every renderer has an inverse, and the guard still fails if one loses it | `test_no_renderer_lacks_an_inverse_without_being_named` |
+| `x-named-gap` | a renderer inverted by neither `EXTRACTORS` nor `VALUE_EXTRACTORS` must be named in `NOT_INVERTED`, which holds the two adapters and nothing else — a third would fail | `test_no_renderer_lacks_an_inverse_without_being_named` |
 | `x-base-residual` | `base` keeps keys other slices own, because it is the render-time residual and not a settings fragment | `test_the_base_keeps_keys_other_slices_own` |
 | `x-codex-quoting` | a `shlex.split` token holding whitespace is re-quoted, so `echo "a b"` round-trips instead of splitting into three tokens | `test_a_token_holding_a_space_survives_the_codex_project_round_trip` |
 | `x-pair-collapse` | `foo` and `foo *` collapse back to one entry — **only the rules property catches a miss**, since not collapsing renders identical bytes | `test_extraction_recovers_every_rule_the_harness_can_carry` |
@@ -145,6 +145,25 @@ composition untouched, and that a file's *mode* survives a copy.
 | `s-copy-bytes` | a copied file reproduces bytes exactly, including non-text | `test_copy_reproduces_bytes_exactly` |
 | `s-copy-symlink` | a copy writes *through* a destination symlink rather than replacing it | `test_copy_writes_through_a_symlink` |
 | `s-mode-drift` | matching bytes with a differing mode is drift — the case a text comparison cannot see | `test_drift_when_only_the_mode_differs` |
+
+## Generated hook adapters
+
+Everything below lives in emitted JavaScript, so a Python assertion can only inspect it as a
+string. These are pinned by `tests/test_adapters_execute.py`, which runs the generated file under
+node against real hook scripts, and skips when node is absent. All five mutants tried against the
+adapters were caught by one of the tests named here.
+
+| id | behaviour | source | pinned by |
+|---|---|---|---|
+| `ad-exact-matcher` | a simple matcher is an exact-string set, not a regex — so `Bash` does not guard `Bashful` | [hooks-adapters](hooks-adapters.md#what-is-not-reproduced) | `test_the_opencode_plugin_denies_mutates_and_survives_a_broken_hook` |
+| `ad-exit-2` | exit 2 denies, carrying stderr as the reason | [hooks-adapters](hooks-adapters.md#exit-codes) | same |
+| `ad-exit-other` | any other non-zero is a failed script, **not** a policy decision | [hooks-adapters](hooks-adapters.md#exit-codes) | same, and `test_the_pi_extension_blocks_mutates_and_survives_a_broken_hook` |
+| `ad-updated-input` | `updatedInput` reaches the tool by in-place mutation on both harnesses | [hooks-adapters](hooks-adapters.md#the-mapping-table) | both execute tests |
+| `ad-output-args` | OpenCode's `tool_input` comes from the *output* parameter, which is where the arguments are | [hooks-adapters](hooks-adapters.md#opencode) | `test_opencode_reads_tool_input_from_the_output_parameter`, `test_the_payload_the_hook_receives_is_abi_shaped` |
+| `ad-unmapped` | an event with no mapping is named in a comment and not embedded | [hooks-adapters](hooks-adapters.md#the-mapping-table) | `test_an_unmapped_event_is_named_and_not_embedded` |
+| `ad-prompt-skipped` | a `prompt` hook has no command to spawn, so it is filtered and reported in the file | [hooks-adapters](hooks-adapters.md#what-has-no-adapter) | `test_a_prompt_hook_is_reported_rather_than_dropped_in_silence` |
+| `ad-omitted-fields` | `permission_mode` is omitted, never defaulted, on both | [hooks-adapters](hooks-adapters.md#payload-fidelity) | `test_pi_is_told_the_session_file_rather_than_a_run_mode`, `test_opencode_omits_the_two_fields_it_has_no_source_for` |
+| `ad-reaches` | every mapping records the condition that would exercise it | [hooks-adapters](hooks-adapters.md#reachability) | `test_every_mapping_records_what_would_exercise_it` |
 
 ## Recorded but not testable at render time
 
