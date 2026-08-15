@@ -37,6 +37,7 @@ from .project import (
 from .resolve import SETTINGS, json_slice, resolve_item
 from .skills import SKILL_DOCUMENT, Skill, discover_skills, render_skill
 from .sources import Source
+from .templates import resolve_template
 
 PERMISSIONS_SOURCE = ("permissions.toml",)
 PROJECT_SOURCE = "permissions.toml"
@@ -481,11 +482,20 @@ def render_all(root: Path, profile: str = "default") -> dict[Path, Output]:
 
 def render_project(root: Path) -> dict[Path, Output]:
     config = load_project_config(project_config_path(root))
-    project_dir = root / "loadout"
+    project_dir = root / PROJECT_DIR
 
-    committed = parse_rules(project_dir / PROJECT_SOURCE)
+    # Templates are the lowest tier, in declared order: a template describes a
+    # kind of work, and anything the project itself says outranks it. A template
+    # offering no permissions contributes no tier rather than failing — its `use`
+    # already says which slices it offers, and one slice is a legitimate template.
+    tiers: list[Rules] = []
+    for name in config.templates:
+        contributed = resolve_template(name, root).path / PROJECT_SOURCE
+        if contributed.is_file():
+            tiers.append(parse_rules(contributed))
+
+    tiers.append(parse_rules(project_dir / PROJECT_SOURCE))
     local_path = project_dir / PROJECT_LOCAL_SOURCE
-    tiers = [committed]
     if local_path.is_file():
         tiers.append(parse_rules(local_path))
     rules = merge_rules(*tiers)

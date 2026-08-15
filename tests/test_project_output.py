@@ -225,3 +225,77 @@ def test_render_all_rejects_a_path_collision_between_scopes(root: Path, project:
     )
     with pytest.raises(LoadoutError, match=r"opencode\.json"):
         render_all(root)
+
+
+def _vendor(project: Path, name: str, permissions: str) -> Path:
+    tree = project / "loadout" / "templates" / name
+    tree.mkdir(parents=True)
+    (tree / "permissions.toml").write_text(permissions, encoding="utf-8")
+    return tree
+
+
+def _declare(project: Path, *names: str) -> None:
+    config = project / "loadout" / "config.toml"
+    quoted = ", ".join(f'"{name}"' for name in names)
+    config.write_text(
+        config.read_text(encoding="utf-8") + f"templates = [{quoted}]\n", encoding="utf-8"
+    )
+
+
+def test_a_template_rule_reaches_the_output(project: Path) -> None:
+    _vendor(project, "web", '[shell]\nallow = ["vite build"]\n')
+    _declare(project, "web")
+    doc = json.loads(render_project(project)[project / ".claude/settings.json"])
+    assert "Bash(vite build:*)" in doc["permissions"]["allow"]
+
+
+def test_a_project_deny_beats_a_template_allow(project: Path) -> None:
+    """The template is the lowest tier, so deny-wins resolves against it.
+
+    The second rule is what makes this a real test: without it, the assertions
+    pass whether or not the template merged at all, because an unmerged allow is
+    also an absent allow.
+    """
+    _vendor(project, "web", '[shell]\nallow = ["vite build", "vite preview"]\n')
+    _declare(project, "web")
+    (project / "loadout" / "permissions.local.toml").write_text(
+        '[shell]\ndeny = ["vite build"]\n', encoding="utf-8"
+    )
+    doc = json.loads(render_project(project)[project / ".claude/settings.json"])
+    assert "Bash(vite preview:*)" in doc["permissions"]["allow"]
+    assert "Bash(vite build:*)" in doc["permissions"]["deny"]
+    assert "Bash(vite build:*)" not in doc["permissions"]["allow"]
+
+
+def test_templates_merge_in_declared_order(project: Path) -> None:
+    """Emission order decides which rule applies on OpenCode and Pi, so the
+    declared order has to survive into the output."""
+    _vendor(project, "one", '[shell]\nallow = ["one-tool"]\n')
+    _vendor(project, "two", '[shell]\nallow = ["two-tool"]\n')
+    _declare(project, "one", "two")
+    doc = json.loads(render_project(project)[project / ".claude/settings.json"])
+    allow = doc["permissions"]["allow"]
+    assert allow.index("Bash(one-tool:*)") < allow.index("Bash(two-tool:*)")
+
+
+def test_a_template_rule_is_emitted_before_the_projects_own(project: Path) -> None:
+    """Lowest tier first, because OpenCode and Pi are last-match-wins."""
+    _vendor(project, "web", '[shell]\nallow = ["vite build"]\n')
+    _declare(project, "web")
+    doc = json.loads(render_project(project)[project / "opencode.json"])
+    keys = list(doc["permission"]["bash"])
+    assert keys.index("vite build") < keys.index("alpha")
+
+
+def test_a_template_carrying_no_permissions_is_not_an_error(project: Path) -> None:
+    """`railway` in the live source offers skills only; a source's `use` already
+    covers that shape, so a template offering one slice needs no special case."""
+    (project / "loadout" / "templates" / "railway" / "skills").mkdir(parents=True)
+    _declare(project, "railway")
+    assert render_project(project)
+
+
+def test_an_unresolvable_template_fails_the_render(project: Path) -> None:
+    _declare(project, "missing")
+    with pytest.raises(LoadoutError, match="no machine config"):
+        render_project(project)
