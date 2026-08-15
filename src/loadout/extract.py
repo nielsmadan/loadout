@@ -633,11 +633,18 @@ def extract_pi_plugins(document: Any) -> ValueExtraction:
 
 # `codex-plugins` is absent deliberately, and not for want of an inverse:
 # `extract_codex_plugins` above is written and pinned by
-# tests/test_extract_plugins.py. This registry is the inverse of `ValueSpec`,
-# which tests/test_extract_hooks.py holds to an equality, and that renderer is a
-# `DocumentTextSpec` — the first one writing a data format rather than a program.
-# Registering it means a registry keyed by *content* renderers rather than by
-# value ones, which is a shared invariant to change on purpose, not in passing.
+# tests/test_extract_plugins.py.
+#
+# The blocker is an input contract, not the type test. Every extractor here takes
+# the **parsed document** its renderer's key holds; `extract_codex_plugins` takes
+# **TOML text**, because `codex-plugins` is a `DocumentTextSpec` that writes a
+# whole file. Registering it would make `extract_value(name, x)` mean two
+# different things about `x` depending on the name, and a dict passed where text
+# is expected fails somewhere less obvious than the call.
+#
+# So this needs a registry keyed by what a renderer *produces*, with the input
+# type carried alongside — a shared invariant to change on purpose, not in
+# passing. The equality in tests/test_extract_hooks.py is what enforces it today.
 VALUE_EXTRACTORS: dict[str, ValueExtractor] = {
     "claude-hooks": extract_claude_hooks,
     "codex-hooks": extract_codex_hooks,

@@ -24,7 +24,7 @@ test is a gap.
 | `glob-literal` | a trailing-`*` entry is kept literal on Claude, OpenCode, Pi | [README](README.md#globs) | `test_claude_pattern_keeps_a_glob_literal`, `test_opencode_keeps_a_glob_literal`, `test_pi_keeps_a_glob_literal` |
 | `glob-skipped` | Codex cannot express a glob, so it is skipped | [README](README.md#globs) | `test_codex_skips_globs_and_lists_them_at_the_end` |
 | `glob-block-absent` | no trailing skipped-block when there are no globs | [codex](codex.md#pattern-shape) | `test_codex_omits_the_skipped_block_when_there_are_no_globs` |
-| `claude-colon-star` | Claude needs the `:*` suffix, which matches bare and with-args | [claude](CLAUDE.md#pattern-shape) | `test_claude_pattern_appends_colon_star_to_a_prefix` |
+| `claude-colon-star` | Claude needs the `:*` suffix, which matches bare and with-args | [claude](claude-code.md#pattern-shape) | `test_claude_pattern_appends_colon_star_to_a_prefix` |
 | `both-forms` | OpenCode and Pi need both `<entry>` and `<entry> *` | [README](README.md#bare-vs-with-arguments) | `test_opencode_emits_both_bare_and_argument_forms`, `test_pi_emits_both_bare_and_argument_forms` |
 | `purity` | renderers are pure and read no files | [ADR 0001](../decisions/0001-render-never-reads-its-own-output.md) | `test_renderers_are_pure`, `test_claude_never_reads_a_file` |
 | `no-base-mutation` | a renderer never mutates the base it was handed | [ADR 0001](../decisions/0001-render-never-reads-its-own-output.md) | `test_claude_does_not_mutate_its_base`, `test_opencode_does_not_mutate_its_base` |
@@ -41,11 +41,11 @@ test is a gap.
 
 | id | behaviour | source | pinned by |
 |---|---|---|---|
-| `claude-owned-first` | owned keys precede hand-maintained ones inside `permissions` | [claude](CLAUDE.md#what-loadout-emits) | `test_claude_orders_owned_keys_before_hand_maintained_ones` |
-| `claude-key-position` | `permissions` keeps its position in the base document | [claude](CLAUDE.md#what-loadout-emits) | `test_claude_keeps_the_permissions_key_at_its_position_in_the_base` |
-| `claude-concat-order` | shell, then MCP, then extras | [claude](CLAUDE.md#what-loadout-emits) | `test_claude_concatenates_shell_then_mcp_then_extras` |
+| `claude-owned-first` | owned keys precede hand-maintained ones inside `permissions` | [claude](claude-code.md#what-loadout-emits) | `test_claude_orders_owned_keys_before_hand_maintained_ones` |
+| `claude-key-position` | `permissions` keeps its position in the base document | [claude](claude-code.md#what-loadout-emits) | `test_claude_keeps_the_permissions_key_at_its_position_in_the_base` |
+| `claude-concat-order` | shell, then MCP, then extras | [claude](claude-code.md#what-loadout-emits) | `test_claude_concatenates_shell_then_mcp_then_extras` |
 | `claude-ask-no-extras` | `ask` has no extras channel | — (test is the record) | `test_claude_ask_has_no_extras_channel` |
-| `claude-empty-rules` | `rules = []` empties all three lists — the autonomous profile | [claude](CLAUDE.md#what-loadout-emits) | `test_claude_with_empty_rules_empties_all_three_lists` |
+| `claude-empty-rules` | `rules = []` empties all three lists — the autonomous profile | [claude](claude-code.md#what-loadout-emits) | `test_claude_with_empty_rules_empties_all_three_lists` |
 | `claude-stale-keys` | a generated key left in a base is discarded, not carried | [ADR 0001](../decisions/0001-render-never-reads-its-own-output.md) | `test_claude_discards_stale_generated_keys_from_a_base` |
 | `claude-mcp-ascii` | `mcp-permissions.json` escapes non-ASCII; every other JSON output does not | — (test is the record) | `test_claude_mcp_serializes_with_ascii_escaping`, `test_every_other_json_renderer_keeps_unicode` |
 | `claude-mcp-order` | three categories in fixed order | — (test is the record) | `test_claude_mcp_emits_three_categories_in_fixed_order` |
