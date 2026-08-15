@@ -26,18 +26,18 @@ from typing import Any
 
 import pytest
 
-from loadout.extract import EXTRACTORS, extract
+from loadout.extract import EXTRACTORS, VALUE_EXTRACTORS, extract
 from loadout.permissions.renderers import RENDERERS, JsonSpec, TextSpec, render_codex_project
 from loadout.permissions.rules import Rules, is_glob, mcp_parts
 
 CATEGORIES = ("allow", "ask", "deny")
 
 # `RENDERERS` is no longer the permissions renderers — the hooks slice registers
-# into it too. These properties cover what extract.py actually inverts, and the
-# gap is named here rather than left as whatever the subtraction happens to
-# yield: a *third* uninverted renderer must fail this file, not slip in beside
-# the two that are known.
-NOT_INVERTED = {"claude-hooks", "codex-hooks"}
+# into it too. These properties cover what extract.py inverts *as documents*; the
+# two `ValueSpec` hook renderers are inverted by VALUE_EXTRACTORS and covered by
+# tests/test_extract_hooks.py, because a value renderer takes no base and its
+# inverse holds no residual. A renderer inverted by neither must fail this file.
+NOT_INVERTED: set[str] = set()
 
 INVERTED = sorted(EXTRACTORS)
 
@@ -332,7 +332,7 @@ def test_no_renderer_lacks_an_inverse_without_being_named() -> None:
     safety property: a renderer added without an extractor is never absorbed
     silently.
     """
-    unnamed = set(RENDERERS) - set(EXTRACTORS) - NOT_INVERTED
+    unnamed = set(RENDERERS) - set(EXTRACTORS) - set(VALUE_EXTRACTORS) - NOT_INVERTED
     assert not unnamed, (
         f"renderer(s) with no inverse and no entry in NOT_INVERTED: {sorted(unnamed)}. "
         "Give each an extractor in EXTRACTORS, a capability in CAPABILITIES and a "

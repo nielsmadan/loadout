@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .errors import LoadoutError
+from .hooks import foreign_variables
 from .permissions.renderers import pi_mcp_patterns
 from .permissions.rules import Rules, dedupe, is_glob
 
@@ -32,6 +33,28 @@ class Extraction:
 
 
 Extractor = Callable[[Any], Extraction]
+
+
+@dataclass(frozen=True)
+class ValueExtraction:
+    """The inverse of a `ValueSpec`: one key's content, and what did not survive.
+
+    Deliberately not an `Extraction`. A value renderer produces one key's value
+    and is handed no base, so its inverse has no `rules` to fill and **no
+    residual to hold** — there is nothing it could have preserved. The inverse
+    of a renderer kind is a kind.
+
+    That is what keeps the residual computable at all. `settings.json` has four
+    owners; if every extractor returned "everything except mine", each base
+    would carry the others' keys. Value extractors returning none means the
+    residual is produced exactly once, by the document extractor.
+    """
+
+    value: dict[str, Any]
+    notes: tuple[Note, ...] = ()
+
+
+ValueExtractor = Callable[[Any], ValueExtraction]
 
 
 # --------------------------------------------------------------------------
@@ -397,6 +420,64 @@ def extract_codex_mcp(document: Any) -> Extraction:
     )
 
 
+# --------------------------------------------------------------------------
+# hooks — the inverse of the two `ValueSpec` renderers. Both return the value of
+# the `hooks` key; they differ only in whether anything else in the file has an
+# owner, and in which harness's variables cannot be re-rendered.
+# --------------------------------------------------------------------------
+
+
+def _foreign_variable_notes(value: Any, harness: str) -> tuple[Note, ...]:
+    """Hooks that extract cleanly and cannot be rendered back.
+
+    Extraction must not apply the cross-harness variable check — refusing to
+    read a hook that exists on the machine loses it, and the design principle is
+    to report what cannot be represented rather than drop it. But the round trip
+    then does not close: rendering refuses. So it is extracted *and* noted, which
+    is what property 2's "wherever notes is empty" clause exists for.
+    """
+    if not isinstance(value, Mapping):
+        return ()
+    return tuple(
+        Note("cannot", f"{found} cannot be rendered back to {harness}")
+        for found in foreign_variables(value, harness)
+    )
+
+
+def extract_claude_hooks(document: Any) -> ValueExtraction:
+    """`settings.json` -> the hooks fragment.
+
+    Nothing is noted for the rest of the file: `settings` is the residual slice
+    there, so every other key has an owner.
+    """
+    value = document.get("hooks", {}) if isinstance(document, Mapping) else {}
+    return ValueExtraction(copy.deepcopy(dict(value)), _foreign_variable_notes(value, "claude"))
+
+
+def extract_codex_hooks(document: Any) -> ValueExtraction:
+    """`hooks.json` -> the hooks fragment.
+
+    Unlike Claude's, this file has **no residual slice** — `hooks` is the only
+    key loadout writes and no settings document underlies it. So a key loadout
+    does not write has nowhere to go and is reported: a hand-made hooks.json may
+    carry anything, and Cursor's equivalent has a `version`.
+    """
+    if not isinstance(document, Mapping):
+        return ValueExtraction({})
+    value = document.get("hooks", {})
+    unowned = [key for key in document if key != "hooks"]
+    notes = _foreign_variable_notes(value, "codex")
+    if unowned:
+        notes += (Note("cannot", f"hooks.json holds unowned key(s): {', '.join(unowned)}"),)
+    return ValueExtraction(copy.deepcopy(dict(value)), notes)
+
+
+VALUE_EXTRACTORS: dict[str, ValueExtractor] = {
+    "claude-hooks": extract_claude_hooks,
+    "codex-hooks": extract_codex_hooks,
+}
+
+
 EXTRACTORS: dict[str, Extractor] = {
     "claude": extract_claude,
     "claude-project": extract_claude,
@@ -408,6 +489,14 @@ EXTRACTORS: dict[str, Extractor] = {
     "pi": extract_pi,
     "pi-project": extract_pi,
 }
+
+
+def extract_value(name: str, document: Any) -> ValueExtraction:
+    try:
+        extractor = VALUE_EXTRACTORS[name]
+    except KeyError:
+        raise LoadoutError(f"no value extractor for renderer: {name}") from None
+    return extractor(document)
 
 
 def extract(name: str, document: Any) -> Extraction:
