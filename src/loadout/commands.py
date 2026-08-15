@@ -11,7 +11,15 @@ import tempfile
 from collections.abc import Iterable
 from pathlib import Path
 
-from .emit import Copied, check_all, declared_profiles, describe_file, render_all, write_all
+from .emit import (
+    Copied,
+    check_all,
+    collect_notices,
+    declared_profiles,
+    describe_file,
+    render_all,
+    write_all,
+)
 from .errors import LoadoutError
 from .machine import machine_config_path
 from .manifest import MANIFEST_NAME, InstructionTarget, load_manifest, manifest_path
@@ -220,11 +228,28 @@ def cmd_sync(root: Path, profile: str = "default", force: bool = False) -> int:
 
     for path in write_all(root, profile):
         print(f"wrote {_display(path, root)}")
+    _report_notices(root, profile)
     return 0
+
+
+def _report_notices(root: Path, profile: str) -> None:
+    """Advisory findings, on the same terms as a diverged vendored template.
+
+    A notice describes a source that rendered successfully while doing less than
+    it says — a plugin left switched off, a hook that cannot fire. The output is
+    correct, so this never moves an exit code; treating it as drift would fail a
+    render that did the right thing with what it was given.
+
+    Until this existed the four reports behind it reached nobody, and one was
+    visible only by opening the generated JavaScript.
+    """
+    for notice in collect_notices(root, profile):
+        print(f"note: {notice.render()}")
 
 
 def cmd_check(root: Path, profile: str = "default") -> int:
     drift = check_all(root, profile)
+    _report_notices(root, profile)
     # Reported, never failed: check's contract is that generated output matches
     # its source, and a vendored template *is* source — so it falls outside that
     # jurisdiction by definition rather than by exemption (ADR 0014). Saying

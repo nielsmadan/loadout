@@ -391,7 +391,14 @@ def _known_marketplaces(agent: str, document: dict[str, Any]) -> frozenset[str]:
 
 
 def collect_notices(root: Path, profile: str = "default") -> tuple[Notice, ...]:
-    """Advisory findings about a source that rendered while doing less than it says."""
+    """Advisory findings about a source that rendered while doing less than it says.
+
+    Global scope only: every reporter reads a slice fragment, and project scope
+    has one artifact type, which is permissions. A project-only repo has no
+    manifest to load, so asking would raise rather than report nothing.
+    """
+    if not manifest_path(root).is_file():
+        return ()
     manifest = load_profile(root, profile)
     found: list[Notice] = []
     for target in manifest.permissions:
