@@ -546,7 +546,7 @@ def check_all(root: Path, profile: str = "default") -> list[tuple[Path, str, str
     for path, expected in render_all(root, profile).items():
         if isinstance(expected, Copied):
             if _copy_drifted(path, expected.source):
-                drift.append((path, _describe(path), _describe(expected.source)))
+                drift.append((path, describe_file(path), describe_file(expected.source)))
             continue
         actual = path.read_text(encoding="utf-8") if path.is_file() else ""
         if actual != expected:
@@ -566,7 +566,7 @@ def _executable(path: Path) -> bool:
     return bool(path.stat().st_mode & 0o111)
 
 
-def _describe(path: Path) -> str:
+def describe_file(path: Path) -> str:
     # Drift on a copied file reports a summary, not the content: a tree carries
     # binaries, and a byte diff of one is noise rather than a review.
     if not path.is_file():

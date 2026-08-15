@@ -10,7 +10,7 @@ import tempfile
 from collections.abc import Iterable
 from pathlib import Path
 
-from .emit import Copied, check_all, declared_profiles, render_all, write_all
+from .emit import Copied, check_all, declared_profiles, describe_file, render_all, write_all
 from .errors import LoadoutError
 from .machine import machine_config_path
 from .manifest import MANIFEST_NAME, InstructionTarget, load_manifest, manifest_path
@@ -127,7 +127,13 @@ def _modified_outside_loadout(root: Path, profile: str) -> list[tuple[Path, str,
     modified: list[tuple[Path, str, str]] = []
     for path, expected in render_all(root, profile).items():
         if isinstance(expected, Copied):
-            continue  # a drifted copy is already byte-compared by check_all
+            # A copied file has no per-profile form, so it is compared against its
+            # source directly. check_all only *reports* drift; this is the guard
+            # that stops sync overwriting a hand edit, and it has to cover a
+            # supporting file just as much as a SKILL.md.
+            if path.is_file() and path.read_bytes() != expected.source.read_bytes():
+                modified.append((path, describe_file(path), describe_file(expected.source)))
+            continue
         forms = acceptable.get(path, set())
         if not path.is_file() or not forms:
             continue
