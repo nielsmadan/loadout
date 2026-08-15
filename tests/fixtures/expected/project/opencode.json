@@ -3,6 +3,8 @@
   "permission": {
     "bash": {
       "*": "ask",
+      "omicron build": "allow",
+      "omicron build *": "allow",
       "alpha": "allow",
       "alpha *": "allow",
       "beta sub": "allow",
@@ -10,6 +12,8 @@
       "gamma-*": "allow",
       "kappa only-here": "allow",
       "kappa only-here *": "allow",
+      "omicron publish": "deny",
+      "omicron publish *": "deny",
       "iota push": "deny",
       "iota push *": "deny",
       "zeta": "deny",
@@ -17,6 +21,7 @@
       "theta check": "ask",
       "theta check *": "ask"
     },
+    "tmpl_server_*": "allow",
     "svc_*": "allow",
     "blocked_*": "deny",
     "svc_write": "ask"

@@ -1,6 +1,8 @@
 {
   "permission": {
     "bash": {
+      "omicron build": "allow",
+      "omicron build *": "allow",
       "alpha": "allow",
       "alpha *": "allow",
       "beta sub": "allow",
@@ -10,12 +12,18 @@
       "kappa only-here *": "allow",
       "theta check": "ask",
       "theta check *": "ask",
+      "omicron publish": "deny",
+      "omicron publish *": "deny",
       "iota push": "deny",
       "iota push *": "deny",
       "zeta": "deny",
       "zeta *": "deny"
     },
     "mcp": {
+      "tmpl_server_*": "allow",
+      "tmpl_server:*": "allow",
+      "mcp_server_tmpl_server": "allow",
+      "mcp_connect_tmpl_server": "allow",
       "svc_*": "allow",
       "svc:*": "allow",
       "mcp_server_svc": "allow",

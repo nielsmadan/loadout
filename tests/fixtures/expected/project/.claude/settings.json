@@ -2,10 +2,12 @@
   "$schema": "https://example.invalid/claude.json",
   "permissions": {
     "allow": [
+      "Bash(omicron build:*)",
       "Bash(alpha:*)",
       "Bash(beta sub:*)",
       "Bash(gamma-*)",
       "Bash(kappa only-here:*)",
+      "mcp__tmpl_server__*",
       "mcp__svc__*"
     ],
     "ask": [
@@ -13,6 +15,7 @@
       "mcp__svc__write"
     ],
     "deny": [
+      "Bash(omicron publish:*)",
       "Bash(iota push:*)",
       "Bash(zeta:*)",
       "mcp__blocked__*"
