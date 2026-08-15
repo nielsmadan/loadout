@@ -11,6 +11,7 @@ import tomlkit
 
 from ..adapters import render_opencode_adapter, render_pi_adapter
 from ..hooks import render_claude_hooks, render_codex_hooks
+from ..plugins import render_claude_plugins, render_codex_plugins, render_pi_plugins
 from .rules import Rules, is_glob, mcp_native, mcp_parts
 
 JsonRenderer = Callable[[Rules, dict[str, Any]], dict[str, Any]]
@@ -68,7 +69,7 @@ class DocumentTextSpec:
     of those would produce a plausible file with the wrong content in it.
 
     Like `TextSpec` it owns its file outright — there is no composing a second
-    slice into a JavaScript module.
+    slice into a JavaScript module, nor into Codex's plugin TOML.
     """
 
     fn: Callable[[dict[str, Any]], str]
@@ -371,6 +372,10 @@ def render_pi_project(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
 # On Claude that key sits beside `permissions` and the settings residual in
 # settings.json. On Codex it is the only key in hooks.json. Neither renderer
 # knows or cares — that difference is entirely the preset's.
+#
+# plugins — same arrangement, in `plugins.py`, with one shape hooks did not
+# need: Codex keeps plugin enablement in `config.toml`, so its renderer produces
+# TOML text from the slice's content rather than a value to key into a document.
 # --------------------------------------------------------------------------
 
 
@@ -380,6 +385,9 @@ RENDERERS: dict[str, JsonSpec | TextSpec | ValueSpec | DocumentTextSpec] = {
     "codex-hooks": ValueSpec(render_codex_hooks),
     "opencode-hooks": DocumentTextSpec(render_opencode_adapter),
     "pi-hooks": DocumentTextSpec(render_pi_adapter),
+    "claude-plugins": ValueSpec(render_claude_plugins),
+    "codex-plugins": DocumentTextSpec(render_codex_plugins),
+    "pi-plugins": ValueSpec(render_pi_plugins),
     "claude-mcp": JsonSpec(render_claude_mcp, ensure_ascii=True, owns_whole_file=True),
     "codex": TextSpec(render_codex),
     "codex-mcp": TextSpec(render_codex_mcp),

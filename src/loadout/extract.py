@@ -13,6 +13,7 @@ from .errors import LoadoutError
 from .hooks import foreign_variables
 from .permissions.renderers import pi_mcp_patterns
 from .permissions.rules import Rules, dedupe, is_glob
+from .plugins import MARKETPLACES, PLUGINS
 
 CATEGORIES = ("allow", "ask", "deny")
 
@@ -472,9 +473,176 @@ def extract_codex_hooks(document: Any) -> ValueExtraction:
     return ValueExtraction(copy.deepcopy(dict(value)), notes)
 
 
+# --------------------------------------------------------------------------
+# plugins — three inverses of one slice, and each loses a different half of the
+# portable reference, because each harness can only state the half it addresses
+# by. Claude and Codex carry `<name>@<marketplace>` and no source; Pi carries a
+# source and no name. So `carried` is a real projection here, not the identity
+# hooks got.
+#
+# Enablement is presence in all three. A plugin a harness lists as explicitly
+# off has no representation in a fragment — removal is how a profile turns one
+# off — so it is reported rather than extracted as something.
+# --------------------------------------------------------------------------
+
+
+def _addressed(key: str, harness: str) -> tuple[str, str] | Note:
+    name, separator, marketplace = key.rpartition("@")
+    if not separator or not name or not marketplace:
+        return Note("unrecognised", f"{harness}: {key!r} is not <name>@<marketplace>")
+    return name, marketplace
+
+
+def _enablement(
+    document: Mapping[str, Any], harness: str, enabled_of: Callable[[Any], Any]
+) -> tuple[dict[str, Any], list[Note]]:
+    """The shared half of Claude's and Codex's inverse: `<name>@<marketplace>`.
+
+    Where the flag *sits* is the only difference — Claude's entry is the boolean
+    itself, Codex's is a table holding one — so that is the parameter and the
+    addressing is not duplicated.
+    """
+    references: dict[str, Any] = {}
+    notes: list[Note] = []
+    for key, entry in document.items():
+        addressed = _addressed(key, harness)
+        if isinstance(addressed, Note):
+            notes.append(addressed)
+            continue
+        enabled = enabled_of(entry)
+        if enabled is not True:
+            notes.append(Note("cannot", f"{harness}: {key} is {enabled!r}, which is not enabled"))
+            continue
+        name, marketplace = addressed
+        references[name] = {"marketplace": marketplace}
+    return references, notes
+
+
+def _fragment(marketplaces: dict[str, Any], references: dict[str, Any]) -> dict[str, Any]:
+    """Sections in the order `render_codex_plugins` emits them, so re-rendering
+    reproduces the file rather than a reordering of it."""
+    fragment: dict[str, Any] = {}
+    if marketplaces:
+        fragment[MARKETPLACES] = marketplaces
+    if references:
+        fragment[PLUGINS] = references
+    return fragment
+
+
+def extract_claude_plugins(document: Any) -> ValueExtraction:
+    """`settings.json` -> the plugins fragment.
+
+    The marketplace *registration* is not here to extract: Claude keeps it in
+    `known_marketplaces.json`, which loadout never reads as configuration and
+    never writes (ADR 0008). A name is all `enabledPlugins` carries, and a name
+    is all this recovers.
+    """
+    enabled = document.get("enabledPlugins", {}) if isinstance(document, Mapping) else {}
+    if not isinstance(enabled, Mapping):
+        return ValueExtraction({}, (Note("unrecognised", "claude: enabledPlugins is not a map"),))
+    references, notes = _enablement(enabled, "claude", lambda entry: entry)
+    return ValueExtraction(_fragment({}, references), tuple(notes))
+
+
+CODEX_PLUGIN_KEYS = ("enabled",)
+
+
+def extract_codex_plugins(document: Any) -> ValueExtraction:
+    """`config.toml`'s plugin tables -> the plugins fragment.
+
+    Reads the staged file loadout renders, so it sees only the two tables this
+    slice owns; a real `config.toml` carries `[projects.…]` and much else, and
+    every key outside them belongs to somebody other than loadout.
+
+    A marketplace declared and used by nothing is not in the rendered file to
+    read back — `render_codex_plugins` emits only the registrations its plugins
+    reach through — so that loss is the renderer's and is recorded with it.
+    """
+    data = tomllib.loads(document)
+    tables = data.get(PLUGINS, {})
+    references, notes = _enablement(tables, "codex", lambda block: block.get("enabled"))
+    for key, block in tables.items():
+        stray = sorted(k for k in block if k not in CODEX_PLUGIN_KEYS)
+        if stray:
+            notes.append(Note("unrecognised", f"codex: {key} carries {', '.join(stray)}"))
+    marketplaces = {name: dict(block) for name, block in data.get(MARKETPLACES, {}).items()}
+    return ValueExtraction(_fragment(marketplaces, references), tuple(notes))
+
+
+def _pi_name(source: str) -> str:
+    """A package's name as Pi's own source syntax spells it.
+
+    `npm:@scope/pkg@1.2.3` and `git:github.com/user/repo@v1` both put the name in
+    the last path segment ahead of the pinned ref (`docs/packages.md`, shipped
+    with Pi). The ref is dropped from the *name* only — the reference keeps the
+    source verbatim, so the pin survives and re-rendering is byte-identical.
+    """
+    body = source.partition(":")[2] or source
+    segment = body.rstrip("/").rpartition("/")[2]
+    pinned = segment.rfind("@")
+    return segment[:pinned] if pinned > 0 else segment
+
+
+def extract_pi_plugins(document: Any) -> ValueExtraction:
+    """`settings.json`'s `packages` -> the plugins fragment.
+
+    **The name is not in the document.** A Pi package is a source and nothing
+    else, so the key a reference is filed under — the key a profile overlay names
+    to switch the plugin off — has to be derived, and a derived identifier is an
+    invention however sensible it looks. Every entry is therefore noted, and this
+    is the one extractor whose document round trip closes while `notes` is not
+    empty: re-rendering needs only the source, which survived exactly.
+
+    A derivation that collides with a name already taken falls back to the source
+    itself, which is unique by construction. Silently merging two packages into
+    one reference would drop one of them.
+    """
+    packages = document.get("packages", []) if isinstance(document, Mapping) else []
+    if not isinstance(packages, list):
+        return ValueExtraction({}, (Note("unrecognised", "pi: packages is not a list"),))
+
+    references: dict[str, Any] = {}
+    notes: list[Note] = []
+    for entry in packages:
+        if isinstance(entry, str):
+            source, options = entry, {}
+        elif isinstance(entry, Mapping) and isinstance(entry.get("source"), str):
+            source = entry["source"]
+            options = {k: copy.deepcopy(v) for k, v in entry.items() if k != "source"}
+            if not options:
+                # `pi install` writes `{"source": x}` for a package with nothing
+                # to filter — the live settings.json has one — and the renderer
+                # emits the string form for that, which Pi's own docs make
+                # equivalent. Equivalent is not identical, so it is reported.
+                notes.append(
+                    Note("cannot", f"pi: {source} filters nothing, so it renders as a string")
+                )
+        else:
+            notes.append(Note("unrecognised", f"pi: package entry {entry!r} names no source"))
+            continue
+        name = _pi_name(source)
+        if not name or name in references:
+            name = source
+        reference: dict[str, Any] = {"source": source}
+        if options:
+            reference["pi"] = options
+        references[name] = reference
+        notes.append(Note("cannot", f"pi: {source} carries no plugin name; filed as {name!r}"))
+    return ValueExtraction(_fragment({}, references), tuple(notes))
+
+
+# `codex-plugins` is absent deliberately, and not for want of an inverse:
+# `extract_codex_plugins` above is written and pinned by
+# tests/test_extract_plugins.py. This registry is the inverse of `ValueSpec`,
+# which tests/test_extract_hooks.py holds to an equality, and that renderer is a
+# `DocumentTextSpec` — the first one writing a data format rather than a program.
+# Registering it means a registry keyed by *content* renderers rather than by
+# value ones, which is a shared invariant to change on purpose, not in passing.
 VALUE_EXTRACTORS: dict[str, ValueExtractor] = {
     "claude-hooks": extract_claude_hooks,
     "codex-hooks": extract_codex_hooks,
+    "claude-plugins": extract_claude_plugins,
+    "pi-plugins": extract_pi_plugins,
 }
 
 

@@ -307,6 +307,9 @@ directly (`npm:`, `git:`, or a path), as a string or an object. OpenCode has no 
 at all — a plugin is on because its `.ts` file exists, with dependencies in an npm
 `package.json`.
 
+What loadout renders from one portable reference, and what it reports instead of writing, is in
+[plugins.md](plugins.md).
+
 ## skills
 
 | harness | global | project |
@@ -362,8 +365,9 @@ Each is a real gap, not a judgement that the feature is absent:
 
 - `~/.gemini/settings.json` schema — the file was empty on this machine, and its relationship to
   `~/.gemini/antigravity-cli/settings.json` is unknown.
-- Plugin **enablement** mechanism for Codex and Antigravity. Both have marketplaces; neither
-  revealed how a plugin is switched on.
+- Plugin **enablement** mechanism for Antigravity. It has a marketplace and did not reveal how a
+  plugin is switched on. (Codex's was established on 2026-08-10 and is in the plugins table
+  above.)
 - What OpenCode reads from `/Library/Application Support/opencode/`.
 - Project-scope paths for mcp on Pi and Antigravity, and for hooks on Codex, OpenCode and Pi.
 - Whether Codex's `~/.agents/plugins/` is read at global scope or only resolved as a marketplace

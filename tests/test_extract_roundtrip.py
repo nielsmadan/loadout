@@ -32,18 +32,27 @@ from loadout.permissions.rules import Rules, is_glob, mcp_parts
 
 CATEGORIES = ("allow", "ask", "deny")
 
-# `RENDERERS` is no longer the permissions renderers — the hooks slice registers
-# into it too. These properties cover what extract.py inverts *as documents*; the
-# two `ValueSpec` hook renderers are inverted by VALUE_EXTRACTORS and covered by
-# tests/test_extract_hooks.py, because a value renderer takes no base and its
-# inverse holds no residual. A renderer inverted by neither must fail this file.
-# The generated adapters, and the only entries here that are **permanent**
-# rather than deferred. Every other renderer writes a data format, so inverting
-# it is work someone could do. These write JavaScript and TypeScript: a hooks
-# document is recoverable from loadout's own output only because loadout put it
-# there, and a plugin a user wrote by hand — the case extraction exists for — is
-# a program, not a document. There is nothing to parse back.
-NOT_INVERTED: set[str] = {"opencode-hooks", "pi-hooks"}
+# `RENDERERS` is no longer the permissions renderers — the hooks and plugins
+# slices register into it too. These properties cover what extract.py inverts
+# *as documents*; the `ValueSpec` renderers are inverted by VALUE_EXTRACTORS and
+# covered by tests/test_extract_hooks.py and tests/test_extract_plugins.py,
+# because a value renderer takes no base and its inverse holds no residual. A
+# renderer inverted by neither must fail this file.
+#
+# `opencode-hooks` and `pi-hooks` are the generated adapters, and the only
+# entries here that are **permanent** rather than deferred. Every other renderer
+# writes a data format, so inverting it is work someone could do. These write
+# JavaScript and TypeScript: a hooks document is recoverable from loadout's own
+# output only because loadout put it there, and a plugin a user wrote by hand —
+# the case extraction exists for — is a program, not a document. There is
+# nothing to parse back.
+#
+# `codex-plugins` is here for a third reason, and only for as long as the
+# registries stay as they are: its inverse exists and is pinned by
+# tests/test_extract_plugins.py, but it is a `DocumentTextSpec` returning a
+# fragment, and neither EXTRACTORS (which returns `Rules`) nor VALUE_EXTRACTORS
+# (held to the set of `ValueSpec`s) has that shape.
+NOT_INVERTED: set[str] = {"opencode-hooks", "pi-hooks", "codex-plugins"}
 
 INVERTED = sorted(EXTRACTORS)
 

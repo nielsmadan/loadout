@@ -52,6 +52,17 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
             source_slice="hooks",
             owned_key="hooks",
         ),
+        # The fourth slice landing in settings.json. Enablement only: the
+        # marketplace a plugin comes from is registered in
+        # ~/.claude/plugins/known_marketplaces.json, which carries `lastUpdated`
+        # and `installLocation`, so ADR 0008 forbids rendering it. loadout
+        # reports it instead — `plugins.unregistered_marketplaces`.
+        "plugins": SliceOutput(
+            renderer="claude-plugins",
+            destination="${CLAUDE_CONFIG_DIR:-~/.claude}/settings.json",
+            source_slice="plugins",
+            owned_key="enabledPlugins",
+        ),
     },
     "codex": {
         "skills": SliceOutput(destination="${CODEX_HOME:-~/.codex}/skills"),
@@ -80,6 +91,16 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
         # does not own. Spec 4c asks whether that merge survives; until it does
         # not, "staged" is a shape the preset has to express.
         "mcp": SliceOutput(renderer="codex-mcp", output="codex/mcp-permissions.toml"),
+        # Staged for the same reason as mcp, and it is the reason plugins has no
+        # Codex destination: enablement and marketplace registration both live in
+        # config.toml, which holds `[projects.…]`, model settings and everything
+        # else Codex keeps — a file loadout does not own and cannot rewrite from
+        # a source. Two staged files, one merge step outside loadout.
+        "plugins": SliceOutput(
+            renderer="codex-plugins",
+            output="codex/plugins.toml",
+            source_slice="plugins",
+        ),
     },
     "opencode": {
         "skills": SliceOutput(destination="${XDG_CONFIG_HOME:-~/.config}/opencode/skills"),
@@ -113,8 +134,23 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
             destination="${PI_CODING_AGENT_DIR:-~/.pi/agent}/extensions/loadout-hooks.ts",
             source_slice="hooks",
         ),
+        # Pi has no marketplace concept: a package names its own source and
+        # enablement is installation. So this is the one harness where the
+        # portable reference's `source` is what gets rendered.
+        "plugins": SliceOutput(
+            renderer="pi-plugins",
+            destination="${PI_CODING_AGENT_DIR:-~/.pi/agent}/settings.json",
+            source_slice="plugins",
+            owned_key="packages",
+        ),
     },
 }
+
+# OpenCode has no plugins slice, and that is a finding rather than an omission: a
+# plugin is on there because a file exists in `~/.config/opencode/plugins/`, and
+# its dependencies live in an npm manifest `npm`/`bun` owns. There is no
+# enablement list to render, so naming `plugins` under `[opencode]` is an error
+# listing what that agent does offer.
 
 
 def known_agents() -> frozenset[str]:

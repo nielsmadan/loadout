@@ -113,6 +113,9 @@ silently when left to memory.
 `manifest.py` parses `loadout.toml`; `sources.py` and `resolve.py` resolve fragments.
 `extract.py` runs `permissions/renderers.py` backwards — one extractor per `RENDERERS` key,
 plus `merge_extractions`, which reports harness divergence rather than unioning it.
+The native slices render from their own fragments rather than from rules and live beside it:
+`hooks.py` (with `adapters.py`) and `plugins.py`, both registered in `RENDERERS` like everything
+else, so `emit.py` composes them into a shared file without knowing what they are.
 `machine.py` reads `$XDG_CONFIG_HOME/loadout/config.toml` — the only place machine state is
 *stored*, and what `--global` resolves the root and profile from. It is not the only machine
 state that is *read*: `manifest.py:resolve_destination` expands `${VAR}` in a destination

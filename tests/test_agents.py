@@ -74,16 +74,21 @@ def test_a_set_variable_relocates_every_slice_of_that_agent(
     assert resolved and all(p.startswith("/moved/") for p in resolved)
 
 
-def test_codex_mcp_is_the_only_staged_slice() -> None:
-    """Its destination is another tool's merge step, not a file a harness reads.
-    Recorded as a shape rather than an exception so it is not lost."""
+def test_only_codexs_config_toml_slices_are_staged() -> None:
+    """A staged slice's destination is another tool's merge step, not a file a
+    harness reads. Recorded as a shape rather than an exception so it is not lost.
+
+    Both entries are Codex's, and for one reason: `config.toml` carries
+    `[projects.…]`, model settings and everything else Codex keeps, so loadout
+    cannot rewrite it from a source. Every other slice writes a file it owns.
+    """
     staged = {
         (agent, name)
         for agent, slices in GLOBAL_PRESET.items()
         for name, output in slices.items()
         if output.output is not None
     }
-    assert staged == {("codex", "mcp")}
+    assert staged == {("codex", "mcp"), ("codex", "plugins")}
 
 
 def test_settings_is_never_a_source_slice() -> None:

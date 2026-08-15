@@ -165,6 +165,34 @@ adapters were caught by one of the tests named here.
 | `ad-omitted-fields` | `permission_mode` is omitted, never defaulted, on both | [hooks-adapters](hooks-adapters.md#payload-fidelity) | `test_pi_is_told_the_session_file_rather_than_a_run_mode`, `test_opencode_omits_the_two_fields_it_has_no_source_for` |
 | `ad-reaches` | every mapping records the condition that would exercise it | [hooks-adapters](hooks-adapters.md#reachability) | `test_every_mapping_records_what_would_exercise_it` |
 
+## Plugins
+
+Three renderers off one fragment, and each states only the half of a reference it addresses by —
+so most rows here are about what a harness *cannot* say. Source for all of them is
+[plugins](plugins.md).
+
+| id | behaviour | pinned by |
+|---|---|---|
+| `pl-addressing` | Claude and Codex both name a plugin `<name>@<marketplace>`, arrived at independently | `test_claude_addresses_a_plugin_as_name_at_marketplace`, `test_codex_renders_enablement_and_the_marketplaces_its_plugins_reach` |
+| `pl-codex-quoting` | `@` in a Codex table header is quoted — `[plugins.nono@nolabs-ai]` is not valid TOML | `test_codex_quotes_the_at_sign_in_a_plugin_table_header` |
+| `pl-pi-two-forms` | Pi renders a bare source string, and the object form only when the reference carries filters | `test_pi_renders_a_bare_source_string_when_nothing_filters_it`, `test_pi_renders_the_object_form_only_when_the_reference_carries_filters` |
+| `pl-skip-unaddressable` | a reference the harness cannot name is skipped, not refused — a mixed set is the ordinary case | `test_claude_skips_a_reference_with_no_marketplace`, `test_pi_skips_a_reference_with_no_source`, `test_unaddressable_names_the_key_each_harness_needs` |
+| `pl-marketplace-used` | a marketplace no rendered plugin names is not registered; one registered elsewhere still enables its plugin | `test_codex_omits_a_marketplace_no_rendered_plugin_names`, `test_codex_enables_a_plugin_whose_marketplace_is_registered_elsewhere` |
+| `pl-marketplace-verbatim` | a `[marketplaces.<name>]` table's keys pass through — Codex owns that schema | `test_codex_carries_a_marketplaces_own_keys_through_untouched` |
+| `pl-strict-reference` | `source` / `marketplace` are loadout's own vocabulary, so a typo is refused; nested blocks are not | `test_an_unknown_key_on_a_reference_is_refused`, `test_a_plugin_name_at_the_top_level_is_refused` |
+| `pl-null-off` | a `null` overlay switches a plugin off without deleting the fragment that declares it | `test_a_null_overlay_switches_a_plugin_off` |
+| `pl-compose` | `enabledPlugins` is the fourth slice in `settings.json` and displaces none of the other three | `test_claude_plugins_compose_with_permissions_and_the_settings_residual` |
+| `pl-opencode-absent` | OpenCode has no enablement list, so naming the slice is an error | `test_opencode_rejects_a_plugins_key` |
+| `pl-not-automatic` | unlike permissions and mcp, an absent `plugins` key means "not managed", not "none" | `test_an_agent_block_naming_no_plugins_renders_none` |
+| `pl-x-projection` | each inverse recovers only the half its harness states | `test_claude_carries_the_marketplace_and_drops_the_source`, `test_codex_carries_the_marketplace_registration_as_well`, `test_pi_carries_the_source_and_its_filters` |
+| `pl-x-off-reported` | a plugin the file marks off has no fragment representation, so it is reported rather than extracted | `test_a_plugin_switched_off_in_the_file_is_reported_not_extracted` |
+| `pl-x-pi-name` | Pi's document carries no name; one is derived, a collision falls back to the source, and **every entry is reported** | `test_a_pi_name_comes_from_the_last_segment_ahead_of_the_pinned_ref`, `test_two_packages_deriving_one_name_keep_both_references`, `test_every_pi_entry_reports_the_name_it_had_to_invent` |
+| `pl-x-pi-object` | `{"source": x}` with nothing filtering it renders as the string form, so the bytes change and it is reported | `test_an_object_entry_that_filters_nothing_is_reported_as_renormalised` |
+
+`pi-plugins` is the one inverse whose document round trip closes while `notes` is non-empty —
+re-rendering needs only the source, which survives exactly, but the derived name is an invention
+and saying so is the point.
+
 ## Recorded but not testable at render time
 
 | id | behaviour | why |

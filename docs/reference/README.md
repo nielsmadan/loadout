@@ -7,6 +7,9 @@ configuration — settings, instructions, permissions, hooks, mcp, plugins, skil
 and project scope. Start there when the question is *which file*; start here when it is *what
 the matcher does*.
 
+[plugins.md](plugins.md) is one slice across all of them: the portable plugin reference, what
+each harness makes of it, and which half of it each one has to drop.
+
 [extraction.md](extraction.md) runs the tables here backwards: what each rendered artifact can
 be read back into, which pattern forms have to be collapsed, and what is reported rather than
 guessed at.

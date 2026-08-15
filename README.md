@@ -192,6 +192,14 @@ without being asked for**, because neither has an authoring decision to make. `i
 be named — it needs an order, and alphabetical is wrong (see Profiles). `settings` must be named
 because it is an input rather than an output.
 
+`hooks` and `plugins` must be named too, and for the same reason as `instructions`: which hooks
+run and which plugins are on are authoring decisions, so an absent key means *loadout does not
+manage this*, not *none*. Both take fragment names, resolved as `<source>/hooks/<name>.json` and
+`<source>/plugins/<name>.json` and deep-merged in order — maps merge key by key, lists
+concatenate, and `null` removes, which is how a profile switches one plugin off with a one-key
+overlay instead of restating a list. See [docs/reference/plugins.md](docs/reference/plugins.md)
+for what a plugin reference holds and what each harness makes of it.
+
 An unknown agent name, or a slice an agent does not offer, is an error listing what is available.
 
 Each destination in the preset carries that harness's config-directory variable —
