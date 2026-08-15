@@ -14,14 +14,20 @@ KNOWN_HARNESSES = frozenset({"claude", "codex", "opencode", "pi"})
 
 @dataclass(frozen=True)
 class ProjectConfig:
-    """Which harnesses this project generates configuration for.
+    """Which harnesses this project generates configuration for, and which
+    templates it opts into.
 
     Validation lives here, not in load_project_config, so it cannot be bypassed
     by constructing a ProjectConfig directly (as init_project used to) — see the
     milestone 4 fix-wave note on the duplicate-harness defect this closed.
+
+    `vendored` is a tuple of `(name, hash)` pairs rather than a mapping because
+    the dataclass is frozen and a mapping is not hashable.
     """
 
     harnesses: tuple[str, ...]
+    templates: tuple[str, ...] = ()
+    vendored: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         if not self.harnesses:
@@ -32,6 +38,20 @@ class ProjectConfig:
         if bad:
             known = ", ".join(sorted(KNOWN_HARNESSES))
             raise LoadoutError(f"unknown harness(es) {', '.join(bad)} (known: {known})")
+        if len(set(self.templates)) != len(self.templates):
+            raise LoadoutError("duplicate template in the list")
+        orphan = sorted({name for name, _ in self.vendored} - set(self.templates))
+        if orphan:
+            raise LoadoutError(
+                f"[template.{orphan[0]}] records provenance for a template this project "
+                f"does not declare; add it to `templates` or delete the block"
+            )
+
+    def vendored_hash(self, name: str) -> str | None:
+        for recorded, digest in self.vendored:
+            if recorded == name:
+                return digest
+        return None
 
 
 def project_config_path(root: Path) -> Path:
@@ -47,21 +67,58 @@ def load_project_config(path: Path) -> ProjectConfig:
     except tomllib.TOMLDecodeError as error:
         raise LoadoutError(f"{path}: invalid TOML: {error}") from error
 
-    unknown = sorted(set(data) - {"harnesses"})
+    unknown = sorted(set(data) - {"harnesses", "templates", "template"})
     if unknown:
         raise LoadoutError(
-            f"{path}: unrecognised key(s) {', '.join(unknown)}; "
-            f"'harnesses' is the only key this file accepts"
+            f"{path}: unrecognised key(s) {', '.join(unknown)}; 'harnesses', "
+            f"'templates' and [template.<name>] are the keys this file accepts"
         )
 
     raw = data.get("harnesses")
     if not isinstance(raw, list) or not all(isinstance(h, str) for h in raw):
         raise LoadoutError(f"{path}: harnesses must be a list of strings")
 
+    raw_templates = data.get("templates", [])
+    if not isinstance(raw_templates, list) or not all(
+        isinstance(t, str) and t for t in raw_templates
+    ):
+        raise LoadoutError(f"{path}: templates must be a list of non-empty strings")
+
     try:
-        return ProjectConfig(harnesses=tuple(raw))
+        return ProjectConfig(
+            harnesses=tuple(raw),
+            templates=tuple(raw_templates),
+            vendored=_parse_provenance(data.get("template", {}), path),
+        )
     except LoadoutError as error:
         raise LoadoutError(f"{path}: {error}") from error
+
+
+def _parse_provenance(raw: object, path: Path) -> tuple[tuple[str, str], ...]:
+    """`[template.<name>] vendored = "<hash>"` — the content hash of a vendored copy.
+
+    Source rather than generated output, so ADR 0008's prohibition on stamping a
+    hash does not reach it: that rule keeps *generated* content a pure function of
+    the source, and a hash recorded in the source is the source.
+    """
+    if not isinstance(raw, dict):
+        raise LoadoutError(f"{path}: [template.<name>] must be a table per template")
+    provenance: list[tuple[str, str]] = []
+    for name, block in raw.items():
+        if not isinstance(block, dict):
+            raise LoadoutError(f"{path}: [template.{name}] must be a table")
+        stray = sorted(set(block) - {"vendored"})
+        if stray:
+            raise LoadoutError(
+                f"{path}: [template.{name}] has unrecognised key(s) {', '.join(stray)}; "
+                f"'vendored' is the only key it accepts — a template is referenced by "
+                f"name, never by path"
+            )
+        digest = block.get("vendored")
+        if not isinstance(digest, str) or not digest:
+            raise LoadoutError(f"{path}: [template.{name}] vendored must be a non-empty string")
+        provenance.append((name, digest))
+    return tuple(provenance)
 
 
 @dataclass(frozen=True)
