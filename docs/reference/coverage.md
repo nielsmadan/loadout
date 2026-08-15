@@ -100,6 +100,31 @@ list the expected-output files exist for, and the reason the comparison stays.
 | `wiring-count` | every declared target produces an output |
 | `wiring-destination-env` | a `${VAR:-fallback}` destination reaches the renderer like a literal one | 
 
+## Extraction
+
+Every row is pinned by `tests/test_extract_roundtrip.py`, `tests/test_extract_merge.py` or
+`tests/test_extract_fixtures.py`. Source for all of them is [extraction](extraction.md).
+
+| id | behaviour | pinned by |
+|---|---|---|
+| `x-rules-roundtrip` | `extract(render(rules))` recovers every rule the harness can carry | `test_extraction_recovers_every_rule_the_harness_can_carry` |
+| `x-doc-roundtrip` | `render(extract(document))` is byte-identical wherever no loss is reported | `test_reextraction_reproduces_the_document_byte_for_byte` |
+| `x-idempotent` | a second extraction of the re-rendered document finds the same rules | `test_extraction_is_idempotent` |
+| `x-shipped-bytes` | every artifact in `tests/fixtures/expected/` round-trips, or is on a named list | `test_a_shipped_artifact_extracts_and_renders_back_to_itself`, `test_only_the_listed_artifacts_report_a_loss` |
+| `x-every-renderer` | every inverted renderer has a capability and a projection, and round-trips an empty source | `test_every_inverted_renderer_round_trips_an_empty_source`, `test_every_inverted_renderer_declares_a_capability`, `test_every_inverted_renderer_has_a_declared_projection` |
+| `x-named-gap` | a renderer with no inverse must be named in `NOT_INVERTED`; `claude-hooks` and `codex-hooks` are, a third would fail | `test_no_renderer_lacks_an_inverse_without_being_named` |
+| `x-base-residual` | `base` keeps keys other slices own, because it is the render-time residual and not a settings fragment | `test_the_base_keeps_keys_other_slices_own` |
+| `x-pair-collapse` | `foo` and `foo *` collapse back to one entry — **only the rules property catches a miss**, since not collapsing renders identical bytes | `test_extraction_recovers_every_rule_the_harness_can_carry` |
+| `x-seed-dropped` | the `{"*": "ask"}` catch-all is structure, not a source rule | `test_extraction_recovers_every_rule_the_harness_can_carry` |
+| `x-codex-globs` | Codex's skipped-glob comment block carries no decision, so it is reported | `test_the_shipped_codex_rules_reports_the_globs_it_cannot_categorise` |
+| `x-order-loss` | in-place assignment in `render_opencode` / `render_pi_project` loses which category a twice-listed rule came from; `render_pi`'s key-move does not | `test_reextraction_reproduces_the_document_byte_for_byte` |
+| `x-no-union` | a command one harness denies is never emitted as allowed | `test_a_command_one_harness_denies_is_never_emitted_as_allowed`, `test_mcp_disagreement_is_reported_and_withheld` |
+| `x-absence-is-drift` | a harness that could have stated a rule and did not is a divergence | `test_a_command_missing_from_one_harness_is_reported_as_drift`, `test_codex_silence_on_a_plain_command_is_divergence` |
+| `x-capability-vote` | a harness that *cannot* express a rule does not vote on it | `test_codex_silence_on_a_glob_is_not_divergence`, `test_shell_only_harnesses_do_not_vote_on_mcp_targets` |
+| `x-unknown-harness` | an undeclared harness is refused, never defaulted to a non-voter | `test_an_undeclared_harness_is_refused_rather_than_ignored` |
+| `x-twice-listed` | a verdict is every category a harness listed the entry in, not the last one | `test_harnesses_agreeing_a_rule_appears_twice_keep_both_entries`, `test_a_rule_one_harness_lists_twice_and_another_once_is_reported` — **not reachable through the pipeline**, see below |
+| `x-machine-merges-back` | a source rendered to all nine documents merges back to itself with no divergence | `test_a_machine_rendered_from_one_source_merges_back_to_it` |
+
 ## Recorded but not testable at render time
 
 | id | behaviour | why |
@@ -130,3 +155,16 @@ position (ADR 0006's other half).
 Keep the behaviour: it is a faithful port, it is pinned by a direct unit test, and it becomes
 observable again if resolution ever changes or a renderer is called outside the pipeline. But do
 not treat whole-document comparison as covering it.
+
+**Extraction is the exception to this whole section, and it is worth stating plainly.** The
+reachability argument above is about what loadout can *produce*. Extraction reads what is
+already on disk — hand-maintained across five harnesses, written by other tools — so every shape
+declared unreachable here is ordinary input to it.
+
+That is why `x-twice-listed` and `x-order-loss` are pinned against constructed values and
+synthetic documents rather than through the pipeline: `merge_rules` guarantees no entry survives
+in two categories, so no rendered artifact can exercise them. It also means `pi-moves-key`'s
+sibling difference is no longer merely a fidelity question — `render_pi` round-trips and
+`render_opencode` / `render_pi_project` do not, so harmonising them breaks invertibility as well
+as output. See [ADR 0013](../decisions/0013-a-renderer-change-is-checked-against-extraction.md)
+and [extraction](extraction.md#what-each-renderer-loses).

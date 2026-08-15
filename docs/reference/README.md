@@ -7,6 +7,10 @@ configuration — settings, instructions, permissions, hooks, mcp, plugins, skil
 and project scope. Start there when the question is *which file*; start here when it is *what
 the matcher does*.
 
+[extraction.md](extraction.md) runs the tables here backwards: what each rendered artifact can
+be read back into, which pattern forms have to be collapsed, and what is reported rather than
+guessed at.
+
 One file per harness. Each records **what was verified** (with the date and version it
 was verified against) separately from **what upstream documents**. When a harness
 changes, re-check the verified claims first — they are the ones this project's output

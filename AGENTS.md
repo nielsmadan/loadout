@@ -15,12 +15,15 @@ Codex, OpenCode and Pi. Antigravity (`agy`) was dropped — see
 These are not style preferences. Each one has already caused, or nearly caused, a real defect.
 
 - **Byte-identical output is the acceptance criterion.** Generated files must match their
-  golden fixtures exactly — key order, whitespace, trailing newline. A "semantically
-  equivalent" output is a failure. Content is a pure function of the source: never stamp a
-  profile, commit, hash or timestamp into a generated file — see
+  fixtures in `tests/fixtures/expected/` exactly — key order, whitespace, trailing newline. A
+  "semantically equivalent" output is a failure. Content is a pure function of the source:
+  never stamp a profile, commit, hash or timestamp into a generated file — see
   [0008](docs/decisions/0008-generated-files-carry-no-machine-state.md).
 - **`tests/fixtures/expected/` is regenerated, never hand-edited.** Change a renderer, run
-  `tests/regenerate_expected.py`, and read the diff — the diff is the review. The script
+  `tests/regenerate_expected.py`, and read the diff — the diff is most of the review, but not
+  all of it for a renderer change: whether a file can still be read back into rules is invisible
+  in expected output, and is pinned by `tests/test_extract_*.py` instead — see
+  [0013](docs/decisions/0013-a-renderer-change-is-checked-against-extraction.md). The script
   refuses to run over unstaged changes there, so a regeneration is always its own commit. Never
   edit an expected file directly to make a test pass. See
   [0009](docs/decisions/0009-expected-output-is-reviewed-not-frozen.md).
@@ -108,6 +111,8 @@ silently when left to memory.
 `cli.py` → `commands.py` → `emit.py` → `composition.py` (instructions) and
 `permissions/` (`rules.py` parses, `renderers.py` renders, keyed by name in `RENDERERS`).
 `manifest.py` parses `loadout.toml`; `sources.py` and `resolve.py` resolve fragments.
+`extract.py` runs `permissions/renderers.py` backwards — one extractor per `RENDERERS` key,
+plus `merge_extractions`, which reports harness divergence rather than unioning it.
 `machine.py` reads `$XDG_CONFIG_HOME/loadout/config.toml` — the only place machine state is
 *stored*, and what `--global` resolves the root and profile from. It is not the only machine
 state that is *read*: `manifest.py:resolve_destination` expands `${VAR}` in a destination
@@ -122,6 +127,7 @@ output, so `sync`/`check` regenerate whichever scopes are present.
 - `README.md` — commands, `loadout.toml` schema, exit codes
 - `docs/scopes.md` — what loadout is for, the scope model, committed vs personal
 - `docs/reference/` — per-harness matcher semantics, pattern shapes, verified quirks
+- `docs/reference/extraction.md` — the renderers run backwards: what round-trips, what is reported
 - `docs/reference/coverage.md` — every documented behaviour and the test that pins it
 - `docs/decisions/` — ADRs; append-only, superseded rather than edited
 
