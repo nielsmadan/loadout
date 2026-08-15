@@ -133,10 +133,16 @@ def unrecognised_events(document: Mapping[str, Any], known: frozenset[str]) -> t
     limitation is documented upstream rather than inferred from a search of our
     own.
 
-    Worth more than it looks: of 32 distinct top-level keys across 22 public
-    configurations, four name events that exist on no harness we know of
-    (`PostTurn`, `PreTurn`, `PreLLM`, `PreCommit`). People do write hooks that
-    can never fire.
+    Four names in a 22-configuration survey are not in Claude's list —
+    `PostTurn`, `PreTurn`, `PreLLM`, `PreCommit` — but all four come from **one
+    file**, and that file references `.opencode` 97 times against `.claude` 11,
+    with hook commands pointing into `.opencode/hooks/`. So the likely reading is
+    another tool's vocabulary in a Claude-shaped file, not users inventing Claude
+    events. One file is not evidence about people; it is evidence about a file.
+
+    The report still earns its place — an event Claude does not know silently
+    never fires — but on the argument that unrecognised is worth saying, not on a
+    frequency claim this survey cannot support.
     """
     return tuple(key for key in document if _looks_like_an_event(key) and key not in known)
 
