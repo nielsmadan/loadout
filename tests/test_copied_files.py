@@ -100,9 +100,9 @@ def test_describe_reports_size_and_mode(tmp_path: Path) -> None:
     plain = _make(tmp_path / "plain.txt", b"12345")
     runnable = _make(tmp_path / "run.sh", b"12345", executable=True)
 
-    assert _describe(plain) == "5 bytes"
-    assert _describe(runnable) == "5 bytes (executable)"
-    assert _describe(tmp_path / "missing.txt") == "(absent)"
+    assert _describe(plain) == "5 bytes\n"
+    assert _describe(runnable) == "5 bytes (executable)\n"
+    assert _describe(tmp_path / "missing.txt") == "(absent)\n"
 
 
 def test_copied_carries_its_source(tmp_path: Path) -> None:

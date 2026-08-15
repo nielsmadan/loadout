@@ -570,6 +570,6 @@ def _describe(path: Path) -> str:
     # Drift on a copied file reports a summary, not the content: a tree carries
     # binaries, and a byte diff of one is noise rather than a review.
     if not path.is_file():
-        return "(absent)"
+        return "(absent)\n"
     suffix = " (executable)" if _executable(path) else ""
-    return f"{path.stat().st_size} bytes{suffix}"
+    return f"{path.stat().st_size} bytes{suffix}\n"
