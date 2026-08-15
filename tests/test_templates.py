@@ -7,7 +7,14 @@ import pytest
 from loadout.errors import LoadoutError
 from loadout.resolve import Slice, resolve_item
 from loadout.sources import ARTIFACT_TYPES, Source
-from loadout.templates import HASH_PREFIX, template_files, tree_hash
+from loadout.templates import (
+    HASH_PREFIX,
+    VENDORED,
+    resolve_template,
+    template_files,
+    tree_hash,
+    vendored_path,
+)
 
 TREE = Slice(use="templates", subdir="templates", suffix="", directory=True)
 
@@ -146,3 +153,81 @@ def test_an_empty_tree_hashes_rather_than_failing(tmp_path: Path) -> None:
     empty = tmp_path / "railway"
     empty.mkdir()
     assert tree_hash(empty).startswith(HASH_PREFIX)
+
+
+def _global_source(home: Path, monkeypatch: pytest.MonkeyPatch, *templates: str) -> Path:
+    """A machine config pointing at a global source that offers templates.
+
+    Built out in full rather than shortcut, because the chain a declared template
+    depends on — machine config, global manifest, its `[[source]]` list — is
+    exactly what these tests are for.
+    """
+    source = home / "ac"
+    (source / "loadout").mkdir(parents=True, exist_ok=True)
+    (source / "loadout.toml").write_text(
+        '[[source]]\nname = "ac"\npath = "loadout"\n\n[claude]\ninstructions = []\n',
+        encoding="utf-8",
+    )
+    for template in templates:
+        (source / "loadout" / "templates" / template).mkdir(parents=True, exist_ok=True)
+    xdg = home / ".config"
+    (xdg / "loadout").mkdir(parents=True, exist_ok=True)
+    (xdg / "loadout" / "config.toml").write_text(f'source = "{source}"\n', encoding="utf-8")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg))
+    return source
+
+
+def test_a_declared_template_resolves_from_the_global_source(
+    tmp_path: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = _global_source(fake_home, monkeypatch, "web")
+    found = resolve_template("web", tmp_path)
+    assert found.path == source / "loadout" / "templates" / "web"
+    assert found.source == "ac"
+
+
+def test_a_vendored_copy_wins_and_stops_resolution(
+    tmp_path: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _global_source(fake_home, monkeypatch, "web")
+    vendored = vendored_path(tmp_path, "web")
+    vendored.mkdir(parents=True)
+    found = resolve_template("web", tmp_path)
+    assert found.path == vendored
+    assert found.source == VENDORED
+
+
+def test_a_vendored_copy_resolves_with_no_machine_config_at_all(tmp_path: Path) -> None:
+    """The property that lets a clone build without the template repo."""
+    vendored = vendored_path(tmp_path, "web")
+    vendored.mkdir(parents=True)
+    assert resolve_template("web", tmp_path).path == vendored
+
+
+def test_an_unresolvable_template_names_every_place_searched(
+    tmp_path: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = _global_source(fake_home, monkeypatch, "flutter")
+    with pytest.raises(LoadoutError) as error:
+        resolve_template("web", tmp_path)
+    message = str(error.value)
+    assert str(vendored_path(tmp_path, "web")) in message
+    assert str(source / "loadout" / "templates" / "web") in message
+
+
+def test_no_machine_config_says_so_rather_than_reporting_no_sources(tmp_path: Path) -> None:
+    with pytest.raises(LoadoutError, match="no machine config"):
+        resolve_template("web", tmp_path)
+
+
+def test_a_source_offering_no_templates_is_left_out_of_the_search(
+    tmp_path: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = _global_source(fake_home, monkeypatch, "web")
+    (source / "loadout.toml").write_text(
+        '[[source]]\nname = "ac"\npath = "loadout"\nuse = ["skills"]\n\n'
+        "[claude]\ninstructions = []\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(LoadoutError, match="no source offers templates"):
+        resolve_template("web", tmp_path)
