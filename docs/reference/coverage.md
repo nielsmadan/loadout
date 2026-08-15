@@ -112,7 +112,7 @@ Every row is pinned by `tests/test_extract_roundtrip.py`, `tests/test_extract_me
 | `x-idempotent` | a second extraction of the re-rendered document finds the same rules | `test_extraction_is_idempotent` |
 | `x-shipped-bytes` | every artifact in `tests/fixtures/expected/` round-trips, or is on a named list | `test_a_shipped_artifact_extracts_and_renders_back_to_itself`, `test_only_the_listed_artifacts_report_a_loss` |
 | `x-every-renderer` | every inverted renderer has a capability and a projection, and round-trips an empty source | `test_every_inverted_renderer_round_trips_an_empty_source`, `test_every_inverted_renderer_declares_a_capability`, `test_every_inverted_renderer_has_a_declared_projection` |
-| `x-named-gap` | a renderer with no inverse must be named in `NOT_INVERTED`; `claude-hooks` and `codex-hooks` are, a third would fail | `test_no_renderer_lacks_an_inverse_without_being_named` |
+| `x-named-gap` | a renderer inverted by neither `EXTRACTORS` nor `VALUE_EXTRACTORS` must be named in `NOT_INVERTED`, which is currently empty — every renderer has an inverse, and the guard still fails if one loses it | `test_no_renderer_lacks_an_inverse_without_being_named` |
 | `x-base-residual` | `base` keeps keys other slices own, because it is the render-time residual and not a settings fragment | `test_the_base_keeps_keys_other_slices_own` |
 | `x-codex-quoting` | a `shlex.split` token holding whitespace is re-quoted, so `echo "a b"` round-trips instead of splitting into three tokens | `test_a_token_holding_a_space_survives_the_codex_project_round_trip` |
 | `x-pair-collapse` | `foo` and `foo *` collapse back to one entry — **only the rules property catches a miss**, since not collapsing renders identical bytes | `test_extraction_recovers_every_rule_the_harness_can_carry` |
@@ -125,6 +125,26 @@ Every row is pinned by `tests/test_extract_roundtrip.py`, `tests/test_extract_me
 | `x-unknown-harness` | an undeclared harness is refused, never defaulted to a non-voter | `test_an_undeclared_harness_is_refused_rather_than_ignored` |
 | `x-twice-listed` | a verdict is every category a harness listed the entry in, not the last one | `test_harnesses_agreeing_a_rule_appears_twice_keep_both_entries`, `test_a_rule_one_harness_lists_twice_and_another_once_is_reported` — **not reachable through the pipeline**, see below |
 | `x-machine-merges-back` | a source rendered to all nine documents merges back to itself with no divergence | `test_a_machine_rendered_from_one_source_merges_back_to_it` |
+
+## Skills
+
+A skill is a tree, so the slice pins two things nothing else does: that the shared case survives
+composition untouched, and that a file's *mode* survives a copy.
+
+| id | behaviour | pinned by |
+|---|---|---|
+| `s-verbatim` | an unmarked `SKILL.md` renders byte-identical to its source but for the banner — the property 49 of 50 skills rely on | `test_an_unmarked_skill_is_reproduced_exactly_but_for_the_banner` |
+| `s-banner-below` | the banner sits below the closing `---`; above it the frontmatter goes unparsed and the banner becomes the description | `test_the_banner_sits_below_the_frontmatter` |
+| `s-marked-sections` | `::: <harness>` content reaches only the named harnesses | `test_marked_sections_go_only_to_the_named_harness` |
+| `s-fence-is-content` | a `:::` inside a fenced code block is content, so a skill can document the syntax | `test_a_marker_inside_a_code_fence_is_content` |
+| `s-marker-errors` | an unknown harness, an unclosed section and a stray close each fail loudly | `test_an_unknown_harness_in_a_marker_is_refused`, `test_an_unclosed_marker_is_refused`, `test_a_stray_close_marker_is_refused` |
+| `s-frontmatter-override` | a harness block replaces shared values and every block is stripped, including for a harness with none | `test_frontmatter_overrides_replace_the_shared_value`, `test_every_harness_block_is_stripped_even_for_an_unnamed_harness` |
+| `s-frontmatter-untouched` | frontmatter with no harness block passes through unchanged | `test_frontmatter_without_a_harness_block_is_untouched` |
+| `s-artifacts-excluded` | `__pycache__` and friends are not skill content, so stale bytecode is not copied to four harnesses | `test_build_artifacts_are_not_skill_content` |
+| `s-exec-bit` | a copied file keeps its mode — three `scripts/` files are executable and a mode does not survive a `str` | `test_copy_preserves_the_exec_bit` |
+| `s-copy-bytes` | a copied file reproduces bytes exactly, including non-text | `test_copy_reproduces_bytes_exactly` |
+| `s-copy-symlink` | a copy writes *through* a destination symlink rather than replacing it | `test_copy_writes_through_a_symlink` |
+| `s-mode-drift` | matching bytes with a differing mode is drift — the case a text comparison cannot see | `test_drift_when_only_the_mode_differs` |
 
 ## Recorded but not testable at render time
 

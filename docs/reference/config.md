@@ -194,6 +194,36 @@ lower bound on capability, and so is a search that names what it expects to find
 On Claude, 6 of the 11 configured event lists contain entries with **no `matcher` key**, so
 `matcher` cannot serve as a merge key for those lists.
 
+### What a hook object actually carries
+
+From a survey of **263 hook objects across 22 public repositories** — so these are counts about
+that corpus, not about the harness's capability, and not about what users in general do.
+
+`type` is present on all 263. Three kinds appear:
+
+| `type` | count | carries |
+|---|---|---|
+| `command` | 259 | `command`, plus `timeout`, `statusMessage`, `async`, `blocking`, `if`, `name`, `shell` |
+| `http` | 2 | `url`, `headers`, `allowedEnvVars` |
+| `prompt` | 2 | `prompt`, `model` — **no command at all**; it is model-evaluated |
+
+Field frequency on `command` hooks: `statusMessage` **172**, `async` 70, `if` 12, `blocking` 12.
+`statusMessage` is the one worth noticing — a mainstream field on two thirds of hooks that
+appears nowhere in `~/ac`, which is precisely why the survey was needed and why this machine
+could not have supplied it.
+
+**`$CLAUDE_PROJECT_DIR` appears in 202 of the 263.** No other `*_PROJECT_DIR` variable was found
+for any harness — but that search named an ALL_CAPS token with a known suffix, so the absence is
+only as strong as the spelling assumption behind it. A harness using `PROJECT_ROOT`, a lowercase
+name, or no variable at all would not have appeared. Treat it as "none found under this
+spelling", not as an enumeration.
+
+Four names in the survey are absent from Claude's 31 — `PostTurn`, `PreTurn`, `PreLLM`,
+`PreCommit` — and all four come from **one file**, which references `.opencode` 97 times against
+`.claude` 11 and points its hook commands into `.opencode/hooks/`. The likely reading is another
+tool's vocabulary in a Claude-shaped file, not invented Claude events. One file is evidence about
+a file, not about people.
+
 ### OpenCode and Pi register hooks in code
 
 Neither has a hooks *file*; both have a documented event API. This is a different mechanism, not
