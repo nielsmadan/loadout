@@ -45,7 +45,8 @@ project scope already uses:
 ~/ac/loadout.toml              the manifest — sources, targets, destinations
 ~/ac/loadout/permissions.toml  global rules
 ~/ac/loadout/instructions/     instruction fragments
-~/ac/loadout/bases/            hand-maintained base documents
+~/ac/loadout/settings/         hand-maintained settings fragments, composed by name
+~/ac/loadout/skills/           skill trees, one directory each
 ```
 
 `sync` writes each document to its **destinations** — the real paths harnesses read, declared
