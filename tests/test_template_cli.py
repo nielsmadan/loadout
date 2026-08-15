@@ -233,3 +233,48 @@ def test_sync_refuses_a_template_that_is_not_vendored(
     _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
     main(["template", "add", "web", "--root", str(project)])
     assert main(["template", "sync", "web", "--root", str(project)]) == 3
+
+
+def test_check_notes_a_modified_vendored_template_without_failing(
+    project: Path,
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A vendored copy is source, so editing it is not drift — see ADR 0014."""
+    _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
+    main(["template", "vendor", "web", "--root", str(project)])
+    (project / "loadout" / "templates" / "web" / "permissions.toml").write_text(
+        '[shell]\nallow = ["mine"]\n', encoding="utf-8"
+    )
+    main(["sync", "--root", str(project)])
+    capsys.readouterr()
+    assert main(["check", "--root", str(project)]) == 0
+    assert "web" in capsys.readouterr().out
+
+
+def test_check_is_silent_about_a_clean_vendored_template(
+    project: Path,
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
+    main(["template", "vendor", "web", "--root", str(project)])
+    main(["sync", "--root", str(project)])
+    capsys.readouterr()
+    assert main(["check", "--root", str(project)]) == 0
+    assert "modified" not in capsys.readouterr().out
+
+
+def test_check_still_fails_on_real_drift_alongside_a_diverged_template(
+    project: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The note must not swallow the exit code check exists to produce."""
+    _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
+    main(["template", "vendor", "web", "--root", str(project)])
+    main(["sync", "--root", str(project)])
+    (project / "loadout" / "templates" / "web" / "permissions.toml").write_text(
+        '[shell]\nallow = ["mine"]\n', encoding="utf-8"
+    )
+    assert main(["check", "--root", str(project)]) == 1

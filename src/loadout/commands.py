@@ -31,6 +31,7 @@ from .templates import (
     declared_sources,
     record_hash,
     resolve_template,
+    template_divergence,
     template_files,
     tree_hash,
     vendored_path,
@@ -224,6 +225,16 @@ def cmd_sync(root: Path, profile: str = "default", force: bool = False) -> int:
 
 def cmd_check(root: Path, profile: str = "default") -> int:
     drift = check_all(root, profile)
+    # Reported, never failed: check's contract is that generated output matches
+    # its source, and a vendored template *is* source — so it falls outside that
+    # jurisdiction by definition rather than by exemption (ADR 0014). Saying
+    # nothing at all would let a project drift from its template indefinitely,
+    # which is the failure vendoring exists to avoid.
+    for name in template_divergence(root):
+        print(
+            f"note: the vendored template {name!r} was modified after it was vendored — "
+            f"`loadout template sync {name}` will refuse until those edits go upstream"
+        )
     if not drift:
         print("generated files are up to date")
         return 0
