@@ -21,12 +21,14 @@ from .project import (
     load_project_config,
     project_config_path,
 )
-from .resolve import resolve_fragment
+from .resolve import resolve_fragment, resolve_item
 from .scaffold import add_harness, init_global, init_project
 from .templates import (
+    TEMPLATES,
     VENDORED,
     copy_tree,
     declare,
+    declared_sources,
     record_hash,
     resolve_template,
     template_files,
@@ -303,6 +305,83 @@ def cmd_template_vendor(root: Path, name: str) -> int:
     print(f"vendored {name} from source {found.source} into {_display(local, root)}")
     for relative in template_files(local):
         print(f"    {relative}")
+    return 0
+
+
+def _tree_diff(local: Path, upstream: Path, label: str) -> list[str]:
+    """A unified diff per file across both trees, added and removed files included."""
+    lines: list[str] = []
+    for relative in sorted({*template_files(local), *template_files(upstream)}):
+        here, there = local / relative, upstream / relative
+        try:
+            actual = here.read_text(encoding="utf-8") if here.is_file() else ""
+            expected = there.read_text(encoding="utf-8") if there.is_file() else ""
+        except UnicodeDecodeError:
+            # A template carries whatever a skill carries, binaries included, and
+            # a byte diff of one is noise rather than a review.
+            if not (here.is_file() and there.is_file()) or here.read_bytes() != there.read_bytes():
+                lines.append(f"{label}/{relative}: differs (binary)\n")
+            continue
+        if actual != expected:
+            lines.extend(_diff(f"{label}/{relative}", actual, expected, context=3))
+    return lines
+
+
+def _report_diff(lines: list[str]) -> None:
+    sys.stderr.writelines(lines[:_DIFF_LIMIT])
+    if len(lines) > _DIFF_LIMIT:
+        print(f"    ... {len(lines) - _DIFF_LIMIT} more diff line(s)", file=sys.stderr)
+
+
+def cmd_template_sync(root: Path, name: str) -> int:
+    """Update a vendored copy from its source, refusing rather than merging.
+
+    Refuse-and-diff is never wrong and never silently mangles anything. The
+    alternative — a three-way merge against the version you vendored — is the
+    largest single piece of work in this design, and the recorded hash is exactly
+    the base it would need, so deferring it costs no state migration.
+    """
+    config = load_project_config(project_config_path(root))
+    local = vendored_path(root, name)
+    if not local.is_dir():
+        raise LoadoutError(
+            f"{name} is not vendored, so there is nothing to sync — it resolves from a "
+            f"source on every render. Run `loadout template vendor {name}` to copy it in."
+        )
+
+    recorded = config.vendored_hash(name)
+    current = tree_hash(local)
+    # A vendored copy resolves ahead of every source, so the upstream has to be
+    # reached past it deliberately.
+    upstream = resolve_item(declared_sources(), name, TEMPLATES).path
+
+    if recorded is not None and current != recorded:
+        print(
+            f"WARNING: the vendored copy of {name} was modified after it was vendored",
+            file=sys.stderr,
+        )
+        _report_diff(_tree_diff(local, upstream, name))
+        print(
+            f"\nSync refused — the '-' lines above exist only in your copy and would be "
+            f"lost. Move them upstream, or delete {_display(local, root)} and run "
+            f"`loadout template vendor {name}` to take the upstream wholesale.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if tree_hash(upstream) == current:
+        print(f"{name} is up to date")
+        if recorded is None:
+            record_hash(root, name, current)
+        return 0
+
+    changed = _tree_diff(local, upstream, name)
+    copy_tree(upstream, local)
+    record_hash(root, name, tree_hash(local))
+    print(
+        f"updated {name} from source, {sum(1 for c in changed if c.startswith('---'))} file(s) changed"
+    )
+    _report_diff(changed)
     return 0
 
 

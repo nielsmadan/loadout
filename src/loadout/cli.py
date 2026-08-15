@@ -14,6 +14,7 @@ from .commands import (
     cmd_sync,
     cmd_template_add,
     cmd_template_list,
+    cmd_template_sync,
     cmd_template_vendor,
 )
 from .errors import LoadoutError
@@ -106,6 +107,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("list", "show each declared template and how it resolves"),
         ("add", "declare a template, leaving it to resolve from a source"),
         ("vendor", "copy a template into this project and record its content hash"),
+        ("sync", "update the vendored copy from its source"),
     ):
         template_sub = template_subparsers.add_parser(sub_name, help=sub_help)
         if sub_name != "list":
@@ -134,7 +136,9 @@ def _dispatch_template(args: argparse.Namespace) -> int:
         return cmd_template_list(root)
     if args.template_command == "add":
         return cmd_template_add(root, args.name)
-    return cmd_template_vendor(root, args.name)
+    if args.template_command == "vendor":
+        return cmd_template_vendor(root, args.name)
+    return cmd_template_sync(root, args.name)
 
 
 def _dispatch_init(args: argparse.Namespace) -> int:

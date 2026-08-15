@@ -135,3 +135,101 @@ def test_list_reports_an_unresolved_template_without_failing(
 
 def test_a_bare_template_command_prints_usage(project: Path) -> None:
     assert main(["template"]) == 2
+
+
+def test_sync_updates_an_unmodified_copy(
+    project: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    upstream = _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
+    main(["template", "vendor", "web", "--root", str(project)])
+    (upstream / "permissions.toml").write_text(
+        '[shell]\nallow = ["vite", "esbuild"]\n', encoding="utf-8"
+    )
+    assert main(["template", "sync", "web", "--root", str(project)]) == 0
+    vendored = project / "loadout" / "templates" / "web" / "permissions.toml"
+    assert "esbuild" in vendored.read_text(encoding="utf-8")
+
+
+def test_sync_rerecords_the_hash_so_the_copy_stays_clean(
+    project: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    upstream = _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
+    main(["template", "vendor", "web", "--root", str(project)])
+    (upstream / "permissions.toml").write_text('[shell]\nallow = ["esbuild"]\n', encoding="utf-8")
+    main(["template", "sync", "web", "--root", str(project)])
+    config = load_project_config(_config(project))
+    assert config.vendored_hash("web") == tree_hash(project / "loadout" / "templates" / "web")
+
+
+def test_sync_carries_a_file_the_upstream_added(
+    project: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    upstream = _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
+    main(["template", "vendor", "web", "--root", str(project)])
+    (upstream / "skills" / "s").mkdir(parents=True)
+    (upstream / "skills" / "s" / "SKILL.md").write_text("---\nname: s\n---\n", encoding="utf-8")
+    assert main(["template", "sync", "web", "--root", str(project)]) == 0
+    assert (project / "loadout" / "templates" / "web" / "skills" / "s" / "SKILL.md").is_file()
+
+
+def test_sync_drops_a_file_the_upstream_removed(
+    project: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    upstream = _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
+    (upstream / "extra.toml").write_text("[shell]\n", encoding="utf-8")
+    main(["template", "vendor", "web", "--root", str(project)])
+    (upstream / "extra.toml").unlink()
+    assert main(["template", "sync", "web", "--root", str(project)]) == 0
+    assert not (project / "loadout" / "templates" / "web" / "extra.toml").exists()
+
+
+def test_sync_refuses_a_modified_copy_and_changes_nothing(
+    project: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    upstream = _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
+    main(["template", "vendor", "web", "--root", str(project)])
+    vendored = project / "loadout" / "templates" / "web" / "permissions.toml"
+    vendored.write_text('[shell]\nallow = ["vite", "mine"]\n', encoding="utf-8")
+    (upstream / "permissions.toml").write_text('[shell]\nallow = ["esbuild"]\n', encoding="utf-8")
+    assert main(["template", "sync", "web", "--root", str(project)]) == 1
+    assert vendored.read_text(encoding="utf-8") == '[shell]\nallow = ["vite", "mine"]\n'
+
+
+def test_sync_shows_the_diff_it_refused_to_apply(
+    project: Path,
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    upstream = _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
+    main(["template", "vendor", "web", "--root", str(project)])
+    (project / "loadout" / "templates" / "web" / "permissions.toml").write_text(
+        '[shell]\nallow = ["mine"]\n', encoding="utf-8"
+    )
+    (upstream / "permissions.toml").write_text('[shell]\nallow = ["esbuild"]\n', encoding="utf-8")
+    capsys.readouterr()
+    main(["template", "sync", "web", "--root", str(project)])
+    err = capsys.readouterr().err
+    assert "mine" in err
+    assert "esbuild" in err
+
+
+def test_sync_reports_an_already_current_copy(
+    project: Path,
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
+    main(["template", "vendor", "web", "--root", str(project)])
+    capsys.readouterr()
+    assert main(["template", "sync", "web", "--root", str(project)]) == 0
+    assert "up to date" in capsys.readouterr().out
+
+
+def test_sync_refuses_a_template_that_is_not_vendored(
+    project: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
+    main(["template", "add", "web", "--root", str(project)])
+    assert main(["template", "sync", "web", "--root", str(project)]) == 3
