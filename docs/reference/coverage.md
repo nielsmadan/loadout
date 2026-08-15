@@ -82,6 +82,8 @@ test is a gap.
 | `oc-mcp-top-level` | MCP entries become top-level `permission` keys, `/` → `_` | [opencode](opencode.md#pattern-shape) | `test_opencode_mcp_entries_become_top_level_permission_keys` |
 | `oc-extras` | `[opencode.extra]` toggles emitted verbatim | [opencode](opencode.md#what-loadout-emits) | `test_opencode_extra_toggles_are_emitted_verbatim` |
 | `oc-permission-last` | `permission` is appended after the base's keys | — (test is the record) | `test_opencode_appends_permission_after_the_base_keys` |
+| `oc-instructions-document` | global instructions are a document at `~/.config/opencode/AGENTS.md`, not the `instructions` key | [config](config.md#instructions) | `test_opencode_gets_its_own_agents_md`, `test_instructions_stay_out_of_opencode_json` |
+| `oc-instructions-own` | the document is OpenCode's own; before the slice existed OpenCode fell back to Claude's `CLAUDE.md`, which loadout also writes | [config](config.md#instructions) | `test_the_document_is_opencodes_own_not_claudes` |
 
 ## Covered only by whole-document comparison
 

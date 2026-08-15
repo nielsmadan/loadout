@@ -27,6 +27,9 @@ def build(tmp_path: Path, body: str) -> Path:
         ("claude-intro", "claude intro"),
     ):
         (f / f"{name}.md").write_text(text + "\n", encoding="utf-8")
+    p = tmp_path / "plugins"
+    p.mkdir(exist_ok=True)
+    (p / "kit.json").write_text('{"plugins": {"demo": {"source": "npm:demo"}}}', encoding="utf-8")
     return tmp_path
 
 
@@ -105,17 +108,24 @@ def test_substituting_to_a_missing_fragment_errors(tmp_path: Path) -> None:
 
 
 def test_a_default_an_agent_has_no_slice_for_is_ignored(tmp_path: Path) -> None:
-    """[all] applies where it applies. OpenCode has no instructions slice, so a
-    shared instruction default is simply not for it — not an error."""
-    root = build(tmp_path, '\n[all]\ninstructions = ["intro"]\n\n[opencode]\n\n[pi]\n')
+    """[all] applies where it applies. OpenCode has no plugins slice — a plugin
+    is on there because its file exists — so a shared plugins default is simply
+    not for it, and not an error.
+
+    This was `instructions` on OpenCode until that turned out to be a real slice
+    (`~/.config/opencode/AGENTS.md`). The behaviour is unchanged; only the
+    example had to be one that is still true.
+    """
+    root = build(tmp_path, '\n[all]\nplugins = ["kit"]\n\n[opencode]\n\n[pi]\n')
     written = docs(root)
-    assert any(p.endswith("AGENTS.md") for p in written), "pi still got it"
+    pi = next(t for p, t in written.items() if p.endswith("agent/settings.json"))
+    assert "npm:demo" in pi, "pi still got it"
     assert any(p.endswith("opencode.json") for p in written), "opencode still rendered"
 
 
 def test_a_key_the_agent_itself_names_is_still_typo_checked(tmp_path: Path) -> None:
     """The leniency is for defaults only — an agent naming a slice it has not
     got is a mistake worth reporting."""
-    root = build(tmp_path, '\n[opencode]\ninstructions = ["intro"]\n')
+    root = build(tmp_path, '\n[opencode]\nplugins = ["kit"]\n')
     with pytest.raises(LoadoutError, match="unknown slice"):
         render_global(root)

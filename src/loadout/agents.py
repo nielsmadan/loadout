@@ -104,6 +104,16 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
     },
     "opencode": {
         "skills": SliceOutput(destination="${XDG_CONFIG_HOME:-~/.config}/opencode/skills"),
+        # A document at a path, exactly like the other three — *not* the
+        # `instructions` key in opencode.json, which is a separate feature for
+        # including rule files someone else already wrote (globs and remote URLs
+        # among them). Upstream calls this one "global rules … applied across all
+        # opencode sessions".
+        #
+        # Until this existed OpenCode fell back to `~/.claude/CLAUDE.md`, which
+        # loadout also writes — so it was reading Claude's document, with Claude's
+        # fragments in it, and nothing looked broken.
+        "instructions": SliceOutput(destination="${XDG_CONFIG_HOME:-~/.config}/opencode/AGENTS.md"),
         "permissions": SliceOutput(
             renderer="opencode",
             destination="${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json",

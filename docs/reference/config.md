@@ -54,20 +54,29 @@ plugin/extension subscribes to, and Pi's is larger than Claude's.
 **Only Claude and OpenCode have a machine-wide managed tier.** Codex, Pi and Antigravity have
 none.
 
-## What loadout writes is narrower than this page, and the gaps are build order
+## What loadout writes is narrower than this page, and the preset is not a capability map
 
 `GLOBAL_PRESET` in `src/loadout/agents.py` is lopsided, and reading it as a capability map gets
-three answers wrong. Every gap below is **unbuilt, not absent** — the mechanism exists and is
-documented in the per-slice sections here:
+the answer wrong. It records what is **built**, and a slice missing from it may be unbuilt,
+impossible, or — as both entries in the table this section used to carry turned out to be —
+neither.
 
-| gap | mechanism | why it is unbuilt |
-|---|---|---|
-| `opencode.instructions` | `instructions` key in `opencode.json` | needs a shape loadout has not written: a *list of paths in another slice's document*, not a document at a path |
+Both are now closed, in opposite directions, and **both were wrong the same way**: a key whose
+name matched a slice was read as that slice's mechanism. Keep the shape in mind before adding a
+row here.
 
-Claude, Codex and Pi each take instructions as a document at a path; OpenCode takes a **list of
-paths inside a settings key**, so loadout would write the composed document somewhere and then
-contribute a key pointing at it. `ValueSpec` already contributes a key to a shared document, so
-the machinery exists and has simply not been aimed here.
+### `opencode.instructions` — retracted, and built
+
+The row said OpenCode takes instructions as a *list of paths inside a settings key*, needing a
+shape loadout had never written: a document written somewhere plus a key pointing at it. That
+describes a real OpenCode feature and not the one that mattered. Upstream's rules page keeps the
+two under separate headings — see [instructions](#instructions) for both quotes.
+
+The global rules document is `~/.config/opencode/AGENTS.md`, the same shape as the other three
+harnesses, and it landed as **one preset entry** on 2026-08-15. What the wrong reason cost was
+not effort: OpenCode's documented fallback is `~/.claude/CLAUDE.md`, which loadout also writes,
+so the missing slice presented as a harness reading a perfectly valid instruction document meant
+for a different one.
 
 ### `mcp` names two different things, and this page is half the reason
 
@@ -159,13 +168,25 @@ relationship to the `antigravity-cli/` one are unverified.
 |---|---|---|
 | Claude | `~/.claude/CLAUDE.md` | `CLAUDE.md`, `CLAUDE.local.md` |
 | Codex | `~/.codex/AGENTS.md` | `AGENTS.md` |
-| OpenCode | `instructions` key in `opencode.json` | `AGENTS.md`; also `CLAUDE.md`, `opencode.md` |
+| OpenCode | `~/.config/opencode/AGENTS.md` | `AGENTS.md`; also `CLAUDE.md`, `opencode.md` |
 | Pi | `~/.pi/agent/AGENTS.md` | `AGENTS.md` |
 | Antigravity | `~/.gemini/GEMINI.md` | `.agents/rules/` |
 
-OpenCode's `instructions` key is **confirmed** — the bundle carries the example
-`"instructions": ["AGENTS.md", "docs/style.md"]`, so it is a list of paths rather than a single
-file, and `AGENTS.md`, `CLAUDE.md` and `opencode.md` are all recognised filenames.
+**OpenCode has two mechanisms and they are not alternatives.** The table row is the global rules
+document — upstream: *"You can also have global rules in a `~/.config/opencode/AGENTS.md` file.
+This gets applied across all opencode sessions."* Separately, the `instructions` key in
+`opencode.json` takes a **list of paths**, confirmed by the bundled example
+`"instructions": ["AGENTS.md", "docs/style.md"]`, and upstream frames it as a way to *"reuse
+existing rules rather than having to duplicate them to AGENTS.md"* — globs and remote URLs
+included. loadout renders the first and leaves the second alone; pointing it at loadout's own
+output would restate the document it already writes.
+
+**The fallback matters, because loadout writes it.** Upstream's precedence is local files, then
+`~/.config/opencode/AGENTS.md`, then `~/.claude/CLAUDE.md` *"used if no
+`~/.config/opencode/AGENTS.md` exists"*. Until 2026-08-15 loadout wrote no OpenCode instruction
+document, so OpenCode read Claude's — Claude's fragment order and Claude-specific fragments — and
+nothing looked broken. Verified on this machine that day: no `~/.config/opencode/AGENTS.md`
+existed, and `~/.claude/CLAUDE.md` began `# Global CLAUDE.md`.
 
 The three `AGENTS.md`-family documents are typically byte-identical, which is why extraction can
 collapse them into one fragment by exact comparison rather than judgement.
