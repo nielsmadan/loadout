@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 import re
+import shlex
 import tomllib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -301,6 +302,19 @@ SKIPPED_MARKER = "# Skipped —"
 CODEX_CATEGORY = {"allow": "allow", "forbidden": "deny", "prompt": "ask"}
 
 
+def _join_tokens(tokens: list[str]) -> str:
+    """Rejoin a prefix_rule's tokens, re-quoting only where a plain space would not survive.
+
+    `render_codex_project` tokenises with `shlex.split`, so a token may itself
+    contain whitespace — `echo "a b"` gives `["echo", "a b"]`. Joining that on a
+    space and rendering again splits the argument in two, producing a different
+    document. Quoting *every* token would close the round trip too, but
+    `shlex.quote` also escapes globs, so `delta run --tag=*` would come back
+    respelled and stop matching the source it was extracted from.
+    """
+    return " ".join(shlex.quote(t) if any(c.isspace() for c in t) else t for t in tokens)
+
+
 def extract_codex(document: Any) -> Extraction:
     buckets: dict[str, list[str]] = {category: [] for category in CATEGORIES}
     notes: list[Note] = []
@@ -322,8 +336,7 @@ def extract_codex(document: Any) -> Extraction:
         if category is None:
             notes.append(Note("unrecognised", f"codex: decision {match['d']!r}"))
             continue
-        tokens = json.loads(f"[{match['tokens']}]")
-        buckets[category].append(" ".join(tokens))
+        buckets[category].append(_join_tokens(json.loads(f"[{match['tokens']}]")))
 
     return Extraction(
         Rules(

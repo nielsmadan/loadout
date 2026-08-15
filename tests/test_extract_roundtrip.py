@@ -27,7 +27,7 @@ from typing import Any
 import pytest
 
 from loadout.extract import EXTRACTORS, extract
-from loadout.permissions.renderers import RENDERERS, JsonSpec, TextSpec
+from loadout.permissions.renderers import RENDERERS, JsonSpec, TextSpec, render_codex_project
 from loadout.permissions.rules import Rules, is_glob, mcp_parts
 
 CATEGORIES = ("allow", "ask", "deny")
@@ -343,6 +343,30 @@ def test_no_renderer_lacks_an_inverse_without_being_named() -> None:
 
 def test_every_inverted_renderer_has_a_declared_projection() -> None:
     assert sorted(PROJECTIONS) == INVERTED
+
+
+def test_a_token_holding_a_space_survives_the_codex_project_round_trip() -> None:
+    """Joining tokens on a space is not the inverse of `shlex.split`.
+
+    `echo "a b"` renders to the tokens `["echo", "a b"]`. Rejoining those with a
+    plain space and rendering again splits the quoted argument into two, giving a
+    different document from an extractor that reported no loss — a silent P2
+    violation the enumerated space never reached, because no pool entry contains
+    a quoted space.
+
+    A token holding whitespace is re-quoted so the split round-trips. The source
+    spelling normalises (`"a b"` comes back as `'a b'`), which is a P1
+    normalisation, not a document loss.
+
+    `render_codex` is unaffected: it tokenises with `str.split`, so a token can
+    never contain whitespace and the quoting branch cannot fire.
+    """
+    document = render_codex_project(Rules(allow=('echo "a b"',)))
+    extraction = extract("codex-project", document)
+
+    assert extraction.notes == ()
+    assert extraction.rules.allow == ("echo 'a b'",)
+    assert render_codex_project(extraction.rules) == document
 
 
 def test_the_base_keeps_keys_other_slices_own() -> None:

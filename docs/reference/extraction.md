@@ -30,6 +30,12 @@ history confirmed that directly.
 An extractor that knows it lost something says so in `Extraction.notes`, and the document
 property is claimed only where `notes` is empty. Silence is a claim of exactness.
 
+That makes `notes` mean exactly one thing: **`notes == ()` if and only if the round trip closes
+byte-identically.** A note exists *because* something did not survive, and nothing else belongs
+there — an informational finding recorded as a note would silently buy an exemption from the
+document property for a document that round-trips perfectly. Findings a user should act on but
+which do not break the round trip belong at render time, where they can still be acted on.
+
 ## What each renderer loses
 
 | renderer | carries | loses |
@@ -37,7 +43,7 @@ property is claimed only where `notes` is empty. Silence is a claim of exactness
 | `claude`, `claude-project` | shell, MCP, `claude.extra` | nothing; `opencode.extra` is not its to carry |
 | `claude-mcp` | MCP | — |
 | `codex` | non-glob shell | **glob entries.** `render_codex` diverts them to a trailing comment block with no decision attached, so the file does not record whether `gamma-*` was allowed, asked or denied. Reported, never guessed. |
-| `codex-project` | shell | quoting. `render_codex_project` runs the entry through `shlex.split`; nothing in the output records that a quote was there. |
+| `codex-project` | shell | quote *style*. `render_codex_project` tokenises with `shlex.split`, and a token holding whitespace is re-quoted on the way back, so `echo "a b"` returns as `echo 'a b'` — the document round-trips, the source spelling normalises. |
 | `codex-mcp` | MCP | **source order.** `render_codex_mcp` groups by server and sorts servers and tools, and resolves an entry listed twice to its last category. The emitted order is canonical, so re-rendering is stable. |
 | `opencode` | shell, MCP, `opencode.extra` | see *order loss* below |
 | `pi`, `pi-project` | shell, MCP | see *order loss* below |

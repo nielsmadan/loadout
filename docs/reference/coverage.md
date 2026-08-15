@@ -114,6 +114,7 @@ Every row is pinned by `tests/test_extract_roundtrip.py`, `tests/test_extract_me
 | `x-every-renderer` | every inverted renderer has a capability and a projection, and round-trips an empty source | `test_every_inverted_renderer_round_trips_an_empty_source`, `test_every_inverted_renderer_declares_a_capability`, `test_every_inverted_renderer_has_a_declared_projection` |
 | `x-named-gap` | a renderer with no inverse must be named in `NOT_INVERTED`; `claude-hooks` and `codex-hooks` are, a third would fail | `test_no_renderer_lacks_an_inverse_without_being_named` |
 | `x-base-residual` | `base` keeps keys other slices own, because it is the render-time residual and not a settings fragment | `test_the_base_keeps_keys_other_slices_own` |
+| `x-codex-quoting` | a `shlex.split` token holding whitespace is re-quoted, so `echo "a b"` round-trips instead of splitting into three tokens | `test_a_token_holding_a_space_survives_the_codex_project_round_trip` |
 | `x-pair-collapse` | `foo` and `foo *` collapse back to one entry — **only the rules property catches a miss**, since not collapsing renders identical bytes | `test_extraction_recovers_every_rule_the_harness_can_carry` |
 | `x-seed-dropped` | the `{"*": "ask"}` catch-all is structure, not a source rule | `test_extraction_recovers_every_rule_the_harness_can_carry` |
 | `x-codex-globs` | Codex's skipped-glob comment block carries no decision, so it is reported | `test_the_shipped_codex_rules_reports_the_globs_it_cannot_categorise` |
