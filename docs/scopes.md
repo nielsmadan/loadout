@@ -123,9 +123,12 @@ Consequences:
 
 ## Still open
 
-- Project-scope *instructions* — the same two-tier source/personal machinery as permissions,
-  covering `CLAUDE.md`/`AGENTS.md` rather than permission rules. Deliberately built after
-  permissions so the oracle can distinguish a port bug from a new-feature bug; not started.
+- Project-scope *instructions* and *skills*. Deliberately built after permissions so the oracle
+  could distinguish a port bug from a new-feature bug — that reason has now expired, since the
+  port is done and proven. What blocks them is structural rather than scheduling: project scope
+  carries `ProjectTarget(path, renderer)` while global carries `SliceOutput(renderer,
+  destination, source_slice, owned_key)`, so project scope has no notion of a slice to grow.
+  Unifying the two is milestone 6, and these fall out of it rather than bolting on.
 - Antigravity, if it matures. `agy` was dropped as a target — its generated permissions file is
   ignored in headless mode, it has no global skills mechanism and no config-directory variable,
   and its plugin enablement was never established. `docs/reference/antigravity.md` keeps the
@@ -142,7 +145,15 @@ Consequences:
   [0007](decisions/0007-loadout-owns-all-agent-configuration.md). See
   [reference/templates.md](reference/templates.md) and
   [0014](decisions/0014-a-vendored-template-is-source-not-output.md).
-- Skills and MCP server definitions, today owned by separate generators.
+- MCP **server definitions**, still owned by a separate generator (`~/ac/mcp/servers.toml` and
+  `mcp/sync.py`). Not to be confused with the `mcp` slice, which renders tool-approval *policy*
+  from `permissions.toml` and is complete on all four harnesses — the two share a word and
+  nothing else, which has already produced one wrong gap analysis. See
+  [reference/config.md](reference/config.md). Whether definitions become a loadout slice at all
+  is open: it needs a new input, four renderers, and Claude's is CLI-mediated, which collides
+  with [0004](decisions/0004-loadout-is-render-only.md).
+- Skills **shipped** on 2026-08-15 — `skills/sync.py` is deleted and loadout renders all 50 to
+  every harness, so this bullet no longer names it.
 - Build-time ceilings (`neverallow`) for the wrapper-command bypass described in
   [0005](decisions/0005-a-deny-cannot-carry-exceptions.md). The unresolved part is that a
   ceiling has to reason about command *shape* — "does this command take another command as
