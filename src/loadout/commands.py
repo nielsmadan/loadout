@@ -15,9 +15,24 @@ from .emit import Copied, check_all, declared_profiles, describe_file, render_al
 from .errors import LoadoutError
 from .machine import machine_config_path
 from .manifest import MANIFEST_NAME, InstructionTarget, load_manifest, manifest_path
-from .project import PROJECT_CONFIG_NAME, PROJECT_DIR, project_config_path
+from .project import (
+    PROJECT_CONFIG_NAME,
+    PROJECT_DIR,
+    load_project_config,
+    project_config_path,
+)
 from .resolve import resolve_fragment
 from .scaffold import add_harness, init_global, init_project
+from .templates import (
+    VENDORED,
+    copy_tree,
+    declare,
+    record_hash,
+    resolve_template,
+    template_files,
+    tree_hash,
+    vendored_path,
+)
 
 _DIFF_LIMIT = 40
 
@@ -222,6 +237,73 @@ def cmd_check(root: Path, profile: str = "default") -> int:
         file=sys.stderr,
     )
     return 1
+
+
+def _vendored_state(root: Path, name: str, recorded: str | None) -> str:
+    """How a vendored copy stands against the hash recorded when it was vendored."""
+    if recorded is None:
+        return "vendored, no recorded hash"
+    if tree_hash(vendored_path(root, name)) == recorded:
+        return "vendored, clean"
+    return "vendored, modified"
+
+
+def cmd_template_list(root: Path) -> int:
+    config = load_project_config(project_config_path(root))
+    if not config.templates:
+        print(
+            f"no templates declared — add one with `loadout template add <name>`, "
+            f"or list it in {PROJECT_DIR}/{PROJECT_CONFIG_NAME}"
+        )
+        return 0
+    for name in config.templates:
+        try:
+            found = resolve_template(name, root)
+        except LoadoutError as error:
+            # Reported rather than raised: `list` is the command you reach for
+            # *because* something is wrong, so one broken name must not hide the rest.
+            print(f"{name}: unresolved")
+            print(f"    {error}")
+            continue
+        if found.source == VENDORED:
+            print(f"{name}: {_vendored_state(root, name, config.vendored_hash(name))}")
+        else:
+            print(f"{name}: declared, from source {found.source}")
+        print(f"    {_display(found.path, root)}")
+    return 0
+
+
+def cmd_template_add(root: Path, name: str) -> int:
+    """Declare a template without copying it in — the other first-class mode.
+
+    Resolved before it is written so a name that cannot be found never reaches the
+    committed config, where it would fail every later render.
+    """
+    found = resolve_template(name, root)
+    if declare(root, name):
+        print(f"declared {name} in {PROJECT_DIR}/{PROJECT_CONFIG_NAME}")
+    else:
+        print(f"{name} is already declared")
+    origin = "the vendored copy" if found.source == VENDORED else f"source {found.source}"
+    print(f"resolves from {origin}: {_display(found.path, root)}")
+    return 0
+
+
+def cmd_template_vendor(root: Path, name: str) -> int:
+    local = vendored_path(root, name)
+    if local.is_dir():
+        raise LoadoutError(
+            f"{name} is already vendored at {_display(local, root)}; run "
+            f"`loadout template sync {name}` to update it"
+        )
+    found = resolve_template(name, root)
+    copy_tree(found.path, local)
+    declare(root, name)
+    record_hash(root, name, tree_hash(local))
+    print(f"vendored {name} from source {found.source} into {_display(local, root)}")
+    for relative in template_files(local):
+        print(f"    {relative}")
+    return 0
 
 
 def cmd_explain(root: Path, name: str) -> int:

@@ -5,7 +5,17 @@ import sys
 import traceback
 from pathlib import Path
 
-from .commands import cmd_check, cmd_explain, cmd_harness_add, cmd_init, cmd_init_global, cmd_sync
+from .commands import (
+    cmd_check,
+    cmd_explain,
+    cmd_harness_add,
+    cmd_init,
+    cmd_init_global,
+    cmd_sync,
+    cmd_template_add,
+    cmd_template_list,
+    cmd_template_vendor,
+)
 from .errors import LoadoutError
 from .machine import load_machine_config, machine_config_path
 
@@ -90,6 +100,18 @@ def build_parser() -> argparse.ArgumentParser:
     harness_add.add_argument("name", help="harness to enable")
     add_root(harness_add)
 
+    template = subparsers.add_parser("template", help="manage this project's templates")
+    template_subparsers = template.add_subparsers(dest="template_command")
+    for sub_name, sub_help in (
+        ("list", "show each declared template and how it resolves"),
+        ("add", "declare a template, leaving it to resolve from a source"),
+        ("vendor", "copy a template into this project and record its content hash"),
+    ):
+        template_sub = template_subparsers.add_parser(sub_name, help=sub_help)
+        if sub_name != "list":
+            template_sub.add_argument("name", help="template name")
+        add_root(template_sub)
+
     return parser
 
 
@@ -106,15 +128,30 @@ def _resolve_root_and_profile(args: argparse.Namespace) -> tuple[Path, str]:
     return args.root.resolve(), args.profile or "default"
 
 
+def _dispatch_template(args: argparse.Namespace) -> int:
+    root = args.root.resolve()
+    if args.template_command == "list":
+        return cmd_template_list(root)
+    if args.template_command == "add":
+        return cmd_template_add(root, args.name)
+    return cmd_template_vendor(root, args.name)
+
+
+def _dispatch_init(args: argparse.Namespace) -> int:
+    if args.use_global:
+        return cmd_init_global(args.source, force=args.force)
+    return cmd_init(args.root.resolve(), tuple(args.harnesses))
+
+
 def _dispatch(args: argparse.Namespace) -> int:
     if args.command == "explain":
         return cmd_explain(args.root.resolve(), args.name)
     if args.command == "init":
-        if args.use_global:
-            return cmd_init_global(args.source, force=args.force)
-        return cmd_init(args.root.resolve(), tuple(args.harnesses))
+        return _dispatch_init(args)
     if args.command == "harness":
         return cmd_harness_add(args.root.resolve(), args.name)
+    if args.command == "template":
+        return _dispatch_template(args)
     root, profile = _resolve_root_and_profile(args)
     if args.command == "sync":
         return cmd_sync(root, profile=profile, force=args.force)
@@ -128,6 +165,9 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_usage(file=sys.stderr)
         return 2
     if args.command == "harness" and args.harness_command != "add":
+        parser.print_usage(file=sys.stderr)
+        return 2
+    if args.command == "template" and args.template_command is None:
         parser.print_usage(file=sys.stderr)
         return 2
     if args.command == "init":

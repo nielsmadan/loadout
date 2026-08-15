@@ -13,12 +13,14 @@ it answers the one question `sync` has to ask before it overwrites anything.
 from __future__ import annotations
 
 import hashlib
+import re
+import shutil
 from pathlib import Path
 
 from .errors import LoadoutError
 from .machine import load_machine_config, machine_config_path
 from .manifest import load_manifest, manifest_path
-from .project import PROJECT_DIR
+from .project import PROJECT_DIR, load_project_config, project_config_path
 from .resolve import ResolvedItem, Slice, resolve_item
 from .skills import EXCLUDED_DIRECTORIES, EXCLUDED_NAMES, EXCLUDED_SUFFIXES
 from .sources import Source
@@ -82,6 +84,82 @@ def resolve_template(name: str, root: Path, config_path: Path | None = None) -> 
         searched = ", ".join(str(s.path / TEMPLATES_SUBDIR / name) for s in sources)
         where = searched or "(no source offers templates)"
         raise LoadoutError(f"{error} Searched {local} and {where}.") from error
+
+
+_TEMPLATES_KEY = re.compile(r"^templates\s*=\s*\[[^\]]*\]\s*$", re.MULTILINE)
+
+
+def declare(root: Path, name: str) -> bool:
+    """Add a name to `templates` in the project config. False if already there.
+
+    Rewritten line-wise rather than re-serialised: the file is hand-maintained
+    source, and round-tripping it through a writer would reformat the comments and
+    key order its author chose.
+    """
+    path = project_config_path(root)
+    config = load_project_config(path)
+    if name in config.templates:
+        return False
+    rendered = "templates = [" + ", ".join(f'"{n}"' for n in [*config.templates, name]) + "]"
+    text = path.read_text(encoding="utf-8")
+    if _TEMPLATES_KEY.search(text):
+        text = _TEMPLATES_KEY.sub(rendered, text, count=1)
+    else:
+        # Ahead of the first table header, so it stays a top-level key rather than
+        # landing inside whichever table happens to come last.
+        head, marker, tail = text.partition("\n[")
+        text = head.rstrip("\n") + "\n" + rendered + "\n" + marker + tail
+    path.write_text(text, encoding="utf-8")
+    return True
+
+
+def record_hash(root: Path, name: str, digest: str) -> None:
+    """Record the content hash of a vendored copy, replacing any earlier one."""
+    path = project_config_path(root)
+    block = re.compile(rf"^\[template\.{re.escape(name)}\]\n(?:(?!\[).*\n?)*", re.MULTILINE)
+    text = block.sub("", path.read_text(encoding="utf-8"))
+    path.write_text(
+        text.rstrip("\n") + f'\n\n[template.{name}]\nvendored = "{digest}"\n', encoding="utf-8"
+    )
+
+
+def copy_tree(source: Path, destination: Path) -> None:
+    """Replace `destination` with `source`, byte for byte, mode included.
+
+    Replace rather than overlay: a file the upstream dropped has to disappear from
+    the copy too, or the recorded hash would describe a tree that is neither the
+    upstream nor anything anyone wrote.
+
+    Mode is copied for the reason `Copied` names a source path rather than decoded
+    text — a skill's `scripts/` files are executable, and a template carries skills.
+    """
+    if destination.exists():
+        shutil.rmtree(destination)
+    destination.mkdir(parents=True)
+    for relative in template_files(source):
+        target = destination / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source / relative, target)
+        shutil.copymode(source / relative, target)
+
+
+def template_divergence(root: Path) -> list[str]:
+    """Vendored templates whose content no longer matches the recorded hash.
+
+    Reported rather than failed: a vendored copy is source, and a user editing
+    their own source is not drift. See ADR 0014.
+    """
+    path = project_config_path(root)
+    if not path.is_file():
+        return []
+    config = load_project_config(path)
+    diverged: list[str] = []
+    for name in config.templates:
+        recorded = config.vendored_hash(name)
+        local = vendored_path(root, name)
+        if recorded is not None and local.is_dir() and tree_hash(local) != recorded:
+            diverged.append(name)
+    return diverged
 
 
 def _excluded(relative: Path) -> bool:
