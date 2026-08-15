@@ -49,9 +49,15 @@ before reassigning it so the key **moves** to the end of the map; `render_openco
 place so the key **stays put**. Harmonising them looks like a tidy-up and silently breaks
 output. See [0006](docs/decisions/0006-faithful-ports-reproduce-upstream-quirks.md).
 
-Tests that assert values often fail to pin *order*. Before trusting a test named after an
-ordering property, check it would actually fail if the ordering broke — two have been found
-that would not.
+**A precedence test must prove the loser was there and lost.** Three have been found that did
+not: two ordering tests, and one named `test_a_project_deny_beats_a_template_allow` that passed
+before template merging existed at all — an unmerged allow and an absent allow look identical to
+an assertion about the winner.
+
+So the check is not "would this fail if the ordering broke" — the third case survives that, since
+nothing broke, the input never arrived. The check is: **assert something of the loser's that
+survives.** A second rule that must still be present, a count, a position. If the only assertion
+is about the winner, the test passes against a codebase where the loser is never constructed.
 
 ## This machine is not the world
 
@@ -86,13 +92,36 @@ measures the cost of a missing mechanism, not the absence of need.
 **Claude is the most misleading default** — best documented, easiest to inspect, and the lens
 everything else gets read through.
 
+**A key whose name matches a slice is not that slice's mechanism.** Twice in one day, both from
+reading `docs/reference/config.md` beside `GLOBAL_PRESET` as though one word meant the same thing
+in each. `mcp` in the reference means *server definitions*; the `mcp` slice renders *tool
+approval policy* — so two destinations were reported missing that were already written. OpenCode's
+`instructions` key means *include files someone else wrote*; its global rules document is
+`~/.config/opencode/AGENTS.md` — so a one-line preset entry was recorded as needing machinery
+loadout did not have.
+
+Neither document was wrong alone, which is what made it invisible: this is not inferring absence
+from this machine, and none of the rules above would have caught it. **Before pairing a capability
+document with the code's vocabulary, confirm the shared word denotes the same thing in both** —
+and prefer the upstream page's own headings, which kept OpenCode's two mechanisms apart all along.
+
+The second one cost more than effort. OpenCode's documented fallback is `~/.claude/CLAUDE.md`,
+which loadout also writes, so a missing slice presented as a harness silently reading a valid
+instruction document meant for a different harness. Nothing errored and nothing looked empty.
+
 ### What has actually caught these
 
-Four wrong conclusions so far: Pi and Antigravity "have no skills" (none *installed*); OpenCode
+Six wrong conclusions so far: Pi and Antigravity "have no skills" (none *installed*); OpenCode
 and Pi "have no hooks" (no hooks *file* — both have documented event APIs, Pi's larger than
 Claude's); "four of five harnesses have no personal-instructions tier" (grepped Claude's
 `*.local.md` naming); Claude "has 16 hook events" then "31, not 30" (a seeded alternation, then a
-bound).
+bound); "OpenCode and Pi have no mcp destination" (they render policy inside the permissions
+document); "OpenCode instructions need a two-output shape" (one preset entry, and the harness had
+been reading Claude's document meanwhile).
+
+The last two are not the same failure as the first four. Those inferred absence from this
+machine; these read one word in two vocabularies. A rule aimed only at the filesystem would not
+have caught them.
 
 **Every one was caught by a second party rerunning the query — never by the author's own review.**
 The rules above were written after each failure, by whoever failed. They explain the errors; they
