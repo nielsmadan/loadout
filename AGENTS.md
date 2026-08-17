@@ -139,6 +139,20 @@ Alone, the substitute is a check that does not depend on your judgement: **run t
 that should agree.** The bound sweep is the worked example — two runs, and the disagreement is
 the finding.
 
+**That rule assumes the second run happened**, and it can collapse into the first without saying
+so — then the two agree because only one of them ran. A mutation whose edit never applied, a test
+that **skips** rather than fails (`test_adapters_execute.py` skips without node, so a green suite
+where those three skipped reads like one where they passed), a grep that matches nothing, a
+`NO_RELEVANT_CONTENT` from a page that never loaded: none is distinguishable from success.
+
+So: **a failure is self-proving** — it cannot happen unless the check ran — while a pass, a skip
+and an empty match prove nothing until you confirm the check fired. "It still passed, so the test
+is vacuous" is never safe; "it failed, so the test is live" always is. Grep for your own mutation
+marker, read the skip count and not just the pass count, and check a pattern matches something you
+know is there before trusting that it matches nothing. Neither party had this rule; the reviewing
+session hit it re-running the author's mutation claim, and caught it by grepping for the marker
+rather than trusting the pass.
+
 **In `docs/reference/`, a negative claim carries its source inline** ("verified negative: no
 `~/.agents/` in the 1.1.11 binary"). A bare "none" is not reviewable, and this rule fails
 silently when left to memory.
