@@ -392,6 +392,32 @@ def _known_marketplaces(agent: str, document: dict[str, Any]) -> frozenset[str]:
     return frozenset(registry) if isinstance(registry, dict) else frozenset()
 
 
+def _global_skill_race(manifest: Manifest, environ: Mapping[str, str]) -> tuple[Notice, ...]:
+    """The same collision as `project_notices`, one scope up.
+
+    Global scope reaches it sooner: a project has to declare `opencode` *and*
+    carry skills, while `~/.claude/skills` and `~/.config/opencode/skills` are
+    both written the moment any skill exists and any manifest names OpenCode.
+    Silent until then, which is why the condition is the manifest rather than the
+    slice — a source with no skills has no colliding name to lose.
+    """
+    if not any(t.agent == "opencode" for t in manifest.skills):
+        return ()
+    if not skill_trees(manifest) or not opencode_skills_race(environ):
+        return ()
+    return (
+        Notice(
+            agent="opencode",
+            slice="skills",
+            message=(
+                f"none of {' or '.join(OPENCODE_SKILL_FLAGS)} is set, so OpenCode also "
+                f"scans ~/.claude/skills and picks between the two copies of each skill at "
+                f"random — export one of them; see docs/reference/opencode.md"
+            ),
+        ),
+    )
+
+
 def collect_notices(root: Path, profile: str = "default") -> tuple[Notice, ...]:
     """Advisory findings about a source that rendered while doing less than it says.
 
@@ -404,6 +430,7 @@ def collect_notices(root: Path, profile: str = "default") -> tuple[Notice, ...]:
     if not manifest_path(root).is_file():
         return tuple(found)
     manifest = load_profile(root, profile)
+    found.extend(_global_skill_race(manifest, os.environ))
     for target in manifest.permissions:
         # A legacy `[permissions.*]` target names no agent and carries no slice
         # content, so there is nothing to report about it.

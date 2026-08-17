@@ -9,12 +9,14 @@ silence or be mistaken for real drift.
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
 
 import loadout
 from loadout.emit import collect_notices
+from loadout.notices import OPENCODE_SKILL_FLAGS
 
 
 def _root_with_hooks(tmp_path: Path, document: dict[str, object]) -> Path:
@@ -132,3 +134,52 @@ def test_a_project_without_opencode_is_not_told_about_its_flag(
     assert loadout.main(["check", "--root", str(project)]) == 0
 
     assert "opencode.skills" not in capsys.readouterr().out
+
+
+def _root_with_skills(tmp_path: Path) -> Path:
+    """A global source naming opencode and carrying one skill."""
+    root = tmp_path / "src"
+    (root / "skills" / "doc").mkdir(parents=True)
+    (root / "skills" / "doc" / "SKILL.md").write_text(
+        "---\nname: doc\ndescription: d\n---\n\n# Doc\n", encoding="utf-8"
+    )
+    (root / "permissions.toml").write_text("[shell]\nallow = ['ls']\n", encoding="utf-8")
+    (root / "loadout.toml").write_text(
+        '[[source]]\nname = "test"\npath = "."\n\n[opencode]\n', encoding="utf-8"
+    )
+    return root
+
+
+def test_the_global_skill_race_is_reported_when_no_flag_is_set(tmp_path: Path, monkeypatch) -> None:
+    """~/.claude/skills and ~/.config/opencode/skills are both written the moment
+    any skill exists and a manifest names OpenCode — earlier than project scope,
+    which needs the repo to declare opencode *and* carry skills."""
+    for flag in OPENCODE_SKILL_FLAGS:
+        monkeypatch.delenv(flag, raising=False)
+
+    found = collect_notices(_root_with_skills(tmp_path))
+
+    assert [n.slice for n in found] == ["skills"]
+    assert "picks between the two copies" in found[0].message
+
+
+def test_either_flag_silences_the_global_race(tmp_path: Path, monkeypatch) -> None:
+    """`disableClaudeCodeSkills` is `broad || direct`, so a check reading one name
+    reports a collision at whoever set the other."""
+    root = _root_with_skills(tmp_path)
+    for flag in OPENCODE_SKILL_FLAGS:
+        for other in OPENCODE_SKILL_FLAGS:
+            monkeypatch.delenv(other, raising=False)
+        monkeypatch.setenv(flag, "1")
+        assert collect_notices(root) == (), flag
+
+
+def test_a_source_with_no_skills_has_no_collision_to_report(tmp_path: Path, monkeypatch) -> None:
+    """The notice is about two copies of one name. With no skills there is no
+    name, so silence here is correct rather than a missed report."""
+    for flag in OPENCODE_SKILL_FLAGS:
+        monkeypatch.delenv(flag, raising=False)
+    root = _root_with_skills(tmp_path)
+    shutil.rmtree(root / "skills")
+
+    assert collect_notices(root) == ()
