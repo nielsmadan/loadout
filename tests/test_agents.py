@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from pathlib import PurePosixPath
+
 import pytest
 
 from loadout.agents import GLOBAL_PRESET, agent_slices, known_agents
 from loadout.manifest import resolve_destination
 from loadout.permissions.renderers import RENDERERS
+from loadout.project import PROJECT_PRESET
 
 RELOCATION_VARIABLE = {
     "claude": "CLAUDE_CONFIG_DIR",
@@ -123,3 +126,31 @@ def test_a_named_source_slice_is_one_the_agent_could_declare(agent: str) -> None
     for name, output in agent_slices(agent).items():
         if output.source_slice is not None:
             assert output.source_slice in ("settings", *agent_slices(agent)), f"{agent}.{name}"
+
+
+@pytest.mark.parametrize("agent", sorted(PROJECT_PRESET))
+def test_every_renderer_named_by_the_project_preset_exists(agent: str) -> None:
+    for name, output in PROJECT_PRESET[agent].items():
+        if output.renderer is not None:
+            assert output.renderer in RENDERERS, f"{agent}.{name}"
+
+
+@pytest.mark.parametrize("agent", sorted(PROJECT_PRESET))
+def test_a_project_slice_is_written_relative_to_the_repo(agent: str) -> None:
+    """`output` and `destination` are two kinds of path, and project scope may only
+    use the first. A destination is a machine path template (ADR 0011); one here
+    would put an absolute path from this machine into a committed project's
+    generated tree, which is the same reason project scope carries no [[source]]."""
+    for name, output in PROJECT_PRESET[agent].items():
+        assert output.output is not None, f"{agent}.{name}"
+        assert output.destination is None, f"{agent}.{name}"
+        path = PurePosixPath(output.output)
+        assert not path.is_absolute(), f"{agent}.{name}"
+        assert ".." not in path.parts, f"{agent}.{name}"
+        assert "${" not in output.output, f"{agent}.{name}"
+
+
+def test_the_two_presets_agree_on_which_harnesses_exist() -> None:
+    """One type, two tables — but a harness in one and not the other would render
+    at one scope and silently generate nothing at the other."""
+    assert set(PROJECT_PRESET) == set(GLOBAL_PRESET)

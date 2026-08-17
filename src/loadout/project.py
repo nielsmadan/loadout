@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import tomllib
+from collections.abc import Iterable
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
+from .agents import SliceOutput
 from .errors import LoadoutError
 
 PROJECT_DIR = "loadout"
@@ -121,33 +123,53 @@ def _parse_provenance(raw: object, path: Path) -> tuple[tuple[str, str], ...]:
     return tuple(provenance)
 
 
-@dataclass(frozen=True)
-class ProjectTarget:
-    path: PurePosixPath
-    renderer: str
-    preserve_foreign: bool = False
-
-
-PRESET: dict[str, tuple[ProjectTarget, ...]] = {
-    "claude": (
-        ProjectTarget(
-            PurePosixPath(".claude/settings.json"), "claude-project", preserve_foreign=True
+# The project-scope twin of GLOBAL_PRESET: same type, separate table. Separate
+# because a destination here is a path inside the repo, and project scope must
+# never name a machine path — a path in a committed file is wrong for everyone
+# who is not its author, which is the same reason project scope carries no
+# [[source]] list (see templates.py:declared_sources). So every entry sets
+# `output` and none sets `destination`; `test_project_preset` pins that.
+#
+# Three renderers are project-specific and must stay that way: they differ from
+# their global namesakes only in emitted key order (PROJECT_CATEGORIES), which
+# reads as duplication and is not — see ADR 0006 and renderers.py.
+PROJECT_PRESET: dict[str, dict[str, SliceOutput]] = {
+    "claude": {
+        "permissions": SliceOutput(
+            renderer="claude-project",
+            output=".claude/settings.json",
+            preserve_foreign=True,
         ),
-        ProjectTarget(PurePosixPath(".claude/mcp-permissions.json"), "claude-mcp"),
-    ),
-    "codex": (ProjectTarget(PurePosixPath(".codex/rules/permissions.rules"), "codex-project"),),
-    "opencode": (ProjectTarget(PurePosixPath("opencode.json"), "opencode", preserve_foreign=True),),
-    "pi": (
-        ProjectTarget(
-            PurePosixPath(".pi/extensions/pi-permission-system/config.json"),
-            "pi-project",
+        "mcp": SliceOutput(renderer="claude-mcp", output=".claude/mcp-permissions.json"),
+    },
+    "codex": {
+        "permissions": SliceOutput(
+            renderer="codex-project", output=".codex/rules/permissions.rules"
         ),
-    ),
+    },
+    "opencode": {
+        "permissions": SliceOutput(
+            renderer="opencode", output="opencode.json", preserve_foreign=True
+        ),
+    },
+    "pi": {
+        "permissions": SliceOutput(
+            renderer="pi-project",
+            output=".pi/extensions/pi-permission-system/config.json",
+        ),
+    },
 }
 
 
-def project_targets(config: ProjectConfig) -> tuple[ProjectTarget, ...]:
-    targets: list[ProjectTarget] = []
-    for harness in config.harnesses:
-        targets.extend(PRESET[harness])
-    return tuple(targets)
+def project_slices(harnesses: Iterable[str]) -> tuple[tuple[str, str, SliceOutput], ...]:
+    """Every (agent, slice, output) these harnesses generate, in preset order."""
+    return tuple(
+        (harness, name, spec)
+        for harness in harnesses
+        for name, spec in PROJECT_PRESET[harness].items()
+    )
+
+
+def project_outputs(harnesses: Iterable[str]) -> tuple[str, ...]:
+    """Every in-repo path these harnesses generate — what `.gitignore` needs."""
+    return tuple(spec.output for _, _, spec in project_slices(harnesses) if spec.output is not None)

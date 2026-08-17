@@ -7,11 +7,10 @@ from .errors import LoadoutError
 from .manifest import MANIFEST_NAME
 from .project import (
     KNOWN_HARNESSES,
-    PRESET,
     ProjectConfig,
     load_project_config,
     project_config_path,
-    project_targets,
+    project_outputs,
 )
 
 INSTRUCTION_FILES = ("CLAUDE.md", "AGENTS.md", "GEMINI.md")
@@ -114,7 +113,7 @@ def init_project(
             )
 
     entries = ["loadout/permissions.local.toml"]
-    entries += [str(t.path) for t in project_targets(config)]
+    entries += project_outputs(config.harnesses)
     if _append_gitignore(root, entries):
         actions.append(f"added {len(entries)} entries to .gitignore")
 
@@ -241,7 +240,7 @@ def add_harness(root: Path, harness: str) -> list[str]:
     config_path.write_text(f"harnesses = [{quoted}]\n", encoding="utf-8")
 
     actions = [f"enabled {harness} in loadout/config.toml"]
-    entries = [str(t.path) for t in PRESET[harness]]
+    entries = list(project_outputs([harness]))
     if entries and _append_gitignore(root, entries):
         actions.append(f"added {len(entries)} entries to .gitignore")
     actions.append("run `loadout sync` to generate its files")

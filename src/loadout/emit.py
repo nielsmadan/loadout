@@ -34,7 +34,7 @@ from .project import (
     PROJECT_DIR,
     load_project_config,
     project_config_path,
-    project_targets,
+    project_slices,
 )
 from .resolve import SETTINGS, json_slice, resolve_item
 from .skills import SKILL_DOCUMENT, Skill, discover_skills, render_skill
@@ -557,27 +557,20 @@ def render_project(root: Path) -> dict[Path, Output]:
     rules = merge_rules(*tiers)
 
     outputs: dict[Path, Output] = {}
-    for target in project_targets(config):
-        label = f"project target {target.path}"
-        spec = _resolve_renderer(target.renderer, label)
-        if isinstance(spec, ValueSpec):
-            raise LoadoutError(
-                f"{label}: a value renderer contributes one key of a composed document, "
-                f"and project scope renders one target per file"
-            )
-        if isinstance(spec, DocumentTextSpec):
-            raise LoadoutError(
-                f"{label}: it renders from a source slice, and project scope has no "
-                f"slices — it renders permission rules"
-            )
-        if isinstance(spec, TextSpec):
-            outputs[root / str(target.path)] = spec.fn(rules)
-        else:
-            base: dict[str, Any] = {}
-            if target.preserve_foreign:
-                base = _load_existing(root / str(target.path))
-            document = spec.fn(rules, base)
-            outputs[root / str(target.path)] = _serialize_json(document, spec.ensure_ascii)
+    for agent, slice_name, spec in project_slices(config.harnesses):
+        if spec.output is None:
+            continue
+        path = root / spec.output
+        residual = _load_existing(path) if spec.preserve_foreign else {}
+        contributor = PermissionTarget(
+            agent=agent,
+            name=agent if slice_name == "permissions" else f"{agent}-{slice_name}",
+            path=None,
+            renderer=spec.renderer or "",
+            owned_key=spec.owned_key,
+            content_slice=spec.source_slice,
+        )
+        outputs[path] = compose_permission_document([(contributor, residual, {})], rules, path)
     return outputs
 
 

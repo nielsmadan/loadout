@@ -9,9 +9,14 @@ __all__ = ["GLOBAL_PRESET", "SliceOutput", "agent_slices", "known_agents"]
 class SliceOutput:
     """Where one slice of one agent's configuration is written.
 
-    `destination` is a template resolved at render time, so a relocated harness
-    is followed without editing a manifest — see ADR 0011. `output` is an
-    in-repo staged path for the one case that has no destination at all.
+    **`destination` and `output` are two different kinds of path, not a primary
+    and a fallback.** `destination` is a machine path template resolved at render
+    time, so a relocated harness is followed without editing a manifest (ADR
+    0011). `output` is relative to the scope's root, which `_target_paths`
+    resolves against — the global source directory for `GLOBAL_PRESET`, the
+    project for `PROJECT_PRESET`. Global scope uses `output` only where a slice
+    is staged for a merge step outside loadout; project scope uses it for
+    everything, and sets no destinations at all.
 
     `source_slice` names the slice supplying this one's own content.
 
@@ -19,6 +24,16 @@ class SliceOutput:
     value of that key and the loop assigns it, rather than transforming the
     whole document. Settings is the residual every file starts from, so it is
     never a `source_slice` — spec 1 §3's ownership map, made executable.
+
+    `preserve_foreign` is project scope's residual: the existing file becomes the
+    renderer's base. It is **not** a spelling of `PermissionTarget.preserve`, and
+    merging the two reorders keys:
+
+    | | `preserve` | `preserve_foreign` |
+    |---|---|---|
+    | input | key names from the manifest | the whole existing file |
+    | when | re-read after render, appended last | handed in as the base, keys keep position |
+    | guard | errors if a named key is generated | none |
     """
 
     renderer: str | None = None
@@ -26,6 +41,7 @@ class SliceOutput:
     output: str | None = None
     source_slice: str | None = None
     owned_key: str | None = None
+    preserve_foreign: bool = False
 
 
 # Destinations carry each harness's config-directory variable rather than a

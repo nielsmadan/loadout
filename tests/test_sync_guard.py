@@ -87,6 +87,21 @@ def test_the_normaliser_strips_a_slash_slash_banner_too(root: Path) -> None:
     )
 
 
+def test_adding_a_banner_to_a_file_without_one_is_not_a_hand_edit(root: Path, capsys) -> None:
+    """Stripping the banner leaves the blank line that separated it, so a file
+    with no banner and one with a banner still differ by an interior blank —
+    which `.strip()` cannot reach. Without collapsing the run, adopting a file
+    another writer produced reports as a hand edit forever."""
+    _adopt(root)
+    output = root / "out" / "shared.md"
+    body = output.read_text(encoding="utf-8").split("\n", 2)[2].lstrip("\n")
+    output.write_text(body, encoding="utf-8")
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--root", str(root)]) == 0
+    assert "modified outside loadout" not in capsys.readouterr().err
+
+
 def test_hand_edited_output_blocks_sync(root: Path, capsys) -> None:
     _adopt(root)
     output = root / "out" / "shared.md"

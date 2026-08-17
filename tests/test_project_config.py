@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from loadout.errors import LoadoutError
-from loadout.project import KNOWN_HARNESSES, PRESET, ProjectConfig, load_project_config
+from loadout.project import KNOWN_HARNESSES, PROJECT_PRESET, ProjectConfig, load_project_config
 
 
 def write(tmp_path: Path, body: str) -> Path:
@@ -26,10 +26,10 @@ def test_known_harnesses_are_the_five_supported_names() -> None:
 
 
 def test_preset_has_an_entry_for_every_known_harness() -> None:
-    """A harness with no PRESET entry would make project_targets raise a bare
-    KeyError (exit 4) instead of a LoadoutError (exit 3) — milestone 4 adds no
-    new exit codes."""
-    assert set(PRESET) == KNOWN_HARNESSES
+    """A harness with no PROJECT_PRESET entry would make project_slices raise a
+    bare KeyError (exit 4) instead of a LoadoutError (exit 3) — milestone 4 adds
+    no new exit codes."""
+    assert set(PROJECT_PRESET) == KNOWN_HARNESSES
 
 
 def test_unknown_harness_is_rejected(tmp_path: Path) -> None:

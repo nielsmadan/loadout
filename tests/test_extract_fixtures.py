@@ -17,7 +17,7 @@ import pytest
 
 from loadout.extract import extract
 from loadout.permissions.renderers import RENDERERS, JsonSpec, TextSpec
-from loadout.project import PRESET
+from loadout.project import PROJECT_PRESET
 
 EXPECTED = Path(__file__).parent / "fixtures" / "expected"
 
@@ -42,10 +42,12 @@ def _artifacts() -> list[tuple[Path, str]]:
         if path.name in GLOBAL_RENDERERS
     ]
     found += [
-        (EXPECTED / "project" / target.path, target.renderer)
-        for targets in PRESET.values()
-        for target in targets
-        if (EXPECTED / "project" / target.path).is_file()
+        (EXPECTED / "project" / spec.output, spec.renderer)
+        for slices in PROJECT_PRESET.values()
+        for spec in slices.values()
+        if spec.output is not None
+        and spec.renderer is not None
+        and (EXPECTED / "project" / spec.output).is_file()
     ]
     return found
 

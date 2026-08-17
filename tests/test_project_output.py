@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 import pytest
 
+from loadout.agents import SliceOutput
 from loadout.emit import render_all, render_project
 from loadout.errors import LoadoutError
-from loadout.project import PRESET, ProjectTarget
+from loadout.project import PROJECT_PRESET
 
 EXPECTED = Path(__file__).parent / "fixtures" / "expected" / "project"
 
@@ -169,9 +170,9 @@ def test_project_unknown_renderer_raises_loadout_error_not_keyerror(
     """The project render path used to index RENDERERS directly, so a bad renderer
     name raised a bare KeyError — exit 4, not the LoadoutError (exit 3) every other
     failure raises. There is no manifest-driven way to inject a bad renderer name
-    into PRESET, so this patches the preset directly to exercise the path."""
-    bogus = (ProjectTarget(PurePosixPath("bogus.json"), "nope"),)
-    monkeypatch.setitem(PRESET, "claude", bogus)
+    into PROJECT_PRESET, so this patches the preset directly to exercise the path."""
+    bogus = {"permissions": SliceOutput(renderer="nope", output="bogus.json")}
+    monkeypatch.setitem(PROJECT_PRESET, "claude", bogus)
     (project / "loadout" / "config.toml").write_text('harnesses = ["claude"]\n', encoding="utf-8")
     with pytest.raises(LoadoutError, match="unknown renderer"):
         render_project(project)
