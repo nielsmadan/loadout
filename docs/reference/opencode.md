@@ -115,5 +115,28 @@ and OpenCode reads the copy written for it. It is read from the **environment**
 (`ConfigProvider.fromEnv()`); there is no `opencode.json` key for it, so it belongs
 in your shell configuration rather than anywhere loadout renders.
 
-`OPENCODE_DISABLE_CLAUDE_CODE=1` sets it too, along with the Claude Code prompt.
-`.agents/skills` stays in the scan either way — loadout never writes there.
+`OPENCODE_DISABLE_CLAUDE_CODE=1` sets it too, along with the Claude Code prompt —
+the flag is `broad || direct`, so anything *checking* whether the collision is
+disabled has to read both names or it reports a false alarm at whoever set the
+broad one.
+
+**Do not reach for `OPENCODE_DISABLE_EXTERNAL_SKILLS`.** It is the bigger hammer
+and removes `.agents` as well as `.claude`, which costs you your own `.agents`
+skills for nothing — loadout writes none.
+
+`.agents/skills` is scanned unconditionally and neither flag removes it. That is
+safe here only because **loadout writes nothing to `.agents/`** — a fact about
+loadout, not about OpenCode. Adding an `.agents/skills` destination would
+recreate the race in a place no flag can disable.
+
+**Why the race and not an ordering.** The duplicate branch warns and does not
+return, so the assignment after it runs anyway:
+
+```ts
+if (state.skills[md.data.name]) { yield* Effect.logWarning("duplicate skill name", …) }
+state.skills[md.data.name] = { … }        // runs unconditionally
+```
+
+A `return` there would make it first-wins, which — with a fixed discovery order —
+would be a precedence rule. Without one it is whichever concurrent read lands
+last. "Warn on duplicate" reads like a guard and is not one.
