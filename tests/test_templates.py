@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from loadout.errors import LoadoutError
-from loadout.project import load_project_config, project_config_path
+from loadout.project import PROJECT_DIR, load_project_config, project_config_path
 from loadout.resolve import Slice, resolve_item
 from loadout.sources import ARTIFACT_TYPES, Source
 from loadout.templates import (
@@ -329,3 +329,18 @@ def test_copy_tree_removes_a_file_the_upstream_no_longer_has(tmp_path: Path) -> 
     copy_tree(source, destination)
     assert not (destination / "stale.toml").exists()
     assert tree_hash(destination) == tree_hash(source)
+
+
+def test_declaring_a_template_keeps_the_final_newline(tmp_path: Path) -> None:
+    """`templates = [...]` as the last line: a greedy `\\s*$` swallows the newline
+    it sits before, so the rewrite silently unterminates the file."""
+    root = tmp_path
+    (root / PROJECT_DIR).mkdir(parents=True)
+    path = project_config_path(root)
+    path.write_text('harnesses = ["claude"]\ntemplates = ["web"]\n', encoding="utf-8")
+
+    declare(root, "railway")
+
+    text = path.read_text(encoding="utf-8")
+    assert text.endswith("\n")
+    assert load_project_config(path).templates == ("web", "railway")

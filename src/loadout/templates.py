@@ -86,7 +86,10 @@ def resolve_template(name: str, root: Path, config_path: Path | None = None) -> 
         raise LoadoutError(f"{error} Searched {local} and {where}.") from error
 
 
-_TEMPLATES_KEY = re.compile(r"^templates\s*=\s*\[[^\]]*\]\s*$", re.MULTILINE)
+# `[^\S\n]*` and not `\s*`: `\s` matches the newline, so a greedy trailing `\s*$`
+# swallows it whenever the key is the file's last line, and the rewrite silently
+# drops the final newline.
+_TEMPLATES_KEY = re.compile(r"^templates[^\S\n]*=[^\S\n]*\[[^\]]*\][^\S\n]*$", re.MULTILINE)
 
 
 def declare(root: Path, name: str) -> bool:
