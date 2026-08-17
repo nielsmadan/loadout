@@ -165,6 +165,28 @@ def template_divergence(root: Path) -> list[str]:
     return diverged
 
 
+def unverifiable_templates(root: Path) -> list[str]:
+    """Vendored copies with no recorded hash, so nothing can vouch for them.
+
+    A distinct state from divergence, and it has to be reported separately
+    because it is the *absence* of the evidence divergence is measured against:
+    `template_divergence` can only speak about copies it has a base for, so a
+    missing hash reads there as "no divergence" rather than "cannot say".
+
+    `loadout harness add` produced exactly this state until it stopped rewriting
+    the config from scratch, so repos are in it today with nothing to tell them.
+    """
+    path = project_config_path(root)
+    if not path.is_file():
+        return []
+    config = load_project_config(path)
+    return [
+        name
+        for name in config.templates
+        if config.vendored_hash(name) is None and vendored_path(root, name).is_dir()
+    ]
+
+
 def _excluded(relative: Path) -> bool:
     if any(part in EXCLUDED_DIRECTORIES for part in relative.parts):
         return True

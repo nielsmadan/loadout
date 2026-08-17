@@ -278,3 +278,86 @@ def test_check_still_fails_on_real_drift_alongside_a_diverged_template(
         '[shell]\nallow = ["mine"]\n', encoding="utf-8"
     )
     assert main(["check", "--root", str(bare_project)]) == 1
+
+
+def _strip_provenance(project: Path) -> None:
+    """The state `loadout harness add` used to leave behind.
+
+    It rewrote config.toml from the harness list alone, so the
+    `[template.<name>] vendored` hash was destroyed while the vendored copy
+    stayed on disk. `templates` went with it, so a repo reaches the enduring
+    version of this state by re-declaring the template it noticed had stopped
+    merging — which is why the hash, not the declaration, is what goes missing.
+    """
+    path = _config(project)
+    config = load_project_config(path)
+    harnesses = ", ".join(f'"{h}"' for h in config.harnesses)
+    names = ", ".join(f'"{n}"' for n in config.templates)
+    path.write_text(f"harnesses = [{harnesses}]\ntemplates = [{names}]\n", encoding="utf-8")
+
+
+def test_sync_refuses_a_copy_with_no_recorded_provenance_and_changes_nothing(
+    bare_project: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without provenance nothing can tell the user's edits from the source's, so
+    refusing is the only answer that cannot destroy work. The gate used to require
+    *proof of modification*, which is unavailable in exactly this state, so sync
+    fell through and overwrote.
+
+    The edit surviving is the assertion that matters: a sync that returned 1 and
+    copied anyway would satisfy an exit-code check on its own.
+    """
+    upstream = _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
+    main(["template", "vendor", "web", "--root", str(bare_project)])
+    vendored = bare_project / "loadout" / "templates" / "web" / "permissions.toml"
+    vendored.write_text('[shell]\nallow = ["vite", "mine"]\n', encoding="utf-8")
+    (upstream / "permissions.toml").write_text('[shell]\nallow = ["esbuild"]\n', encoding="utf-8")
+    _strip_provenance(bare_project)
+
+    assert main(["template", "sync", "web", "--root", str(bare_project)]) == 1
+
+    survived = vendored.read_text(encoding="utf-8")
+    assert survived == '[shell]\nallow = ["vite", "mine"]\n'
+    assert "esbuild" not in survived
+
+
+def test_sync_still_self_heals_a_clean_copy_with_no_recorded_provenance(
+    bare_project: Path,
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Matching the source *is* proof the copy is unmodified, so the refusal must
+    not reach a clean copy — it re-records the hash instead, which is the only way
+    a repo in this state gets its provenance back."""
+    _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
+    main(["template", "vendor", "web", "--root", str(bare_project)])
+    vendored = bare_project / "loadout" / "templates" / "web"
+    _strip_provenance(bare_project)
+    assert load_project_config(_config(bare_project)).vendored_hash("web") is None
+    capsys.readouterr()
+
+    assert main(["template", "sync", "web", "--root", str(bare_project)]) == 0
+
+    assert "up to date" in capsys.readouterr().out
+    assert load_project_config(_config(bare_project)).vendored_hash("web") == tree_hash(vendored)
+
+
+def test_check_reports_a_vendored_copy_with_no_recorded_provenance(
+    bare_project: Path,
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`template_divergence` cannot speak about a copy it has no base for, so the
+    missing hash read there as "no divergence" and check said nothing at all.
+    Reported and not failed, for ADR 0014's reason: a vendored copy is source."""
+    _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
+    main(["template", "vendor", "web", "--root", str(bare_project)])
+    main(["sync", "--root", str(bare_project)])
+    _strip_provenance(bare_project)
+    capsys.readouterr()
+
+    assert main(["check", "--root", str(bare_project)]) == 0
+
+    assert "no recorded provenance" in capsys.readouterr().out

@@ -83,6 +83,15 @@ been modified since it was vendored?*
 
 - current hash **==** recorded → clean
 - current hash **!=** recorded → locally modified
+- **no recorded hash at all** → unverifiable; nothing can tell the user's edits from the
+  source's, so `sync` refuses and `check` reports it
+
+That third state is not hypothetical. `loadout harness add` rewrote `loadout/config.toml` from
+the harness list alone until 2026-08-17, destroying every `[template.<name>] vendored` block
+along with `templates` and `instructions`, so repos that ran it are in it today. The message to
+search for is **"has no recorded provenance"**. `template vendor <name>` takes the source
+wholesale and records a hash again; so does `template sync` when the copy still matches the
+source, since matching *is* proof it is unmodified.
 
 It is a **content** hash, not a git SHA, because a template may come from a plain directory with
 no repository behind it.
@@ -126,6 +135,14 @@ covers relative paths only.
 
 - **Vendored copy unmodified** → update it, re-record the hash, report what changed.
 - **Vendored copy modified** → print the diff against the upstream and exit 1. **Change nothing.**
+- **No recorded hash** → print the diff and exit 1, changing nothing, unless the copy already
+  matches the source.
+
+The gate refuses unless the copy can be proved *unmodified*, rather than refusing only when it
+can be proved *modified*. Those differ exactly where there is no provenance to compare against,
+and fail-open there let a command whose whole contract is refuse-rather-than-merge overwrite
+local edits silently — the guarantee held while nothing had gone wrong and evaporated the moment
+something had.
 
 The refused case is deliberately not automated. The alternative is a three-way merge — keep the
 version you vendored, diff upstream-then against upstream-now, apply that patch onto your copy,
@@ -141,8 +158,10 @@ signal to build three-way.
 ## `check` reports divergence; it does not fail on it
 
 A vendored copy is source, so a user editing it is not drift. `loadout check` notes a copy that
-no longer matches its recorded hash on stdout and leaves its exit code alone; real drift still
-exits 1. See [0014](../decisions/0014-a-vendored-template-is-source-not-output.md), which argues
+no longer matches its recorded hash — or has none recorded — on stdout and leaves its exit code
+alone; real drift still exits 1. The two are separate reports because the second is the *absence*
+of the evidence the first is measured against: `template_divergence` can only speak about copies
+it has a base for, so a missing hash read there as "no divergence" rather than "cannot say". See [0014](../decisions/0014-a-vendored-template-is-source-not-output.md), which argues
 that a vendored template falls outside `check`'s jurisdiction by definition rather than by
 exemption.
 

@@ -42,6 +42,7 @@ from .templates import (
     template_divergence,
     template_files,
     tree_hash,
+    unverifiable_templates,
     vendored_path,
 )
 
@@ -268,6 +269,12 @@ def cmd_check(root: Path, profile: str = "default") -> int:
             f"note: the vendored template {name!r} was modified after it was vendored — "
             f"`loadout template sync {name}` will refuse until those edits go upstream"
         )
+    for name in unverifiable_templates(root):
+        print(
+            f"note: the vendored template {name!r} has no recorded provenance, so nothing "
+            f"can tell your edits from its source — `loadout template vendor {name}` takes "
+            f"the source wholesale and records one"
+        )
     if not drift:
         print("generated files are up to date")
         return 0
@@ -398,6 +405,27 @@ def cmd_template_sync(root: Path, name: str) -> int:
     # A vendored copy resolves ahead of every source, so the upstream has to be
     # reached past it deliberately.
     upstream = resolve_item(declared_sources(), name, TEMPLATES).path
+
+    # Refuse unless the copy can be *proved* unmodified, rather than refusing only
+    # when it can be proved modified. Those differ exactly when there is no
+    # provenance to compare against — which is the state `harness add` produced —
+    # and fail-open there would let a command whose contract is refuse-rather-than-
+    # merge silently overwrite local edits. Matching upstream is proof enough, so a
+    # clean copy still falls through to the self-heal below and is never refused.
+    if recorded is None and tree_hash(upstream) != current:
+        print(
+            f"WARNING: the vendored copy of {name} has no recorded provenance",
+            file=sys.stderr,
+        )
+        _report_diff(_tree_diff(local, upstream, name))
+        print(
+            f"\nSync refused — with no recorded hash, nothing can tell your edits from "
+            f"the source's, so the '-' lines above may be either. Commit your copy first "
+            f"if you want to keep them, or delete {_display(local, root)} and run "
+            f"`loadout template vendor {name}` to take the source wholesale.",
+            file=sys.stderr,
+        )
+        return 1
 
     if recorded is not None and current != recorded:
         print(
