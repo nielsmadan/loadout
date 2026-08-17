@@ -191,6 +191,13 @@ source rather than generated output. See [templates](templates.md) and
 | `p-fixture-unsorted` | the fixture declares its fragments out of sorted order, or the ordering test would pass against a render that sorted | `test_the_project_fixture_declares_instructions_out_of_sorted_order` |
 | `p-no-order-no-file` | a repo declaring no instructions generates neither document, so a permissions-only adopter keeps its own `CLAUDE.md` | `test_a_project_declaring_no_instructions_generates_neither_document` |
 | `p-unknown-fragment` | an undeclared fragment name fails the render rather than rendering a short document | `test_an_unknown_instruction_fragment_fails_the_render` |
+| `p-skills-per-harness` | each harness gets its own skills directory, because `render_skill` varies output by harness — the opposite answer to instructions, for a reason in the renderer signatures | `test_each_harness_gets_its_own_flavour_of_a_skill` |
+| `p-skills-no-codex` | Codex gets no skills entry — verified negative, not an omission | `test_codex_gets_no_project_skills` |
+| `p-skills-tier` | a project skill replaces a template's of the same name, and the template's other skills still arrive | `test_a_project_skill_beats_a_template_skill_of_the_same_name` |
+| `p-skills-copied` | a supporting file is named rather than decoded, so a mode survives | `test_a_supporting_file_is_copied_rather_than_rendered` |
+| `p-opencode-race` | `check` reports the skills race when neither disabling variable is set, without moving the exit code | `test_check_reports_the_opencode_skills_race_without_failing`, `test_a_project_without_opencode_is_not_told_about_its_flag` |
+| `p-opencode-both-flags` | the report reads both names, since OpenCode's flag is `broad \|\| direct` — a one-name check false-alarms at whoever set the broad switch | `test_either_flag_stops_the_opencode_skills_report` |
+| `p-opencode-off-is-off` | an explicit `=0` still reports, because the user has said the opposite of what silence would imply | `test_an_explicit_off_is_not_mistaken_for_on` |
 
 ## Generated hook adapters
 

@@ -11,6 +11,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 import loadout
 from loadout.emit import collect_notices
 
@@ -85,7 +87,48 @@ def test_a_clean_source_says_nothing(root: Path, capsys) -> None:
     assert "note:" not in capsys.readouterr().out
 
 
-def test_a_project_only_repo_reports_nothing_rather_than_failing(project: Path) -> None:
-    """Every reporter reads a global slice fragment, and a project-only repo has
-    no manifest to load — asking would raise where reporting nothing is correct."""
+def test_a_project_only_repo_reports_nothing_rather_than_failing(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A project-only repo has no manifest to load, so every global reporter has
+    to be skipped rather than asked — asking would raise where reporting nothing
+    is correct. The flag is set so the one project-scope reporter stays silent
+    too, leaving the absent manifest as the only thing under test."""
+    monkeypatch.setenv("OPENCODE_DISABLE_CLAUDE_CODE_SKILLS", "1")
     assert collect_notices(project) == ()
+
+
+def test_check_reports_the_opencode_skills_race_without_failing(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Advisory, like every notice: the source rendered fine and the setup around
+    it did not. Asserting exit 0 alongside the message is the load-bearing half —
+    a report that moved the exit code would break every pre-commit hook."""
+    monkeypatch.delenv("OPENCODE_DISABLE_CLAUDE_CODE_SKILLS", raising=False)
+    monkeypatch.delenv("OPENCODE_DISABLE_CLAUDE_CODE", raising=False)
+    assert loadout.main(["sync", "--root", str(project)]) == 0
+    capsys.readouterr()
+
+    assert loadout.main(["check", "--root", str(project)]) == 0
+
+    assert "opencode.skills" in capsys.readouterr().out
+
+
+def test_a_project_without_opencode_is_not_told_about_its_flag(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.delenv("OPENCODE_DISABLE_CLAUDE_CODE_SKILLS", raising=False)
+    monkeypatch.delenv("OPENCODE_DISABLE_CLAUDE_CODE", raising=False)
+    config = project / "loadout" / "config.toml"
+    config.write_text(
+        config.read_text(encoding="utf-8").replace(
+            '"claude", "codex", "opencode", "pi"', '"claude"'
+        ),
+        encoding="utf-8",
+    )
+    loadout.main(["sync", "--root", str(project)])
+    capsys.readouterr()
+
+    assert loadout.main(["check", "--root", str(project)]) == 0
+
+    assert "opencode.skills" not in capsys.readouterr().out

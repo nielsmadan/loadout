@@ -160,18 +160,27 @@ PROJECT_PRESET: dict[str, dict[str, SliceOutput]] = {
         ),
         "mcp": SliceOutput(renderer="claude-mcp", output=".claude/mcp-permissions.json"),
         "instructions": SliceOutput(output="CLAUDE.md"),
+        "skills": SliceOutput(output=".claude/skills"),
     },
     "codex": {
         "permissions": SliceOutput(
             renderer="codex-project", output=".codex/rules/permissions.rules"
         ),
         "instructions": SliceOutput(output="AGENTS.md"),
+        # No skills entry: Codex has no project skills directory — verified
+        # negative against the 0.147.0 binary, recorded in reference/config.md.
+        # Its extra-roots mechanism is a setting in `.codex/config.toml`, which
+        # loadout does not own, rather than a convention directory.
     },
     "opencode": {
         "permissions": SliceOutput(
             renderer="opencode", output="opencode.json", preserve_foreign=True
         ),
         "instructions": SliceOutput(output="AGENTS.md"),
+        # Its own directory, never `.claude/skills` — OpenCode reads both, and a
+        # skill written twice under one name is resolved by a race rather than by
+        # precedence. See reference/opencode.md; the env flag is required setup.
+        "skills": SliceOutput(output=".opencode/skills"),
     },
     "pi": {
         "permissions": SliceOutput(
@@ -180,6 +189,7 @@ PROJECT_PRESET: dict[str, dict[str, SliceOutput]] = {
         ),
         # Three agents, one path, on purpose — see ProjectConfig.instructions.
         "instructions": SliceOutput(output="AGENTS.md"),
+        "skills": SliceOutput(output=".pi/skills"),
     },
 }
 

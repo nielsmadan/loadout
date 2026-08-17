@@ -25,7 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from fixture_root import EXPECTED, FIXTURES, build_project_root, build_root
-from loadout.emit import declared_profiles, render_global, render_project
+from loadout.emit import Copied, declared_profiles, render_global, render_project
 
 
 def render_everything() -> dict[str, str]:
@@ -45,7 +45,14 @@ def render_everything() -> dict[str, str]:
     with tempfile.TemporaryDirectory() as directory:
         root = build_project_root(Path(directory))
         for path, content in render_project(root).items():
-            files[f"project/{path.relative_to(root)}"] = content
+            # A skill's supporting files are named rather than rendered, so the
+            # expected tree holds their bytes: the comparison is about what lands
+            # at the destination, not about how it got there.
+            files[f"project/{path.relative_to(root)}"] = (
+                content.source.read_text(encoding="utf-8")
+                if isinstance(content, Copied)
+                else content
+            )
     return files
 
 

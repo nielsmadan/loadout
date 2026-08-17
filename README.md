@@ -361,10 +361,10 @@ Known harnesses and what each one generates:
 
 | harness | generates |
 | --- | --- |
-| `claude` | `.claude/settings.json`, `.claude/mcp-permissions.json`, `CLAUDE.md` |
+| `claude` | `.claude/settings.json`, `.claude/mcp-permissions.json`, `CLAUDE.md`, `.claude/skills/` |
 | `codex` | `.codex/rules/permissions.rules`, `AGENTS.md` |
-| `opencode` | `opencode.json`, `AGENTS.md` |
-| `pi` | `.pi/extensions/pi-permission-system/config.json`, `AGENTS.md` |
+| `opencode` | `opencode.json`, `AGENTS.md`, `.opencode/skills/` |
+| `pi` | `.pi/extensions/pi-permission-system/config.json`, `AGENTS.md`, `.pi/skills/` |
 
 ### Instructions
 
@@ -394,6 +394,24 @@ a blank document.
 `.claude/settings.json` is loadout's Claude output at project scope; Claude Code writes to
 `.claude/settings.local.json` itself when you choose "don't ask again", and merges both at
 startup. A generator that owned `.local.json` would delete those grants on every sync.
+
+### Skills
+
+Drop a skill tree into `loadout/skills/<name>/` and it renders to every enabled harness that has
+a project skills directory. No config entry — the directory is the declaration.
+
+Each harness gets **its own** directory, because a skill's content varies by harness: `::: opencode`
+sections are kept or dropped and `:concept[…]` expands per harness. Codex gets none — it has no
+project skills directory (verified against its binary; see
+[config.md](docs/reference/config.md#skills)).
+
+**OpenCode needs `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1` in your shell**, or it also scans
+`.claude/skills/` and picks between the two copies of each skill at random. `loadout check` says
+so when neither that variable nor `OPENCODE_DISABLE_CLAUDE_CODE` is set — advisory, never an exit
+code. See [opencode.md](docs/reference/opencode.md#required-setup-opencode_disable_claude_code_skills).
+
+A template contributes `skills/` the same way it contributes `instructions.md`: a tier beneath the
+project, so a skill the project defines under the same name replaces the template's.
 
 ### Templates
 

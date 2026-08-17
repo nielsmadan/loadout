@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from loadout.agents import SliceOutput
-from loadout.emit import render_all, render_project
+from loadout.emit import Copied, render_all, render_project
 from loadout.errors import LoadoutError
 from loadout.project import PROJECT_PRESET
 
@@ -22,16 +22,38 @@ OUTPUTS = (
     "AGENTS.md",
 )
 
+# Every harness that has a skills slice gets its own directory, because
+# `render_skill` varies its output by harness. Codex has none — verified negative,
+# see reference/config.md.
+SKILL_DIRS = {"claude": ".claude/skills", "opencode": ".opencode/skills", "pi": ".pi/skills"}
+SKILL_FILES = ("from-template/SKILL.md", "probe/SKILL.md", "probe/reference.md")
+
+
+def skill_outputs(*harnesses: str) -> set[str]:
+    return {f"{SKILL_DIRS[h]}/{f}" for h in harnesses for f in SKILL_FILES}
+
 
 def test_every_project_output_matches_the_expected_output(project: Path) -> None:
+    """Everything rendered, not a named list of it.
+
+    Iterating `OUTPUTS` was equivalent while it happened to be the whole tree, and
+    stopped being when skills arrived — nine expected files were written and
+    compared by nothing, and the feature commit stayed green because of it. A
+    green result from a check that never ran is the shape `AGENTS.md` warns about,
+    so the comparison now derives its own list from the render.
+    """
     rendered = {str(p.relative_to(project)): c for p, c in render_project(project).items()}
-    for name in OUTPUTS:
-        assert rendered[name] == (EXPECTED / name).read_text(encoding="utf-8"), name
+    assert set(rendered) == set(OUTPUTS) | skill_outputs(*SKILL_DIRS)
+    for name, content in sorted(rendered.items()):
+        actual = (
+            content.source.read_text(encoding="utf-8") if isinstance(content, Copied) else content
+        )
+        assert actual == (EXPECTED / name).read_text(encoding="utf-8"), name
 
 
 def test_every_output_is_rendered(project: Path) -> None:
     rendered = {str(p.relative_to(project)) for p in render_project(project)}
-    assert rendered == set(OUTPUTS)
+    assert rendered == set(OUTPUTS) | skill_outputs(*SKILL_DIRS)
 
 
 def test_only_enabled_harnesses_are_rendered(project: Path) -> None:
@@ -43,7 +65,11 @@ def test_only_enabled_harnesses_are_rendered(project: Path) -> None:
         encoding="utf-8",
     )
     rendered = {str(p.relative_to(project)) for p in render_project(project)}
-    assert rendered == {".claude/settings.json", ".claude/mcp-permissions.json", "CLAUDE.md"}
+    assert rendered == {
+        ".claude/settings.json",
+        ".claude/mcp-permissions.json",
+        "CLAUDE.md",
+    } | skill_outputs("claude")
 
 
 def test_personal_tier_merges_into_the_output(project: Path) -> None:
@@ -354,6 +380,12 @@ def test_a_project_declaring_no_instructions_generates_neither_document(
         ".codex/rules/permissions.rules",
         "opencode.json",
         ".pi/extensions/pi-permission-system/config.json",
+    } | {
+        # The template is gone with `bare_project`, so only the project's own skill
+        # survives — which is also what proves the template supplied the other one.
+        f"{SKILL_DIRS[h]}/{f}"
+        for h in SKILL_DIRS
+        for f in ("probe/SKILL.md", "probe/reference.md")
     }
 
 
@@ -376,3 +408,48 @@ def test_an_unknown_instruction_fragment_fails_the_render(bare_project: Path) ->
     _instruct(bare_project, "nope")
     with pytest.raises(LoadoutError, match="nope"):
         render_project(bare_project)
+
+
+def test_codex_gets_no_project_skills(project: Path) -> None:
+    """A verified negative, not an omission: the 0.147.0 binary has no
+    project-relative skills path, and its extra-roots mechanism is a setting in
+    `.codex/config.toml`, which loadout does not own."""
+    rendered = {str(p.relative_to(project)) for p in render_project(project)}
+    assert not [p for p in rendered if p.startswith(".codex/") and "skills" in p]
+    assert ".codex/rules/permissions.rules" in rendered
+
+
+def test_each_harness_gets_its_own_flavour_of_a_skill(project: Path) -> None:
+    """The reason skills cannot share a directory the way instructions do:
+    `render_skill` takes a harness and varies its output by it. Asserting all
+    three differ from each other — and that each carries its own marker — is what
+    a pairwise-inequality check alone would not give."""
+    rendered = render_project(project)
+    bodies = {
+        harness: rendered[project / directory / "probe" / "SKILL.md"]
+        for harness, directory in SKILL_DIRS.items()
+    }
+    assert "Claude-only" in bodies["claude"]
+    assert "OpenCode-only" in bodies["opencode"]
+    assert "Pi-only" in bodies["pi"]
+    assert len({*bodies.values()}) == 3
+
+
+def test_a_project_skill_beats_a_template_skill_of_the_same_name(project: Path) -> None:
+    """Templates are the lowest tier here as they are for permissions. The second
+    assertion is what makes this a real test: without it, `TEMPLATE_LOSER` being
+    absent passes whether or not the template's skills were ever scanned."""
+    rendered = render_project(project)
+    probe = rendered[project / ".claude/skills/probe/SKILL.md"]
+    assert "TEMPLATE_LOSER" not in probe
+    assert "Declared by the project" in probe
+    assert project / ".claude/skills/from-template/SKILL.md" in rendered
+
+
+def test_a_supporting_file_is_copied_rather_than_rendered(project: Path) -> None:
+    """Naming the source rather than its decoded text is what preserves a mode —
+    a skill's `scripts/` are executable and that does not survive a `str`."""
+    rendered = render_project(project)
+    carried = rendered[project / ".claude/skills/probe/reference.md"]
+    assert isinstance(carried, Copied)
+    assert carried.source.read_text(encoding="utf-8").startswith("Supporting file")

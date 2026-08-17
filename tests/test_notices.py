@@ -12,7 +12,13 @@ from __future__ import annotations
 
 import pytest
 
-from loadout.notices import Notice, known_events, notices_for
+from loadout.notices import (
+    OPENCODE_SKILL_FLAGS,
+    Notice,
+    known_events,
+    notices_for,
+    opencode_skills_race,
+)
 
 
 def test_an_event_the_harness_does_not_know_is_reported() -> None:
@@ -95,3 +101,29 @@ def test_a_notice_is_not_drift() -> None:
     itself asked for something the harness cannot carry — the output is correct
     and the exit code must not move."""
     assert Notice(agent="claude", slice="hooks", message="x").render().startswith("claude.hooks:")
+
+
+@pytest.mark.parametrize("flag", OPENCODE_SKILL_FLAGS)
+def test_either_flag_stops_the_opencode_skills_report(flag: str) -> None:
+    """`disableClaudeCodeSkills` is `broad || direct` in OpenCode's runtime flags,
+    so a check reading only the specific name reports a collision at whoever set
+    the broad one. Both names are parametrised rather than one asserted, because a
+    single-name test passes against exactly that bug."""
+    assert not opencode_skills_race({flag: "1"})
+
+
+@pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "on", " 1 "])
+def test_the_flag_is_read_the_way_a_boolean_env_var_is_written(value: str) -> None:
+    assert not opencode_skills_race({OPENCODE_SKILL_FLAGS[0]: value})
+
+
+@pytest.mark.parametrize("environ", [{}, {OPENCODE_SKILL_FLAGS[0]: ""}, {"OPENCODE_PURE": "1"}])
+def test_an_unset_or_empty_flag_leaves_the_race_reported(environ: dict[str, str]) -> None:
+    assert opencode_skills_race(environ)
+
+
+def test_an_explicit_off_is_not_mistaken_for_on() -> None:
+    """`=0` means the collision is live, so silence there would be the false
+    negative that matters — the user has said the opposite of what we need."""
+    assert opencode_skills_race({OPENCODE_SKILL_FLAGS[0]: "0"})
+    assert opencode_skills_race({OPENCODE_SKILL_FLAGS[1]: "false"})

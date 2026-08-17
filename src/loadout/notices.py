@@ -28,7 +28,33 @@ from .adapters import OPENCODE_MAPPINGS, PI_MAPPINGS
 from .hooks import CLAUDE_EVENTS, CODEX_EVENTS, unrecognised_events
 from .plugins import ADDRESSED_BY, unaddressable, unregistered_marketplaces
 
-__all__ = ["Notice", "known_events", "notices_for"]
+__all__ = ["Notice", "known_events", "notices_for", "opencode_skills_race"]
+
+# OpenCode scans `.claude/skills` as well as its own directory and keys the result
+# by skill name, so writing the same name to both leaves which copy survives to a
+# race — `skill/index.ts` warns on a duplicate and assigns anyway, under
+# `concurrency: "unbounded"`. Either variable removes the Claude directories from
+# the scan; `disableClaudeCodeSkills` is `broad || direct`, so checking only the
+# specific one would report a collision for anyone who set the broad switch.
+# `OPENCODE_DISABLE_EXTERNAL_SKILLS` also works and is deliberately not accepted
+# here: it drops `.agents` too, which loadout does not write and the user may.
+OPENCODE_SKILL_FLAGS = ("OPENCODE_DISABLE_CLAUDE_CODE_SKILLS", "OPENCODE_DISABLE_CLAUDE_CODE")
+
+# Effect's `Config.boolean` parses these; its full accepted set could not be
+# verified from the checkout (no node_modules), so an unusual spelling costs one
+# advisory line and never an exit code.
+_TRUTHY = frozenset({"1", "true", "yes", "on"})
+
+
+def opencode_skills_race(environ: Mapping[str, str]) -> bool:
+    """Whether OpenCode would resolve loadout's skills by race rather than by name.
+
+    Machine state, so a caller supplies it (ADR 0001) — and it is read for a
+    *notice*, never for generated content, so ADR 0008 is untouched.
+    """
+    return not any(
+        environ.get(flag, "").strip().lower() in _TRUTHY for flag in OPENCODE_SKILL_FLAGS
+    )
 
 
 @dataclass(frozen=True)

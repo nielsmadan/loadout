@@ -75,7 +75,7 @@ removing one entry from a rule list reads as one line changed in the source, and
 rules going from bypassable to enforced in the output. A `loadout diff` reporting that before
 writing would serve it better than a shadow tree.
 
-### Project scope — built (permissions and instructions)
+### Project scope — built (permissions, instructions and skills)
 
 Per-repo configuration, layered on top of global. Two sources per artifact type:
 
@@ -84,9 +84,9 @@ Per-repo configuration, layered on top of global. Two sources per artifact type:
 | project | yes | rules and instructions everyone working on this repo gets |
 | personal | **no** | your rules for this repo — machine paths, local tools |
 
-loadout merges the two and writes **generated outputs that are always gitignored** — seven across
-four harnesses (`claude`, `codex`, `opencode`, `pi`), of which `AGENTS.md` is one file three of
-them read. `.codex/config.toml`, in the system this replaces, turned out to be a one-byte
+loadout merges the two and writes **generated outputs that are always gitignored** — seven
+documents across four harnesses (`claude`, `codex`, `opencode`, `pi`), of which `AGENTS.md` is
+one file three of them read, plus a skills directory per harness that has one. `.codex/config.toml`, in the system this replaces, turned out to be a one-byte
 leftover of the old tooling rather than a real output, so the port does not reproduce it.
 
 Generated project files are never committed, because the merged output contains personal
@@ -148,6 +148,20 @@ Two consequences worth stating because they look inconsistent side by side:
   the variable removes the collision instead of hoping the right copy wins. See
   [reference/opencode.md](reference/opencode.md#required-setup-opencode_disable_claude_code_skills).
 
+  **`check` reports when neither variable is set**, because loadout is then producing output whose
+  correctness depends on setup it does not control — which is what the notices surface is for. It
+  reads the machine that *renders*, and the machine that runs OpenCode is the same one: generated
+  project files are never committed and adoption is all-or-nothing, so everyone working in a repo
+  syncs it themselves. CI is the exception, and there it costs one advisory line that cannot move
+  an exit code. Writing only `.claude/skills/` instead was considered and rejected: it would hand
+  OpenCode content rendered for Claude permanently, which is the failure
+  [reference/config.md](reference/config.md#instructions) records from the instructions document,
+  and it would make `::: opencode` dead code for the harness it names.
+
+  **Codex gets no skills entry**, a verified negative rather than an omission — no
+  project-relative skills path exists in the 0.147.0 binary, and its extra-roots mechanism is a
+  setting in `.codex/config.toml`, a file loadout does not own.
+
 **Hooks and plugins at project scope are a `PROJECT_PRESET` entry away, not a project.**
 `compose_permission_document` is scope-agnostic — it takes a contributor list and knows nothing
 about which scope built it — so a value renderer or a generated adapter works there the moment a
@@ -161,24 +175,6 @@ person's setup; a repo's configuration is the same for everyone who checks it ou
 
 ## Still open
 
-- Project-scope *skills*. The composition model is settled — `PROJECT_PRESET` has the shape and
-  instructions already use it — so what is left is the destinations, and those are not uniform.
-  Claude reads `.claude/skills/`, Pi reads `.pi/skills/` and `.agents/skills/`, OpenCode reads
-  `.opencode/skills/`, `.claude/skills/` and `.agents/skills/`, and **Codex has no project
-  skills directory at all** (verified negative: no project-relative `skills` path in the
-  0.147.0 binary, and its only `.agents/` paths are `plugins/marketplace.json` and
-  `plugins/api_marketplace.json`; it has a config-driven extra-roots mechanism in
-  `.codex/config.toml`, a file loadout does not own). The overlap is the open part: writing
-  per-harness copies into directories another harness also reads produces duplicate skill names,
-  which OpenCode documents as something to avoid rather than something it resolves.
-
-  **Blocked on a probe, not on a design.** Whether OpenCode resolves `.opencode/skills/` against
-  `.claude/skills/` by root order or leaves it undefined decides between shadowing the Claude
-  copy, writing only `.claude/skills/` and reporting through the notices surface that OpenCode
-  reads Claude's flavour, and refusing the combination outright. The same question at *global*
-  scope was probed and answered for a different pair of roots, one of which no longer exists, so
-  it does not transfer — reasoning by analogy is what produced the six wrong conclusions in
-  [AGENTS.md](../AGENTS.md).
 - Antigravity, if it matures. `agy` was dropped as a target — its generated permissions file is
   ignored in headless mode, it has no global skills mechanism and no config-directory variable,
   and its plugin enablement was never established. `docs/reference/antigravity.md` keeps the

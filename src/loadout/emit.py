@@ -4,7 +4,7 @@ import json
 import os
 import shutil
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -24,7 +24,7 @@ from .manifest import (
     manifest_path,
     resolve_destination,
 )
-from .notices import Notice, notices_for
+from .notices import OPENCODE_SKILL_FLAGS, Notice, notices_for, opencode_skills_race
 from .permissions.merge import merge_rules
 from .permissions.renderers import RENDERERS, DocumentTextSpec, JsonSpec, TextSpec, ValueSpec
 from .permissions.rules import EMPTY_RULES, Rules, parse_rules
@@ -400,10 +400,10 @@ def collect_notices(root: Path, profile: str = "default") -> tuple[Notice, ...]:
     permissions from rules. A project-only repo has no manifest to load, so
     asking would raise rather than report nothing.
     """
+    found: list[Notice] = list(project_notices(root, os.environ))
     if not manifest_path(root).is_file():
-        return ()
+        return tuple(found)
     manifest = load_profile(root, profile)
-    found: list[Notice] = []
     for target in manifest.permissions:
         # A legacy `[permissions.*]` target names no agent and carries no slice
         # content, so there is nothing to report about it.
@@ -421,6 +421,36 @@ def collect_notices(root: Path, profile: str = "default") -> tuple[Notice, ...]:
             )
         )
     return tuple(found)
+
+
+def project_notices(root: Path, environ: Mapping[str, str]) -> tuple[Notice, ...]:
+    """What project scope rendered while depending on setup it does not control.
+
+    The variable matters on the machine OpenCode *runs* on, and this reads the
+    machine loadout is *rendering* on — the same box, because generated project
+    files are never committed and adoption is all-or-nothing, so everyone working
+    in a repo syncs it themselves. CI is the exception, where this is one
+    advisory line in a log and cannot touch an exit code.
+    """
+    path = project_config_path(root)
+    if not path.is_file():
+        return ()
+    config = load_project_config(path)
+    if "opencode" not in config.harnesses or not project_skill_trees(root, config):
+        return ()
+    if not opencode_skills_race(environ):
+        return ()
+    return (
+        Notice(
+            agent="opencode",
+            slice="skills",
+            message=(
+                f"none of {' or '.join(OPENCODE_SKILL_FLAGS)} is set, so OpenCode also "
+                f"scans .claude/skills and picks between the two copies of each skill at "
+                f"random — export one of them; see docs/reference/opencode.md"
+            ),
+        ),
+    )
 
 
 def render_global(root: Path, profile: str = "default") -> dict[Path, Output]:
@@ -560,12 +590,19 @@ def render_project(root: Path) -> dict[Path, Output]:
     rules = merge_rules(*tiers)
 
     instructions = project_instructions(root, config)
+    trees = project_skill_trees(root, config)
 
     outputs: dict[Path, Output] = {}
     for agent, slice_name, spec in project_slices(config.harnesses):
         if spec.output is None:
             continue
         path = root / spec.output
+        if slice_name == "skills":
+            # Each harness gets its own directory because `render_skill` varies
+            # by harness — the same reason instructions can share a path and
+            # these cannot.
+            _expand_project_skills(agent, path, trees, outputs)
+            continue
         if slice_name == "instructions":
             # Several agents name one document and that is not a collision here:
             # the order is the project's, not the agent's, so every one of them
@@ -585,6 +622,36 @@ def render_project(root: Path) -> dict[Path, Output]:
         )
         outputs[path] = compose_permission_document([(contributor, residual, {})], rules, path)
     return outputs
+
+
+def project_skill_trees(root: Path, config: ProjectConfig) -> tuple[Skill, ...]:
+    """Every skill this project offers, templates first and the project last.
+
+    Same tier order as permissions and instructions, and the same resolution: a
+    later tier wins the name outright. Unlike `skill_trees`, a collision is not
+    an error here — global sources are peers, so preferring one would make the
+    winner depend on manifest order, while a template is *declared* to sit
+    beneath the project, so overriding one of its skills is the point rather
+    than an ambiguity.
+    """
+    collected: dict[str, Skill] = {}
+    for name in config.templates:
+        tree = resolve_template(name, root).path / SKILLS_SUBDIR
+        for skill in discover_skills(tree):
+            collected[skill.name] = skill
+    for skill in discover_skills(root / PROJECT_DIR / SKILLS_SUBDIR):
+        collected[skill.name] = skill
+    return tuple(sorted(collected.values(), key=lambda s: s.name))
+
+
+def _expand_project_skills(
+    agent: str, base: Path, trees: tuple[Skill, ...], outputs: dict[Path, Output]
+) -> None:
+    for skill in trees:
+        directory = base / skill.name
+        outputs[directory / SKILL_DOCUMENT] = render_skill(skill, agent)
+        for relative in skill.supporting:
+            outputs[directory / relative] = Copied(source=skill.document.parent / relative)
 
 
 def project_instructions(root: Path, config: ProjectConfig) -> str | None:
