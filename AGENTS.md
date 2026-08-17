@@ -25,7 +25,9 @@ These are not style preferences. Each one has already caused, or nearly caused, 
   in expected output, and is pinned by `tests/test_extract_*.py` instead — see
   [0013](docs/decisions/0013-a-renderer-change-is-checked-against-extraction.md). The script
   refuses to run over unstaged changes there, so a regeneration is always its own commit. Never
-  edit an expected file directly to make a test pass. See
+  edit an expected file directly to make a test pass. The expected tree is **text-only**, so a
+  fixture skill's supporting files must decode as UTF-8; the script refuses by name rather than
+  raising a decoder error. See
   [0009](docs/decisions/0009-expected-output-is-reviewed-not-frozen.md).
   **A new artifact type therefore produces one red commit, by construction.** When a change adds
   expected files rather than rewriting them, the feature commit fails the whole-document

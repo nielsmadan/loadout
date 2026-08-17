@@ -49,11 +49,29 @@ def render_everything() -> dict[str, str]:
             # expected tree holds their bytes: the comparison is about what lands
             # at the destination, not about how it got there.
             files[f"project/{path.relative_to(root)}"] = (
-                content.source.read_text(encoding="utf-8")
-                if isinstance(content, Copied)
-                else content
+                _decode(content.source) if isinstance(content, Copied) else content
             )
     return files
+
+
+def _decode(source: Path) -> str:
+    """The expected tree is text, and a `Copied` file need not be.
+
+    `Copied` exists because a skill carries executables and a mode does not
+    survive a `str`, so a binary supporting file in a fixture skill is a question
+    of when rather than whether. Left alone this raised `UnicodeDecodeError` from
+    inside a dict comprehension, which teaches nobody anything; a bytes-aware
+    expected tree is real work that nothing needs yet.
+    """
+    try:
+        return source.read_text(encoding="utf-8")
+    except UnicodeDecodeError as error:
+        raise SystemExit(
+            f"{source} is not UTF-8, and the expected tree is text-only. A fixture "
+            f"skill may carry a binary supporting file at its destination, but not "
+            f"one the expected output has to hold — use a text file, or teach this "
+            f"script and the comparison in test_project_output.py to handle bytes."
+        ) from error
 
 
 def unstaged_changes() -> bool:

@@ -441,6 +441,12 @@ def cmd_template_sync(root: Path, name: str) -> int:
         )
         return 1
 
+    # **Position is deliberate: this must stay below both refusals.** It reads
+    # like a cheap early-out that belongs at the top, and hoisting it changes a
+    # real case — a copy whose recorded hash says modified but whose content now
+    # equals the upstream currently refuses, and would start reporting "up to
+    # date" instead. Nothing asked for that. The no-provenance gate above already
+    # falls through to here when the copy matches, which is the self-heal.
     if tree_hash(upstream) == current:
         print(f"{name} is up to date")
         if recorded is None:

@@ -131,6 +131,11 @@ covers relative paths only.
     loadout template sync web      # update the vendored copy from its source
     loadout template list          # what this project uses, and how each resolves
 
+**Two templates offering one skill name resolve last-declared-wins, silently**, the same way
+their permission tiers do — `templates = ["a", "b"]` gives `b`'s copy. Consistent rather than
+chosen: nobody weighed reporting it, and if it should report, that is a question for the notices
+surface rather than a property of resolution. A skill the project itself defines beats both.
+
 `sync` resolves the upstream past the vendored copy, compares, and:
 
 - **Vendored copy unmodified** → update it, re-record the hash, report what changed.
