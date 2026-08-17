@@ -199,11 +199,27 @@ def project_slices(harnesses: Iterable[str]) -> tuple[tuple[str, str, SliceOutpu
     )
 
 
-def project_outputs(harnesses: Iterable[str]) -> tuple[str, ...]:
-    """Every in-repo path these harnesses generate — what `.gitignore` needs.
+def project_outputs(
+    config: ProjectConfig, harnesses: Iterable[str] | None = None
+) -> tuple[str, ...]:
+    """Every in-repo path this project generates — what `.gitignore` needs.
+
+    The instruction documents are included only when something could produce
+    them, because ignoring a file loadout does not generate is worse than not
+    ignoring one it does: an untracked hand-written `CLAUDE.md` would become
+    impossible to commit, and silently — `init`'s tracked-file note does not
+    fire on a file git is not tracking. A declared template counts without being
+    resolved, since resolution needs the machine config and can fail for reasons
+    a `.gitignore` should not care about.
 
     Deduplicated because three harnesses share one `AGENTS.md`, and
     order-preserving for the reason `dedupe()` is: never a set().
     """
-    paths = [spec.output for _, _, spec in project_slices(harnesses) if spec.output is not None]
+    selected = config.harnesses if harnesses is None else harnesses
+    writes_instructions = bool(config.instructions or config.templates)
+    paths = [
+        spec.output
+        for _, name, spec in project_slices(selected)
+        if spec.output is not None and (name != "instructions" or writes_instructions)
+    ]
     return tuple(dict.fromkeys(paths))

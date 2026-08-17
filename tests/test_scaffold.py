@@ -9,7 +9,7 @@ import pytest
 from loadout import scaffold
 from loadout.errors import LoadoutError
 from loadout.machine import load_machine_config
-from loadout.project import project_config_path
+from loadout.project import load_project_config, project_config_path
 from loadout.scaffold import add_harness, init_global, init_project
 
 
@@ -310,3 +310,74 @@ def test_init_is_silent_when_a_machine_config_exists(tmp_path: Path) -> None:
     config_path.write_text('source = "."\n', encoding="utf-8")
     actions = init_project(root, ("claude",), machine_config_path=config_path)
     assert not any("init --global" in action for action in actions)
+
+
+def test_harness_add_keeps_everything_else_in_the_config(tmp_path: Path) -> None:
+    """`harness add` rewrote config.toml from the harness list alone, discarding
+    `templates`, `instructions` and the `[template.<name>] vendored` hash. Losing
+    the hash is the worst of the three: `template sync` then cannot tell a clean
+    vendored copy from an edited one, so it silently stops refusing to overwrite."""
+    root = git_repo(tmp_path)
+    init_project(root, ("claude",))
+    path = project_config_path(root)
+    path.write_text(
+        'harnesses = ["claude"]\n'
+        'templates = ["web"]\n'
+        'instructions = ["conventions"]\n'
+        "\n"
+        "[template.web]\n"
+        'vendored = "sha256:abc123"\n',
+        encoding="utf-8",
+    )
+
+    add_harness(root, "codex")
+
+    config = load_project_config(path)
+    assert config.harnesses == ("claude", "codex")
+    assert config.templates == ("web",)
+    assert config.instructions == ("conventions",)
+    assert config.vendored_hash("web") == "sha256:abc123"
+
+
+def test_harness_add_preserves_the_comments_around_the_key(tmp_path: Path) -> None:
+    """The file is hand-maintained source, so a re-serialised rewrite would drop
+    whatever its author wrote around the key — the reason `template declare`
+    rewrites line-wise too."""
+    root = git_repo(tmp_path)
+    init_project(root, ("claude",))
+    path = project_config_path(root)
+    path.write_text('# why these harnesses\nharnesses = ["claude"]\n', encoding="utf-8")
+
+    add_harness(root, "pi")
+
+    assert "# why these harnesses" in path.read_text(encoding="utf-8")
+
+
+def test_gitignore_leaves_instruction_documents_alone_until_one_is_declared(
+    tmp_path: Path,
+) -> None:
+    """A repo adopting loadout for permissions only keeps its hand-written
+    CLAUDE.md — README promises exactly that. Ignoring a file loadout does not
+    generate would make an untracked one impossible to commit afterwards, and
+    silently: the tracked-file note does not fire on an untracked file."""
+    root = git_repo(tmp_path)
+    init_project(root, ("claude", "codex"))
+    ignored = (root / ".gitignore").read_text(encoding="utf-8").split()
+    assert ".claude/settings.json" in ignored
+    assert "CLAUDE.md" not in ignored
+    assert "AGENTS.md" not in ignored
+
+
+def test_gitignore_covers_the_instruction_documents_once_declared(tmp_path: Path) -> None:
+    root = git_repo(tmp_path)
+    init_project(root, ("claude", "codex"))
+    path = project_config_path(root)
+    path.write_text(
+        path.read_text(encoding="utf-8") + 'instructions = ["conventions"]\n', encoding="utf-8"
+    )
+
+    init_project(root, ("claude", "codex"))
+
+    ignored = (root / ".gitignore").read_text(encoding="utf-8").split()
+    assert "CLAUDE.md" in ignored
+    assert "AGENTS.md" in ignored

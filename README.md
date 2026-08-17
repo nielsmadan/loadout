@@ -347,6 +347,11 @@ Both commands also add every output the enabled harnesses generate to `.gitignor
 project files are **gitignored and never committed** — the merged output mixes in
 `permissions.local.toml`'s personal rules, so two people would conflict on every regeneration.
 
+`CLAUDE.md` and `AGENTS.md` are ignored only once something can generate them — an `instructions`
+order or a declared template — so a repo using loadout for permissions alone keeps its
+hand-written instruction files committable. Add an order to an already-initialised project and
+re-run `loadout init --harness <the same list>` to extend `.gitignore`; it is idempotent.
+
 **Which file do I edit?** `loadout/permissions.toml` (shared) or `loadout/permissions.local.toml`
 (personal) — never a generated output. Same rule as global scope: a generated file carries no
 marker that it's generated, and anything written directly into one is discarded the next time

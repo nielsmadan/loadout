@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import re
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 
 from .errors import LoadoutError
@@ -68,7 +70,7 @@ def _append_gitignore(root: Path, entries: list[str]) -> bool:
 def init_project(
     root: Path, harnesses: tuple[str, ...], machine_config_path: Path | None = None
 ) -> list[str]:
-    config = ProjectConfig(harnesses=harnesses)  # validates: non-empty, no duplicates, known
+    ProjectConfig(harnesses=harnesses)  # validates: non-empty, no duplicates, known
 
     config_path = project_config_path(root)
     project_dir = root / "loadout"
@@ -113,7 +115,10 @@ def init_project(
             )
 
     entries = ["loadout/permissions.local.toml"]
-    entries += project_outputs(config.harnesses)
+    # The on-disk config, not the one built from the arguments: re-running `init`
+    # on a project that has since declared an instruction order is what extends
+    # .gitignore to cover the documents that order now generates.
+    entries += project_outputs(load_project_config(config_path))
     if _append_gitignore(root, entries):
         actions.append(f"added {len(entries)} entries to .gitignore")
 
@@ -225,6 +230,28 @@ def init_global(source_parent: Path, config_path: Path, force: bool = False) -> 
     return actions
 
 
+# `[^\S\n]*` and not `\s*`: `\s` matches the newline, so a greedy trailing `\s*$`
+# swallows it whenever the key is the file's last line, and the rewrite silently
+# drops the final newline.
+_HARNESSES_KEY = re.compile(r"^harnesses[^\S\n]*=[^\S\n]*\[[^\]]*\][^\S\n]*$", re.MULTILINE)
+
+
+def _rewrite_harnesses(path: Path, harnesses: tuple[str, ...]) -> None:
+    """Replace the `harnesses` line, leaving the rest of the file alone.
+
+    Line-wise for the same reason `templates.declare` is: the file is
+    hand-maintained source. Re-serialising it from a ProjectConfig discarded
+    `templates`, `instructions` and every `[template.<name>] vendored` hash —
+    and losing the hash is silent, because `template sync` then cannot tell a
+    clean vendored copy from an edited one and stops refusing to overwrite.
+    """
+    rendered = "harnesses = [" + ", ".join(f'"{h}"' for h in harnesses) + "]"
+    text = path.read_text(encoding="utf-8")
+    if not _HARNESSES_KEY.search(text):
+        raise LoadoutError(f"{path}: no `harnesses = [...]` line to update")
+    path.write_text(_HARNESSES_KEY.sub(rendered, text, count=1), encoding="utf-8")
+
+
 def add_harness(root: Path, harness: str) -> list[str]:
     if harness not in KNOWN_HARNESSES:
         known = ", ".join(sorted(KNOWN_HARNESSES))
@@ -235,12 +262,11 @@ def add_harness(root: Path, harness: str) -> list[str]:
     if harness in config.harnesses:
         raise LoadoutError(f"{harness} is already enabled in {config_path}")
 
-    updated = ProjectConfig(harnesses=(*config.harnesses, harness))
-    quoted = ", ".join(f'"{h}"' for h in updated.harnesses)
-    config_path.write_text(f"harnesses = [{quoted}]\n", encoding="utf-8")
+    updated = replace(config, harnesses=(*config.harnesses, harness))
+    _rewrite_harnesses(config_path, updated.harnesses)
 
     actions = [f"enabled {harness} in loadout/config.toml"]
-    entries = list(project_outputs([harness]))
+    entries = list(project_outputs(updated, [harness]))
     if entries and _append_gitignore(root, entries):
         actions.append(f"added {len(entries)} entries to .gitignore")
     actions.append("run `loadout sync` to generate its files")
