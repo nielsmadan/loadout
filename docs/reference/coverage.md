@@ -174,6 +174,20 @@ source rather than generated output. See [templates](templates.md) and
 | `t-sync-replaces` | sync carries an added file and drops a removed one, then re-records the hash | `test_sync_carries_a_file_the_upstream_added`, `test_sync_drops_a_file_the_upstream_removed`, `test_sync_rerecords_the_hash_so_the_copy_stays_clean` |
 | `t-check-notes` | divergence is reported, never failed, and never swallows real drift (ADR 0014) | `test_check_notes_a_modified_vendored_template_without_failing`, `test_check_still_fails_on_real_drift_alongside_a_diverged_template` |
 | `t-fixture-reach` | the project fixture carries a vendored template whose rules no other tier has | `test_the_project_fixture_carries_a_vendored_template`, `test_every_template_rule_is_absent_from_the_other_project_tiers` |
+| `t-instructions-tier` | a template's `instructions.md` arrives as one unnamed block above the project's own fragments, without being named in the order | `test_a_template_contributes_instructions_without_being_named` |
+| `t-fixture-instructions` | the fixture template contributes instructions, or the tier ordering between template and project is untested | `test_the_project_fixture_template_contributes_instructions` |
+
+## Project scope
+
+| id | behaviour | pinned by |
+|---|---|---|
+| `p-one-type` | both scopes describe a slice with one `SliceOutput` type, in two separate tables | `test_the_two_presets_agree_on_which_harnesses_exist`, `test_every_renderer_named_by_the_project_preset_exists` |
+| `p-repo-relative` | a project slice sets `output` and never `destination`, so no machine path can reach a committed repo | `test_a_project_slice_is_written_relative_to_the_repo` |
+| `p-one-order` | one instruction order per repo, not one per harness — three harnesses share `AGENTS.md` | `test_the_two_instruction_documents_are_byte_identical` |
+| `p-instruction-order` | declared order reaches the document, below the template block and unsorted | `test_instruction_blocks_appear_in_declared_order_below_the_template` |
+| `p-fixture-unsorted` | the fixture declares its fragments out of sorted order, or the ordering test would pass against a render that sorted | `test_the_project_fixture_declares_instructions_out_of_sorted_order` |
+| `p-no-order-no-file` | a repo declaring no instructions generates neither document, so a permissions-only adopter keeps its own `CLAUDE.md` | `test_a_project_declaring_no_instructions_generates_neither_document` |
+| `p-unknown-fragment` | an undeclared fragment name fails the render rather than rendering a short document | `test_an_unknown_instruction_fragment_fails_the_render` |
 
 ## Generated hook adapters
 

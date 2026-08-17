@@ -25,11 +25,19 @@ class ProjectConfig:
 
     `vendored` is a tuple of `(name, hash)` pairs rather than a mapping because
     the dataclass is frozen and a mapping is not hashable.
+
+    `instructions` is **one order for the whole project, not one per harness**,
+    and that is forced by the harnesses rather than chosen: Codex, OpenCode and
+    Pi all read a repo-root `AGENTS.md` (reference/config.md), so one path would
+    have to hold three orders. With a single order the two generated documents
+    are byte-identical by construction — `composition.render` takes no agent
+    argument — rather than by an assertion that could fail open.
     """
 
     harnesses: tuple[str, ...]
     templates: tuple[str, ...] = ()
     vendored: tuple[tuple[str, str], ...] = ()
+    instructions: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.harnesses:
@@ -42,6 +50,8 @@ class ProjectConfig:
             raise LoadoutError(f"unknown harness(es) {', '.join(bad)} (known: {known})")
         if len(set(self.templates)) != len(self.templates):
             raise LoadoutError("duplicate template in the list")
+        if len(set(self.instructions)) != len(self.instructions):
+            raise LoadoutError("duplicate instruction fragment in the list")
         orphan = sorted({name for name, _ in self.vendored} - set(self.templates))
         if orphan:
             raise LoadoutError(
@@ -69,11 +79,12 @@ def load_project_config(path: Path) -> ProjectConfig:
     except tomllib.TOMLDecodeError as error:
         raise LoadoutError(f"{path}: invalid TOML: {error}") from error
 
-    unknown = sorted(set(data) - {"harnesses", "templates", "template"})
+    unknown = sorted(set(data) - {"harnesses", "templates", "template", "instructions"})
     if unknown:
         raise LoadoutError(
             f"{path}: unrecognised key(s) {', '.join(unknown)}; 'harnesses', "
-            f"'templates' and [template.<name>] are the keys this file accepts"
+            f"'templates', 'instructions' and [template.<name>] are the keys this "
+            f"file accepts"
         )
 
     raw = data.get("harnesses")
@@ -86,11 +97,18 @@ def load_project_config(path: Path) -> ProjectConfig:
     ):
         raise LoadoutError(f"{path}: templates must be a list of non-empty strings")
 
+    raw_instructions = data.get("instructions", [])
+    if not isinstance(raw_instructions, list) or not all(
+        isinstance(t, str) and t for t in raw_instructions
+    ):
+        raise LoadoutError(f"{path}: instructions must be a list of non-empty strings")
+
     try:
         return ProjectConfig(
             harnesses=tuple(raw),
             templates=tuple(raw_templates),
             vendored=_parse_provenance(data.get("template", {}), path),
+            instructions=tuple(raw_instructions),
         )
     except LoadoutError as error:
         raise LoadoutError(f"{path}: {error}") from error
@@ -141,24 +159,35 @@ PROJECT_PRESET: dict[str, dict[str, SliceOutput]] = {
             preserve_foreign=True,
         ),
         "mcp": SliceOutput(renderer="claude-mcp", output=".claude/mcp-permissions.json"),
+        "instructions": SliceOutput(output="CLAUDE.md"),
     },
     "codex": {
         "permissions": SliceOutput(
             renderer="codex-project", output=".codex/rules/permissions.rules"
         ),
+        "instructions": SliceOutput(output="AGENTS.md"),
     },
     "opencode": {
         "permissions": SliceOutput(
             renderer="opencode", output="opencode.json", preserve_foreign=True
         ),
+        "instructions": SliceOutput(output="AGENTS.md"),
     },
     "pi": {
         "permissions": SliceOutput(
             renderer="pi-project",
             output=".pi/extensions/pi-permission-system/config.json",
         ),
+        # Three agents, one path, on purpose — see ProjectConfig.instructions.
+        "instructions": SliceOutput(output="AGENTS.md"),
     },
 }
+
+# A template contributes this as one unnamed block, the way it contributes
+# permissions.toml: a tier beneath the project, never a fragment the project has
+# to name. Adopting a template should bring its instructions without restating
+# them.
+TEMPLATE_INSTRUCTIONS = "instructions.md"
 
 
 def project_slices(harnesses: Iterable[str]) -> tuple[tuple[str, str, SliceOutput], ...]:
@@ -171,5 +200,10 @@ def project_slices(harnesses: Iterable[str]) -> tuple[tuple[str, str, SliceOutpu
 
 
 def project_outputs(harnesses: Iterable[str]) -> tuple[str, ...]:
-    """Every in-repo path these harnesses generate — what `.gitignore` needs."""
-    return tuple(spec.output for _, _, spec in project_slices(harnesses) if spec.output is not None)
+    """Every in-repo path these harnesses generate — what `.gitignore` needs.
+
+    Deduplicated because three harnesses share one `AGENTS.md`, and
+    order-preserving for the reason `dedupe()` is: never a set().
+    """
+    paths = [spec.output for _, _, spec in project_slices(harnesses) if spec.output is not None]
+    return tuple(dict.fromkeys(paths))

@@ -75,7 +75,7 @@ removing one entry from a rule list reads as one line changed in the source, and
 rules going from bypassable to enforced in the output. A `loadout diff` reporting that before
 writing would serve it better than a shadow tree.
 
-### Project scope — built (permissions only)
+### Project scope — built (permissions and instructions)
 
 Per-repo configuration, layered on top of global. Two sources per artifact type:
 
@@ -84,10 +84,10 @@ Per-repo configuration, layered on top of global. Two sources per artifact type:
 | project | yes | rules and instructions everyone working on this repo gets |
 | personal | **no** | your rules for this repo — machine paths, local tools |
 
-loadout merges the two and writes **one generated output per harness, always gitignored**. Five
-outputs across four harnesses (`claude`, `codex`, `opencode`, `pi`). `.codex/config.toml`, in the
-system this replaces, turned out to be a one-byte leftover of the old tooling rather than a real
-output, so the port does not reproduce it.
+loadout merges the two and writes **generated outputs that are always gitignored** — seven across
+four harnesses (`claude`, `codex`, `opencode`, `pi`), of which `AGENTS.md` is one file three of
+them read. `.codex/config.toml`, in the system this replaces, turned out to be a one-byte
+leftover of the old tooling rather than a real output, so the port does not reproduce it.
 
 Generated project files are never committed, because the merged output contains personal
 content — two people would conflict on every regeneration. Shared content reaches other
@@ -107,11 +107,12 @@ Consequences:
   more harness on an already-initialised project and extends `.gitignore` the same way. A
   committed `.gitignore` rather than `.git/info/exclude`, which is per-clone and silently fails
   to apply on a fresh checkout. `init` warns when a tracked `CLAUDE.md`, `AGENTS.md` or
-  `GEMINI.md` exists and proceeds — nothing generated today collides with those files, but
-  project-scope instructions will, and moving them into `loadout/` is a prerequisite for that
-  milestone rather than for this one.
+  `GEMINI.md` exists and proceeds — that file is now something loadout generates as soon as an
+  `instructions` order is declared, so the note tells you to move its content into
+  `loadout/instructions/` first. A repo declaring no order generates neither document, which is
+  what keeps a permissions-only adopter's hand-written `CLAUDE.md` its own.
 - **Per-entry ownership tracking still is not needed, but "loadout is the sole writer of every
-  generated file" turned out to be false for two of the five outputs.** `opencode.json` and
+  generated file" turned out to be false for two of the outputs.** `opencode.json` and
   `.claude/settings.json` are a harness's own multi-purpose config file — the ported system
   preserved foreign top-level keys in both (`$schema` in the former; `enabledPlugins`,
   `sandbox`, `deny` in the latter), and rendering them from `{}` would silently delete that
@@ -122,14 +123,42 @@ Consequences:
   back — only foreign keys survive. The other three outputs are loadout-only and still render
   from a blank document.
 
+**Both scopes now describe a slice the same way.** `SliceOutput` is one type in two tables —
+`GLOBAL_PRESET` and `PROJECT_PRESET` — and the tables stay separate because a project path is
+relative to the repo while a global one is a machine template resolved through `${VAR:-…}`
+([0011](decisions/0011-a-destination-follows-a-relocated-harness.md)). That is the same reason
+project scope carries no `[[source]]` list: a path in a committed file is wrong for everyone who
+is not its author. So a project entry sets `output` and never `destination`, and a test pins it.
+
+Two consequences worth stating because they look inconsistent side by side:
+
+- **Project instructions are one order for the repo, not one per harness.** Codex, OpenCode and
+  Pi all read a repo-root `AGENTS.md` ([reference/config.md](reference/config.md#instructions)),
+  so one path would have to hold three orders. One order makes `CLAUDE.md` and `AGENTS.md`
+  byte-identical by construction — `composition.render` takes no agent argument — rather than by
+  a check that would pass whenever nothing was rendered.
+- **Skills cannot share a path the same way.** `render_skill` takes a harness and varies its
+  output by it: `::: <harness>` sections are kept or dropped and `:concept[…]` expands per
+  harness. Two harnesses pointed at one skills directory would need different bytes there. Same
+  shape of problem, opposite answer, and the reason is in the two renderers' signatures.
+
+**Project scope has no profiles**, and that is a decision rather than an omission:
+`render_project` takes no profile argument. A profile selects among machine-wide variants of one
+person's setup; a repo's configuration is the same for everyone who checks it out, which is what
+`permissions.local.toml` already exists to carve an exception out of.
+
 ## Still open
 
-- Project-scope *instructions* and *skills*. Deliberately built after permissions so the oracle
-  could distinguish a port bug from a new-feature bug — that reason has now expired, since the
-  port is done and proven. What blocks them is structural rather than scheduling: project scope
-  carries `ProjectTarget(path, renderer)` while global carries `SliceOutput(renderer,
-  destination, source_slice, owned_key)`, so project scope has no notion of a slice to grow.
-  Unifying the two is milestone 6, and these fall out of it rather than bolting on.
+- Project-scope *skills*. The composition model is settled — `PROJECT_PRESET` has the shape and
+  instructions already use it — so what is left is the destinations, and those are not uniform.
+  Claude reads `.claude/skills/`, Pi reads `.pi/skills/` and `.agents/skills/`, OpenCode reads
+  `.opencode/skills/`, `.claude/skills/` and `.agents/skills/`, and **Codex has no project
+  skills directory at all** (verified negative: no project-relative `skills` path in the
+  0.147.0 binary, and its only `.agents/` paths are `plugins/marketplace.json` and
+  `plugins/api_marketplace.json`; it has a config-driven extra-roots mechanism in
+  `.codex/config.toml`, a file loadout does not own). The overlap is the open part: writing
+  per-harness copies into directories another harness also reads produces duplicate skill names,
+  which OpenCode documents as something to avoid rather than something it resolves.
 - Antigravity, if it matures. `agy` was dropped as a target — its generated permissions file is
   ignored in headless mode, it has no global skills mechanism and no config-directory variable,
   and its plugin enablement was never established. `docs/reference/antigravity.md` keeps the

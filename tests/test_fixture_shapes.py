@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from fixture_root import PROJECT_INSTRUCTIONS
 from loadout.manifest import MANIFEST_NAME, load_manifest
 from loadout.permissions.rules import is_glob, mcp_parts, parse_rules
 
@@ -124,3 +125,22 @@ def test_every_template_rule_is_absent_from_the_other_project_tiers() -> None:
     )
     template = set(TEMPLATE_RULES.allow + TEMPLATE_RULES.deny + TEMPLATE_RULES.mcp_allow)
     assert not (template & others), f"already in another tier: {sorted(template & others)}"
+
+
+def test_the_project_fixture_declares_instructions_out_of_sorted_order() -> None:
+    """`test_instruction_blocks_appear_in_declared_order_below_the_template` proves
+    nothing if the declared order happens to match the directory listing — a render
+    that sorted its fragments would pass. Reversing the pair is what gives that test
+    something to catch, so it is a property of the fixture, not of the assertion."""
+    assert list(PROJECT_INSTRUCTIONS) != sorted(PROJECT_INSTRUCTIONS)
+
+
+def test_the_project_fixture_template_contributes_instructions() -> None:
+    """Without it the expected documents never prove a template's prose arrives, and
+    the tier ordering between template and project is untested."""
+    assert (PROJECT_FIXTURES / "templates" / "web" / "instructions.md").is_file()
+
+
+def test_every_declared_instruction_fragment_exists() -> None:
+    for name in PROJECT_INSTRUCTIONS:
+        assert (PROJECT_FIXTURES / "instructions" / f"{name}.md").is_file(), name

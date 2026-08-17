@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .composition import render
+from .composition import HEADER, load_fragment, render
 from .documents import merge_documents
 from .errors import LoadoutError
 from .manifest import (
@@ -32,11 +32,13 @@ from .plugins import marketplaces
 from .project import (
     PROJECT_CONFIG_NAME,
     PROJECT_DIR,
+    TEMPLATE_INSTRUCTIONS,
+    ProjectConfig,
     load_project_config,
     project_config_path,
     project_slices,
 )
-from .resolve import SETTINGS, json_slice, resolve_item
+from .resolve import INSTRUCTIONS, SETTINGS, json_slice, resolve_item
 from .skills import SKILL_DOCUMENT, Skill, discover_skills, render_skill
 from .sources import Source
 from .templates import resolve_template
@@ -393,9 +395,10 @@ def _known_marketplaces(agent: str, document: dict[str, Any]) -> frozenset[str]:
 def collect_notices(root: Path, profile: str = "default") -> tuple[Notice, ...]:
     """Advisory findings about a source that rendered while doing less than it says.
 
-    Global scope only: every reporter reads a slice fragment, and project scope
-    has one artifact type, which is permissions. A project-only repo has no
-    manifest to load, so asking would raise rather than report nothing.
+    Global scope only: every reporter reads a slice fragment, and no project
+    slice has one yet — project instructions compose from prose and project
+    permissions from rules. A project-only repo has no manifest to load, so
+    asking would raise rather than report nothing.
     """
     if not manifest_path(root).is_file():
         return ()
@@ -556,11 +559,21 @@ def render_project(root: Path) -> dict[Path, Output]:
         tiers.append(parse_rules(local_path))
     rules = merge_rules(*tiers)
 
+    instructions = project_instructions(root, config)
+
     outputs: dict[Path, Output] = {}
     for agent, slice_name, spec in project_slices(config.harnesses):
         if spec.output is None:
             continue
         path = root / spec.output
+        if slice_name == "instructions":
+            # Several agents name one document and that is not a collision here:
+            # the order is the project's, not the agent's, so every one of them
+            # renders the same bytes. Skipping the repeat rather than claiming
+            # the path is what makes `AGENTS.md` shared instead of contested.
+            if instructions is not None:
+                outputs[path] = instructions
+            continue
         residual = _load_existing(path) if spec.preserve_foreign else {}
         contributor = PermissionTarget(
             agent=agent,
@@ -572,6 +585,31 @@ def render_project(root: Path) -> dict[Path, Output]:
         )
         outputs[path] = compose_permission_document([(contributor, residual, {})], rules, path)
     return outputs
+
+
+def project_instructions(root: Path, config: ProjectConfig) -> str | None:
+    """The project's instruction document, or None when it declares none.
+
+    Templates concatenate first and the project's own fragments after, matching
+    the permission tiers: a template describes a kind of work and anything the
+    project itself says outranks it — which for prose means it comes last and is
+    read last. A template contributes one unnamed block, so adopting `web` brings
+    its instructions without the project restating them.
+    """
+    blocks: list[str] = []
+    for name in config.templates:
+        contributed = resolve_template(name, root).path / TEMPLATE_INSTRUCTIONS
+        if contributed.is_file():
+            blocks.append(load_fragment(contributed))
+
+    source = Source(name=PROJECT_DIR, path=root / PROJECT_DIR, use=frozenset({INSTRUCTIONS.use}))
+    blocks.extend(
+        load_fragment(resolve_item((source,), name, INSTRUCTIONS).path)
+        for name in config.instructions
+    )
+    if not blocks:
+        return None
+    return "\n\n".join([HEADER, *blocks]) + "\n"
 
 
 def atomic_write(path: Path, content: str) -> None:

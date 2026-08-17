@@ -327,7 +327,8 @@ anything you put directly into a generated output is silently discarded at the n
 
 ## Project scope
 
-Per-repo permissions, layered on top of the global manifest above. A repo opts in once:
+Per-repo permissions and instructions, layered on top of the global manifest above. A repo opts
+in once:
 
     loadout init --harness claude --harness opencode   # repeatable, one per harness
     loadout harness add pi                             # enable one more, later
@@ -335,9 +336,10 @@ Per-repo permissions, layered on top of the global manifest above. A repo opts i
 `init` scaffolds `loadout/`:
 
 ```text
-loadout/config.toml               enabled harnesses, and any templates this repo opts into
+loadout/config.toml               enabled harnesses, the instruction order, and any templates
 loadout/permissions.toml          committed, shared with everyone working in this repo
 loadout/permissions.local.toml    personal, gitignored
+loadout/instructions/*.md         instruction fragments, named by config.toml's `instructions`
 loadout/templates/<name>/         a vendored template, committed — see Templates below
 ```
 
@@ -354,10 +356,30 @@ Known harnesses and what each one generates:
 
 | harness | generates |
 | --- | --- |
-| `claude` | `.claude/settings.json`, `.claude/mcp-permissions.json` |
-| `codex` | `.codex/rules/permissions.rules` |
-| `opencode` | `opencode.json` |
-| `pi` | `.pi/extensions/pi-permission-system/config.json` |
+| `claude` | `.claude/settings.json`, `.claude/mcp-permissions.json`, `CLAUDE.md` |
+| `codex` | `.codex/rules/permissions.rules`, `AGENTS.md` |
+| `opencode` | `opencode.json`, `AGENTS.md` |
+| `pi` | `.pi/extensions/pi-permission-system/config.json`, `AGENTS.md` |
+
+### Instructions
+
+`instructions` in `loadout/config.toml` names fragments in `loadout/instructions/`, in reading
+order, and they compose into `CLAUDE.md` and `AGENTS.md`:
+
+```toml
+instructions = ["conventions", "testing"]
+```
+
+**One order for the repo, not one per harness.** Codex, OpenCode and Pi all read a repo-root
+`AGENTS.md` (see [config.md](docs/reference/config.md#instructions)), so a per-harness order
+would need one file to hold three of them. With a single order the two documents are identical
+by construction rather than by an assertion that could fail open. Declare no `instructions` and
+neither file is generated, so a repo using loadout for permissions alone keeps its hand-written
+`CLAUDE.md`.
+
+A template contributes its `instructions.md` as one unnamed block **above** the repo's own
+fragments — adopting `web` brings its prose without the repo restating it, and anything the repo
+declares is read last.
 
 `opencode.json` and `.claude/settings.json` are a harness's own multi-purpose config file, so
 loadout preserves any foreign top-level key already there (`$schema`, for example) instead of
@@ -382,6 +404,7 @@ declares outranks it.
 ```toml
 # loadout/config.toml
 harnesses = ["claude", "codex"]
+instructions = ["conventions", "testing"]
 templates = ["web", "railway"]
 
 [template.web]              # written by `template vendor`; only `vendored` is accepted

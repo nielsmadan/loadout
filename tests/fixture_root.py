@@ -31,6 +31,11 @@ PROJECT_HARNESSES = ("claude", "codex", "opencode", "pi")
 # byte-compared output at all.
 PROJECT_TEMPLATES = ("web",)
 
+# Declared in reverse alphabetical order on purpose: sorted, this pair would come
+# out the other way round, so the expected document proves the order is the
+# config's rather than the directory listing's.
+PROJECT_INSTRUCTIONS = ("testing", "conventions")
+
 # Both preserve_foreign project targets, seeded so the carry-through path runs.
 PROJECT_FOREIGN = {
     ".claude/settings.json": {"$schema": "https://example.invalid/claude.json"},
@@ -43,8 +48,10 @@ def build_project_root(destination: Path) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     quoted = ", ".join(f'"{harness}"' for harness in PROJECT_HARNESSES)
     templates = ", ".join(f'"{name}"' for name in PROJECT_TEMPLATES)
+    fragments = ", ".join(f'"{name}"' for name in PROJECT_INSTRUCTIONS)
     (directory / "config.toml").write_text(
-        f"harnesses = [{quoted}]\ntemplates = [{templates}]\n", encoding="utf-8"
+        f"harnesses = [{quoted}]\ntemplates = [{templates}]\ninstructions = [{fragments}]\n",
+        encoding="utf-8",
     )
     for name in PROJECT_TEMPLATES:
         shutil.copytree(
@@ -52,6 +59,9 @@ def build_project_root(destination: Path) -> Path:
             directory / "templates" / name,
             dirs_exist_ok=True,
         )
+    shutil.copytree(
+        PROJECT_FIXTURES / "instructions", directory / "instructions", dirs_exist_ok=True
+    )
     for name in ("permissions.toml", "permissions.local.toml"):
         shutil.copy2(PROJECT_FIXTURES / name, directory / name)
 

@@ -18,6 +18,8 @@ OUTPUTS = (
     "opencode.json",
     ".pi/extensions/pi-permission-system/config.json",
     ".claude/mcp-permissions.json",
+    "CLAUDE.md",
+    "AGENTS.md",
 )
 
 
@@ -27,15 +29,21 @@ def test_every_project_output_matches_the_expected_output(project: Path) -> None
         assert rendered[name] == (EXPECTED / name).read_text(encoding="utf-8"), name
 
 
-def test_all_five_outputs_are_rendered(project: Path) -> None:
+def test_every_output_is_rendered(project: Path) -> None:
     rendered = {str(p.relative_to(project)) for p in render_project(project)}
     assert rendered == set(OUTPUTS)
 
 
 def test_only_enabled_harnesses_are_rendered(project: Path) -> None:
-    (project / "loadout" / "config.toml").write_text('harnesses = ["claude"]\n', encoding="utf-8")
+    config = project / "loadout" / "config.toml"
+    config.write_text(
+        config.read_text(encoding="utf-8").replace(
+            '"claude", "codex", "opencode", "pi"', '"claude"'
+        ),
+        encoding="utf-8",
+    )
     rendered = {str(p.relative_to(project)) for p in render_project(project)}
-    assert rendered == {".claude/settings.json", ".claude/mcp-permissions.json"}
+    assert rendered == {".claude/settings.json", ".claude/mcp-permissions.json", "CLAUDE.md"}
 
 
 def test_personal_tier_merges_into_the_output(project: Path) -> None:
@@ -299,4 +307,72 @@ def test_a_template_carrying_no_permissions_is_not_an_error(bare_project: Path) 
 def test_an_unresolvable_template_fails_the_render(bare_project: Path) -> None:
     _declare(bare_project, "missing")
     with pytest.raises(LoadoutError, match="no machine config"):
+        render_project(bare_project)
+
+
+def _instruct(bare_project: Path, *names: str) -> None:
+    config = bare_project / "loadout" / "config.toml"
+    quoted = ", ".join(f'"{name}"' for name in names)
+    config.write_text(
+        config.read_text(encoding="utf-8") + f"instructions = [{quoted}]\n", encoding="utf-8"
+    )
+
+
+def _fragment(bare_project: Path, name: str, body: str) -> None:
+    directory = bare_project / "loadout" / "instructions"
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / f"{name}.md").write_text(body, encoding="utf-8")
+
+
+def test_the_two_instruction_documents_are_byte_identical(project: Path) -> None:
+    """Codex, OpenCode and Pi share one repo-root AGENTS.md, so a per-agent order
+    could not be honoured. One order is what makes the two documents equal by
+    construction rather than by luck."""
+    rendered = render_project(project)
+    assert rendered[project / "CLAUDE.md"] == rendered[project / "AGENTS.md"]
+
+
+def test_instruction_blocks_appear_in_declared_order_below_the_template(project: Path) -> None:
+    """All three positions are asserted, not just the winner: an assertion that
+    only pins the first block passes against a render that dropped the rest, and
+    `testing` before `conventions` is the reverse of the sorted order, so a
+    directory listing cannot produce this."""
+    document = render_project(project)[project / "AGENTS.md"]
+    template = document.index("Contributed by the `web` template")
+    testing = document.index("Declared first while sorting second")
+    conventions = document.index("Declared second while sorting first")
+    assert template < testing < conventions
+
+
+def test_a_project_declaring_no_instructions_generates_neither_document(
+    bare_project: Path,
+) -> None:
+    rendered = {str(p.relative_to(bare_project)) for p in render_project(bare_project)}
+    assert rendered == {
+        ".claude/settings.json",
+        ".claude/mcp-permissions.json",
+        ".codex/rules/permissions.rules",
+        "opencode.json",
+        ".pi/extensions/pi-permission-system/config.json",
+    }
+
+
+def test_a_template_contributes_instructions_without_being_named(bare_project: Path) -> None:
+    """A template is a tier, not a fragment: adopting `web` brings its prose with
+    no entry in the project's order. The project fragment is declared too, and
+    still present, so this cannot pass against a render that emitted only the
+    template."""
+    tree = _vendor(bare_project, "web", "[shell]\nallow = []\n")
+    (tree / "instructions.md").write_text("From the template.", encoding="utf-8")
+    _declare(bare_project, "web")
+    _fragment(bare_project, "own", "From the project.")
+    _instruct(bare_project, "own")
+
+    document = render_project(bare_project)[bare_project / "AGENTS.md"]
+    assert document.index("From the template.") < document.index("From the project.")
+
+
+def test_an_unknown_instruction_fragment_fails_the_render(bare_project: Path) -> None:
+    _instruct(bare_project, "nope")
+    with pytest.raises(LoadoutError, match="nope"):
         render_project(bare_project)

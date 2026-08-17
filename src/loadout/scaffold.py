@@ -84,9 +84,9 @@ def init_project(
         for name in INSTRUCTION_FILES:
             if (root / name).exists() and _tracked(root, name):
                 actions.append(
-                    f"note: {name} is tracked. loadout does not generate instruction "
-                    f"files yet; when it does, you will need to move this into loadout/ "
-                    f"first."
+                    f"note: {name} is tracked, and loadout generates it once you add an "
+                    f"`instructions` order. Move its content into loadout/instructions/ "
+                    f"before you do, or the next sync will overwrite it."
                 )
 
         project_dir.mkdir(parents=True, exist_ok=True)
