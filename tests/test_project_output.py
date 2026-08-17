@@ -453,3 +453,47 @@ def test_a_supporting_file_is_copied_rather_than_rendered(project: Path) -> None
     carried = rendered[project / ".claude/skills/probe/reference.md"]
     assert isinstance(carried, Copied)
     assert carried.source.read_text(encoding="utf-8").startswith("Supporting file")
+
+
+def test_two_agents_may_not_share_one_skills_directory(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`render_skill` varies by harness, so one directory cannot hold both — and
+    the `.agents/` convention table invites exactly this edit, because serving two
+    harnesses from one write is right for instructions and wrong here.
+
+    Before the claim the render simply succeeded and whichever agent sorted last
+    silently won, so asserting the error names both owners is what distinguishes
+    a guard from a crash."""
+    shared = SliceOutput(output=".agents/skills")
+    monkeypatch.setitem(PROJECT_PRESET["opencode"], "skills", shared)
+    monkeypatch.setitem(PROJECT_PRESET["pi"], "skills", shared)
+
+    with pytest.raises(LoadoutError) as raised:
+        render_project(project)
+
+    message = str(raised.value)
+    assert "opencode.skills" in message
+    assert "pi.skills" in message
+    assert ".agents/skills" in message
+
+
+def test_two_agents_may_not_share_one_document(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The same guard over the rest of the preset, so whoever adds hooks or
+    plugins at project scope gets an error rather than a silent overwrite."""
+    monkeypatch.setitem(
+        PROJECT_PRESET["pi"],
+        "permissions",
+        SliceOutput(renderer="pi-project", output="opencode.json"),
+    )
+    with pytest.raises(LoadoutError, match="claimed by both"):
+        render_project(project)
+
+
+def test_the_shared_instruction_document_is_still_allowed(project: Path) -> None:
+    """The exemption survives the guard: three agents naming one AGENTS.md is the
+    designed case, and claiming it would have broken the render outright."""
+    rendered = render_project(project)
+    assert rendered[project / "AGENTS.md"] == rendered[project / "CLAUDE.md"]

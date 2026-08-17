@@ -198,6 +198,8 @@ source rather than generated output. See [templates](templates.md) and
 | `p-opencode-race` | `check` reports the skills race when neither disabling variable is set, without moving the exit code | `test_check_reports_the_opencode_skills_race_without_failing`, `test_a_project_without_opencode_is_not_told_about_its_flag` |
 | `p-opencode-both-flags` | the report reads both names, since OpenCode's flag is `broad \|\| direct` — a one-name check false-alarms at whoever set the broad switch | `test_either_flag_stops_the_opencode_skills_report` |
 | `p-opencode-off-is-off` | an explicit `=0` still reports, because the user has said the opposite of what silence would imply | `test_an_explicit_off_is_not_mistaken_for_on` |
+| `p-claim` | two preset entries naming one path is an error at project scope as it is at global — `.agents/skills` is the edit the convention table invites and `opencode.md` forbids | `test_two_agents_may_not_share_one_skills_directory`, `test_two_agents_may_not_share_one_document` |
+| `p-claim-exempts-instructions` | the shared `AGENTS.md` survives the guard, since its content is agent-independent by construction | `test_the_shared_instruction_document_is_still_allowed` |
 
 ## Generated hook adapters
 

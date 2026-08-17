@@ -620,6 +620,13 @@ def render_project(root: Path) -> dict[Path, Output]:
     trees = project_skill_trees(root, config)
 
     outputs: dict[Path, Output] = {}
+    # Project scope claims its paths for the same reason global scope does, and
+    # for one it does not: the `.agents/` convention table reads as an invitation
+    # to serve two harnesses from one directory, which is right for instructions
+    # and wrong for skills. `opencode.md` forbids exactly that edit in prose, and
+    # prose does not stop anyone — without this the second agent silently
+    # overwrote the first and the render succeeded.
+    claimed: dict[Path, str] = {}
     for agent, slice_name, spec in project_slices(config.harnesses):
         if spec.output is None:
             continue
@@ -627,7 +634,9 @@ def render_project(root: Path) -> dict[Path, Output]:
         if slice_name == "skills":
             # Each harness gets its own directory because `render_skill` varies
             # by harness — the same reason instructions can share a path and
-            # these cannot.
+            # these cannot. The directory is claimed rather than the files in it,
+            # so the error names the thing the preset names.
+            _claim(path, f"{agent}.{slice_name}", claimed)
             _expand_project_skills(agent, path, trees, outputs)
             continue
         if slice_name == "instructions":
@@ -638,6 +647,7 @@ def render_project(root: Path) -> dict[Path, Output]:
             if instructions is not None:
                 outputs[path] = instructions
             continue
+        _claim(path, f"{agent}.{slice_name}", claimed)
         residual = _load_existing(path) if spec.preserve_foreign else {}
         contributor = PermissionTarget(
             agent=agent,
