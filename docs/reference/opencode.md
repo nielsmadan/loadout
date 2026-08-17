@@ -77,3 +77,43 @@ OpenCode evaluates each part of a `;` / `&&` / `|` chain separately and takes th
 least-permitted result. In a headless session there is no TTY to answer an `ask` prompt,
 so the whole call is auto-rejected and the run terminates before producing output. The
 classic trigger is a benign `echo ---` separator inside an otherwise-allowed read chain.
+
+## Required setup: `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS`
+
+**Set this before letting loadout write OpenCode skills, or OpenCode picks between
+two versions of every skill at random.**
+
+    export OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1
+
+OpenCode scans six locations for skills — its own two, Claude's two, and the
+`.agents/` pair — and loadout writes to Claude's *and* OpenCode's, deliberately,
+because a skill's content can differ per harness (`::: opencode` sections). That
+means every skill name exists twice, and the two copies are not always the same
+bytes.
+
+**Duplicate names resolve by race, not by precedence.** From
+`packages/opencode/src/skill/index.ts`:
+
+```ts
+yield* Effect.forEach(discovered.matches, (match) => add(state, match, events), {
+  concurrency: "unbounded",
+  discard: true,
+})
+```
+
+Every discovered `SKILL.md` is read concurrently, and `add` writes into one
+name-keyed object — so whichever file finishes last wins. `add` does log
+`"duplicate skill name"` at warning level, which a normal session never shows.
+
+Verified by probing rather than inferred: the same repo, the same two copies, run
+twice, returned `CLAUDE_PROJECT` and then `OPENCODE_PROJECT`. The documented order
+of the six locations describes *discovery*, not resolution, and upstream never
+claims otherwise — the word "precedence" appears nowhere on its skills page.
+
+The variable removes both Claude directories from the scan, so nothing collides
+and OpenCode reads the copy written for it. It is read from the **environment**
+(`ConfigProvider.fromEnv()`); there is no `opencode.json` key for it, so it belongs
+in your shell configuration rather than anywhere loadout renders.
+
+`OPENCODE_DISABLE_CLAUDE_CODE=1` sets it too, along with the Claude Code prompt.
+`.agents/skills` stays in the scan either way — loadout never writes there.

@@ -142,6 +142,12 @@ Two consequences worth stating because they look inconsistent side by side:
   harness. Two harnesses pointed at one skills directory would need different bytes there. Same
   shape of problem, opposite answer, and the reason is in the two renderers' signatures.
 
+  **This is why OpenCode needs `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1`.** It scans Claude's
+  skills directories as well as its own, so writing a per-harness flavour to each makes every
+  name exist twice — and OpenCode resolves duplicates by race rather than precedence. Setting
+  the variable removes the collision instead of hoping the right copy wins. See
+  [reference/opencode.md](reference/opencode.md#required-setup-opencode_disable_claude_code_skills).
+
 **Hooks and plugins at project scope are a `PROJECT_PRESET` entry away, not a project.**
 `compose_permission_document` is scope-agnostic — it takes a contributor list and knows nothing
 about which scope built it — so a value renderer or a generated adapter works there the moment a
