@@ -116,7 +116,7 @@ Four of the five harnesses read a shared, harness-neutral directory — `~/.agen
 
 | slice | Claude | Codex | OpenCode | Pi | Antigravity |
 |---|---|---|---|---|---|
-| skills | | | `~/.agents/skills/` | `~/.agents/skills/`, `.agents/skills/` | `.agents/skills/`, `.agents/skills.json` |
+| skills | | | `~/.agents/skills/`, `.agents/skills/` | `~/.agents/skills/`, `.agents/skills/` | `.agents/skills/`, `.agents/skills.json` |
 | plugins | | `~/.agents/plugins/`, `.agents/plugins/` | | | `.agents/plugins/` |
 | instructions | | | | | `.agents/rules/` |
 | hooks | | | | | `.agents/hooks.json` |
@@ -126,7 +126,8 @@ is the broadest adopter, with `rules/`, `hooks.json`, `plugins/`, `skills/`, `sk
 `agents/` beneath it.
 
 The practical consequence for the skills slice: writing `~/.agents/skills/<name>/` once serves
-OpenCode and Pi, and `.agents/skills/` serves Antigravity at project scope — leaving only Claude
+OpenCode and Pi, and `.agents/skills/` serves OpenCode, Pi and Antigravity at project scope
+(OpenCode's project row corrected 2026-08-16 from upstream) — leaving only Claude
 and Codex needing their own directories. Pi can additionally be *configured* to read
 `~/.claude/skills` and `~/.codex/skills` directly, so a Pi user who already has Claude skills
 need not copy them.
@@ -382,10 +383,37 @@ What loadout renders from one portable reference, and what it reports instead of
 | harness | global | project |
 |---|---|---|
 | Claude | `~/.claude/skills/<name>/` | `.claude/skills/<name>/` |
-| Codex | `~/.codex/skills/<name>/` | |
-| OpenCode | `~/.config/opencode/skills/<name>/`, `~/.agents/skills/` | |
+| Codex | `~/.codex/skills/<name>/` | **none** |
+| OpenCode | `~/.config/opencode/skills/<name>/`, `~/.claude/skills/`, `~/.agents/skills/` | `.opencode/skills/`, `.claude/skills/`, `.agents/skills/` |
 | Pi | `~/.pi/agent/skills/`, `~/.agents/skills/` | `.pi/skills/`, `.agents/skills/` |
 | Antigravity | **none** | `.agents/skills/`, `.agents/skills.json` |
+
+**Codex has no project skills directory** — verified negative, 2026-08-17 against the 0.147.0
+binary. All three `.codex/skills` occurrences are preceded by `~/`, inside the bundled
+`skill-creator` / `skill-installer` prose describing the global directory; a shape query for a
+project-relative `<dot-dir>/skills` under *any* directory name returns zero
+(`grep -oE '(^|[^a-zA-Z0-9_/$}~-])\.[a-zA-Z0-9_-]+/skills[a-zA-Z0-9_./*-]*'`); and its only
+`.agents/` paths are `plugins/marketplace.json` and `plugins/api_marketplace.json`. It does have
+a config-driven
+mechanism — `SkillConfig{name, path, enabled}` and the app-server method `skills/extraRoots/set`
+— which can point a root into a repo, but that is a setting in `.codex/config.toml`, a file
+loadout does not own, rather than a convention directory. Reproduced from a differently-shaped
+query by a second reader.
+
+**The OpenCode row was previously two blanks and both were wrong.** Its project cell was empty
+and its global cell omitted `~/.claude/skills/`. Source: upstream `https://opencode.ai/docs/skills/`,
+read 2026-08-16, which lists six locations in pairs — project and global for each of
+`.opencode/`, `.claude/` and `.agents/`. **Evidence tier is upstream docs, not the binary**: the
+1.18.15 bundle and OpenCode's shipped docs both live under `~/.opencode`, which this machine's
+sandbox refuses. That makes the six locations solid as *presence* and unconfirmed as an
+exhaustive list, so nothing should assume there is no seventh.
+
+**How the three roots resolve against each other is not documented**, and it matters: loadout
+writes per-harness copies under the same skill name, so a harness reading two of these roots
+sees the name twice. Upstream's only statement is a troubleshooting item — *"Ensure skill names
+are unique across all locations"* — which reads as "duplicates are your problem" rather than a
+precedence rule. Treated as unverified until a probe settles it; see
+[scopes.md](../scopes.md#still-open).
 
 **Antigravity has no global skills directory** — a verified negative rather than a blank. The
 1.1.11 binary contains no home-relative skills path of any kind: no `~/.agents/`, no
@@ -394,8 +422,8 @@ bundled `assets/external/skills/` and `antigravity-cli/builtin/skills/`.
 
 Every other harness has its own skills directory at global scope, so `~/.agents/skills/` is an
 *additional* location for OpenCode and Pi rather than the only one. At project scope the reverse
-holds: `.agents/skills/` is Antigravity's only option, and Pi — which also reads it — has
-`.pi/skills/` as an alternative.
+holds: `.agents/skills/` is Antigravity's only option, while OpenCode and Pi — which both read it
+— have `.opencode/skills/` and `.pi/skills/` as alternatives.
 
 All five have a skills mechanism. An earlier draft of this page recorded Pi and Antigravity as
 having none, on the evidence that no skills were *installed* for them on this machine — a

@@ -142,6 +142,12 @@ Two consequences worth stating because they look inconsistent side by side:
   harness. Two harnesses pointed at one skills directory would need different bytes there. Same
   shape of problem, opposite answer, and the reason is in the two renderers' signatures.
 
+**Hooks and plugins at project scope are a `PROJECT_PRESET` entry away, not a project.**
+`compose_permission_document` is scope-agnostic — it takes a contributor list and knows nothing
+about which scope built it — so a value renderer or a generated adapter works there the moment a
+preset entry names one. They are deliberately not built: nothing asks for them yet, and a slice
+nobody uses is one nobody notices breaking.
+
 **Project scope has no profiles**, and that is a decision rather than an omission:
 `render_project` takes no profile argument. A profile selects among machine-wide variants of one
 person's setup; a repo's configuration is the same for everyone who checks it out, which is what
@@ -159,6 +165,14 @@ person's setup; a repo's configuration is the same for everyone who checks it ou
   `.codex/config.toml`, a file loadout does not own). The overlap is the open part: writing
   per-harness copies into directories another harness also reads produces duplicate skill names,
   which OpenCode documents as something to avoid rather than something it resolves.
+
+  **Blocked on a probe, not on a design.** Whether OpenCode resolves `.opencode/skills/` against
+  `.claude/skills/` by root order or leaves it undefined decides between shadowing the Claude
+  copy, writing only `.claude/skills/` and reporting through the notices surface that OpenCode
+  reads Claude's flavour, and refusing the combination outright. The same question at *global*
+  scope was probed and answered for a different pair of roots, one of which no longer exists, so
+  it does not transfer — reasoning by analogy is what produced the six wrong conclusions in
+  [AGENTS.md](../AGENTS.md).
 - Antigravity, if it matures. `agy` was dropped as a target — its generated permissions file is
   ignored in headless mode, it has no global skills mechanism and no config-directory variable,
   and its plugin enablement was never established. `docs/reference/antigravity.md` keeps the

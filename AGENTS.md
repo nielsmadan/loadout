@@ -27,6 +27,14 @@ These are not style preferences. Each one has already caused, or nearly caused, 
   refuses to run over unstaged changes there, so a regeneration is always its own commit. Never
   edit an expected file directly to make a test pass. See
   [0009](docs/decisions/0009-expected-output-is-reviewed-not-frozen.md).
+  **A new artifact type therefore produces one red commit, by construction.** When a change adds
+  expected files rather than rewriting them, the feature commit fails the whole-document
+  comparison on its own and the regeneration that follows makes it pass — a regeneration cannot
+  precede the code it renders from. `5d35f6d` + `1a6d38e` (project-scope instructions) are the
+  worked example. A bisect landing on the first of such a pair is looking at this, not at a
+  broken feature; the pair is always adjacent. Narrowing 0009 to "its own commit *when it
+  rewrites existing output*" was considered and rejected — the case arises about once a
+  milestone, and a conditional that fires that rarely is one people misremember.
 - **The fixture's reach is load-bearing.** `tests/fixtures/permissions.toml` exists to provoke
   shapes, not to be realistic; `tests/test_fixture_shapes.py` fails if one is dropped, and
   `docs/reference/coverage.md` maps every documented behaviour to the test that pins it. When a
