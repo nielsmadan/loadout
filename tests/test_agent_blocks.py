@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from fixture_root import build_root
 from loadout.agents import GLOBAL_PRESET, SliceOutput
 from loadout.emit import render_global
 from loadout.errors import LoadoutError
@@ -230,3 +231,32 @@ def test_a_value_renderer_without_an_owned_key_is_rejected(tmp_path: Path) -> No
     finally:
         GLOBAL_PRESET["opencode"]["hooks"] = real
         del RENDERERS["hooks-test"]
+
+
+def test_false_switches_an_automatic_slice_off(tmp_path: Path) -> None:
+    """The only way to say "not this one". An absent key means *automatic*, and
+    `[]` means "render with no rules selected" — which still writes a file.
+
+    Needed when a harness stops reading what loadout writes: the renderer stays a
+    capability for whoever does use it, and one machine's manifest says it has no
+    use for it.
+    """
+    root = build_root(tmp_path)
+    manifest = root / "loadout.toml"
+    manifest.write_text(manifest.read_text() + "\n[pi]\npermissions = false\n", encoding="utf-8")
+
+    rendered = render_global(root)
+
+    assert not any("pi-permission-system" in str(p) for p in rendered)
+
+
+def test_an_automatic_slice_renders_when_not_switched_off(tmp_path: Path) -> None:
+    """The loser of the pair above — without it, a guard that never rendered pi
+    at all would pass the first test."""
+    root = build_root(tmp_path)
+    manifest = root / "loadout.toml"
+    manifest.write_text(manifest.read_text() + "\n[pi]\n", encoding="utf-8")
+
+    rendered = render_global(root)
+
+    assert any("pi-permission-system" in str(p) for p in rendered)

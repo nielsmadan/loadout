@@ -423,8 +423,18 @@ AUTOMATIC_SLICES = ("permissions", "mcp", "skills")
 
 
 def _agent_slice_names(agent: str, block: dict[str, object]) -> list[str]:
+    """Which slices this agent renders: what it names, plus the automatic ones.
+
+    `<slice> = false` switches an automatic slice off. It is the only way to say
+    "not this one" — an absent key means *automatic*, and `[]` already means
+    "render with no rules selected", which is a different thing that renders a
+    file. Needed when a harness stops reading what loadout writes: the renderer
+    is still a capability, so it stays, and the manifest is where one machine
+    says it has no use for it.
+    """
     offered = GLOBAL_PRESET[agent]
-    named = [k for k in block if k in offered]
+    disabled = {k for k, v in block.items() if v is False}
+    named = [k for k in block if k in offered and k not in disabled]
     automatic = [s for s in AUTOMATIC_SLICES if s in offered and s not in block]
     return named + automatic
 
