@@ -3,6 +3,7 @@ from __future__ import annotations
 import difflib
 import io
 import json
+import os
 import re
 import subprocess
 import sys
@@ -201,6 +202,14 @@ def _modified_outside_loadout(root: Path, profile: str) -> list[tuple[Path, str,
     return modified
 
 
+def _write_full_diff(lines: list[str]) -> Path:
+    """The untruncated diff, so an abort the terminal shortened stays reviewable."""
+    descriptor, name = tempfile.mkstemp(suffix=".diff", prefix="loadout-")
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        handle.writelines(lines)
+    return Path(name)
+
+
 def _diff(rel: str, actual: str, expected: str, context: int) -> list[str]:
     return list(
         difflib.unified_diff(
@@ -219,20 +228,30 @@ def cmd_sync(root: Path, profile: str = "default", force: bool = False) -> int:
         if modified is None:
             print("note: no committed baseline — skipping the modified-file check", file=sys.stderr)
         elif modified:
+            full: list[str] = []
             for path, actual, expected in modified:
                 rel = _display(path, root)
                 print(f"WARNING: {rel} was modified outside loadout", file=sys.stderr)
                 # Tight context: on a 16k settings.json the one runtime-added entry
                 # should be readable without scrolling past the whole document.
                 lines = _diff(rel, actual, expected, context=1)
+                full.extend(lines)
                 sys.stderr.writelines(lines[:_DIFF_LIMIT])
                 if len(lines) > _DIFF_LIMIT:
-                    print(f"    ... {len(lines) - _DIFF_LIMIT} more diff line(s)", file=sys.stderr)
+                    print(f"    ... {len(lines) - _DIFF_LIMIT} more line(s)", file=sys.stderr)
             print(
-                "\nSync aborted — the '-' lines above exist only on disk and would be lost. "
-                "Move them into the source, or run `loadout sync --force` to discard them.",
+                "\nSync aborted — the '-' lines would be lost. Move them into the source, "
+                "or run `loadout sync --force` to discard them.",
                 file=sys.stderr,
             )
+            # A blocking prompt the reader cannot see all of is one they learn to
+            # skip, and skipping this one means reaching for --force, which is the
+            # thing it exists to prevent. Whatever the terminal truncates, the file
+            # holds in full — the decision stays reviewable.
+            if any(
+                len(_diff(_display(p, root), a, e, context=1)) > _DIFF_LIMIT for p, a, e in modified
+            ):
+                print(f"\nThe complete diff is at {_write_full_diff(full)}", file=sys.stderr)
             return 1
 
     for path in write_all(root, profile):
