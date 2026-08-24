@@ -56,10 +56,12 @@ test is a gap.
 | id | behaviour | source | pinned by |
 |---|---|---|---|
 | `pi-schema` | `$schema` is pinned to the extension version | [pi](pi.md#config-file) | `test_pi_document_shape` |
-| `pi-catch-alls` | `bash` and `mcp` are seeded `{"*": "ask"}` first | [pi](pi.md#document-shape) | `test_pi_seeds_catch_alls_first` |
+| `pi-catch-alls` | `bash` and `mcp` are both seeded with a `*` catch-all first | [pi](pi.md#document-shape) | `test_pi_seeds_catch_alls_first` |
+| `pi-default` | `bash`'s catch-all takes `[shell] default`, first; `mcp`'s stays `ask` | [pi](pi.md#document-shape) | `test_pi_seeds_bash_with_the_stated_default_and_leaves_mcp_alone` |
 | `pi-mcp-derived` | MCP targets are `<server>_<tool>` and `<server>:<tool>`, not `server/tool` | [pi](pi.md#mcp-targets-are-derived-not-servertool) | `test_pi_mcp_patterns_for_a_single_tool` |
 | `pi-mcp-serverwide` | `mcp_server_<s>` / `mcp_connect_<s>` only for a `server/*` entry | [pi](pi.md#mcp-targets-are-derived-not-servertool) | `test_pi_mcp_patterns_add_server_wide_targets_for_a_wildcard` |
 | `pi-project-shape` | project variant omits `$schema` and the catch-alls | — (test is the record) | `test_pi_project_omits_schema_and_catch_alls` |
+| `pi-project-no-default` | with no catch-all to seed, a stated default is inert at project scope | [pi](pi.md#document-shape) | `test_pi_project_has_no_catch_all_for_a_default_to_seed` |
 
 ## Codex
 
@@ -78,7 +80,9 @@ test is a gap.
 
 | id | behaviour | source | pinned by |
 |---|---|---|---|
-| `oc-catch-all-first` | `bash` seeded `{"*": "ask"}` first | [opencode](opencode.md#pattern-shape) | `test_opencode_seeds_the_bash_catch_all_first` |
+| `oc-catch-all-first` | `bash` seeded with a `*` catch-all first | [opencode](opencode.md#pattern-shape) | `test_opencode_seeds_the_bash_catch_all_first` |
+| `oc-default` | the seed takes `[shell] default`, and rules after it still refine it | [reference](README.md#the-catch-all-default) | `test_opencode_seeds_the_bash_catch_all_with_the_stated_default`, `test_a_stated_default_does_not_displace_a_rule_that_refines_it` |
+| `oc-project-default` | OpenCode has no project variant, so a project-stated default reaches it | [pi](pi.md#document-shape) | whole-document comparison (`expected/project/opencode.json`) |
 | `oc-mcp-top-level` | MCP entries become top-level `permission` keys, `/` → `_` | [opencode](opencode.md#pattern-shape) | `test_opencode_mcp_entries_become_top_level_permission_keys` |
 | `oc-extras` | `[opencode.extra]` toggles emitted verbatim | [opencode](opencode.md#what-loadout-emits) | `test_opencode_extra_toggles_are_emitted_verbatim` |
 | `oc-permission-last` | `permission` is appended after the base's keys | — (test is the record) | `test_opencode_appends_permission_after_the_base_keys` |
@@ -101,6 +105,20 @@ list the expected-output files exist for, and the reason the comparison stays.
 | `wiring-composition` | instruction fragments compose in manifest order with the right separators |
 | `wiring-count` | every declared target produces an output |
 | `wiring-destination-env` | a `${VAR:-fallback}` destination reaches the renderer like a literal one | 
+| `wiring-default` | `[shell] default` reaches the two renderers that seed one, and no others |
+| `wiring-default-tiers` | strictest-stated-wins resolves across three real project tiers, and a silent tier does not vote |
+
+## The catch-all default
+
+| id | behaviour | source | pinned by |
+|---|---|---|---|
+| `default-strictest` | the strictest *stated* default wins across tiers, in either order | [reference](README.md#the-catch-all-default) | `test_the_strictest_stated_default_wins_regardless_of_tier_order` |
+| `default-silence` | a tier that states none casts no vote and cannot tighten one that did | [reference](README.md#the-catch-all-default) | `test_a_tier_that_states_no_default_does_not_tighten_one_that_does` |
+| `default-invalid` | a value that is not a decision, or not a string, is refused at parse time | [reference](README.md#the-catch-all-default) | `test_parse_rules_rejects_a_default_that_is_not_a_decision`, `test_parse_rules_rejects_a_default_that_is_not_a_string` |
+| `default-no-star-entry` | a bare `*` shell entry is refused; the key is the only spelling | [reference](README.md#the-catch-all-default) | `test_parse_rules_refuses_a_bare_catch_all_entry`, `test_a_glob_entry_is_still_allowed_beside_the_refused_bare_star` |
+| `default-resolved` | `Rules.catch_all` never hands a renderer `None` | — (test is the record) | `test_catch_all_resolves_unstated_to_the_seeded_verdict` |
+| `default-carriers` | the declared carrier set matches what the renderers actually seed | — (test is the record) | `test_only_the_declared_renderers_seed_a_catch_all` |
+| `default-unreached` | a stated default names the targets it does not reach, at sync time | [ADR 0015](../decisions/0015-enablement-is-rendered-installation-is-reported.md) | `test_a_stated_catch_all_names_the_harnesses_it_misses` |
 
 ## Extraction
 
@@ -118,12 +136,19 @@ Every row is pinned by `tests/test_extract_roundtrip.py`, `tests/test_extract_me
 | `x-base-residual` | `base` keeps keys other slices own, because it is the render-time residual and not a settings fragment | `test_the_base_keeps_keys_other_slices_own` |
 | `x-codex-quoting` | a `shlex.split` token holding whitespace is re-quoted, so `echo "a b"` round-trips instead of splitting into three tokens | `test_a_token_holding_a_space_survives_the_codex_project_round_trip` |
 | `x-pair-collapse` | `foo` and `foo *` collapse back to one entry — **only the rules property catches a miss**, since not collapsing renders identical bytes | `test_extraction_recovers_every_rule_the_harness_can_carry` |
-| `x-seed-dropped` | the `{"*": "ask"}` catch-all is structure, not a source rule | `test_extraction_recovers_every_rule_the_harness_can_carry` |
+| `x-seed-dropped` | a leading `*` in a map a renderer seeded is structure, not a source rule | `test_extraction_recovers_every_rule_the_harness_can_carry` |
+| `x-default-carried` | a bash catch-all other than `ask` reads back as `[shell] default` | `test_extraction_recovers_every_rule_the_harness_can_carry` |
+| `x-default-unseeded` | `pi-project` seeds nothing, so a leading `*` there stays a rule | `test_pi_project_keeps_a_leading_star_because_nothing_seeded_it` |
+| `x-default-absent` | a carrier with no catch-all is reported, not assumed to have said `ask` | `test_a_carrier_without_a_catch_all_reports_rather_than_assuming_one` |
+| `x-default-unrecognised` | an unrecognised catch-all verdict is reported, not swallowed | `test_an_unrecognised_catch_all_verdict_is_reported_not_swallowed` |
+| `x-default-ask` | a stated `ask` renders what an unstated key renders, so it reads back unstated | `test_a_default_of_ask_is_the_same_document_as_no_default` |
 | `x-codex-globs` | Codex's skipped-glob comment block carries no decision, so it is reported | `test_the_shipped_codex_rules_reports_the_globs_it_cannot_categorise` |
 | `x-order-loss` | in-place assignment in `render_opencode` / `render_pi_project` loses which category a twice-listed rule came from; `render_pi`'s key-move does not | `test_reextraction_reproduces_the_document_byte_for_byte` |
 | `x-no-union` | a command one harness denies is never emitted as allowed | `test_a_command_one_harness_denies_is_never_emitted_as_allowed`, `test_mcp_disagreement_is_reported_and_withheld` |
 | `x-absence-is-drift` | a harness that could have stated a rule and did not is a divergence | `test_a_command_missing_from_one_harness_is_reported_as_drift`, `test_codex_silence_on_a_plain_command_is_divergence` |
-| `x-capability-vote` | a harness that *cannot* express a rule does not vote on it | `test_codex_silence_on_a_glob_is_not_divergence`, `test_shell_only_harnesses_do_not_vote_on_mcp_targets` |
+| `x-capability-vote` | a harness that *cannot* express a rule does not vote on it | `test_codex_silence_on_a_glob_is_not_divergence`, `test_shell_only_harnesses_do_not_vote_on_mcp_targets`, `test_claude_and_codex_do_not_vote_on_the_catch_all_default` |
+| `x-default-diverges` | carriers disagreeing on the catch-all settle on the strictest, and it is reported | `test_a_catch_all_the_two_carriers_disagree_on_settles_on_the_strictest`, `test_a_deny_catch_all_is_never_loosened_by_a_disagreement` |
+| `x-default-withheld` | while a shell entry is withheld the catch-all is not stated looser than `ask` | `test_a_withheld_rule_stops_the_catch_all_being_stated_permissively`, `test_an_unwithheld_merge_still_states_a_permissive_catch_all` |
 | `x-unknown-harness` | an undeclared harness is refused, never defaulted to a non-voter | `test_an_undeclared_harness_is_refused_rather_than_ignored` |
 | `x-twice-listed` | a verdict is every category a harness listed the entry in, not the last one | `test_harnesses_agreeing_a_rule_appears_twice_keep_both_entries`, `test_a_rule_one_harness_lists_twice_and_another_once_is_reported` — **not reachable through the pipeline**, see below |
 | `x-machine-merges-back` | a source rendered to all nine documents merges back to itself with no divergence | `test_a_machine_rendered_from_one_source_merges_back_to_it` |

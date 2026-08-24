@@ -109,12 +109,22 @@ Rendering is not injective, and three forms have to be undone:
   `mcp_server_<server>` and `mcp_connect_<server>` when the tool is `*`. The colon form is the
   anchor — the only emitted form that splits unambiguously — and the companions are consumed.
 
-The catch-all seed `{"*": "ask"}` that Pi and OpenCode write first is not a source rule and is
-dropped, but only when it is still in first position with its seeded value.
+The catch-all that Pi and OpenCode write first is not a source rule. A leading `*` in the
+**bash** map is read back as `[shell] default` and taken out of the rules; `ask` reads back as
+*unstated*, since stating it renders the same bytes as saying nothing. There is no source rule to
+confuse it with — `parse_rules` refuses a bare `*` entry — and an unrecognised verdict stays in
+the map so the shell collapse reports it, the same contract every other decision gets.
+
+**Only where a seed was written.** `render_pi_project` emits no catch-all, so a leading `*` in a
+project-scope Pi document is a genuine rule; `pi-project` therefore has its own extractor that
+does not split one off. Reading it as the default deleted policy and re-rendered a different
+document while reporting no loss at all. Pi's **mcp** map takes no default either, so there the
+strict form still applies: only `*: ask` still in first position is the seed, and any other
+leading `*` is left for the MCP collapse to report.
 
 ## Ambiguities that do not change the bytes
 
-Three readings are genuinely undecidable from the document. In each case both readings render
+Four readings are genuinely undecidable from the document. In each case both readings render
 back identically, so the document property holds and the source differs only in spelling:
 
 - A source entry of `foo:*` is itself a glob, so `claude_pattern` emits `Bash(foo:*)` — the same
@@ -122,6 +132,9 @@ back identically, so the document property holds and the source differs only in 
 - An OpenCode MCP key splits on its last `_`, so a tool name containing `_` splits wrong, and a
   passthrough key containing one reads as an MCP target.
 - A `claude.extra` value shaped like `Bash(...)` or `mcp__x__y` reads as a shell or MCP rule.
+- A stated `default = "ask"` renders exactly what an unstated key renders, so it reads back
+  unstated. Only the spelling is lost; across tiers it also loses a vote, which is why
+  `parse_rules` keeps the two apart even though one document holds both.
 
 ## Divergence is reported, never unioned
 
@@ -131,9 +144,21 @@ render a **wider** permission set than what was on disk — a privilege escalati
 onboarding tool. The entry is withheld and named in the report for a person to resolve.
 
 Silence counts as disagreement, but only from a harness that could have spoken. `CAPABILITIES`
-declares, per renderer, whether its document can state a shell rule, an MCP rule, and a glob;
-Codex is not a voter on globs, and the MCP-only renderers are not voters on shell entries.
-Counting their silence would suppress rules every harness that can express them agrees on.
+declares, per renderer, whether its document can state a shell rule, an MCP rule, a glob, and a
+catch-all default; Codex is not a voter on globs, and the MCP-only renderers are not voters on
+shell entries. Counting their silence would suppress rules every harness that can express them
+agrees on.
+
+Only OpenCode and Pi vote on the default, because only they *author* one: Claude's
+`permissions.defaultMode` is preserved from the base rather than written, and Codex's
+`approval_policy` is in a file loadout does not write at all. Disagreement is reported but
+**not** withheld the way an entry is — withholding an entry drops it to the catch-all, while
+withholding the catch-all drops it to `ask`, the middle verdict, so a stated `deny` would come
+back a prompt. It settles on the strictest stated verdict instead.
+
+A dropped entry falls through to the catch-all, so while any shell entry is withheld the
+catch-all is not stated looser than the `ask` it used to fall through to. Without that, adopting
+a pair of files that disagree about one deny renders that command executable.
 
 A name with no declared capability is an error rather than a non-voter. A harness silently
 excluded from the vote cannot veto, so adding a renderer would quietly widen the source.

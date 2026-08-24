@@ -24,6 +24,7 @@ SOURCE_HEADER = """\
 # Both are merged; deny beats ask beats allow. Run `loadout sync` after editing.
 
 [shell]
+# default = "ask"   # verdict when no rule matches; OpenCode and Pi only
 allow = []
 ask = []
 deny = []
@@ -163,6 +164,7 @@ GLOBAL_SOURCE_HEADER = """\
 # Run `loadout sync --global` after editing.
 
 [shell]
+# default = "ask"   # verdict when no rule matches; OpenCode and Pi only
 allow = []
 ask = []
 deny = []

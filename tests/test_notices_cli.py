@@ -77,9 +77,21 @@ def test_real_drift_still_fails_alongside_a_notice(tmp_path: Path, fake_home: Pa
     assert "DRIFT" in captured.err
 
 
-def test_a_clean_source_says_nothing(root: Path, capsys) -> None:
+def test_a_clean_source_says_nothing(tmp_path: Path, capsys) -> None:
     """Silence is the point. A surface that speaks on every run is one nobody
-    reads, and the fixture without a hooks slice has nothing to report."""
+    reads, and a source with no hooks slice and no stated catch-all has nothing
+    to report.
+
+    Built here rather than from the shared fixture, which states a `[shell]
+    default` on purpose — see `test_a_stated_catch_all_names_the_harnesses_it_
+    misses` below for the notice that provokes.
+    """
+    root = tmp_path / "quiet"
+    root.mkdir()
+    (root / "permissions.toml").write_text("[shell]\nallow = ['ls']\n", encoding="utf-8")
+    (root / "loadout.toml").write_text(
+        '[[source]]\nname = "test"\npath = "."\n\n[claude]\n', encoding="utf-8"
+    )
     assert collect_notices(root) == ()
 
     loadout.main(["sync", "--root", str(root), "--force"])
@@ -87,6 +99,23 @@ def test_a_clean_source_says_nothing(root: Path, capsys) -> None:
     loadout.main(["check", "--root", str(root)])
 
     assert "note:" not in capsys.readouterr().out
+
+
+def test_a_stated_catch_all_names_the_harnesses_it_misses(root: Path, capsys) -> None:
+    """The shared fixture states `default = "allow"` and renders Claude and Codex,
+    neither of which authors a catch-all. The docs record that; this is the run
+    saying it, which is the whole point of ADR 0015's surface."""
+    loadout.main(["sync", "--root", str(root), "--force"])
+    capsys.readouterr()
+    loadout.main(["check", "--root", str(root)])
+    out = capsys.readouterr().out
+
+    assert "note: claude.permissions: [shell] default" in out
+    assert "note: codex.permissions: [shell] default" in out
+    # The carriers render it, so they must stay silent — a notice that fires for
+    # everyone teaches nothing.
+    assert "opencode.permissions: [shell] default" not in out
+    assert "pi.permissions: [shell] default" not in out
 
 
 def test_a_project_only_repo_reports_nothing_rather_than_failing(

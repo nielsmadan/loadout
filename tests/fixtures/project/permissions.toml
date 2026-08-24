@@ -6,6 +6,11 @@
 
 [shell]
 
+# Beats the template tier's "allow" under strictest-wins, while the personal tier
+# states nothing and must not drag it back. Not "ask": that renders the bytes an
+# unstated key renders, so the shape would be invisible in the expected output.
+default = "deny"
+
 allow = [
   "alpha",                 # bare command
   "beta sub",              # multi-word prefix

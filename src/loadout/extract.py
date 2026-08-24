@@ -12,7 +12,17 @@ from typing import Any
 from .errors import LoadoutError
 from .hooks import foreign_variables
 from .permissions.renderers import pi_mcp_patterns
-from .permissions.rules import Rules, dedupe, is_glob
+from .permissions.rules import (
+    CATCH_ALL_ENTRY,
+    DECISIONS,
+    MCP_SEED,
+    UNSTATED_DEFAULT,
+    Decision,
+    Rules,
+    dedupe,
+    is_glob,
+    strictest,
+)
 from .plugins import MARKETPLACES, PLUGINS
 
 CATEGORIES = ("allow", "ask", "deny")
@@ -149,17 +159,44 @@ def extract_claude(document: Any) -> Extraction:
 ARGUMENT_SUFFIX = " *"
 
 
-def _drop_seed(patterns: dict[str, str]) -> dict[str, str]:
-    """Both renderers seed their map with `*: ask`; that is not a source rule.
+def _split_default(
+    patterns: dict[str, str], label: str
+) -> tuple[Decision | None, dict[str, str], list[Note]]:
+    """Take the leading `*` off a bash map that a renderer seeded.
 
-    A source rule for `*` overwrites the seed's value, and under Pi's
-    delete-then-reassign it also moves off first position — so only `*: ask`
-    still at index 0 is the seed. A source whose only rule is `*` in ask renders
-    to exactly the seed and reads back as no rule; the document is unchanged
-    either way.
+    `[shell] default` chooses the seeded verdict, so the value at index 0 is the
+    catch-all rather than a fixed `ask`. `ask` reads back as *unstated*, since
+    stating it renders the same bytes as saying nothing.
+
+    Only call this for a renderer that actually writes a seed: where none is
+    written, a leading `*` is a source rule and eating it deletes policy. There
+    is no rule to confuse it with here — `parse_rules` refuses a bare `*` entry.
+
+    An unrecognised verdict stays in the map so `_collapse_shell` reports it, the
+    same contract every other decision in a bash map gets.
     """
     items = list(patterns.items())
-    if items and items[0] == ("*", "ask"):
+    if not items or items[0][0] != CATCH_ALL_ENTRY:
+        return (
+            None,
+            dict(patterns),
+            [Note("cannot", f"{label}: no catch-all to read a default from")],
+        )
+    seeded = items[0][1]
+    if seeded not in DECISIONS:
+        return None, dict(patterns), []
+    return (None if seeded == UNSTATED_DEFAULT else seeded), dict(items[1:]), []
+
+
+def _drop_mcp_seed(patterns: dict[str, str]) -> dict[str, str]:
+    """Pi's MCP map is seeded `*: ask` and no source key moves it.
+
+    `[shell] default` governs bash only, so this stays the strict form: a leading
+    `*` with any other verdict was not written by `render_pi` and is left for
+    `_collapse_pi_mcp` to report rather than silently discarded.
+    """
+    items = list(patterns.items())
+    if items and items[0] == (CATCH_ALL_ENTRY, MCP_SEED):
         return dict(items[1:])
     return dict(patterns)
 
@@ -232,17 +269,27 @@ def _collapse_pi_mcp(
 PI_ORDER = ("allow", "ask", "deny")
 
 
-def extract_pi(document: Any) -> Extraction:
+def _extract_pi(document: Any, label: str, seeded: bool) -> Extraction:
+    """Shared body. `seeded` is the whole difference between the two scopes.
+
+    `render_pi` writes a bash catch-all; `render_pi_project` writes none, so a
+    leading `*` there is a source rule. Reading one as the other deletes it from
+    the source and re-renders a document that is not the one it read.
+    """
     permission = document.get("permission", {})
-    bash = _drop_seed(permission.get("bash", {}))
-    raw_mcp = _drop_seed(permission.get("mcp", {}))
-    shell, shell_notes = _collapse_shell(bash, "pi")
-    mcp, mcp_notes = _collapse_pi_mcp(raw_mcp, "pi")
+    raw_bash = permission.get("bash", {})
+    default, bash, default_notes = (
+        _split_default(raw_bash, label) if seeded else (None, dict(raw_bash), [])
+    )
+    raw_mcp = _drop_mcp_seed(permission.get("mcp", {})) if seeded else permission.get("mcp", {})
+    shell, shell_notes = _collapse_shell(bash, label)
+    mcp, mcp_notes = _collapse_pi_mcp(raw_mcp, label)
     notes = (
-        shell_notes
+        default_notes
+        + shell_notes
         + mcp_notes
-        + _order_note(bash, PI_ORDER, "pi bash")
-        + _order_note(raw_mcp, PI_ORDER, "pi mcp")
+        + _order_note(bash, PI_ORDER, f"{label} bash")
+        + _order_note(raw_mcp, PI_ORDER, f"{label} mcp")
     )
     return Extraction(
         Rules(
@@ -252,9 +299,18 @@ def extract_pi(document: Any) -> Extraction:
             mcp_allow=tuple(mcp["allow"]),
             mcp_ask=tuple(mcp["ask"]),
             mcp_deny=tuple(mcp["deny"]),
+            default=default,
         ),
         notes=tuple(notes),
     )
+
+
+def extract_pi(document: Any) -> Extraction:
+    return _extract_pi(document, "pi", seeded=True)
+
+
+def extract_pi_project(document: Any) -> Extraction:
+    return _extract_pi(document, "pi-project", seeded=False)
 
 
 # --------------------------------------------------------------------------
@@ -269,8 +325,9 @@ OPENCODE_ORDER = ("allow", "deny", "ask")
 
 def extract_opencode(document: Any) -> Extraction:
     permission = document.get("permission", {})
-    bash = _drop_seed(permission.get("bash", {}))
-    shell, notes = _collapse_shell(bash, "opencode")
+    default, bash, notes = _split_default(permission.get("bash", {}), "opencode")
+    shell, shell_notes = _collapse_shell(bash, "opencode")
+    notes += shell_notes
     notes += _order_note(bash, OPENCODE_ORDER, "opencode bash")
 
     mcp: dict[str, list[str]] = {category: [] for category in CATEGORIES}
@@ -303,6 +360,7 @@ def extract_opencode(document: Any) -> Extraction:
             mcp_ask=tuple(mcp["ask"]),
             mcp_deny=tuple(mcp["deny"]),
             opencode_extra=extra,
+            default=default,
         ),
         base,
         tuple(notes),
@@ -662,7 +720,7 @@ EXTRACTORS: dict[str, Extractor] = {
     "codex-project": extract_codex,
     "opencode": extract_opencode,
     "pi": extract_pi,
-    "pi-project": extract_pi,
+    "pi-project": extract_pi_project,
 }
 
 
@@ -701,6 +759,10 @@ ABSENT = "absent"
 
 SHELL = "shell"
 MCP = "mcp"
+# A `Divergence.kind`, like the two above, but naming one key rather than a
+# namespace of many. Spelled with its section so a report row cannot be mistaken
+# for a shell divergence over a literal `*` entry.
+CATCH_ALL = "shell.default"
 
 
 @dataclass(frozen=True)
@@ -710,6 +772,11 @@ class Capability:
     shell: bool
     mcp: bool
     globs: bool = True
+    # Whether this renderer *authors* the catch-all verdict. Claude's is
+    # `permissions.defaultMode`, which `render_claude` preserves from the base
+    # rather than writing; Codex's is `approval_policy` in a file loadout does
+    # not write at all. Neither is a value this extractor may vote on.
+    default: bool = False
 
 
 CAPABILITIES: dict[str, Capability] = {
@@ -722,8 +789,8 @@ CAPABILITIES: dict[str, Capability] = {
     "codex-mcp": Capability(shell=False, mcp=True),
     # render_codex_project does not skip globs; it emits them as prefix_rules.
     "codex-project": Capability(shell=True, mcp=False),
-    "opencode": Capability(shell=True, mcp=True),
-    "pi": Capability(shell=True, mcp=True),
+    "opencode": Capability(shell=True, mcp=True, default=True),
+    "pi": Capability(shell=True, mcp=True, default=True),
     "pi-project": Capability(shell=True, mcp=True),
 }
 
@@ -755,6 +822,8 @@ def _can_state(name: str, kind: str, entry: str) -> bool:
     capability = _capability(name)
     if kind == MCP:
         return capability.mcp
+    if kind == CATCH_ALL:
+        return capability.default
     return capability.shell and (capability.globs or not is_glob(entry))
 
 
@@ -775,9 +844,9 @@ def _reconcile(
 
     buckets: dict[str, list[str]] = {category: [] for category in CATEGORIES}
     divergences: list[Divergence] = []
-    for entry, cast in votes.items():
+    for entry, ballot in votes.items():
         verdicts = tuple(
-            (name, "+".join(cast[name]) if name in cast else ABSENT)
+            (name, "+".join(ballot[name]) if name in ballot else ABSENT)
             for name in extractions
             if _can_state(name, kind, entry)
         )
@@ -790,6 +859,36 @@ def _reconcile(
     return buckets, divergences
 
 
+def _reconcile_default(
+    extractions: Mapping[str, Extraction], withheld: bool
+) -> tuple[Decision | None, list[Divergence]]:
+    """The catch-all verdict, from the harnesses whose document authors one.
+
+    Disagreement is reported like any other entry, but **not** withheld the way
+    an entry is. Withholding an entry drops it to the catch-all; withholding the
+    catch-all drops it to `ask`, which is the *middle* verdict — so a `deny` one
+    harness stated would come back as a prompt. It settles on the strictest
+    stated verdict instead, which is the only resolution that cannot widen.
+
+    `withheld` says whether any shell entry was dropped for disagreement. A
+    dropped entry falls through to the catch-all, so while one is outstanding the
+    catch-all may not be looser than the `ask` it used to fall through to.
+    """
+    verdicts = tuple(
+        (name, extraction.rules.catch_all)
+        for name, extraction in extractions.items()
+        if _can_state(name, CATCH_ALL, CATCH_ALL_ENTRY)
+    )
+    if not verdicts:
+        return None, []
+    stated = [verdict for _, verdict in verdicts]
+    divergences = [Divergence(CATCH_ALL, CATCH_ALL_ENTRY, verdicts)] if len(set(stated)) > 1 else []
+    settled = strictest(stated)
+    if withheld and DECISIONS.index(settled) < DECISIONS.index(UNSTATED_DEFAULT):
+        settled = UNSTATED_DEFAULT
+    return (None if settled == UNSTATED_DEFAULT else settled), divergences
+
+
 def merge_extractions(extractions: Mapping[str, Extraction]) -> Merged:
     """Reconcile one source from several harnesses, withholding what they disagree on.
 
@@ -800,6 +899,7 @@ def merge_extractions(extractions: Mapping[str, Extraction]) -> Merged:
     """
     shell, shell_divergences = _reconcile(extractions, SHELL)
     mcp, mcp_divergences = _reconcile(extractions, MCP)
+    default, default_divergences = _reconcile_default(extractions, bool(shell_divergences))
 
     extra_allow: list[str] = []
     extra_deny: list[str] = []
@@ -823,7 +923,8 @@ def merge_extractions(extractions: Mapping[str, Extraction]) -> Merged:
             claude_extra_allow=tuple(dedupe(extra_allow)),
             claude_extra_deny=tuple(dedupe(extra_deny)),
             opencode_extra=opencode_extra,
+            default=default,
         ),
-        tuple(shell_divergences + mcp_divergences),
+        tuple(shell_divergences + mcp_divergences + default_divergences),
         tuple(notes),
     )

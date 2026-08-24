@@ -24,7 +24,13 @@ from .manifest import (
     manifest_path,
     resolve_destination,
 )
-from .notices import OPENCODE_SKILL_FLAGS, Notice, notices_for, opencode_skills_race
+from .notices import (
+    OPENCODE_SKILL_FLAGS,
+    Notice,
+    notices_for,
+    opencode_skills_race,
+    unreached_catch_all,
+)
 from .permissions.merge import merge_rules
 from .permissions.renderers import RENDERERS, DocumentTextSpec, JsonSpec, TextSpec, ValueSpec
 from .permissions.rules import EMPTY_RULES, Rules, parse_rules
@@ -418,6 +424,35 @@ def _global_skill_race(manifest: Manifest, environ: Mapping[str, str]) -> tuple[
     )
 
 
+def _unreached_catch_all(manifest: Manifest, profile: str) -> tuple[Notice, ...]:
+    """Every selected target a stated `[shell] default` does not reach.
+
+    Reads the same tiers `render_global` merges, so the verdict named is the one
+    that actually rendered. Silent when no source states the key — a notice that
+    fires for everyone teaches nothing.
+    """
+    selected = [t for t in manifest.permissions if _selected(t, profile)]
+    if not selected:
+        return ()
+    tiers = [
+        parse_rules(source.path.joinpath(*PERMISSIONS_SOURCE))
+        for source in permission_sources(manifest)
+    ]
+    verdict = merge_rules(*tiers).default
+    if verdict is None:
+        return ()
+    found: list[Notice] = []
+    for target in selected:
+        # `rules = []` deselects the whole source, not this key in particular —
+        # the autonomous profile's mechanism, and reporting it here would fire on
+        # every sync that uses it. A legacy target names no agent, so it is
+        # labelled by the renderer it declared.
+        if not target.select_all:
+            continue
+        found.extend(unreached_catch_all(target.agent or target.renderer, target.renderer, verdict))
+    return tuple(dict.fromkeys(found))
+
+
 def collect_notices(root: Path, profile: str = "default") -> tuple[Notice, ...]:
     """Advisory findings about a source that rendered while doing less than it says.
 
@@ -431,6 +466,7 @@ def collect_notices(root: Path, profile: str = "default") -> tuple[Notice, ...]:
         return tuple(found)
     manifest = load_profile(root, profile)
     found.extend(_global_skill_race(manifest, os.environ))
+    found.extend(_unreached_catch_all(manifest, profile))
     for target in manifest.permissions:
         # A legacy `[permissions.*]` target names no agent and carries no slice
         # content, so there is nothing to report about it.

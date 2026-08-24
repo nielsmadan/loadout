@@ -123,6 +123,14 @@ Merging is union with **deny wins**: a deny in any source beats an allow in any 
 order they appear in. Order still matters for *emission* — OpenCode and Pi resolve last-match-wins
 — so entries from earlier sources are emitted first.
 
+`[shell] default`, the verdict for everything no rule matches, resolves the same way: the
+strictest value any source **states** wins. A source that omits the key casts no vote, so it
+never tightens one that set it. Only OpenCode and Pi carry it in a document loadout authors;
+`loadout sync` names the targets a stated default does not reach. See
+[the catch-all default](docs/reference/README.md#the-catch-all-default) and
+[ADR 0016](docs/decisions/0016-a-catch-all-is-stated-only-where-the-document-carries-it.md) —
+including why `default = "allow"` plus a deny list is weaker than it looks.
+
 loadout does not fetch, version or distribute a source. Getting the company repo onto your disk
 is git's job.
 

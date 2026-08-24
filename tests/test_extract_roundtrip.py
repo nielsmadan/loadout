@@ -28,7 +28,7 @@ import pytest
 
 from loadout.extract import EXTRACTORS, VALUE_EXTRACTORS, extract
 from loadout.permissions.renderers import RENDERERS, JsonSpec, TextSpec, render_codex_project
-from loadout.permissions.rules import Rules, is_glob, mcp_parts
+from loadout.permissions.rules import UNSTATED_DEFAULT, Rules, is_glob, mcp_parts
 
 CATEGORIES = ("allow", "ask", "deny")
 
@@ -118,6 +118,10 @@ def _clean_space() -> list[Rules]:
         # Reversed, so a projection that happens to sort is not mistaken for one
         # that preserves order.
         Rules(allow=tuple(reversed(SHELL_POOL)), mcp_ask=tuple(reversed(MCP_POOL))),
+        # A stated catch-all, in each verdict a harness can seed. `allow` is the
+        # one with rules under it, so the seed has to survive being written over.
+        Rules(allow=SHELL_POOL, mcp_allow=MCP_POOL, default="allow"),
+        Rules(deny=SHELL_POOL, default="deny"),
     ]
     return space
 
@@ -125,6 +129,11 @@ def _clean_space() -> list[Rules]:
 CLEAN_SPACE = _clean_space()
 
 CONFLICT_SPACE = [
+    # A stated `ask` renders exactly what an unstated default renders, so P1's
+    # identity cannot hold for it — the same "only P2 applies" reason as the
+    # entries below. Here rather than deleted, so P2 and idempotence still run it
+    # over every renderer and every base.
+    Rules(allow=SHELL_POOL, mcp_allow=MCP_POOL, default="ask"),
     # zeta-style: the same entry in allow and deny, and not last.
     Rules(allow=("zeta", "eta"), deny=("zeta", "iota push")),
     Rules(allow=("b",), deny=("a", "b")),
@@ -204,6 +213,15 @@ def _shell_and_mcp(rules: Rules) -> Rules:
     )
 
 
+def _stated_default(rules: Rules) -> str | None:
+    """What a bash catch-all can carry back: everything except a stated `ask`.
+
+    Seeding `ask` is what an unstated default already renders, so the two are one
+    document and the extractor reads the shorter spelling.
+    """
+    return None if rules.default == UNSTATED_DEFAULT else rules.default
+
+
 def _codex_mcp_carried(rules: Rules) -> Rules:
     """codex-mcp groups by server and sorts, so source order does not survive.
 
@@ -270,6 +288,24 @@ def _opencode_carried(rules: Rules) -> Rules:
         mcp_ask=rules.mcp_ask,
         mcp_deny=rules.mcp_deny,
         opencode_extra=dict(rules.opencode_extra),
+        default=_stated_default(rules),
+    )
+
+
+def _pi_carried(rules: Rules) -> Rules:
+    """Pi carries the default; `pi-project` emits no catch-all, so it does not.
+
+    Spelled out rather than composed from `_shell_and_mcp`, because a projection
+    built from another projection restates it instead of declaring Pi's contract.
+    """
+    return Rules(
+        allow=rules.allow,
+        ask=rules.ask,
+        deny=rules.deny,
+        mcp_allow=rules.mcp_allow,
+        mcp_ask=rules.mcp_ask,
+        mcp_deny=rules.mcp_deny,
+        default=_stated_default(rules),
     )
 
 
@@ -281,7 +317,7 @@ PROJECTIONS = {
     "codex-mcp": _codex_mcp_carried,
     "codex-project": _shell_only,
     "opencode": _opencode_carried,
-    "pi": _shell_and_mcp,
+    "pi": _pi_carried,
     "pi-project": _shell_and_mcp,
 }
 
@@ -294,6 +330,54 @@ def carried(name: str, rules: Rules) -> Rules:
 # --------------------------------------------------------------------------
 # The properties.
 # --------------------------------------------------------------------------
+
+
+def test_pi_project_keeps_a_leading_star_because_nothing_seeded_it() -> None:
+    """`render_pi_project` writes no catch-all, so a leading `*` there is a source
+    rule. Reading it as the default deleted it and re-rendered a different
+    document — silently, with empty notes claiming a clean round trip."""
+    document = _render("pi-project", Rules(allow=("*",)), {})
+    extraction = extract("pi-project", document)
+    assert extraction.rules.allow == ("*",)
+    assert extraction.rules.default is None
+    assert extraction.notes == ()
+    assert _serialize("pi-project", _render("pi-project", extraction.rules, {})) == _serialize(
+        "pi-project", document
+    )
+
+
+@pytest.mark.parametrize("name", ["opencode", "pi"])
+def test_a_carrier_without_a_catch_all_reports_rather_than_assuming_one(name: str) -> None:
+    """A foreign document with no `*` is not a document that said `ask` — the
+    harness's own built-in applies and loadout cannot know it."""
+    extraction = extract(name, {"permission": {"bash": {"ls": "allow"}}})
+    assert extraction.rules.default is None
+    assert any("catch-all" in note.detail for note in extraction.notes)
+
+
+@pytest.mark.parametrize("name", ["opencode", "pi"])
+def test_an_unrecognised_catch_all_verdict_is_reported_not_swallowed(name: str) -> None:
+    """Every other decision in a bash map gets a note; this path used to swallow
+    it and hand `merge_rules` a value that raised a bare ValueError."""
+    extraction = extract(name, {"permission": {"bash": {"*": "yolo", "ls": "allow"}}})
+    assert extraction.rules.default is None
+    assert any(note.kind == "unrecognised" for note in extraction.notes)
+
+
+@pytest.mark.parametrize("name", ["opencode", "pi"])
+def test_a_default_of_ask_is_the_same_document_as_no_default(name: str) -> None:
+    """The one spelling P1 cannot preserve, pinned rather than passed off.
+
+    The first assertion is the reason (see `_stated_default`); the last is that
+    P2 still holds regardless.
+    """
+    stated = _render(name, Rules(allow=("alpha",), default="ask"), {})
+    unstated = _render(name, Rules(allow=("alpha",)), {})
+    assert _serialize(name, stated) == _serialize(name, unstated)
+    assert extract(name, stated).rules.default is None
+    assert _serialize(name, _render(name, extract(name, stated).rules, {})) == _serialize(
+        name, stated
+    )
 
 
 @pytest.mark.parametrize("name", INVERTED)

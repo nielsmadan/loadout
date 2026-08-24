@@ -14,7 +14,7 @@ from pathlib import Path
 
 from fixture_root import PROJECT_INSTRUCTIONS
 from loadout.manifest import MANIFEST_NAME, load_manifest
-from loadout.permissions.rules import is_glob, mcp_parts, parse_rules
+from loadout.permissions.rules import UNSTATED_DEFAULT, is_glob, mcp_parts, parse_rules
 
 FIXTURE = Path(__file__).parent / "fixtures" / "permissions.toml"
 RULES = parse_rules(FIXTURE)
@@ -43,6 +43,13 @@ def test_a_multi_word_prefix_is_present() -> None:
 def test_a_glob_is_present_so_the_skip_path_runs() -> None:
     """Codex skips these and emits a trailing comment block."""
     assert [entry for entry in RULES.allow if is_glob(entry)]
+
+
+def test_a_catch_all_default_is_stated_and_is_not_the_unstated_verdict() -> None:
+    """Seeds OpenCode's and Pi's bash catch-all. `ask` would render the same bytes
+    as no key at all, so only another verdict makes the shape observable."""
+    assert RULES.default is not None
+    assert RULES.default != UNSTATED_DEFAULT
 
 
 def test_an_entry_appears_in_two_categories_and_is_not_last() -> None:
@@ -99,6 +106,22 @@ def test_a_destination_is_env_templated() -> None:
 
 PROJECT_FIXTURES = Path(__file__).parent / "fixtures" / "project"
 TEMPLATE_RULES = parse_rules(PROJECT_FIXTURES / "templates" / "web" / "permissions.toml")
+
+
+def test_the_project_tiers_disagree_about_the_catch_all_default() -> None:
+    """Project scope must exercise strictest-wins over real tiers, not just units.
+
+    The template states the loosest verdict, the project tier a stricter one, and
+    the personal tier none at all — so the expected output pins all three rules at
+    once: the strict one wins, the loose one loses, and silence does not vote.
+    """
+    template = parse_rules(PROJECT_FIXTURES / "templates" / "web" / "permissions.toml")
+    project = parse_rules(PROJECT_FIXTURES / "permissions.toml")
+    personal = parse_rules(PROJECT_FIXTURES / "permissions.local.toml")
+    assert template.default is not None
+    assert project.default is not None
+    assert template.default != project.default, "the tiers must disagree or nothing is resolved"
+    assert personal.default is None, "a silent tier is what proves silence casts no vote"
 
 
 def test_the_project_fixture_carries_a_vendored_template() -> None:

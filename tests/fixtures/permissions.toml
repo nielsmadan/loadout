@@ -10,6 +10,10 @@
 
 [shell]
 
+# The catch-all verdict. Not "ask": that renders the same bytes as leaving the
+# key out, so the shape would be invisible in the expected output.
+default = "allow"
+
 allow = [
   "alpha",                    # bare command
   "beta sub",                 # multi-word prefix

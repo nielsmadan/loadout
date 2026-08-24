@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from .rules import Rules, dedupe
+from .rules import Decision, Rules, dedupe, strictest
 
 
 def _union(tiers: Sequence[Rules], attr: str) -> list[str]:
@@ -10,6 +10,17 @@ def _union(tiers: Sequence[Rules], attr: str) -> list[str]:
     for tier in tiers:
         combined.extend(getattr(tier, attr))
     return dedupe(combined)
+
+
+def _merge_default(tiers: Sequence[Rules]) -> Decision | None:
+    """The strictest catch-all any tier states, or None when none does.
+
+    Same resolution as a rule (ADR 0002) and for the same reason. An *unstated*
+    default is not a tier saying "ask": counting it as one would let any tier
+    that never mentions the key silently tighten one that did.
+    """
+    stated = [tier.default for tier in tiers if tier.default is not None]
+    return strictest(stated) if stated else None
 
 
 def merge_rules(*tiers: Rules) -> Rules:
@@ -55,4 +66,5 @@ def merge_rules(*tiers: Rules) -> Rules:
         claude_extra_allow=tuple(_union(tiers, "claude_extra_allow")),
         claude_extra_deny=tuple(_union(tiers, "claude_extra_deny")),
         opencode_extra=opencode_extra,
+        default=_merge_default(tiers),
     )

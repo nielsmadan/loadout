@@ -8,6 +8,10 @@
 # would change the expected output rather than passing quietly.
 
 [shell]
+# The lowest tier states the loosest catch-all; the project tier below states a
+# stricter one and must win. The template's own entries still appear in the
+# output, which is what proves this tier was merged rather than skipped.
+default = "allow"
 allow = ["omicron build"]
 deny  = ["omicron publish"]
 

@@ -12,7 +12,7 @@ import tomlkit
 from ..adapters import render_opencode_adapter, render_pi_adapter
 from ..hooks import render_claude_hooks, render_codex_hooks
 from ..plugins import render_claude_plugins, render_codex_plugins, render_pi_plugins
-from .rules import Rules, is_glob, mcp_native, mcp_parts
+from .rules import MCP_SEED, Rules, is_glob, mcp_native, mcp_parts
 
 JsonRenderer = Callable[[Rules, dict[str, Any]], dict[str, Any]]
 TextRenderer = Callable[[Rules], str]
@@ -28,6 +28,13 @@ PI_SCHEMA = (
 )
 
 CATEGORIES = ("allow", "deny", "ask")
+
+# The renderers that author `permission.bash["*"]` — the only documents a
+# `[shell] default` can reach. Declared once: `extract.CAPABILITIES` says who may
+# vote on the key and `emit.py` reports the targets it does not reach, and both
+# have to mean the same set. `pi-project` is absent deliberately — manage.py
+# emits no catch-all at project scope (ADR 0006), so there is nothing to seed.
+CATCH_ALL_RENDERERS = frozenset({"opencode", "pi"})
 
 
 @dataclass(frozen=True)
@@ -110,14 +117,15 @@ def pi_mcp_patterns(entry: str) -> list[str]:
 def render_pi(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
     ordered = (("allow", "allow"), ("ask", "ask"), ("deny", "deny"))
 
-    bash: dict[str, str] = {"*": "ask"}
+    bash: dict[str, str] = {"*": rules.catch_all}
     for category, decision in ordered:
         for entry in rules.shell(category):
             for pattern in pi_patterns(entry):
                 bash.pop(pattern, None)
                 bash[pattern] = decision
 
-    mcp: dict[str, str] = {"*": "ask"}
+    # `[shell] default` governs bash only; MCP policy has its own three lists.
+    mcp: dict[str, str] = {"*": MCP_SEED}
     for category, decision in ordered:
         for entry in rules.mcp(category):
             for pattern in pi_mcp_patterns(entry):
@@ -285,7 +293,7 @@ def opencode_patterns(entry: str) -> list[str]:
 def render_opencode(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
     config = copy.deepcopy(base)
 
-    bash: dict[str, str] = {"*": "ask"}
+    bash: dict[str, str] = {"*": rules.catch_all}
     for category in CATEGORIES:
         for entry in rules.shell(category):
             for pattern in opencode_patterns(entry):

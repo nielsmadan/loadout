@@ -28,7 +28,9 @@ it. Verified 2026-08-09 against opencode 1.18.15's `globalConfigPath`. See
 
 **Last matching rule wins.** Emission order is load-bearing: denies must be emitted after
 the allows they refine. The renderer emits `allow`, then `deny`, then `ask`, over a map
-seeded with `{"*": "ask"}` as the first entry.
+seeded with the catch-all as its first entry: `{"*": <[shell] default>}`, and `ask` when the
+source states none. Being first is what lets every rule refine it — see
+[The catch-all default](README.md#the-catch-all-default).
 
 ## Pattern shape
 

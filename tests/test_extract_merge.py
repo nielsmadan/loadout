@@ -21,16 +21,27 @@ from __future__ import annotations
 import pytest
 
 from loadout.errors import LoadoutError
-from loadout.extract import CAPABILITIES, EXTRACTORS, Extraction, Merged, extract, merge_extractions
+from loadout.extract import (
+    ABSENT,
+    CAPABILITIES,
+    CATCH_ALL,
+    EXTRACTORS,
+    Extraction,
+    Merged,
+    extract,
+    merge_extractions,
+)
 from loadout.permissions.rules import Rules
 from test_extract_roundtrip import CLEAN_SPACE, INVERTED, _render
 
 
-def _verdicts(merged: Merged, entry: str) -> dict[str, str]:
+def _verdicts(merged: Merged, entry: str, kind: str | None = None) -> dict[str, str]:
+    """`entry` alone is not a key: `*` is legal for a shell rule and for the
+    catch-all, and one merge can report both. Pass `kind` when it matters."""
     for divergence in merged.divergences:
-        if divergence.entry == entry:
+        if divergence.entry == entry and (kind is None or divergence.kind == kind):
             return dict(divergence.verdicts)
-    raise AssertionError(f"no divergence reported for {entry!r}")
+    raise AssertionError(f"no divergence reported for {entry!r} (kind={kind})")
 
 
 def test_agreeing_harnesses_produce_the_rule() -> None:
@@ -121,6 +132,89 @@ def test_mcp_disagreement_is_reported_and_withheld() -> None:
     )
     assert _verdicts(merged, "svc/purge") == {"claude-mcp": "allow", "codex-mcp": "deny"}
     assert "svc/purge" not in merged.rules.mcp_allow
+
+
+def test_the_carriers_agreeing_on_a_catch_all_default_produce_it() -> None:
+    merged = merge_extractions(
+        {
+            "claude": Extraction(Rules(allow=("ls",))),
+            "codex": Extraction(Rules(allow=("ls",))),
+            "opencode": Extraction(Rules(allow=("ls",), default="allow")),
+            "pi": Extraction(Rules(allow=("ls",), default="allow")),
+        }
+    )
+    assert merged.rules.default == "allow"
+    assert merged.divergences == ()
+
+
+def test_claude_and_codex_do_not_vote_on_the_catch_all_default() -> None:
+    """Their catch-alls are `defaultMode` and `approval_policy`, in files these
+    renderers do not write — silence there is structural, not disagreement."""
+    merged = merge_extractions(
+        {
+            "claude": Extraction(Rules(allow=("ls",))),
+            "codex": Extraction(Rules(allow=("ls",))),
+            "opencode": Extraction(Rules(allow=("ls",), default="deny")),
+        }
+    )
+    assert merged.rules.default == "deny"
+    assert merged.divergences == ()
+
+
+def test_a_catch_all_the_two_carriers_disagree_on_settles_on_the_strictest() -> None:
+    merged = merge_extractions(
+        {
+            "opencode": Extraction(Rules(allow=("ls",), default="allow")),
+            "pi": Extraction(Rules(allow=("ls",))),
+        }
+    )
+    assert _verdicts(merged, "*", CATCH_ALL) == {"opencode": "allow", "pi": "ask"}
+    # Reported, but not withheld the way an entry is: withholding a catch-all
+    # drops it to `ask`, the MIDDLE verdict, so a stated deny would come back a
+    # prompt. The loser's rule still comes through, so both harnesses were read.
+    assert merged.rules.default is None  # strictest here IS ask, i.e. unstated
+    assert merged.rules.allow == ("ls",)
+
+
+def test_a_deny_catch_all_is_never_loosened_by_a_disagreement() -> None:
+    """The escalation this rule exists to stop. Withholding would render `ask`."""
+    merged = merge_extractions(
+        {
+            "opencode": Extraction(Rules(allow=("ls",), default="deny")),
+            "pi": Extraction(Rules(allow=("ls",), default="allow")),
+        }
+    )
+    assert merged.rules.default == "deny"
+    assert _verdicts(merged, "*", CATCH_ALL) == {"opencode": "deny", "pi": "allow"}
+    assert merged.rules.allow == ("ls",)
+
+
+def test_a_withheld_rule_stops_the_catch_all_being_stated_permissively() -> None:
+    """A dropped entry falls through to the catch-all, so while one is outstanding
+    the catch-all may not be looser than the `ask` it used to fall through to.
+    Without this, adopting these two files renders `curl` executable."""
+    merged = merge_extractions(
+        {
+            "opencode": Extraction(Rules(deny=("curl",), default="allow")),
+            "pi": Extraction(Rules(default="allow")),
+        }
+    )
+    assert _verdicts(merged, "curl", "shell") == {"opencode": "deny", "pi": ABSENT}
+    assert merged.rules.deny == ()
+    assert merged.rules.default is None, "an allow catch-all would swallow the dropped deny"
+
+
+def test_an_unwithheld_merge_still_states_a_permissive_catch_all() -> None:
+    """The guard above must not fire on agreement, or `default` never survives."""
+    merged = merge_extractions(
+        {
+            "opencode": Extraction(Rules(deny=("curl",), default="allow")),
+            "pi": Extraction(Rules(deny=("curl",), default="allow")),
+        }
+    )
+    assert merged.divergences == ()
+    assert merged.rules.default == "allow"
+    assert merged.rules.deny == ("curl",)
 
 
 def test_harness_specific_passthroughs_survive_the_merge() -> None:

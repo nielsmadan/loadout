@@ -26,9 +26,29 @@ from typing import Any
 
 from .adapters import OPENCODE_MAPPINGS, PI_MAPPINGS
 from .hooks import CLAUDE_EVENTS, CODEX_EVENTS, unrecognised_events
+from .permissions.renderers import CATCH_ALL_RENDERERS
 from .plugins import ADDRESSED_BY, unaddressable, unregistered_marketplaces
 
-__all__ = ["Notice", "known_events", "notices_for", "opencode_skills_race"]
+__all__ = [
+    "Notice",
+    "known_events",
+    "notices_for",
+    "opencode_skills_race",
+    "unreached_catch_all",
+]
+
+# Where each shell-carrying renderer that is *not* a catch-all carrier keeps its
+# catch-all instead. Keyed by renderer, not agent: `pi` authors one and
+# `pi-project` does not. A renderer absent here states no shell rules at all
+# (the MCP-only ones), so the key was never its to carry and there is nothing to
+# report.
+CATCH_ALL_ELSEWHERE = {
+    "claude": "Claude's is permissions.defaultMode, hand-maintained through the settings slice",
+    "claude-project": "Claude's is permissions.defaultMode, hand-maintained through the settings slice",
+    "codex": "Codex's is approval_policy in config.toml, which loadout does not write",
+    "codex-project": "Codex's is approval_policy in config.toml, which loadout does not write",
+    "pi-project": "Pi emits no catch-all at project scope",
+}
 
 # OpenCode scans `.claude/skills` as well as its own directory and keys the result
 # by skill name, so writing the same name to both leaves which copy survives to a
@@ -85,6 +105,30 @@ def known_events(agent: str) -> frozenset[str]:
     if agent == "codex":
         return CODEX_EVENTS
     return _ADAPTED.get(agent, frozenset())
+
+
+def unreached_catch_all(agent: str, renderer: str, verdict: str) -> tuple[Notice, ...]:
+    """What a stated `[shell] default` does not reach, said out loud at sync time.
+
+    The docs record the split, but a source that states a catch-all and gets it on
+    two harnesses of four is the exact shape ADR 0015 named: rendered successfully,
+    doing less than it says, with generated files that look untouched. It matters
+    more here than for the advisory slices the other notices cover — permissions is
+    the enforcing one, and the direction of the gap is toward *wider* than asked.
+    """
+    if renderer in CATCH_ALL_RENDERERS or renderer not in CATCH_ALL_ELSEWHERE:
+        return ()
+    return (
+        Notice(
+            agent=agent,
+            slice="permissions",
+            message=(
+                f'[shell] default = "{verdict}" is not rendered here — '
+                f"{CATCH_ALL_ELSEWHERE[renderer]}; "
+                f"see docs/reference/README.md#the-catch-all-default"
+            ),
+        ),
+    )
 
 
 def notices_for(

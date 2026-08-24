@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from loadout.permissions.merge import merge_rules
 from loadout.permissions.rules import EMPTY_RULES, Rules
 
@@ -16,6 +18,40 @@ def test_merging_one_tier_with_empty_is_the_identity() -> None:
     )
     assert merge_rules(rules, EMPTY_RULES) == rules
     assert merge_rules(EMPTY_RULES, rules) == rules
+
+
+@pytest.mark.parametrize(
+    ("stricter", "weaker"),
+    [("ask", "allow"), ("deny", "ask"), ("deny", "allow")],
+    ids=["ask-beats-allow", "deny-beats-ask", "deny-beats-allow"],
+)
+def test_the_strictest_stated_default_wins_regardless_of_tier_order(
+    stricter: str, weaker: str
+) -> None:
+    """Every adjacent pair, so the strictness ORDER is pinned and not just the fact
+    that a tier arrived. Reordering `DECISIONS` makes deny-beats-ask fail — without
+    that case the ordering is unpinned, since nothing else in the suite reads it.
+    """
+    strict = Rules(allow=("ls",), default=stricter)
+    loose = Rules(allow=("pwd",), default=weaker)
+    for tiers in ((strict, loose), (loose, strict)):
+        merged = merge_rules(*tiers)
+        assert merged.default == stricter
+        # The loser was there and lost: its rule survives the merge either way.
+        assert set(merged.allow) == {"ls", "pwd"}
+
+
+def test_a_tier_that_states_no_default_does_not_tighten_one_that_does() -> None:
+    """An absent key is not a tier voting `ask`. Without this a project source
+    that never mentions the key would silently narrow the machine's default."""
+    stated = Rules(allow=("ls",), default="allow")
+    silent = Rules(allow=("pwd",))
+    assert merge_rules(stated, silent).default == "allow"
+    assert merge_rules(silent, stated).default == "allow"
+    assert merge_rules(silent, silent).default is None
+    # The silent tier was present in both orders, not skipped.
+    assert merge_rules(stated, silent).allow == ("ls", "pwd")
+    assert merge_rules(silent, stated).allow == ("pwd", "ls")
 
 
 def test_union_of_disjoint_tiers_preserves_order_within_each() -> None:

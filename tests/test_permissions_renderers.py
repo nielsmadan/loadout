@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from loadout.permissions.renderers import (
+    CATCH_ALL_RENDERERS,
     CODEX_PROJECT_HEADER,
     RENDERERS,
     JsonSpec,
@@ -70,6 +71,30 @@ def test_pi_seeds_catch_alls_first() -> None:
     doc = render_pi(Rules(allow=("pwd",)), {})
     assert next(iter(doc["permission"]["bash"])) == "*"
     assert next(iter(doc["permission"]["mcp"])) == "*"
+
+
+def test_pi_seeds_bash_with_the_stated_default_and_leaves_mcp_alone() -> None:
+    """`[shell] default` is a shell key; Pi's MCP catch-all is not its to move."""
+    doc = render_pi(Rules(allow=("pwd",), default="allow"), {})
+    # Position, not just value: a catch-all emitted last would beat every rule
+    # under last-match-wins, and the value assertion alone cannot see that.
+    assert next(iter(doc["permission"]["bash"].items())) == ("*", "allow")
+    assert doc["permission"]["mcp"]["*"] == "ask"
+
+
+def test_only_the_declared_renderers_seed_a_catch_all() -> None:
+    """`CATCH_ALL_RENDERERS` is read by extraction and by the notice, so it has to
+    match what the renderers actually do. Derived by rendering, not restated."""
+    seeds = set()
+    for name, spec in RENDERERS.items():
+        if not isinstance(spec, JsonSpec):
+            continue
+        document = spec.fn(Rules(allow=("pwd",), default="deny"), {})
+        permission = document.get("permission", {})
+        bash = permission.get("bash", {}) if isinstance(permission, dict) else {}
+        if bash.get("*") == "deny":
+            seeds.add(name)
+    assert seeds == set(CATCH_ALL_RENDERERS)
 
 
 def test_pi_emits_deny_last_so_it_wins_under_last_match() -> None:
@@ -236,6 +261,19 @@ def test_opencode_seeds_the_bash_catch_all_first() -> None:
     assert next(iter(doc["permission"]["bash"])) == "*"
 
 
+def test_opencode_seeds_the_bash_catch_all_with_the_stated_default() -> None:
+    bash = render_opencode(Rules(allow=("pwd",), default="allow"), {})["permission"]["bash"]
+    assert next(iter(bash.items())) == ("*", "allow")
+    assert bash["pwd"] == "allow"
+
+
+def test_a_stated_default_does_not_displace_a_rule_that_refines_it() -> None:
+    """The point of the key: allow everything, keep the denies that carve it back."""
+    bash = render_opencode(Rules(deny=("git push",), default="allow"), {})["permission"]["bash"]
+    assert list(bash) == ["*", "git push", "git push *"]
+    assert bash["git push"] == "deny"
+
+
 def test_opencode_emits_deny_after_allow_for_last_match_wins() -> None:
     bash = render_opencode(Rules(allow=("git",), deny=("git",)), {})["permission"]["bash"]
     assert bash["git"] == "deny"
@@ -304,6 +342,13 @@ def test_pi_project_omits_schema_and_catch_alls() -> None:
     assert list(doc["permission"]) == ["bash", "mcp"]
     assert "*" not in doc["permission"]["bash"]
     assert "*" not in doc["permission"]
+
+
+def test_pi_project_has_no_catch_all_for_a_default_to_seed() -> None:
+    """manage.py emits no catch-all at project scope, so there is nothing to state
+    the default into — the key is silently inert here, not silently applied."""
+    doc = render_pi_project(Rules(allow=("just build",), default="allow"), {})
+    assert "*" not in doc["permission"]["bash"]
 
 
 def test_pi_project_emits_both_bare_and_argument_forms() -> None:

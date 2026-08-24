@@ -68,6 +68,58 @@ Emitting only one form on OpenCode or Pi produces a rule that silently covers ha
 what it appears to. This is a live bug in `~/ac/permissions/manage.py`, whose local-scope
 renderer emits only the `<entry> *` form.
 
+### The catch-all default
+
+`[shell] default` sets the verdict for everything no rule matches. It is authored for
+**OpenCode and Pi only** — not because the other two cannot express a catch-all, but because
+of where each keeps one and who owns that key:
+
+| harness | catch-all lives in | loadout |
+|---|---|---|
+| OpenCode | `permission.bash["*"]`, first key of the map it renders | authors it |
+| Pi | `permission.bash["*"]`, same | authors it |
+| Claude | `permissions.defaultMode`, in the same `settings.json` | **preserves** it — hand-maintained through the settings slice, and `render_claude` copies it back rather than writing a second spelling |
+| Codex | `approval_policy` in `config.toml` | does not write that file at all |
+
+Claude's is a deliberate narrowing, not an inability: `defaultMode` sits inside the very map
+`render_claude` rebuilds. Codex's rules file is the one that genuinely has nowhere to put it —
+its exec-policy DSL registers four globals in `POLICY_BUILTINS_STATICS` (`prefix_rule`,
+`network_rule`, `host_executable`, `paths`; verified by disassembling the registration sequence
+in the 0.149.0 binary, since the adjacent string blob is linker-deduplicated and is **not** an
+enumeration — `decision`, a real `prefix_rule` parameter, is stored elsewhere and absent from
+it). None of the four takes a catch-all.
+
+**A stated default that misses a harness is reported at sync time**, so this table is not the
+only place it is knowable — `loadout sync` prints `claude.permissions: [shell] default = "…" is
+not rendered here` for each target that cannot carry it.
+
+**A bare `*` is refused as a shell entry.** It was the accidental spelling of a catch-all before
+this key existed, and the two resolve by different algebras — strictest-wins for the key,
+last-match-wins for the entry. Worse, on OpenCode the entry lands exactly where the seed sits,
+so no extractor can tell them apart. `parse_rules` rejects it and names the key instead.
+
+**The default is a base, not a floor.** Rules are emitted after it and win under
+last-match-wins, in *both* directions: `default = "allow"` with `deny = ["git push"]` still
+denies the push, and `default = "deny"` with `allow = ["ls"]` still allows `ls`. It is the one
+place in the permissions slice where a weaker verdict can beat a stronger one.
+
+> **`default = "allow"` makes every deny-evasion fail open.** Allow-everything-minus-a-list is
+> subtractive policy, which [ADR 0002](../decisions/0002-advisory-selected-enforcing-merged.md)
+> rejects for the reason sudoers(5) gives: the matched string is chosen by the caller. Under an
+> `ask` catch-all, every spelling that misses a deny pattern — `git -C /repo push`,
+> `bash -lc 'git push'`, `env X=1 git push`, and every case in
+> [the wrapper-command bypass](#the-wrapper-command-bypass) below — fell through to a *prompt*.
+> Under `allow` the same spellings fall through to silent execution. The deny list stops being
+> a boundary and becomes a speed bump.
+
+`ask` is what an unstated key already renders. Writing it changes no bytes *within one tier*,
+which is why extraction reads such a document back as unstated (see
+[extraction](extraction.md)). Across tiers the two differ, because only a stated value votes.
+
+Across tiers the strictest *stated* default wins, the same resolution a rule gets (ADR 0002).
+A tier that never mentions the key does not vote — otherwise any project source would silently
+tighten a machine that had set one.
+
 ### The wrapper-command bypass
 
 **Any allowlisted command that accepts another command as an argument voids every deny
