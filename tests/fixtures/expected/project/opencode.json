@@ -2,7 +2,7 @@
   "$schema": "https://example.invalid/opencode.json",
   "permission": {
     "bash": {
-      "*": "ask",
+      "*": "deny",
       "omicron build": "allow",
       "omicron build *": "allow",
       "alpha": "allow",

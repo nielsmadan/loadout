@@ -10,7 +10,7 @@
   },
   "permission": {
     "bash": {
-      "*": "ask",
+      "*": "allow",
       "alpha": "allow",
       "alpha *": "allow",
       "beta sub": "allow",
