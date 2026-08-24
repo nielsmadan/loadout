@@ -179,6 +179,12 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("argument --global: not allowed with argument --harness")
         if not args.use_global and not args.harnesses:
             parser.error("the following arguments are required: --harness")
+    # Notices and drift reports carry the same em dashes the fragments do, and
+    # `print` would raise UnicodeEncodeError under a POSIX/C locale. loadout opens
+    # every file as UTF-8 explicitly; its own output gets the same treatment.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     try:
         return _dispatch(args)
     except LoadoutError as error:
