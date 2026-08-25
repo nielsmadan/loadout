@@ -18,6 +18,7 @@ import pytest
 from loadout.extract import extract
 from loadout.permissions.renderers import RENDERERS, JsonSpec, TextSpec
 from loadout.project import PROJECT_PRESET
+from test_extract_roundtrip import NOT_INVERTED
 
 EXPECTED = Path(__file__).parent / "fixtures" / "expected"
 
@@ -47,6 +48,9 @@ def _artifacts() -> list[tuple[Path, str]]:
         for spec in slices.values()
         if spec.output is not None
         and spec.renderer is not None
+        # Deferred the same way test_extract_roundtrip.py defers them: no
+        # inverse exists yet, so there is nothing this round trip could extract.
+        and spec.renderer not in NOT_INVERTED
         and (EXPECTED / "project" / spec.output).is_file()
     ]
     return found

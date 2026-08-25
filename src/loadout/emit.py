@@ -32,7 +32,14 @@ from .notices import (
     unreached_catch_all,
 )
 from .permissions.merge import merge_rules
-from .permissions.renderers import RENDERERS, DocumentTextSpec, JsonSpec, TextSpec, ValueSpec
+from .permissions.renderers import (
+    RENDERERS,
+    DocumentJsonSpec,
+    DocumentTextSpec,
+    JsonSpec,
+    TextSpec,
+    ValueSpec,
+)
 from .permissions.rules import EMPTY_RULES, Rules, parse_rules
 from .plugins import marketplaces
 from .project import (
@@ -45,6 +52,7 @@ from .project import (
     project_slices,
 )
 from .resolve import INSTRUCTIONS, SETTINGS, json_slice, resolve_item
+from .servers import SERVERS_SOURCE, Server, parse_servers
 from .skills import SKILL_DOCUMENT, Skill, discover_skills, render_skill
 from .sources import Source
 from .templates import resolve_template
@@ -141,7 +149,9 @@ def _preserved(path: Path, keys: tuple[str, ...]) -> dict[str, Any]:
     return {key: existing[key] for key in keys if key in existing}
 
 
-def _resolve_renderer(name: str, label: str) -> JsonSpec | TextSpec | ValueSpec | DocumentTextSpec:
+def _resolve_renderer(
+    name: str, label: str
+) -> JsonSpec | TextSpec | ValueSpec | DocumentTextSpec | DocumentJsonSpec:
     spec = RENDERERS.get(name)
     if spec is None:
         known = ", ".join(sorted(RENDERERS))
@@ -221,16 +231,19 @@ def compose_permission_document(
             )
         return spec.fn(rules if first.select_all else EMPTY_RULES)
 
-    if isinstance(spec, DocumentTextSpec):
-        # A generated adapter is a JavaScript module: there is no second slice to
-        # compose into it, and no residual it could preserve.
+    if isinstance(spec, DocumentTextSpec | DocumentJsonSpec):
+        # A generated adapter is a JavaScript module and `.mcp.json` a whole
+        # JSON document — either way there is no second slice to compose into
+        # it, and no residual it could preserve.
         if len(contributors) > 1:
             others = ", ".join(t.name for t, _, _ in contributors[1:])
             raise LoadoutError(
-                f"permissions.{first.name}: {path} is generated source, so it cannot "
-                f"compose with {others}; a generated file owns itself"
+                f"permissions.{first.name}: {path} is rendered as a whole document, so "
+                f"it cannot compose with {others}; it owns its whole file"
             )
-        return spec.fn(contributors[0][2])
+        if isinstance(spec, DocumentTextSpec):
+            return spec.fn(contributors[0][2])
+        return _serialize_json(spec.fn(contributors[0][2]))
 
     # The residual is the whole file minus every owned key, and it is the same
     # for each slice of an agent, so it is taken once rather than per slice.
@@ -254,9 +267,9 @@ def compose_permission_document(
                 f"{label}: the preset gives it owned_key {owned_key!r}, so its renderer "
                 f"must produce that key's value rather than a whole document"
             )
-        if isinstance(target_spec, TextSpec | DocumentTextSpec):
+        if isinstance(target_spec, TextSpec | DocumentTextSpec | DocumentJsonSpec):
             raise LoadoutError(
-                f"{label}: a text renderer cannot compose with another slice writing {path}"
+                f"{label}: a whole-file renderer cannot compose with another slice writing {path}"
             )
         if len(contributors) > 1 and target_spec.owns_whole_file:
             raise LoadoutError(
@@ -654,6 +667,7 @@ def render_project(root: Path) -> dict[Path, Output]:
 
     instructions = project_instructions(root, config)
     trees = project_skill_trees(root, config)
+    servers = project_servers(root, config)
 
     outputs: dict[Path, Output] = {}
     # Project scope claims its paths for the same reason global scope does, and
@@ -663,6 +677,11 @@ def render_project(root: Path) -> dict[Path, Output]:
     # prose does not stop anyone — without this the second agent silently
     # overwrote the first and the render succeeded.
     claimed: dict[Path, str] = {}
+    # Grouped by path, the way render_global groups its contributors: OpenCode's
+    # mcp slice writes the "mcp" key into the same opencode.json the permissions
+    # slice writes "permission" into, so both must reach compose_permission_document
+    # together rather than each overwriting the other's call.
+    groups: dict[Path, list[tuple[PermissionTarget, dict[str, Any], dict[str, Any]]]] = {}
     for agent, slice_name, spec in project_slices(config.harnesses):
         if spec.output is None:
             continue
@@ -683,8 +702,11 @@ def render_project(root: Path) -> dict[Path, Output]:
             if instructions is not None:
                 outputs[path] = instructions
             continue
-        _claim(path, f"{agent}.{slice_name}", claimed)
-        residual = _load_existing(path) if spec.preserve_foreign else {}
+        if slice_name == "mcp" and not servers:
+            # A source offering no mcp.toml contributes no tier, the same as a
+            # template offering no permissions.toml — nothing to write.
+            continue
+        owner = f"{agent}.{slice_name}"
         contributor = PermissionTarget(
             agent=agent,
             name=agent if slice_name == "permissions" else f"{agent}-{slice_name}",
@@ -693,7 +715,16 @@ def render_project(root: Path) -> dict[Path, Output]:
             owned_key=spec.owned_key,
             content_slice=spec.source_slice,
         )
-        outputs[path] = compose_permission_document([(contributor, residual, {})], rules, path)
+        residual = _load_existing(path) if spec.preserve_foreign else {}
+        content = dict(servers) if slice_name == "mcp" else {}
+        group = groups.setdefault(path, [])
+        if group:
+            _require_same_owner(group[0][0], contributor, path)
+        else:
+            _claim(path, owner, claimed)
+        group.append((contributor, residual, content))
+    for path, contributors in groups.items():
+        outputs[path] = compose_permission_document(contributors, rules, path)
     return outputs
 
 
@@ -715,6 +746,23 @@ def project_skill_trees(root: Path, config: ProjectConfig) -> tuple[Skill, ...]:
     for skill in discover_skills(root / PROJECT_DIR / SKILLS_SUBDIR):
         collected[skill.name] = skill
     return tuple(sorted(collected.values(), key=lambda s: s.name))
+
+
+def project_servers(root: Path, config: ProjectConfig) -> dict[str, Server]:
+    """Every server this project defines, templates first and the project last.
+
+    Same tier rule as permissions, instructions and skills: a template is
+    declared to sit beneath the project, so a project server of the same name
+    replaces the template's rather than merging with it.
+    """
+    collected: dict[str, Server] = {}
+    for name in config.templates:
+        contributed = resolve_template(name, root).path / SERVERS_SOURCE
+        for server_name, server in parse_servers(contributed).items():
+            collected[server_name] = server
+    for server_name, server in parse_servers(root / PROJECT_DIR / SERVERS_SOURCE).items():
+        collected[server_name] = server
+    return collected
 
 
 def _expand_project_skills(

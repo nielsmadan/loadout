@@ -21,6 +21,7 @@ from loadout.errors import LoadoutError
 from loadout.extract import VALUE_EXTRACTORS, extract_value
 from loadout.hooks import render_claude_hooks, render_codex_hooks
 from loadout.permissions.renderers import RENDERERS, ValueSpec
+from test_extract_roundtrip import NOT_INVERTED
 
 
 def cmd(command: str = "notify.sh") -> dict[str, Any]:
@@ -121,7 +122,7 @@ def test_an_unrecognised_event_is_not_a_note() -> None:
 
 def test_every_value_renderer_has_a_value_extractor() -> None:
     value_renderers = {n for n, s in RENDERERS.items() if isinstance(s, ValueSpec)}
-    assert value_renderers == set(VALUE_EXTRACTORS)
+    assert value_renderers - NOT_INVERTED == set(VALUE_EXTRACTORS)
 
 
 def test_an_unknown_name_is_an_error_rather_than_a_silent_empty() -> None:

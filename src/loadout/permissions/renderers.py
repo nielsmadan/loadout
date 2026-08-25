@@ -12,6 +12,7 @@ import tomlkit
 from ..adapters import render_opencode_adapter, render_pi_adapter
 from ..hooks import render_claude_hooks, render_codex_hooks
 from ..plugins import render_claude_plugins, render_codex_plugins, render_pi_plugins
+from ..servers import render_claude_project_servers, render_opencode_servers
 from .rules import MCP_SEED, Rules, is_glob, mcp_native, mcp_parts
 
 JsonRenderer = Callable[[Rules, dict[str, Any]], dict[str, Any]]
@@ -80,6 +81,18 @@ class DocumentTextSpec:
     """
 
     fn: Callable[[dict[str, Any]], str]
+
+
+@dataclass(frozen=True)
+class DocumentJsonSpec:
+    """The JSON counterpart of `DocumentTextSpec`: renders a whole document from
+    content rather than from `Rules` — `.mcp.json` has no shell rules or MCP
+    policy in it, only server definitions parsed from `mcp.toml`.
+
+    Like `DocumentTextSpec` it owns its file outright.
+    """
+
+    fn: Callable[[dict[str, Any]], dict[str, Any]]
 
 
 # --------------------------------------------------------------------------
@@ -387,7 +400,7 @@ def render_pi_project(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
 # --------------------------------------------------------------------------
 
 
-RENDERERS: dict[str, JsonSpec | TextSpec | ValueSpec | DocumentTextSpec] = {
+RENDERERS: dict[str, JsonSpec | TextSpec | ValueSpec | DocumentTextSpec | DocumentJsonSpec] = {
     "claude": JsonSpec(render_claude),
     "claude-hooks": ValueSpec(render_claude_hooks),
     "codex-hooks": ValueSpec(render_codex_hooks),
@@ -404,4 +417,6 @@ RENDERERS: dict[str, JsonSpec | TextSpec | ValueSpec | DocumentTextSpec] = {
     "codex-project": TextSpec(render_codex_project),
     "pi-project": JsonSpec(render_pi_project, owns_whole_file=True),
     "claude-project": JsonSpec(render_claude_project),
+    "claude-project-servers": DocumentJsonSpec(render_claude_project_servers),
+    "opencode-servers": ValueSpec(render_opencode_servers),
 }

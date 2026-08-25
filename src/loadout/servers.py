@@ -22,6 +22,7 @@ __all__ = [
     "Server",
     "is_http",
     "parse_servers",
+    "render_claude_project_servers",
     "render_claude_servers",
     "render_codex_servers",
     "render_opencode_servers",
@@ -140,6 +141,19 @@ def render_claude_servers(servers: dict[str, Server]) -> dict[str, Any]:
             }
         config[name] = entry
     return config
+
+
+# --------------------------------------------------------------------------
+# claude — .mcp.json (project scope). The flat per-server map `claude mcp
+# add-json` and the global staged document take, wrapped in the key Claude's
+# project file itself uses. Distinct from render_claude_servers the way
+# render_claude_project is distinct from render_claude: same content, a
+# different document shape for a different scope.
+# --------------------------------------------------------------------------
+
+
+def render_claude_project_servers(servers: dict[str, Server]) -> dict[str, Any]:
+    return {"mcpServers": render_claude_servers(servers)}
 
 
 # --------------------------------------------------------------------------

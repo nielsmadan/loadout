@@ -18,6 +18,7 @@ OUTPUTS = (
     "opencode.json",
     ".pi/extensions/pi-permission-system/config.json",
     ".claude/mcp-permissions.json",
+    ".mcp.json",
     "CLAUDE.md",
     "AGENTS.md",
 )
@@ -68,6 +69,7 @@ def test_only_enabled_harnesses_are_rendered(project: Path) -> None:
     assert rendered == {
         ".claude/settings.json",
         ".claude/mcp-permissions.json",
+        ".mcp.json",
         "CLAUDE.md",
     } | skill_outputs("claude")
 
@@ -152,7 +154,7 @@ def test_a_foreign_key_keeps_its_position_ahead_of_the_owned_one(project: Path) 
             "opencode.json"
         ]
     )
-    assert list(doc) == ["$schema", "permission"]
+    assert list(doc) == ["$schema", "permission", "mcp"]
 
 
 def test_the_owned_key_is_regenerated_not_carried_forward(project: Path) -> None:
@@ -377,6 +379,7 @@ def test_a_project_declaring_no_instructions_generates_neither_document(
     assert rendered == {
         ".claude/settings.json",
         ".claude/mcp-permissions.json",
+        ".mcp.json",
         ".codex/rules/permissions.rules",
         "opencode.json",
         ".pi/extensions/pi-permission-system/config.json",

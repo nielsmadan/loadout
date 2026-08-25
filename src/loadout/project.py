@@ -161,6 +161,9 @@ PROJECT_PRESET: dict[str, dict[str, SliceOutput]] = {
         "mcp-permissions": SliceOutput(
             renderer="claude-mcp-permissions", output=".claude/mcp-permissions.json"
         ),
+        # A whole file of its own — .mcp.json is Claude's project MCP config,
+        # never shared with settings.json or mcp-permissions.json.
+        "mcp": SliceOutput(renderer="claude-project-servers", output=".mcp.json"),
         "instructions": SliceOutput(output="CLAUDE.md"),
         "skills": SliceOutput(output=".claude/skills"),
     },
@@ -173,11 +176,17 @@ PROJECT_PRESET: dict[str, dict[str, SliceOutput]] = {
         # negative against the 0.147.0 binary, recorded in reference/config.md.
         # Its extra-roots mechanism is a setting in `.codex/config.toml`, which
         # loadout does not own, rather than a convention directory.
+        # No mcp entry either: whether [mcp_servers.*] survives Codex's
+        # project-config filter is unverified, and its own warning says
+        # unsupported project-local keys are ignored. See docs/reference/servers.md.
     },
     "opencode": {
         "permissions": SliceOutput(
             renderer="opencode", output="opencode.json", preserve_foreign=True
         ),
+        # One key of the same document `permissions` writes — see
+        # compose_permission_document's grouping in emit.py:render_project.
+        "mcp": SliceOutput(renderer="opencode-servers", output="opencode.json", owned_key="mcp"),
         "instructions": SliceOutput(output="AGENTS.md"),
         # Its own directory, never `.claude/skills` — OpenCode reads both, and a
         # skill written twice under one name is resolved by a race rather than by
@@ -192,6 +201,9 @@ PROJECT_PRESET: dict[str, dict[str, SliceOutput]] = {
         # Three agents, one path, on purpose — see ProjectConfig.instructions.
         "instructions": SliceOutput(output="AGENTS.md"),
         "skills": SliceOutput(output=".pi/skills"),
+        # No mcp entry: pi-mcp-adapter's shipped README calls .mcp.json the
+        # "Preferred project config" and reads it directly, so writing
+        # .pi/mcp.json too would hand Pi the same servers twice under two names.
     },
 }
 

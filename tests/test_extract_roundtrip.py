@@ -52,7 +52,18 @@ CATEGORIES = ("allow", "ask", "deny")
 # tests/test_extract_plugins.py, but it is a `DocumentTextSpec` returning a
 # fragment, and neither EXTRACTORS (which returns `Rules`) nor VALUE_EXTRACTORS
 # (held to the set of `ValueSpec`s) has that shape.
-NOT_INVERTED: set[str] = {"opencode-hooks", "pi-hooks", "codex-plugins"}
+#
+# `claude-project-servers` and `opencode-servers` are the two genuinely
+# **deferred** entries: mcp server definitions register their renderers ahead
+# of their inverses, and the following task adds `extract_claude_servers` and
+# `extract_opencode_servers`. Remove both names here when it does.
+NOT_INVERTED: set[str] = {
+    "opencode-hooks",
+    "pi-hooks",
+    "codex-plugins",
+    "claude-project-servers",
+    "opencode-servers",
+}
 
 INVERTED = sorted(EXTRACTORS)
 

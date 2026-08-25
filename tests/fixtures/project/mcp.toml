@@ -1,0 +1,9 @@
+[jina]
+transport = "http"
+url = "https://mcp.jina.ai/v1"
+auth_env_var = "JINA_API_KEY"
+
+[context7]
+transport = "stdio"
+command = "npx"
+args = ["-y", "@upstash/context7-mcp"]
