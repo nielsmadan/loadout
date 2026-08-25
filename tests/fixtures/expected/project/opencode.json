@@ -25,5 +25,22 @@
     "svc_*": "allow",
     "blocked_*": "deny",
     "svc_write": "ask"
+  },
+  "mcp": {
+    "jina": {
+      "type": "remote",
+      "url": "https://mcp.jina.ai/v1",
+      "headers": {
+        "Authorization": "Bearer {env:JINA_API_KEY}"
+      }
+    },
+    "context7": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "@upstash/context7-mcp"
+      ]
+    }
   }
 }
