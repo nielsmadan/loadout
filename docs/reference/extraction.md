@@ -41,10 +41,10 @@ which do not break the round trip belong at render time, where they can still be
 | renderer | carries | loses |
 |---|---|---|
 | `claude`, `claude-project` | shell, MCP, `claude.extra` | nothing; `opencode.extra` is not its to carry |
-| `claude-mcp` | MCP | — |
+| `claude-mcp-permissions` | MCP | — |
 | `codex` | non-glob shell | **glob entries.** `render_codex` diverts them to a trailing comment block with no decision attached, so the file does not record whether `gamma-*` was allowed, asked or denied. Reported, never guessed. |
 | `codex-project` | shell | quote *style*. `render_codex_project` tokenises with `shlex.split`, and a token holding whitespace is re-quoted on the way back, so `echo "a b"` returns as `echo 'a b'` — the document round-trips, the source spelling normalises. |
-| `codex-mcp` | MCP | **source order.** `render_codex_mcp` groups by server and sorts servers and tools, and resolves an entry listed twice to its last category. The emitted order is canonical, so re-rendering is stable. |
+| `codex-mcp-permissions` | MCP | **source order.** `render_codex_mcp` groups by server and sorts servers and tools, and resolves an entry listed twice to its last category. The emitted order is canonical, so re-rendering is stable. |
 | `opencode` | shell, MCP, `opencode.extra` | see *order loss* below |
 | `pi`, `pi-project` | shell, MCP | see *order loss* below |
 

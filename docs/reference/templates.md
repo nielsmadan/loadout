@@ -20,9 +20,10 @@ plugins — describe *your* setup: your model, your effort level, your hooks int
 Nothing is categorically excluded, because a source's `use` already decides what it contributes,
 but a template that sets `model = "opus"` is a smell rather than a feature.
 
-**Scope as built.** The mechanism is complete; it is wired to **permissions**, the one artifact
-type project scope has. Instructions, skills and MCP plug into the same resolution when project
-scope grows them — see `docs/scopes.md`, which is why this is a dimension rather than a milestone.
+**Scope as built.** The mechanism is complete and wired to every artifact type project scope
+has — **permissions, instructions, skills and MCP server definitions**. Each plugged into the
+same resolution as it shipped, without changing anything here, which is what "a dimension rather
+than a milestone" meant: see `docs/scopes.md`.
 
 ## Declared and vendored
 

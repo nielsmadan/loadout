@@ -78,29 +78,30 @@ not effort: OpenCode's documented fallback is `~/.claude/CLAUDE.md`, which loado
 so the missing slice presented as a harness reading a perfectly valid instruction document meant
 for a different one.
 
-### `mcp` names two different things, and this page is half the reason
+### `mcp` — retracted as a gap, and built
 
-**The mcp table above lists where server *definitions* live. The `mcp` slice in `GLOBAL_PRESET`
-renders tool-approval *policy*.** Both are accurate in isolation, and read together they
-manufacture a gap that does not exist while hiding the one that does.
+Until 2026-08-24 this section explained why **the mcp table above lists where server
+*definitions* live** while **the `mcp` slice in `GLOBAL_PRESET` rendered tool-approval *policy***
+— two things sharing one word, one of them missing, both accurate in isolation and manufacturing
+a false gap when read together.
 
-The policy half is complete on all four harnesses. It renders from `permissions.toml`'s `[mcp]`
-section — `claude-mcp` to `mcp-permissions.json`, `codex-mcp` to a staged TOML, and on OpenCode
-and Pi it lands *inside the permissions document* as `jina_search`-style keys rather than a file
-of its own. So OpenCode and Pi have no missing mcp destination; their policy is already written,
-just not where a reader scanning for a filename would look.
+Both halves are now closed, in the direction the vocabulary always meant. The policy slice renamed
+to **`mcp-permissions`** — its outputs already said so (`mcp-permissions.json`,
+`mcp-permissions.toml`) — which freed `mcp` for what the table below, and every upstream document,
+already meant by it: server definitions. `mcp` now renders `<source>/mcp.toml` to six of the eight
+harness/scope destinations; see [servers.md](servers.md) for the slice — the format, why Pi has no
+project destination, why Codex's is still an open question, and why Claude's global entry is
+staged rather than written.
 
-The definitions half is **an unbuilt slice, not a missing destination**. loadout has no model of
-a server: `mcpServers` appears nowhere in `src/`, and entries carry `url`, `command`, `args` and
-`bearerTokenEnv`, none of which exist in `Rules`. It would need a new input, four renderers — one
-of them CLI-mediated on Claude, which collides with
-[0004](../decisions/0004-loadout-is-render-only.md) — and a name that is not `mcp`, because
-`mcp` is taken.
-
-`~/ac/mcp/servers.toml` already keeps the two apart in its own header: *"This file defines which
+`~/ac/mcp/servers.toml` already kept the two apart in its own header: *"This file defines which
 servers EXIST. Which of their tools may be called is the separate `[mcp]` section of
-permissions/permissions.toml"*. The distinction is load-bearing in the live system and was
-missing here.
+permissions/permissions.toml"*. The distinction was load-bearing in the live system before loadout
+had a model for either half; now loadout's own naming matches it.
+
+**`~/ac` itself has not cut over.** `mcp/servers.toml` and `mcp/sync.py` are still the live
+generator until someone moves the source to `loadout/mcp.toml`, deletes `preserve = ["mcp"]` in
+the same change, and retires `mcp/sync.py` — with the user's approval at every step. See
+[scopes.md](../scopes.md#still-open).
 
 An earlier version of this section listed `opencode.mcp` and `pi.mcp` as unbuilt destinations. It
 was wrong, and wrong in the way this page exists to prevent: it read a capability table and a
@@ -348,6 +349,12 @@ has no `mcpServers` key at all. `~/ac/mcp/sync.py` therefore generates an input 
 through `claude mcp add-json` rather than writing config directly — a harness-owned mutation
 path, not a file loadout can render, which collides with
 [0004](../decisions/0004-loadout-is-render-only.md).
+
+**loadout's own `mcp` slice reproduces this table's shape rather than fighting it.** It renders the
+same staged-input-plus-external-invocation split for Claude's global entry, writes `.mcp.json`
+directly at Claude's project scope, writes OpenCode's and Pi's global and project files directly,
+and stages Codex's `[mcp_servers.*]` the same way it already stages `mcp-permissions.toml`. See
+[servers.md](servers.md).
 
 ## plugins
 

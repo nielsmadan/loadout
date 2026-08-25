@@ -144,6 +144,29 @@ Still unresolved in `~/ac`, in the same class as the removed `env`: `find` (bare
 cannot fix this — the intended mechanism is a build-time `neverallow` ceiling that
 refuses to emit, which is milestone 4.
 
+### MCP policy: shared document on two harnesses, split on two
+
+`[mcp]` tool-approval policy does not land the same way shell policy does, and it is worth stating
+once rather than rediscovering per harness — especially since `mcp` also names a completely
+different slice, server *definitions* ([servers.md](servers.md),
+[config.md](config.md#mcp--retracted-as-a-gap-and-built)). This table is about the policy half
+only.
+
+| harness | shell policy | MCP policy | same document? |
+|---|---|---|---|
+| Claude | `settings.json` → `permissions.{allow,ask,deny}` | **both** the same `settings.json` list (as `mcp__<server>__<tool>` patterns) **and** a separate `mcp-permissions.json` | split — MCP policy is rendered twice, to two consumers |
+| Codex | `.codex/rules/permissions.rules` | a separate staged `mcp-permissions.toml` → `[mcp_servers.<name>].tools.<tool>` | split |
+| OpenCode | `opencode.json` → `permission.bash` | the same `opencode.json` → `permission.<server>_<tool>` | shared |
+| Pi | `pi/permissions.json` → `permission.bash` | the same document → `permission.mcp` | shared |
+
+Verified against `src/loadout/permissions/renderers.py`: `render_claude`'s `_claude_settings`
+concatenates `mcp_native(rules.mcp_allow)` (and `ask`/`deny`) into the very lists shell entries go
+into, and `render_claude_mcp` renders the identical rules a second time into its own document.
+`render_codex` reads only `rules.shell(category)`; `render_codex_mcp` is a separate function
+producing a separate file. `render_opencode` and `render_pi` each build one `permission` object
+where `bash` and the MCP entries are sibling keys of that one dict — no second function, no second
+file.
+
 ### Relocating the config directory
 
 Four of the five let an environment variable move the directory `loadout` writes into.

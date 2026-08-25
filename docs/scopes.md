@@ -75,7 +75,7 @@ removing one entry from a rule list reads as one line changed in the source, and
 rules going from bypassable to enforced in the output. A `loadout diff` reporting that before
 writing would serve it better than a shadow tree.
 
-### Project scope — built (permissions, instructions and skills)
+### Project scope — built (permissions, instructions, skills and mcp)
 
 Per-repo configuration, layered on top of global. Two sources per artifact type:
 
@@ -84,10 +84,15 @@ Per-repo configuration, layered on top of global. Two sources per artifact type:
 | project | yes | rules and instructions everyone working on this repo gets |
 | personal | **no** | your rules for this repo — machine paths, local tools |
 
-loadout merges the two and writes **generated outputs that are always gitignored** — seven
+loadout merges the two and writes **generated outputs that are always gitignored** — eight
 documents across four harnesses (`claude`, `codex`, `opencode`, `pi`), of which `AGENTS.md` is
-one file three of them read, plus a skills directory per harness that has one. `.codex/config.toml`, in the system this replaces, turned out to be a one-byte
-leftover of the old tooling rather than a real output, so the port does not reproduce it.
+one file three of them read, plus a skills directory per harness that has one. Claude's eighth is
+`.mcp.json`, the one document the `mcp` slice adds at project scope on top of the seven permissions
+and instructions already generated — OpenCode's `mcp` key composes into `opencode.json`, an
+existing output, so it adds no file of its own; Codex and Pi have no project `mcp` destination
+(see [reference/servers.md](reference/servers.md)). `.codex/config.toml`, in the system this
+replaces, turned out to be a one-byte leftover of the old tooling rather than a real output, so
+the port does not reproduce it.
 
 Generated project files are never committed, because the merged output contains personal
 content — two people would conflict on every regeneration. Shared content reaches other
@@ -191,13 +196,15 @@ person's setup; a repo's configuration is the same for everyone who checks it ou
   [0007](decisions/0007-loadout-owns-all-agent-configuration.md). See
   [reference/templates.md](reference/templates.md) and
   [0014](decisions/0014-a-vendored-template-is-source-not-output.md).
-- MCP **server definitions**, still owned by a separate generator (`~/ac/mcp/servers.toml` and
-  `mcp/sync.py`). Not to be confused with the `mcp` slice, which renders tool-approval *policy*
-  from `permissions.toml` and is complete on all four harnesses — the two share a word and
-  nothing else, which has already produced one wrong gap analysis. See
-  [reference/config.md](reference/config.md). Whether definitions become a loadout slice at all
-  is open: it needs a new input, four renderers, and Claude's is CLI-mediated, which collides
-  with [0004](decisions/0004-loadout-is-render-only.md).
+- MCP **server definitions shipped** on 2026-08-24 — `mcp` now renders `<source>/mcp.toml` to six
+  of the eight harness/scope destinations; see [reference/servers.md](reference/servers.md).
+  **`~/ac` itself has not cut over.** `mcp/servers.toml` and `mcp/sync.py` remain the live
+  generator until someone moves the source to `loadout/mcp.toml`, deletes `preserve = ["mcp"]` in
+  the same change, and retires `mcp/sync.py` — each step requiring the user's explicit approval,
+  since `~/ac` is the live oracle this design was checked against. Not to be confused with the
+  `mcp-permissions` slice, which renders tool-approval *policy* from `permissions.toml` and is
+  complete on all four harnesses — the two shared a word before the rename and produced one wrong
+  gap analysis from it. See [reference/config.md](reference/config.md#mcp--retracted-as-a-gap-and-built).
 - Skills **shipped** on 2026-08-15 — `skills/sync.py` is deleted and loadout renders all 50 to
   every harness, so this bullet no longer names it.
 - Build-time ceilings (`neverallow`) for the wrapper-command bypass described in

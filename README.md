@@ -305,8 +305,8 @@ preserve = ["mcp"]
 
 - `output` — where the generated file is written, relative to the repo root. Subject to the
   same rules as an instructions target's `output`.
-- `render` — the renderer name. One of: `claude`, `claude-mcp`, `codex`, `codex-mcp`, `pi`,
-  `opencode`.
+- `render` — the renderer name. One of: `claude`, `claude-mcp-permissions`, `codex`,
+  `codex-mcp-permissions`, `pi`, `opencode`.
 - `base` — optional. A JSON file, relative to the repo root, that the renderer starts from —
   hand-maintained keys in it (model, hooks, `defaultMode`, and so on) are carried through into
   the output untouched. A `base` must be an existing input file; it may never point at a path
@@ -369,7 +369,7 @@ Known harnesses and what each one generates:
 
 | harness | generates |
 | --- | --- |
-| `claude` | `.claude/settings.json`, `.claude/mcp-permissions.json`, `CLAUDE.md`, `.claude/skills/` |
+| `claude` | `.claude/settings.json`, `.claude/mcp-permissions.json`, `.mcp.json`, `CLAUDE.md`, `.claude/skills/` |
 | `codex` | `.codex/rules/permissions.rules`, `AGENTS.md` |
 | `opencode` | `opencode.json`, `AGENTS.md`, `.opencode/skills/` |
 | `pi` | `.pi/extensions/pi-permission-system/config.json`, `AGENTS.md`, `.pi/skills/` |
@@ -420,6 +420,40 @@ code. See [opencode.md](docs/reference/opencode.md#required-setup-opencode_disab
 
 A template contributes `skills/` the same way it contributes `instructions.md`: a tier beneath the
 project, so a skill the project defines under the same name replaces the template's.
+
+### MCP servers
+
+Drop server definitions into `loadout/mcp.toml` and they render to every enabled harness that has
+a destination for them — this is not scaffolded by `init`, since defining a server is opt-in the
+way `permissions.local.toml` is not:
+
+```toml
+# loadout/mcp.toml
+[jina]
+transport = "http"
+url = "https://mcp.jina.ai/v1"
+auth_env_var = "JINA_API_KEY"      # the NAME of an environment variable, never a token
+
+[context7]
+transport = "stdio"
+command = "npx"
+args = ["-y", "@upstash/context7-mcp"]
+```
+
+The same format is `<source>/mcp.toml` at global scope too. `transport` is `"http"` (needs `url`,
+optionally `auth_env_var`) or `"stdio"` (needs `command`, optionally `args` and `env`) — refused
+at parse time otherwise. `auth_env_var` names a variable; the value it holds never reaches a
+rendered file.
+
+At project scope this reaches Claude (`.mcp.json`) and OpenCode (`opencode.json`'s `mcp` key).
+Pi has no project destination — `.mcp.json` already serves it, since `pi-mcp-adapter` reads it
+directly. Codex has none yet — whether it survives Codex's project-config filter is unverified.
+A template contributes its own `mcp.toml` the same way it contributes `permissions.toml`,
+beneath the project.
+
+This is distinct from `[mcp]` in `permissions.toml`, which controls which of a server's *tools*
+may be called, not which servers exist. Full detail:
+[docs/reference/servers.md](docs/reference/servers.md).
 
 ### Templates
 

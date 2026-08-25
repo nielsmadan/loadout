@@ -273,6 +273,77 @@ so most rows here are about what a harness *cannot* say. Source for all of them 
 re-rendering needs only the source, which survives exactly, but the derived name is an invention
 and saying so is the point.
 
+## MCP server definitions
+
+One file (`servers.py`) parses `<source>/mcp.toml` and renders it through four per-harness
+functions plus a project-scope variant for Claude — the same shape as `plugins.py`. Source for
+all of them is [servers](servers.md).
+
+| id | behaviour | source | pinned by |
+|---|---|---|---|
+| `srv-parse` | http and stdio servers both parse | [servers](servers.md#the-input-is-sourcemcptoml) | `test_http_and_stdio_servers_parse` |
+| `srv-order` | declaration order is preserved | [servers](servers.md#the-input-is-sourcemcptoml) | `test_declaration_order_is_preserved` |
+| `srv-bad-transport` | an unknown transport is refused | [servers](servers.md#the-input-is-sourcemcptoml) | `test_an_unknown_transport_is_refused` |
+| `srv-http-needs-url` | an http server with no `url` is refused at parse time, not render time | [servers](servers.md#the-input-is-sourcemcptoml) | `test_http_without_a_url_is_refused` |
+| `srv-stdio-needs-command` | a stdio server with no `command` is refused at parse time | [servers](servers.md#the-input-is-sourcemcptoml) | `test_stdio_without_a_command_is_refused` |
+| `srv-no-file` | a missing `mcp.toml` is no servers, not an error | [servers](servers.md#the-input-is-sourcemcptoml) | `test_a_missing_file_is_no_servers_rather_than_an_error` |
+| `srv-unknown-key` | a stray key is refused, not ignored | [servers](servers.md#the-input-is-sourcemcptoml) | `test_an_unknown_key_is_refused` |
+| `srv-all-keys` | every documented key is accepted | — (test is the record) | `test_every_documented_key_is_accepted` |
+| `srv-pi-bearer` | Pi names the auth variable `bearerTokenEnv` | [ADR 0006](../decisions/0006-faithful-ports-reproduce-upstream-quirks.md) | `test_pi_names_the_auth_variable_bearer_token_env` |
+| `srv-stdio-shape` | a stdio server carries `command` and `args` | — (test is the record) | `test_a_stdio_server_carries_command_and_args` |
+| `srv-no-secret` | `auth_env_var`'s value never reaches a rendered file, on any of the four | [ADR 0008](../decisions/0008-generated-files-carry-no-machine-state.md) | `test_no_renderer_emits_a_secret_value` |
+| `srv-codex-table` | Codex emits one `[mcp_servers.<name>]` table per server | [servers](servers.md) | `test_codex_emits_a_table_per_server` |
+| `srv-claude-env-always` | Claude's stdio entry always carries `env`, even empty | — (test is the record) | `test_claude_stdio_entry_always_carries_env_even_when_empty` |
+| `srv-codex-env-omit` | Codex omits the `env` table when empty — unlike Claude | [ADR 0006](../decisions/0006-faithful-ports-reproduce-upstream-quirks.md) | `test_codex_omits_the_env_table_when_empty` |
+| `srv-codex-env-sort` | Codex sorts `env` keys | — (test is the record) | `test_codex_sorts_env_keys` |
+| `srv-opencode-array` | OpenCode's stdio server is one `command` array combining command and args, not separate fields | [servers](servers.md) | `test_opencode_stdio_command_and_args_are_one_array` |
+| `srv-opencode-interp` | OpenCode's http auth uses `{env:VAR}` interpolation, not `${VAR}` | [servers](servers.md) | `test_opencode_http_auth_uses_env_interpolation` |
+| `srv-project-claude` | a project renders `.mcp.json` for Claude | [servers](servers.md) | `test_a_project_renders_mcp_json_for_claude` |
+| `srv-pi-no-project` | Pi gets no project destination — `.mcp.json` already serves it | [servers](servers.md#pi-has-no-project-destination) | `test_pi_gets_no_project_destination` |
+| `srv-codex-no-project` | Codex gets no project destination yet — open question, not a gap | [servers](servers.md#codex-has-no-project-destination-yet) | `test_codex_gets_no_project_destination_yet` |
+| `srv-template-tier` | a template contributes its servers, beneath the project | [templates](templates.md) | `test_a_template_contributes_its_servers` |
+| `srv-claude-staged` | Claude's global entry is staged (`output` set, `destination` unset) | [servers](servers.md#claudes-global-entry-is-staged-not-written) | `test_claude_global_is_staged_rather_than_written` |
+| `srv-no-toml-no-output` | no `mcp.toml` anywhere means no servers output, at global scope too | [servers](servers.md#the-input-is-sourcemcptoml) | `test_no_mcp_toml_means_no_servers_output` |
+| `srv-automatic` | `mcp` is automatic, like `permissions` — no per-agent authoring decision | [servers](servers.md#the-input-is-sourcemcptoml) | `test_a_global_source_renders_claude_servers_without_being_named` |
+| `srv-codex-global` | Codex's global destination is staged `codex/config.toml`, `[mcp_servers.*]` only | [servers](servers.md#eight-destinations-six-built) | `test_codex_global_writes_config_toml` |
+| `srv-pi-global` | Pi's global destination is its own `mcp.json`, written directly | [servers](servers.md#eight-destinations-six-built) | `test_pi_global_writes_its_own_mcp_json` |
+| `srv-opencode-compose` | OpenCode's global `mcp` key composes with `permission` in the same `opencode.json`, the same shape project scope already proves | [servers](servers.md#eight-destinations-six-built) | `test_opencode_global_composes_the_mcp_key_with_permission` |
+| `srv-unpermitted` | a server defined but named by no `[mcp]` policy entry is reported | [servers](servers.md#a-server-defined-but-not-permitted-is-reported) | `test_a_defined_server_with_no_policy_is_reported` |
+| `srv-wildcard-silent` | a `server/*` policy entry silences the notice | [servers](servers.md#a-server-defined-but-not-permitted-is-reported) | `test_a_server_covered_by_a_wildcard_is_silent` |
+| `srv-one-tool-silent` | naming even one tool silences the notice — it is not a completeness check | [servers](servers.md#a-server-defined-but-not-permitted-is-reported) | `test_a_server_covered_by_one_tool_is_silent` |
+
+### Extraction
+
+| id | behaviour | pinned by |
+|---|---|---|
+| `srv-x-every-renderer` | every `-servers` renderer is named in `EXTRACTORS`, `VALUE_EXTRACTORS` or `NOT_INVERTED` | `test_every_definition_renderer_has_an_inverse` |
+| `srv-x-unknown-server` | an unrecognised extractor name is an error, not a silent empty result | `test_an_unknown_name_is_an_error_rather_than_a_silent_empty` |
+| `srv-x-claude-http` | a Claude http server round-trips | `test_claude_http_server_round_trips` |
+| `srv-x-claude-stdio` | a Claude stdio server round-trips | `test_claude_stdio_server_round_trips` |
+| `srv-x-claude-no-auth` | a Claude http server with no auth round-trips | `test_claude_http_server_without_auth_round_trips` |
+| `srv-x-bad-bearer` | a header that is not a plain bearer-env reference is reported, never guessed at | `test_a_bad_bearer_header_is_reported_not_guessed` |
+| `srv-x-claude-unowned` | a key `.mcp.json` doesn't own is reported — the file has no other owner | `test_an_unowned_key_in_the_mcp_json_file_is_reported` |
+| `srv-x-claude-unrecognised` | an unrecognised server type is reported and dropped | `test_an_unrecognised_server_type_is_reported_and_dropped` |
+| `srv-x-no-alias` | extraction never aliases the document it was handed | `test_extraction_does_not_alias_the_document` |
+| `srv-x-opencode-http` | an OpenCode remote server round-trips | `test_opencode_http_server_round_trips` |
+| `srv-x-opencode-stdio` | an OpenCode local server round-trips | `test_opencode_stdio_server_round_trips` |
+| `srv-x-opencode-rest` | extraction says nothing about the rest of `opencode.json` — `permission` has its own owner | `test_opencode_does_not_note_the_rest_of_the_document` |
+| `srv-x-opencode-missing` | a missing `mcp` key extracts empty rather than failing | `test_a_missing_mcp_key_extracts_empty_rather_than_failing` |
+| `srv-x-opencode-unrecognised` | an unrecognised OpenCode server type is reported | `test_an_unrecognised_opencode_server_type_is_reported` |
+| `srv-x-opencode-no-alias` | OpenCode extraction does not alias the document | `test_opencode_extraction_does_not_alias_the_document` |
+| `srv-x-claude-global-http` | the staged global document's http server round-trips | `test_claude_global_http_server_round_trips` |
+| `srv-x-claude-global-stdio` | the staged global document's stdio server round-trips | `test_claude_global_stdio_server_round_trips` |
+| `srv-x-claude-global-flat` | the staged document has no `mcpServers` wrapper, unlike `.mcp.json` | `test_claude_global_document_has_no_mcpservers_wrapper` |
+| `srv-x-pi-http` | a Pi http server round-trips | `test_pi_http_server_round_trips` |
+| `srv-x-pi-stdio` | a Pi stdio server round-trips | `test_pi_stdio_server_round_trips` |
+| `srv-x-pi-unowned` | a key Pi's `mcp.json` doesn't own is reported | `test_an_unowned_key_in_pis_mcp_json_is_reported` |
+| `srv-x-pi-unrecognised` | an unrecognised Pi entry is reported and dropped | `test_an_unrecognised_pi_server_entry_is_reported_and_dropped` |
+| `srv-x-codex-http` | a Codex http server round-trips | `test_codex_http_server_round_trips` |
+| `srv-x-codex-stdio` | a Codex stdio server round-trips | `test_codex_stdio_server_round_trips` |
+| `srv-x-codex-header` | the header comment lines are not mistaken for a server table | `test_codex_header_comment_lines_are_not_mistaken_for_servers` |
+| `srv-x-codex-unrecognised` | an unrecognised Codex entry is reported and dropped | `test_an_unrecognised_codex_server_entry_is_reported_and_dropped` |
+| `srv-x-not-inverted` | `codex-servers`, like `codex-plugins`, has a written and tested inverse that cannot be registered — a `DocumentTextSpec` producing TOML text, not the parsed document every `VALUE_EXTRACTORS` member takes | [servers](servers.md#two-renderers-whose-inverse-cannot-be-registered) | `test_every_definition_renderer_has_an_inverse` (via `NOT_INVERTED`) |
+
 ## Recorded but not testable at render time
 
 | id | behaviour | why |
