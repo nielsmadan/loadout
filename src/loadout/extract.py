@@ -24,6 +24,7 @@ from .permissions.rules import (
     strictest,
 )
 from .plugins import MARKETPLACES, PLUGINS
+from .servers import Server
 
 CATEGORIES = ("allow", "ask", "deny")
 
@@ -703,11 +704,179 @@ def extract_pi_plugins(document: Any) -> ValueExtraction:
 # So this needs a registry keyed by what a renderer *produces*, with the input
 # type carried alongside — a shared invariant to change on purpose, not in
 # passing. The equality in tests/test_extract_hooks.py is what enforces it today.
+#
+# --------------------------------------------------------------------------
+# mcp server definitions — the inverses of `claude-project-servers` and
+# `opencode-servers`. Both take a **parsed JSON document** — `.mcp.json`'s
+# content for the first, opencode.json's whole document for the second — the
+# same input contract every other member of this registry already has, so
+# both belong here despite `claude-project-servers` being a `DocumentJsonSpec`
+# rather than a `ValueSpec`: unlike `codex-plugins`, the render-time
+# distinction (composes into one key vs. owns the file outright) has no
+# bearing on what extraction is handed. `render_claude_servers`,
+# `render_codex_servers` and `render_pi_servers` have no entry here because
+# they are not yet registered in `RENDERERS` — they arrive with global-scope
+# wiring, and that is its own piece of work.
+# --------------------------------------------------------------------------
+
+CLAUDE_SERVER_KEYS = frozenset({"type", "url", "headers", "command", "args", "env"})
+OPENCODE_SERVER_KEYS = frozenset({"type", "url", "headers", "command", "environment"})
+
+CLAUDE_BEARER = re.compile(r"^Bearer \$\{(?P<var>[^}]+)\}$")
+OPENCODE_BEARER = re.compile(r"^Bearer \{env:(?P<var>[^}]+)\}$")
+
+
+def _bearer_env_var(
+    headers: Any, pattern: re.Pattern[str], label: str, notes: list[Note]
+) -> str | None:
+    if not isinstance(headers, Mapping):
+        notes.append(Note("unrecognised", f"{label}: headers is not a table"))
+        return None
+    stray = sorted(set(headers) - {"Authorization"})
+    if stray:
+        notes.append(Note("cannot", f"{label}: header(s) {', '.join(stray)} have no source form"))
+    auth = headers.get("Authorization")
+    if not isinstance(auth, str):
+        notes.append(Note("unrecognised", f"{label}: headers carry no Authorization"))
+        return None
+    match = pattern.fullmatch(auth)
+    if match is None:
+        notes.append(Note("cannot", f"{label}: Authorization {auth!r} names no plain env var"))
+        return None
+    return match["var"]
+
+
+def _extract_claude_server(name: str, entry: Any, notes: list[Note]) -> Server | None:
+    if not isinstance(entry, Mapping):
+        notes.append(Note("unrecognised", f"claude-servers: {name} is not a table"))
+        return None
+    stray = sorted(set(entry) - CLAUDE_SERVER_KEYS)
+    if stray:
+        notes.append(Note("cannot", f"claude-servers: {name} carries {', '.join(stray)}"))
+    kind = entry.get("type")
+    if kind == "http":
+        url = entry.get("url")
+        if not isinstance(url, str):
+            notes.append(Note("unrecognised", f"claude-servers: {name} http entry has no url"))
+            return None
+        auth_env_var = None
+        if "headers" in entry:
+            label = f"claude-servers: {name}"
+            auth_env_var = _bearer_env_var(entry["headers"], CLAUDE_BEARER, label, notes)
+        return Server(name=name, transport="http", url=url, auth_env_var=auth_env_var)
+    if kind == "stdio":
+        command = entry.get("command")
+        if not isinstance(command, str):
+            notes.append(Note("unrecognised", f"claude-servers: {name} stdio entry has no command"))
+            return None
+        return Server(
+            name=name,
+            transport="stdio",
+            command=command,
+            args=tuple(entry.get("args", ())),
+            env=dict(entry.get("env", {})),
+        )
+    notes.append(Note("unrecognised", f"claude-servers: {name} unknown type {kind!r}"))
+    return None
+
+
+def extract_claude_servers(document: Any) -> ValueExtraction:
+    """`.mcp.json` -> the servers fragment.
+
+    The file has no other owner — `claude-project-servers` renders it whole, the
+    same as `codex-hooks`'s `hooks.json` — so a stray top-level key is reported
+    rather than kept: there is no base for it to belong to.
+    """
+    if not isinstance(document, Mapping):
+        return ValueExtraction(
+            {}, (Note("unrecognised", "claude-servers: document is not a table"),)
+        )
+    notes: list[Note] = []
+    unowned = sorted(set(document) - {"mcpServers"})
+    if unowned:
+        notes.append(
+            Note("cannot", f"claude-servers: .mcp.json holds unowned key(s): {', '.join(unowned)}")
+        )
+    config = document.get("mcpServers", {})
+    servers: dict[str, Server] = {}
+    if isinstance(config, Mapping):
+        for name, entry in config.items():
+            server = _extract_claude_server(name, entry, notes)
+            if server is not None:
+                servers[name] = server
+    else:
+        notes.append(Note("unrecognised", "claude-servers: mcpServers is not a table"))
+    return ValueExtraction(servers, tuple(notes))
+
+
+def _extract_opencode_server(name: str, entry: Any, notes: list[Note]) -> Server | None:
+    if not isinstance(entry, Mapping):
+        notes.append(Note("unrecognised", f"opencode-servers: {name} is not a table"))
+        return None
+    stray = sorted(set(entry) - OPENCODE_SERVER_KEYS)
+    if stray:
+        notes.append(Note("cannot", f"opencode-servers: {name} carries {', '.join(stray)}"))
+    kind = entry.get("type")
+    if kind == "remote":
+        url = entry.get("url")
+        if not isinstance(url, str):
+            notes.append(Note("unrecognised", f"opencode-servers: {name} remote entry has no url"))
+            return None
+        auth_env_var = None
+        if "headers" in entry:
+            label = f"opencode-servers: {name}"
+            auth_env_var = _bearer_env_var(entry["headers"], OPENCODE_BEARER, label, notes)
+        return Server(name=name, transport="http", url=url, auth_env_var=auth_env_var)
+    if kind == "local":
+        command = entry.get("command")
+        if (
+            not isinstance(command, list)
+            or not command
+            or not all(isinstance(c, str) for c in command)
+        ):
+            notes.append(
+                Note("unrecognised", f"opencode-servers: {name} local entry has no command")
+            )
+            return None
+        head, *rest = command
+        return Server(
+            name=name,
+            transport="stdio",
+            command=head,
+            args=tuple(rest),
+            env=dict(entry.get("environment", {})),
+        )
+    notes.append(Note("unrecognised", f"opencode-servers: {name} unknown type {kind!r}"))
+    return None
+
+
+def extract_opencode_servers(document: Any) -> ValueExtraction:
+    """opencode.json -> the servers fragment, from the `mcp` key's value.
+
+    Nothing is noted for the rest of the document: `permission` and everything
+    else in opencode.json has its own owner, the same as `claude-hooks` leaves
+    the rest of settings.json alone.
+    """
+    mcp = document.get("mcp", {}) if isinstance(document, Mapping) else {}
+    notes: list[Note] = []
+    servers: dict[str, Server] = {}
+    if isinstance(mcp, Mapping):
+        for name, entry in mcp.items():
+            server = _extract_opencode_server(name, entry, notes)
+            if server is not None:
+                servers[name] = server
+    else:
+        notes.append(Note("unrecognised", "opencode-servers: mcp is not a table"))
+    return ValueExtraction(servers, tuple(notes))
+
+
 VALUE_EXTRACTORS: dict[str, ValueExtractor] = {
     "claude-hooks": extract_claude_hooks,
     "codex-hooks": extract_codex_hooks,
     "claude-plugins": extract_claude_plugins,
     "pi-plugins": extract_pi_plugins,
+    "claude-project-servers": extract_claude_servers,
+    "opencode-servers": extract_opencode_servers,
 }
 
 

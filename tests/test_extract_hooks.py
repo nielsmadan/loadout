@@ -20,7 +20,7 @@ import pytest
 from loadout.errors import LoadoutError
 from loadout.extract import VALUE_EXTRACTORS, extract_value
 from loadout.hooks import render_claude_hooks, render_codex_hooks
-from loadout.permissions.renderers import RENDERERS, ValueSpec
+from loadout.permissions.renderers import RENDERERS, DocumentJsonSpec, ValueSpec
 from test_extract_roundtrip import NOT_INVERTED
 
 
@@ -121,7 +121,14 @@ def test_an_unrecognised_event_is_not_a_note() -> None:
 
 
 def test_every_value_renderer_has_a_value_extractor() -> None:
-    value_renderers = {n for n, s in RENDERERS.items() if isinstance(s, ValueSpec)}
+    """`VALUE_EXTRACTORS` also holds `claude-project-servers`, a `DocumentJsonSpec`
+    rather than a `ValueSpec`. It belongs here anyway: both take a parsed JSON
+    document as input, the contract this registry actually enforces (see the
+    comment above it in extract.py) — unlike `codex-plugins`'s `DocumentTextSpec`,
+    which takes TOML text and is excluded for exactly that reason."""
+    value_renderers = {
+        n for n, s in RENDERERS.items() if isinstance(s, ValueSpec | DocumentJsonSpec)
+    }
     assert value_renderers - NOT_INVERTED == set(VALUE_EXTRACTORS)
 
 

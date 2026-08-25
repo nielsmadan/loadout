@@ -15,8 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from loadout.extract import extract
-from loadout.permissions.renderers import RENDERERS, JsonSpec, TextSpec
+from loadout.extract import Extraction, ValueExtraction, extract, extract_value
+from loadout.permissions.renderers import RENDERERS, DocumentJsonSpec, JsonSpec, TextSpec, ValueSpec
 from loadout.project import PROJECT_PRESET
 from test_extract_roundtrip import NOT_INVERTED
 
@@ -51,6 +51,11 @@ def _artifacts() -> list[tuple[Path, str]]:
         # Deferred the same way test_extract_roundtrip.py defers them: no
         # inverse exists yet, so there is nothing this round trip could extract.
         and spec.renderer not in NOT_INVERTED
+        # A `owned_key` slice writes one key of a file another slice also owns
+        # (opencode-servers' `mcp` inside opencode.json), so the whole-file byte
+        # comparison this loop drives does not apply — see
+        # test_the_shipped_opencode_mcp_key_round_trips below instead.
+        and spec.owned_key is None
         and (EXPECTED / "project" / spec.output).is_file()
     ]
     return found
@@ -72,8 +77,13 @@ def _serialize(name: str, document: object) -> str:
     if isinstance(spec, TextSpec):
         assert isinstance(document, str)
         return document
-    assert isinstance(spec, JsonSpec)
-    return json.dumps(document, indent=2, ensure_ascii=spec.ensure_ascii) + "\n"
+    # `DocumentJsonSpec` (`claude-project-servers`) owns its file outright, the
+    # same as a `JsonSpec`, and is serialized the same way `emit.py:
+    # compose_permission_document` serializes one: `_serialize_json`'s default
+    # `ensure_ascii=False`, since the spec itself carries no such flag.
+    ensure_ascii = spec.ensure_ascii if isinstance(spec, JsonSpec) else False
+    assert isinstance(spec, JsonSpec | DocumentJsonSpec)
+    return json.dumps(document, indent=2, ensure_ascii=ensure_ascii) + "\n"
 
 
 # The only shipped artifacts extraction cannot reproduce. Listed rather than
@@ -81,14 +91,31 @@ def _serialize(name: str, document: object) -> str:
 LOSSY = {"default/perm/codex.rules", "variant/perm/codex.rules"}
 
 
-def _rerender(path: Path, name: str) -> str:
-    extraction = extract(name, _load(path, name))
+def _extraction(name: str, document: object) -> Extraction | ValueExtraction:
+    """`DocumentJsonSpec` and `ValueSpec` both invert through `extract_value`,
+    since both take the parsed document their key holds — see the comment
+    above `VALUE_EXTRACTORS` in extract.py. Every other renderer here is a
+    `Rules`-carrying `TextSpec`/`JsonSpec`, inverted through `extract`.
+    """
     spec = RENDERERS[name]
-    again = (
-        spec.fn(extraction.rules)
-        if isinstance(spec, TextSpec)
-        else spec.fn(extraction.rules, extraction.base)
-    )
+    if isinstance(spec, DocumentJsonSpec | ValueSpec):
+        return extract_value(name, document)
+    return extract(name, document)
+
+
+def _rerender(path: Path, name: str) -> str:
+    spec = RENDERERS[name]
+    document = _load(path, name)
+    extraction = _extraction(name, document)
+    if isinstance(extraction, ValueExtraction):
+        assert isinstance(spec, DocumentJsonSpec)
+        again = spec.fn(extraction.value)
+    else:
+        again = (
+            spec.fn(extraction.rules)
+            if isinstance(spec, TextSpec)
+            else spec.fn(extraction.rules, extraction.base)
+        )
     return _serialize(name, again)
 
 
@@ -105,9 +132,25 @@ def test_only_the_listed_artifacts_report_a_loss() -> None:
     reported = {
         artifact_id
         for (path, name), artifact_id in zip(ARTIFACTS, IDS, strict=True)
-        if extract(name, _load(path, name)).notes
+        if _extraction(name, _load(path, name)).notes
     }
     assert reported == LOSSY
+
+
+def test_the_shipped_opencode_mcp_key_round_trips() -> None:
+    """`opencode-servers` is a `ValueSpec` sharing opencode.json with `opencode`,
+    so it does not appear in `ARTIFACTS` — there is no whole file for it to own
+    and no byte-identical file to compare against. Its round trip is one key's
+    value instead, the same shape `test_extract_servers.py` already covers, and
+    this test is the one place it is checked against a shipped artifact rather
+    than a rule this test made up.
+    """
+    spec = RENDERERS["opencode-servers"]
+    assert isinstance(spec, ValueSpec)
+    document = json.loads((EXPECTED / "project" / "opencode.json").read_text())
+    extraction = extract_value("opencode-servers", document)
+    assert extraction.notes == ()
+    assert spec.fn(extraction.value) == document["mcp"]
 
 
 @pytest.mark.parametrize("profile", ["default", "variant"])
