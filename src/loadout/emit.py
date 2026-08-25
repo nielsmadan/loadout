@@ -29,6 +29,7 @@ from .notices import (
     Notice,
     notices_for,
     opencode_skills_race,
+    unpermitted_servers,
     unreached_catch_all,
 )
 from .permissions.merge import merge_rules
@@ -466,6 +467,40 @@ def _unreached_catch_all(manifest: Manifest, profile: str) -> tuple[Notice, ...]
     return tuple(dict.fromkeys(found))
 
 
+def _unpermitted_servers(manifest: Manifest) -> tuple[Notice, ...]:
+    """Every server no source's `[mcp]` policy names, across every source.
+
+    Two files, two merge algebras (docs/reference/config.md), so this reads both
+    independently rather than through `permission_sources` or `project_servers`
+    — the former raises when no source offers permissions.toml, which is a
+    legitimate shape for a manifest that only defines servers. Silent when no
+    source offers mcp.toml: a manifest defining no servers has nothing to check.
+    """
+    servers: dict[str, Server] = {}
+    for source in manifest.sources:
+        if "mcp" in source.use:
+            servers.update(parse_servers(source.path / SERVERS_SOURCE))
+    if not servers:
+        return ()
+    tiers = [
+        parse_rules(source.path.joinpath(*PERMISSIONS_SOURCE))
+        for source in manifest.sources
+        if "permissions" in source.use and source.path.joinpath(*PERMISSIONS_SOURCE).is_file()
+    ]
+    rules = merge_rules(*tiers)
+    return tuple(
+        Notice(
+            agent="mcp",
+            slice="servers",
+            message=(
+                f"{name} is defined but no [mcp] policy allow/ask/deny entry names it "
+                f"— its tools are all denied with no error"
+            ),
+        )
+        for name in unpermitted_servers(servers, rules)
+    )
+
+
 def collect_notices(root: Path, profile: str = "default") -> tuple[Notice, ...]:
     """Advisory findings about a source that rendered while doing less than it says.
 
@@ -480,6 +515,7 @@ def collect_notices(root: Path, profile: str = "default") -> tuple[Notice, ...]:
     manifest = load_profile(root, profile)
     found.extend(_global_skill_race(manifest, os.environ))
     found.extend(_unreached_catch_all(manifest, profile))
+    found.extend(_unpermitted_servers(manifest))
     for target in manifest.permissions:
         # A legacy `[permissions.*]` target names no agent and carries no slice
         # content, so there is nothing to report about it.

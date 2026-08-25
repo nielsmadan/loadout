@@ -27,13 +27,16 @@ from typing import Any
 from .adapters import OPENCODE_MAPPINGS, PI_MAPPINGS
 from .hooks import CLAUDE_EVENTS, CODEX_EVENTS, unrecognised_events
 from .permissions.renderers import CATCH_ALL_RENDERERS
+from .permissions.rules import Rules
 from .plugins import ADDRESSED_BY, unaddressable, unregistered_marketplaces
+from .servers import Server
 
 __all__ = [
     "Notice",
     "known_events",
     "notices_for",
     "opencode_skills_race",
+    "unpermitted_servers",
     "unreached_catch_all",
 ]
 
@@ -129,6 +132,20 @@ def unreached_catch_all(agent: str, renderer: str, verdict: str) -> tuple[Notice
             ),
         ),
     )
+
+
+def unpermitted_servers(servers: Mapping[str, Server], rules: Rules) -> tuple[str, ...]:
+    """Servers defined but named by no tool policy, in declaration order.
+
+    Two files, two edits: define the server, then allow its tools. Forgetting the
+    second gives a server whose tools are all denied and no error anywhere. This
+    is the locality benefit of one section, without giving one file two merge
+    algebras.
+    """
+    named = {
+        entry.split("/", 1)[0] for entry in (*rules.mcp_allow, *rules.mcp_ask, *rules.mcp_deny)
+    }
+    return tuple(name for name in servers if name not in named)
 
 
 def notices_for(

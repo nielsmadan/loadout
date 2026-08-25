@@ -18,7 +18,10 @@ from loadout.notices import (
     known_events,
     notices_for,
     opencode_skills_race,
+    unpermitted_servers,
 )
+from loadout.permissions.rules import Rules
+from loadout.servers import Server
 
 
 def test_an_event_the_harness_does_not_know_is_reported() -> None:
@@ -127,3 +130,23 @@ def test_an_explicit_off_is_not_mistaken_for_on() -> None:
     negative that matters — the user has said the opposite of what we need."""
     assert opencode_skills_race({OPENCODE_SKILL_FLAGS[0]: "0"})
     assert opencode_skills_race({OPENCODE_SKILL_FLAGS[1]: "false"})
+
+
+def test_a_defined_server_with_no_policy_is_reported() -> None:
+    servers = {"jina": Server(name="jina", transport="http", url="https://x")}
+
+    assert unpermitted_servers(servers, Rules()) == ("jina",)
+
+
+def test_a_server_covered_by_a_wildcard_is_silent() -> None:
+    servers = {"jina": Server(name="jina", transport="http", url="https://x")}
+
+    assert unpermitted_servers(servers, Rules(mcp_allow=("jina/*",))) == ()
+
+
+def test_a_server_covered_by_one_tool_is_silent() -> None:
+    """Any policy naming the server means the user knows it exists; the notice is
+    for a definition nobody has said anything about."""
+    servers = {"jina": Server(name="jina", transport="http", url="https://x")}
+
+    assert unpermitted_servers(servers, Rules(mcp_allow=("jina/search",))) == ()
