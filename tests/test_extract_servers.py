@@ -1,9 +1,10 @@
-"""The inverses of the two registered mcp server-definition renderers.
+"""The inverses of the mcp server-definition renderers.
 
-Only `claude-project-servers` and `opencode-servers` are wired into `RENDERERS`
-today — the global-scope renderers (`render_claude_servers`, `render_codex_servers`,
-`render_pi_servers`) exist in `servers.py` but are not yet registered, so they
-have no inverse to write here either.
+`claude-servers` and `pi-servers` are registered in `VALUE_EXTRACTORS` like
+`claude-project-servers` and `opencode-servers` before them. `codex-servers` is
+written and pinned here too, but not registered — it is a `DocumentTextSpec`
+taking TOML text, the same blocker that keeps `codex-plugins` out (see the
+comment above `NOT_INVERTED` in test_extract_roundtrip.py).
 
 Two properties, per `docs/reference/extraction.md`:
 
@@ -20,9 +21,16 @@ from __future__ import annotations
 import pytest
 
 from loadout.errors import LoadoutError
-from loadout.extract import EXTRACTORS, VALUE_EXTRACTORS, extract_value
+from loadout.extract import EXTRACTORS, VALUE_EXTRACTORS, extract_codex_servers, extract_value
 from loadout.permissions.renderers import RENDERERS
-from loadout.servers import Server, render_claude_project_servers, render_opencode_servers
+from loadout.servers import (
+    Server,
+    render_claude_project_servers,
+    render_claude_servers,
+    render_codex_servers,
+    render_opencode_servers,
+    render_pi_servers,
+)
 from test_extract_roundtrip import NOT_INVERTED
 
 HTTP = {
@@ -51,8 +59,9 @@ def test_every_definition_renderer_has_an_inverse() -> None:
 
 
 def test_an_unknown_name_is_an_error_rather_than_a_silent_empty() -> None:
+    # codex-servers is deliberately unregistered — see the module docstring.
     with pytest.raises(LoadoutError, match="no value extractor"):
-        extract_value("pi-servers", {})
+        extract_value("codex-servers", {})
 
 
 # --- claude-project-servers ------------------------------------------------
@@ -176,3 +185,116 @@ def test_opencode_extraction_does_not_alias_the_document() -> None:
     extracted = extract_value("opencode-servers", document).value
     extracted["svc"].env["K"] = "mutated"
     assert document["mcp"]["svc"]["environment"]["K"] == "v"
+
+
+# --- claude-servers (global, flat) ----------------------------------------
+
+
+def test_claude_global_http_server_round_trips() -> None:
+    document = render_claude_servers(HTTP)
+
+    extraction = extract_value("claude-servers", document)
+
+    assert extraction.notes == ()
+    assert extraction.value == HTTP
+    assert render_claude_servers(extraction.value) == document
+
+
+def test_claude_global_stdio_server_round_trips() -> None:
+    document = render_claude_servers(STDIO_WITH_ENV)
+
+    extraction = extract_value("claude-servers", document)
+
+    assert extraction.notes == ()
+    assert extraction.value == STDIO_WITH_ENV
+    assert render_claude_servers(extraction.value) == document
+
+
+def test_claude_global_document_has_no_mcpservers_wrapper() -> None:
+    """Distinguishes it from `claude-project-servers`: the flat map itself is
+    the whole staged document, not the value of a `mcpServers` key."""
+    document = render_claude_servers(HTTP)
+    assert "mcpServers" not in document
+    assert "jina" in document
+
+
+# --- pi-servers -------------------------------------------------------------
+
+
+def test_pi_http_server_round_trips() -> None:
+    document = render_pi_servers(HTTP)
+
+    extraction = extract_value("pi-servers", document)
+
+    assert extraction.notes == ()
+    assert extraction.value == HTTP
+    assert render_pi_servers(extraction.value) == document
+
+
+def test_pi_stdio_server_round_trips() -> None:
+    document = render_pi_servers(STDIO_WITH_ENV)
+
+    extraction = extract_value("pi-servers", document)
+
+    assert extraction.notes == ()
+    assert extraction.value == STDIO_WITH_ENV
+    assert render_pi_servers(extraction.value) == document
+
+
+def test_an_unowned_key_in_pis_mcp_json_is_reported() -> None:
+    document = {"mcpServers": {}, "extra": True}
+
+    extraction = extract_value("pi-servers", document)
+
+    assert [n.detail for n in extraction.notes] == [
+        "pi-servers: mcp.json holds unowned key(s): extra"
+    ]
+
+
+def test_an_unrecognised_pi_server_entry_is_reported_and_dropped() -> None:
+    document = {"mcpServers": {"x": {"nonsense": True}}}
+
+    extraction = extract_value("pi-servers", document)
+
+    assert extraction.value == {}
+    assert any(n.kind == "unrecognised" for n in extraction.notes)
+
+
+# --- codex-servers (unregistered, written and pinned directly) -------------
+
+
+def test_codex_http_server_round_trips() -> None:
+    text = render_codex_servers(HTTP)
+
+    extraction = extract_codex_servers(text)
+
+    assert extraction.notes == ()
+    assert extraction.value == HTTP
+    assert render_codex_servers(extraction.value) == text
+
+
+def test_codex_stdio_server_round_trips() -> None:
+    text = render_codex_servers(STDIO_WITH_ENV)
+
+    extraction = extract_codex_servers(text)
+
+    assert extraction.notes == ()
+    assert extraction.value == STDIO_WITH_ENV
+    assert render_codex_servers(extraction.value) == text
+
+
+def test_codex_header_comment_lines_are_not_mistaken_for_servers() -> None:
+    text = render_codex_servers(STDIO)
+
+    extraction = extract_codex_servers(text)
+
+    assert list(extraction.value) == ["context7"]
+
+
+def test_an_unrecognised_codex_server_entry_is_reported_and_dropped() -> None:
+    text = "[mcp_servers.x]\nnonsense = true\n"
+
+    extraction = extract_codex_servers(text)
+
+    assert extraction.value == {}
+    assert extraction.notes[0].kind == "unrecognised"

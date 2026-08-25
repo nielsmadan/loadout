@@ -81,9 +81,12 @@ def test_only_codexs_config_toml_slices_are_staged() -> None:
     """A staged slice's destination is another tool's merge step, not a file a
     harness reads. Recorded as a shape rather than an exception so it is not lost.
 
-    Both entries are Codex's, and for one reason: `config.toml` carries
+    Three of the four are Codex's, for one reason: `config.toml` carries
     `[projects.…]`, model settings and everything else Codex keeps, so loadout
-    cannot rewrite it from a source. Every other slice writes a file it owns.
+    cannot rewrite it from a source. Claude's `mcp` is staged for a different
+    reason — `${CLAUDE_CONFIG_DIR}/.claude.json` is runtime state loadout does
+    not own either, and `claude mcp add-json` is the merge step outside it
+    (ADR 0004). Every other slice writes a file it owns outright.
     """
     staged = {
         (agent, name)
@@ -91,7 +94,12 @@ def test_only_codexs_config_toml_slices_are_staged() -> None:
         for name, output in slices.items()
         if output.output is not None
     }
-    assert staged == {("codex", "mcp-permissions"), ("codex", "plugins")}
+    assert staged == {
+        ("codex", "mcp-permissions"),
+        ("codex", "plugins"),
+        ("codex", "mcp"),
+        ("claude", "mcp"),
+    }
 
 
 def test_settings_is_never_a_source_slice() -> None:
@@ -112,10 +120,12 @@ def test_settings_is_never_a_source_slice() -> None:
 
 def test_a_contributor_names_where_its_content_comes_from() -> None:
     """`owned_key` makes a slice produce one key's value; it needs its own
-    fragments to produce it from, so the two always travel together."""
+    fragments to produce it from, so the two always travel together — except
+    `mcp`, whose content is `mcp.toml` itself, read directly rather than
+    composed from named fragments, so it has no `source_slice` to name."""
     for agent, slices in GLOBAL_PRESET.items():
         for name, output in slices.items():
-            if output.owned_key is not None:
+            if output.owned_key is not None and name != "mcp":
                 assert output.source_slice is not None, f"{agent}.{name}"
 
 

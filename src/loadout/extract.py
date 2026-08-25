@@ -707,16 +707,19 @@ def extract_pi_plugins(document: Any) -> ValueExtraction:
 #
 # --------------------------------------------------------------------------
 # mcp server definitions — the inverses of `claude-project-servers` and
-# `opencode-servers`. Both take a **parsed JSON document** — `.mcp.json`'s
-# content for the first, opencode.json's whole document for the second — the
-# same input contract every other member of this registry already has, so
-# both belong here despite `claude-project-servers` being a `DocumentJsonSpec`
-# rather than a `ValueSpec`: unlike `codex-plugins`, the render-time
-# distinction (composes into one key vs. owns the file outright) has no
-# bearing on what extraction is handed. `render_claude_servers`,
-# `render_codex_servers` and `render_pi_servers` have no entry here because
-# they are not yet registered in `RENDERERS` — they arrive with global-scope
-# wiring, and that is its own piece of work.
+# `opencode-servers`, plus the three global-scope renderers. All but one take
+# a **parsed JSON document** — `.mcp.json`'s content, opencode.json's whole
+# document, the flat staged document `claude-servers` writes, and Pi's
+# `mcpServers` document — the same input contract every other member of this
+# registry already has, so they belong here despite `claude-project-servers`
+# and `pi-servers` being `DocumentJsonSpec` rather than `ValueSpec`: unlike
+# `codex-plugins`, the render-time distinction (composes into one key vs.
+# owns the file outright) has no bearing on what extraction is handed.
+#
+# `codex-servers` is the one exception, for `codex-plugins`'s exact reason:
+# it is a `DocumentTextSpec` writing TOML text, not a parsed document, so its
+# inverse is written and pinned below but left out of `VALUE_EXTRACTORS` — see
+# the comment above `NOT_INVERTED` in tests/test_extract_roundtrip.py.
 # --------------------------------------------------------------------------
 
 CLAUDE_SERVER_KEYS = frozenset({"type", "url", "headers", "command", "args", "env"})
@@ -870,6 +873,155 @@ def extract_opencode_servers(document: Any) -> ValueExtraction:
     return ValueExtraction(servers, tuple(notes))
 
 
+def extract_claude_global_servers(document: Any) -> ValueExtraction:
+    """The staged document `render_claude_servers` writes -> the servers fragment.
+
+    Flat, unlike `.mcp.json`: `claude mcp add-json` and the document it feeds
+    take `{name: entry}` directly, with no `mcpServers` wrapper. The per-entry
+    shape is otherwise identical to the project-scope one, so the entry-level
+    logic is shared; only the wrapper differs.
+    """
+    if not isinstance(document, Mapping):
+        return ValueExtraction(
+            {}, (Note("unrecognised", "claude-servers: document is not a table"),)
+        )
+    notes: list[Note] = []
+    servers: dict[str, Server] = {}
+    for name, entry in document.items():
+        server = _extract_claude_server(name, entry, notes)
+        if server is not None:
+            servers[name] = server
+    return ValueExtraction(servers, tuple(notes))
+
+
+PI_SERVER_KEYS = frozenset({"url", "bearerTokenEnv", "command", "args", "env"})
+
+
+def _extract_pi_server(name: str, entry: Any, notes: list[Note]) -> Server | None:
+    if not isinstance(entry, Mapping):
+        notes.append(Note("unrecognised", f"pi-servers: {name} is not a table"))
+        return None
+    stray = sorted(set(entry) - PI_SERVER_KEYS)
+    if stray:
+        notes.append(Note("cannot", f"pi-servers: {name} carries {', '.join(stray)}"))
+    if "url" in entry:
+        url = entry.get("url")
+        if not isinstance(url, str):
+            notes.append(Note("unrecognised", f"pi-servers: {name} http entry has no url"))
+            return None
+        auth_env_var = entry.get("bearerTokenEnv")
+        if auth_env_var is not None and not isinstance(auth_env_var, str):
+            notes.append(Note("unrecognised", f"pi-servers: {name} bearerTokenEnv is not a string"))
+            auth_env_var = None
+        return Server(name=name, transport="http", url=url, auth_env_var=auth_env_var)
+    if "command" in entry:
+        command = entry.get("command")
+        if not isinstance(command, str):
+            notes.append(Note("unrecognised", f"pi-servers: {name} stdio entry has no command"))
+            return None
+        return Server(
+            name=name,
+            transport="stdio",
+            command=command,
+            args=tuple(entry.get("args", ())),
+            env=dict(entry.get("env", {})),
+        )
+    notes.append(Note("unrecognised", f"pi-servers: {name} entry has neither url nor command"))
+    return None
+
+
+def extract_pi_servers(document: Any) -> ValueExtraction:
+    """mcp.json -> the servers fragment, from the `mcpServers` key's value.
+
+    Pi has no other owner for this file, so a stray top-level key is reported
+    rather than kept — the same shape as `claude-servers`' `.mcp.json`.
+    """
+    if not isinstance(document, Mapping):
+        return ValueExtraction({}, (Note("unrecognised", "pi-servers: document is not a table"),))
+    notes: list[Note] = []
+    unowned = sorted(set(document) - {"mcpServers"})
+    if unowned:
+        notes.append(
+            Note("cannot", f"pi-servers: mcp.json holds unowned key(s): {', '.join(unowned)}")
+        )
+    config = document.get("mcpServers", {})
+    servers: dict[str, Server] = {}
+    if isinstance(config, Mapping):
+        for name, entry in config.items():
+            server = _extract_pi_server(name, entry, notes)
+            if server is not None:
+                servers[name] = server
+    else:
+        notes.append(Note("unrecognised", "pi-servers: mcpServers is not a table"))
+    return ValueExtraction(servers, tuple(notes))
+
+
+CODEX_SERVER_HTTP_KEYS = frozenset({"url", "bearer_token_env_var"})
+CODEX_SERVER_STDIO_KEYS = frozenset({"command", "args", "env"})
+
+
+def _extract_codex_server(name: str, block: Any, notes: list[Note]) -> Server | None:
+    if not isinstance(block, Mapping):
+        notes.append(Note("unrecognised", f"codex-servers: {name} is not a table"))
+        return None
+    if "url" in block:
+        stray = sorted(set(block) - CODEX_SERVER_HTTP_KEYS)
+        if stray:
+            notes.append(Note("cannot", f"codex-servers: {name} carries {', '.join(stray)}"))
+        url = block.get("url")
+        if not isinstance(url, str):
+            notes.append(Note("unrecognised", f"codex-servers: {name} http entry has no url"))
+            return None
+        auth_env_var = block.get("bearer_token_env_var")
+        if auth_env_var is not None and not isinstance(auth_env_var, str):
+            notes.append(
+                Note("unrecognised", f"codex-servers: {name} bearer_token_env_var is not a string")
+            )
+            auth_env_var = None
+        return Server(name=name, transport="http", url=url, auth_env_var=auth_env_var)
+    if "command" in block:
+        stray = sorted(set(block) - CODEX_SERVER_STDIO_KEYS)
+        if stray:
+            notes.append(Note("cannot", f"codex-servers: {name} carries {', '.join(stray)}"))
+        command = block.get("command")
+        if not isinstance(command, str):
+            notes.append(Note("unrecognised", f"codex-servers: {name} stdio entry has no command"))
+            return None
+        env = block.get("env", {})
+        return Server(
+            name=name,
+            transport="stdio",
+            command=command,
+            args=tuple(block.get("args", ())),
+            env=dict(env) if isinstance(env, Mapping) else {},
+        )
+    notes.append(Note("unrecognised", f"codex-servers: {name} entry has neither url nor command"))
+    return None
+
+
+def extract_codex_servers(document: Any) -> ValueExtraction:
+    """codex/config.toml's staged copy -> the servers fragment.
+
+    Text, like `codex-mcp-permissions` and `codex-plugins`: parsed with
+    `tomllib.loads` the render side never touches (ADR 0001), then walked the
+    same way `extract_codex_mcp` walks its own `[mcp_servers.*]` tables — a
+    different shape under the same table name, since policy and definitions
+    are different keys.
+
+    Not registered in `VALUE_EXTRACTORS` for `codex-plugins`'s exact reason —
+    see the comment above this section and the one above `NOT_INVERTED` in
+    tests/test_extract_roundtrip.py.
+    """
+    data = tomllib.loads(document)
+    notes: list[Note] = []
+    servers: dict[str, Server] = {}
+    for name, block in data.get("mcp_servers", {}).items():
+        server = _extract_codex_server(name, block, notes)
+        if server is not None:
+            servers[name] = server
+    return ValueExtraction(servers, tuple(notes))
+
+
 VALUE_EXTRACTORS: dict[str, ValueExtractor] = {
     "claude-hooks": extract_claude_hooks,
     "codex-hooks": extract_codex_hooks,
@@ -877,6 +1029,8 @@ VALUE_EXTRACTORS: dict[str, ValueExtractor] = {
     "pi-plugins": extract_pi_plugins,
     "claude-project-servers": extract_claude_servers,
     "opencode-servers": extract_opencode_servers,
+    "claude-servers": extract_claude_global_servers,
+    "pi-servers": extract_pi_servers,
 }
 
 

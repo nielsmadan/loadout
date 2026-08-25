@@ -79,6 +79,12 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
             source_slice="plugins",
             owned_key="enabledPlugins",
         ),
+        # ${CLAUDE_CONFIG_DIR}/.claude.json is runtime state — history, project
+        # entries, caches — and settings.json has no mcpServers key, so there is
+        # no file to write. loadout renders this staged document and stops;
+        # something else feeds it to `claude mcp add-json`. Render and invoke
+        # stay separate (ADR 0004).
+        "mcp": SliceOutput(renderer="claude-servers", output="claude/mcp-servers.generated.json"),
     },
     "codex": {
         "skills": SliceOutput(destination="${CODEX_HOME:-~/.codex}/skills"),
@@ -119,6 +125,12 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
             output="codex/plugins.toml",
             source_slice="plugins",
         ),
+        # Staged for the same reason: sync_config.py merges this into
+        # ~/.codex/config.toml alongside mcp-permissions.toml and
+        # developer-instructions.md. Despite the destination's eventual name,
+        # this file holds only [mcp_servers.*] — the definitions, not the rest
+        # of config.toml, which loadout does not own.
+        "mcp": SliceOutput(renderer="codex-servers", output="codex/config.toml"),
     },
     "opencode": {
         "skills": SliceOutput(destination="${XDG_CONFIG_HOME:-~/.config}/opencode/skills"),
@@ -143,6 +155,13 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
             renderer="opencode-hooks",
             destination=("${XDG_CONFIG_HOME:-~/.config}/opencode/plugins/loadout-hooks.js"),
             source_slice="hooks",
+        ),
+        # Same renderer as project scope's `mcp`, one key of a document
+        # `permission` also owns.
+        "mcp": SliceOutput(
+            renderer="opencode-servers",
+            destination="${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json",
+            owned_key="mcp",
         ),
     },
     "pi": {
@@ -170,6 +189,11 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
             destination="${PI_CODING_AGENT_DIR:-~/.pi/agent}/settings.json",
             source_slice="plugins",
             owned_key="packages",
+        ),
+        # pi-mcp-adapter's own file, written directly — Pi has no runtime
+        # state co-mingled with server definitions the way Claude does.
+        "mcp": SliceOutput(
+            renderer="pi-servers", destination="${PI_CODING_AGENT_DIR:-~/.pi/agent}/mcp.json"
         ),
     },
 }

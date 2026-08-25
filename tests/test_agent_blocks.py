@@ -91,8 +91,10 @@ def test_an_unknown_agent_is_rejected_with_the_known_ones(tmp_path: Path) -> Non
 
 
 def test_an_unknown_slice_names_what_the_agent_offers(tmp_path: Path) -> None:
-    # `mcp`, not `hooks` — OpenCode gained a hooks slice with the adapters.
-    root = build(tmp_path, "\n[opencode]\nmcp = []\n")
+    # `plugins`, not `hooks` or `mcp` — OpenCode gained a hooks slice with the
+    # adapters and a global `mcp` slice with server definitions; it still has
+    # no plugins slice (see the comment beneath GLOBAL_PRESET in agents.py).
+    root = build(tmp_path, "\n[opencode]\nplugins = []\n")
     with pytest.raises(LoadoutError, match="unknown slice"):
         render_global(root)
 

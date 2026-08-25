@@ -122,8 +122,9 @@ def test_every_agent_offers_hooks_and_renders_its_own_shape(tmp_path: Path) -> N
 
 def test_an_agent_rejects_a_slice_its_preset_does_not_offer(tmp_path: Path) -> None:
     """Naming a slice an agent has no destination for is an error rather than a
-    silently ignored key. OpenCode has no `mcp` slice; it used to be hooks."""
-    manifest = MANIFEST.replace("[codex]\nhooks", "[opencode]\nmcp")
+    silently ignored key. OpenCode has no `plugins` slice; it used to be
+    `mcp`, before the servers slice gave OpenCode one too."""
+    manifest = MANIFEST.replace("[codex]\nhooks", "[opencode]\nplugins")
     root = build(tmp_path, {"notify": NOTIFY}, manifest)
     with pytest.raises(LoadoutError, match=r"unknown slice"):
         render_global(root, "default")

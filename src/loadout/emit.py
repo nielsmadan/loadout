@@ -199,6 +199,36 @@ def slice_document(names: tuple[str, ...], slice_name: str, manifest: Manifest) 
     )
 
 
+def global_servers(manifest: Manifest) -> dict[str, Server]:
+    """Every server every source offering mcp.toml declares, last source wins.
+
+    Read independently of `permission_sources`, the way `_unpermitted_servers`
+    already does: that helper raises when no source offers permissions.toml,
+    which is a legitimate shape for a manifest that only defines servers.
+    """
+    servers: dict[str, Server] = {}
+    for source in manifest.sources:
+        if "mcp" in source.use:
+            servers.update(parse_servers(source.path / SERVERS_SOURCE))
+    return servers
+
+
+def _permission_content(
+    target: PermissionTarget, servers: dict[str, Server], manifest: Manifest
+) -> dict[str, Any]:
+    """What a permission-shaped target renders from, besides Rules.
+
+    The servers renderers take `dict[str, Server]` rather than a fragment
+    composition — there is no `content_slice` to name, since a server has one
+    source of truth (mcp.toml), not fragments to merge.
+    """
+    if target.renderer.endswith("-servers"):
+        return dict(servers)
+    if target.content_slice is not None:
+        return slice_document(target.content, target.content_slice, manifest)
+    return {}
+
+
 def compose_permission_document(
     contributors: list[tuple[PermissionTarget, dict[str, Any], dict[str, Any]]],
     rules: Rules,
@@ -476,10 +506,7 @@ def _unpermitted_servers(manifest: Manifest) -> tuple[Notice, ...]:
     legitimate shape for a manifest that only defines servers. Silent when no
     source offers mcp.toml: a manifest defining no servers has nothing to check.
     """
-    servers: dict[str, Server] = {}
-    for source in manifest.sources:
-        if "mcp" in source.use:
-            servers.update(parse_servers(source.path / SERVERS_SOURCE))
+    servers = global_servers(manifest)
     if not servers:
         return ()
     tiers = [
@@ -585,14 +612,16 @@ def render_global(root: Path, profile: str = "default") -> dict[Path, Output]:
             for source in permission_sources(manifest)
         ]
         rules = merge_rules(*tiers)
+        servers = global_servers(manifest)
         groups: dict[Path, list[tuple[PermissionTarget, dict[str, Any], dict[str, Any]]]] = {}
         for target in selected_permissions:
+            # A source offering no mcp.toml contributes no tier, the same as a
+            # template offering no permissions.toml — nothing to write,
+            # mirroring render_project's identical guard.
+            if target.renderer.endswith("-servers") and not servers:
+                continue
+            content = _permission_content(target, servers, manifest)
             residual = settings_document(target, manifest, root)
-            content = (
-                slice_document(target.content, target.content_slice, manifest)
-                if target.content_slice is not None
-                else {}
-            )
             for path in _target_paths(target, root):
                 group = groups.setdefault(path, [])
                 if group:

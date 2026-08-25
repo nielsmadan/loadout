@@ -419,7 +419,7 @@ RESERVED_KEYS = frozenset({"source", "instructions", "permissions", "extends", C
 # is the declaration (spec 4a §2): dropping a tree in renders it everywhere. instructions and settings must be
 # named: instructions need an `order` (spec 1 §7 — alphabetical demonstrably
 # fails), and settings names an input rather than an output.
-AUTOMATIC_SLICES = ("permissions", "mcp-permissions", "skills")
+AUTOMATIC_SLICES = ("permissions", "mcp-permissions", "mcp", "skills")
 
 
 def _agent_slice_names(agent: str, block: dict[str, object]) -> list[str]:

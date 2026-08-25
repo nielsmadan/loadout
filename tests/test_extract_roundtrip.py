@@ -47,15 +47,17 @@ CATEGORIES = ("allow", "ask", "deny")
 # the case extraction exists for — is a program, not a document. There is
 # nothing to parse back.
 #
-# `codex-plugins` is here for a third reason, and only for as long as the
-# registries stay as they are: its inverse exists and is pinned by
-# tests/test_extract_plugins.py, but it is a `DocumentTextSpec` returning a
+# `codex-plugins` and `codex-servers` are here for a third reason, and only
+# for as long as the registries stay as they are: each inverse exists and is
+# pinned by its own test (tests/test_extract_plugins.py,
+# tests/test_extract_servers.py), but each is a `DocumentTextSpec` returning a
 # fragment, and neither EXTRACTORS (which returns `Rules`) nor VALUE_EXTRACTORS
 # (held to the set of `ValueSpec`s) has that shape.
 NOT_INVERTED: set[str] = {
     "opencode-hooks",
     "pi-hooks",
     "codex-plugins",
+    "codex-servers",
 }
 
 INVERTED = sorted(EXTRACTORS)

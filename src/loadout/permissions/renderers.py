@@ -12,7 +12,13 @@ import tomlkit
 from ..adapters import render_opencode_adapter, render_pi_adapter
 from ..hooks import render_claude_hooks, render_codex_hooks
 from ..plugins import render_claude_plugins, render_codex_plugins, render_pi_plugins
-from ..servers import render_claude_project_servers, render_opencode_servers
+from ..servers import (
+    render_claude_project_servers,
+    render_claude_servers,
+    render_codex_servers,
+    render_opencode_servers,
+    render_pi_servers,
+)
 from .rules import MCP_SEED, Rules, is_glob, mcp_native, mcp_parts
 
 JsonRenderer = Callable[[Rules, dict[str, Any]], dict[str, Any]]
@@ -419,4 +425,7 @@ RENDERERS: dict[str, JsonSpec | TextSpec | ValueSpec | DocumentTextSpec | Docume
     "claude-project": JsonSpec(render_claude_project),
     "claude-project-servers": DocumentJsonSpec(render_claude_project_servers),
     "opencode-servers": ValueSpec(render_opencode_servers),
+    "claude-servers": DocumentJsonSpec(render_claude_servers),
+    "codex-servers": DocumentTextSpec(render_codex_servers),
+    "pi-servers": DocumentJsonSpec(render_pi_servers),
 }
