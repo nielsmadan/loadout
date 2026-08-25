@@ -56,8 +56,8 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
             renderer="claude",
             destination="${CLAUDE_CONFIG_DIR:-~/.claude}/settings.json",
         ),
-        "mcp": SliceOutput(
-            renderer="claude-mcp",
+        "mcp-permissions": SliceOutput(
+            renderer="claude-mcp-permissions",
             destination="${CLAUDE_CONFIG_DIR:-~/.claude}/mcp-permissions.json",
         ),
         # Shares settings.json with permissions and the settings residual, so it
@@ -106,8 +106,10 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
         # file and merges it into ~/.codex/config.toml, which holds keys loadout
         # does not own. Spec 4c asks whether that merge survives; until it does
         # not, "staged" is a shape the preset has to express.
-        "mcp": SliceOutput(renderer="codex-mcp", output="codex/mcp-permissions.toml"),
-        # Staged for the same reason as mcp, and it is the reason plugins has no
+        "mcp-permissions": SliceOutput(
+            renderer="codex-mcp-permissions", output="codex/mcp-permissions.toml"
+        ),
+        # Staged for the same reason as mcp-permissions, and it is the reason plugins has no
         # Codex destination: enablement and marketplace registration both live in
         # config.toml, which holds `[projects.…]`, model settings and everything
         # else Codex keeps — a file loadout does not own and cannot rewrite from

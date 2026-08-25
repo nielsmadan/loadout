@@ -714,9 +714,9 @@ VALUE_EXTRACTORS: dict[str, ValueExtractor] = {
 EXTRACTORS: dict[str, Extractor] = {
     "claude": extract_claude,
     "claude-project": extract_claude,
-    "claude-mcp": extract_claude_mcp,
+    "claude-mcp-permissions": extract_claude_mcp,
     "codex": extract_codex,
-    "codex-mcp": extract_codex_mcp,
+    "codex-mcp-permissions": extract_codex_mcp,
     "codex-project": extract_codex,
     "opencode": extract_opencode,
     "pi": extract_pi,
@@ -781,12 +781,12 @@ class Capability:
 
 CAPABILITIES: dict[str, Capability] = {
     "claude": Capability(shell=True, mcp=True),
-    "claude-mcp": Capability(shell=False, mcp=True),
+    "claude-mcp-permissions": Capability(shell=False, mcp=True),
     "claude-project": Capability(shell=True, mcp=True),
     # globs=False: render_codex diverts glob entries to an uncategorised comment
     # block, so the document cannot state a decision for one.
     "codex": Capability(shell=True, mcp=False, globs=False),
-    "codex-mcp": Capability(shell=False, mcp=True),
+    "codex-mcp-permissions": Capability(shell=False, mcp=True),
     # render_codex_project does not skip globs; it emits them as prefix_rules.
     "codex-project": Capability(shell=True, mcp=False),
     "opencode": Capability(shell=True, mcp=True, default=True),

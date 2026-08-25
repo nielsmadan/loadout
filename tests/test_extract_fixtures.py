@@ -26,9 +26,9 @@ EXPECTED = Path(__file__).parent / "fixtures" / "expected"
 GLOBAL_RENDERERS = {
     "claude.json": "claude",
     "claude-empty.json": "claude",
-    "claude-mcp.json": "claude-mcp",
+    "claude-mcp.json": "claude-mcp-permissions",
     "codex.rules": "codex",
-    "codex-mcp.toml": "codex-mcp",
+    "codex-mcp.toml": "codex-mcp-permissions",
     "opencode.json": "opencode",
     "pi.json": "pi",
 }

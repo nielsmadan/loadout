@@ -51,7 +51,7 @@ rules    = []
 
 [permissions.claude-mcp]
 output = "perm/claude-mcp.json"
-render = "claude-mcp"
+render = "claude-mcp-permissions"
 
 [permissions.codex]
 output = "perm/codex.rules"
@@ -59,7 +59,7 @@ render = "codex"
 
 [permissions.codex-mcp]
 output = "perm/codex-mcp.toml"
-render = "codex-mcp"
+render = "codex-mcp-permissions"
 
 # The co-owned shape: a base plus a foreign key carried through from the file
 # being overwritten.

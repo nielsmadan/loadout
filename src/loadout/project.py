@@ -158,7 +158,9 @@ PROJECT_PRESET: dict[str, dict[str, SliceOutput]] = {
             output=".claude/settings.json",
             preserve_foreign=True,
         ),
-        "mcp": SliceOutput(renderer="claude-mcp", output=".claude/mcp-permissions.json"),
+        "mcp-permissions": SliceOutput(
+            renderer="claude-mcp-permissions", output=".claude/mcp-permissions.json"
+        ),
         "instructions": SliceOutput(output="CLAUDE.md"),
         "skills": SliceOutput(output=".claude/skills"),
     },

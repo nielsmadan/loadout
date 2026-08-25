@@ -414,12 +414,12 @@ COMMON_BLOCK = "all"
 
 RESERVED_KEYS = frozenset({"source", "instructions", "permissions", "extends", COMMON_BLOCK})
 
-# permissions, mcp and skills render with no authoring decision to make, so an
+# permissions, mcp-permissions and skills render with no authoring decision to make, so an
 # agent block that names none of them still gets them. For skills the directory
 # is the declaration (spec 4a §2): dropping a tree in renders it everywhere. instructions and settings must be
 # named: instructions need an `order` (spec 1 §7 — alphabetical demonstrably
 # fails), and settings names an input rather than an output.
-AUTOMATIC_SLICES = ("permissions", "mcp", "skills")
+AUTOMATIC_SLICES = ("permissions", "mcp-permissions", "skills")
 
 
 def _agent_slice_names(agent: str, block: dict[str, object]) -> list[str]:

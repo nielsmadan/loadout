@@ -126,11 +126,14 @@ def test_shell_only_harnesses_do_not_vote_on_mcp_targets() -> None:
 def test_mcp_disagreement_is_reported_and_withheld() -> None:
     merged = merge_extractions(
         {
-            "claude-mcp": Extraction(Rules(mcp_allow=("svc/purge",))),
-            "codex-mcp": Extraction(Rules(mcp_deny=("svc/purge",))),
+            "claude-mcp-permissions": Extraction(Rules(mcp_allow=("svc/purge",))),
+            "codex-mcp-permissions": Extraction(Rules(mcp_deny=("svc/purge",))),
         }
     )
-    assert _verdicts(merged, "svc/purge") == {"claude-mcp": "allow", "codex-mcp": "deny"}
+    assert _verdicts(merged, "svc/purge") == {
+        "claude-mcp-permissions": "allow",
+        "codex-mcp-permissions": "deny",
+    }
     assert "svc/purge" not in merged.rules.mcp_allow
 
 

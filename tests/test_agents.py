@@ -91,7 +91,7 @@ def test_only_codexs_config_toml_slices_are_staged() -> None:
         for name, output in slices.items()
         if output.output is not None
     }
-    assert staged == {("codex", "mcp"), ("codex", "plugins")}
+    assert staged == {("codex", "mcp-permissions"), ("codex", "plugins")}
 
 
 def test_settings_is_never_a_source_slice() -> None:

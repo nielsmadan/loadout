@@ -35,14 +35,14 @@ def test_claude_mcp_emits_three_categories_in_fixed_order() -> None:
 
 
 def test_claude_mcp_serializes_with_ascii_escaping() -> None:
-    spec = RENDERERS["claude-mcp"]
+    spec = RENDERERS["claude-mcp-permissions"]
     assert isinstance(spec, JsonSpec)
     assert spec.ensure_ascii is True
 
 
 def test_every_other_json_renderer_keeps_unicode() -> None:
     for name, spec in RENDERERS.items():
-        if isinstance(spec, JsonSpec) and name != "claude-mcp":
+        if isinstance(spec, JsonSpec) and name != "claude-mcp-permissions":
             assert spec.ensure_ascii is False, name
 
 
@@ -175,7 +175,7 @@ def test_codex_mcp_per_tool_sections_and_disabled_list() -> None:
 
 def test_codex_renderers_are_registered_as_text() -> None:
     assert isinstance(RENDERERS["codex"], TextSpec)
-    assert isinstance(RENDERERS["codex-mcp"], TextSpec)
+    assert isinstance(RENDERERS["codex-mcp-permissions"], TextSpec)
 
 
 def test_claude_pattern_appends_colon_star_to_a_prefix() -> None:
@@ -372,6 +372,6 @@ def test_project_renderers_are_registered() -> None:
 
 def test_claude_project_emits_allow_ask_deny_unlike_the_global_renderer() -> None:
     """render_claude emits allow, deny, ask; the project variant swaps ask and deny
-    to match manage.py and claude-mcp's order — see _claude_settings."""
+    to match manage.py and claude-mcp-permissions's order — see _claude_settings."""
     doc = render_claude_project(Rules(allow=("ls",), ask=("heroku",), deny=("rm",)), {})
     assert list(doc["permissions"]) == ["allow", "ask", "deny"]

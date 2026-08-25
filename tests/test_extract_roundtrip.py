@@ -61,7 +61,7 @@ INVERTED = sorted(EXTRACTORS)
 SHELL_POOL = ("alpha", "beta sub", "gamma-*", "delta run --tag=*")
 
 # Server-wide, per-tool, a server name with a dot, and a second server so
-# codex-mcp's sort-by-server has something to reorder.
+# codex-mcp-permissions's sort-by-server has something to reorder.
 MCP_POOL = ("svc/*", "svc/read", "svc.two/write", "other/*")
 
 CLAUDE_EXTRA_ALLOW = ("Read(//tmp/**)",)
@@ -223,7 +223,7 @@ def _stated_default(rules: Rules) -> str | None:
 
 
 def _codex_mcp_carried(rules: Rules) -> Rules:
-    """codex-mcp groups by server and sorts, so source order does not survive.
+    """codex-mcp-permissions groups by server and sorts, so source order does not survive.
 
     Within a server the emitted order is the wildcard, then denied tools sorted,
     then approved tools sorted — mirroring render_codex_mcp's block layout.
@@ -312,9 +312,9 @@ def _pi_carried(rules: Rules) -> Rules:
 PROJECTIONS = {
     "claude": _claude_carried,
     "claude-project": _claude_carried,
-    "claude-mcp": _mcp_only,
+    "claude-mcp-permissions": _mcp_only,
     "codex": _codex_carried,
-    "codex-mcp": _codex_mcp_carried,
+    "codex-mcp-permissions": _codex_mcp_carried,
     "codex-project": _shell_only,
     "opencode": _opencode_carried,
     "pi": _pi_carried,
