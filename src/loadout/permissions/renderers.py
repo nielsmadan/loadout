@@ -13,6 +13,8 @@ from ..adapters import render_opencode_adapter, render_pi_adapter
 from ..hooks import render_claude_hooks, render_codex_hooks
 from ..plugins import render_claude_plugins, render_codex_plugins, render_pi_plugins
 from ..servers import (
+    Server,
+    is_http,
     render_claude_project_servers,
     render_claude_servers,
     render_codex_servers,
@@ -220,7 +222,12 @@ def render_codex(rules: Rules) -> str:
 # --------------------------------------------------------------------------
 
 
-def render_codex_mcp(rules: Rules) -> str:
+def codex_mcp_policy(rules: Rules) -> dict[str, dict[str, str]]:
+    """Per-server, per-tool approval modes, keyed `{server: {tool: mode}}`.
+
+    Shared by the standalone policy renderer and the combined one, so the two
+    cannot drift into disagreeing about what a rule means.
+    """
     decisions: dict[str, str] = {}
     for category, mode in (("allow", "approve"), ("ask", "prompt"), ("deny", "deny")):
         for entry in rules.mcp(category):
@@ -230,6 +237,89 @@ def render_codex_mcp(rules: Rules) -> str:
     for entry, mode in decisions.items():
         server, tool = mcp_parts(entry)
         servers.setdefault(server, {})[tool] = mode
+    return servers
+
+
+def _codex_policy_block(tools: dict[str, str], block: Any) -> None:
+    """Write one server's approval policy into a table the caller owns."""
+    wildcard = tools.get("*")
+    if wildcard == "deny":
+        block["enabled"] = False
+    elif wildcard:
+        block["default_tools_approval_mode"] = wildcard
+    denied = sorted(tool for tool, mode in tools.items() if tool != "*" and mode == "deny")
+    if denied:
+        block["disabled_tools"] = denied
+    approved = sorted(tool for tool, mode in tools.items() if tool != "*" and mode != "deny")
+    if approved:
+        per_tool = tomlkit.table(is_super_table=True)
+        for tool in approved:
+            tool_table = tomlkit.table()
+            tool_table["approval_mode"] = tools[tool]
+            per_tool[tool] = tool_table
+        block["tools"] = per_tool
+
+
+def _codex_definition_block(server: Server, block: Any) -> None:
+    """One server's transport: how to reach it and what to pass it.
+
+    Insertion order is not load-bearing here — tomlkit emits a table's scalars
+    ahead of its sub-tables however they were assigned, so `env` cannot capture a
+    policy key written after it. The text path has no such protection, which is
+    why `surgery.concat_documents` hoists preambles itself.
+    """
+    if is_http(server):
+        assert server.url is not None
+        block["url"] = server.url
+        if server.auth_env_var:
+            block["bearer_token_env_var"] = server.auth_env_var
+        return
+    assert server.command is not None
+    block["command"] = server.command
+    if server.args:
+        block["args"] = list(server.args)
+    if server.env:
+        variables = tomlkit.table()
+        for key in sorted(server.env):
+            variables[key] = server.env[key]
+        block["env"] = variables
+
+
+def render_codex_config(rules: Rules, content: dict[str, Any]) -> str:
+    """Every `[mcp_servers.<name>]` table: what the server is, and what it may do.
+
+    Codex keys definitions and approval policy off the same table, so rendering
+    them from two slices would declare it twice and Codex would refuse to parse
+    its own config. They are combined here rather than merged during composition.
+
+    A name may appear in either source alone: a server defined with no policy
+    takes Codex's default, and policy for a server defined elsewhere still applies.
+    """
+    definitions = {name: value for name, value in content.items() if isinstance(value, Server)}
+    policy = codex_mcp_policy(rules)
+
+    document = tomlkit.document()
+    for line in HEADER_LINES:
+        document.add(tomlkit.comment(line))
+    names = sorted(set(definitions) | set(policy))
+    if not names:
+        return tomlkit.dumps(document)
+
+    roots = tomlkit.table(is_super_table=True)
+    for name in names:
+        block = tomlkit.table()
+        server = definitions.get(name)
+        if server is not None:
+            _codex_definition_block(server, block)
+        if name in policy:
+            _codex_policy_block(policy[name], block)
+        roots[name] = block
+    document["mcp_servers"] = roots
+    return tomlkit.dumps(document)
+
+
+def render_codex_mcp(rules: Rules) -> str:
+    servers = codex_mcp_policy(rules)
 
     document = tomlkit.document()
     for line in HEADER_LINES:
@@ -241,24 +331,8 @@ def render_codex_mcp(rules: Rules) -> str:
     # only ever seen as the [mcp_servers.<name>] / .tools.<name> prefixes.
     roots = tomlkit.table(is_super_table=True)
     for server in sorted(servers):
-        tools = servers[server]
-        wildcard = tools.get("*")
         block = tomlkit.table()
-        if wildcard == "deny":
-            block["enabled"] = False
-        elif wildcard:
-            block["default_tools_approval_mode"] = wildcard
-        denied = sorted(tool for tool, mode in tools.items() if tool != "*" and mode == "deny")
-        if denied:
-            block["disabled_tools"] = denied
-        approved = sorted(tool for tool, mode in tools.items() if tool != "*" and mode != "deny")
-        if approved:
-            per_tool = tomlkit.table(is_super_table=True)
-            for tool in approved:
-                tool_table = tomlkit.table()
-                tool_table["approval_mode"] = tools[tool]
-                per_tool[tool] = tool_table
-            block["tools"] = per_tool
+        _codex_policy_block(servers[server], block)
         roots[server] = block
     document["mcp_servers"] = roots
     return tomlkit.dumps(document)
