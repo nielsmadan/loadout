@@ -58,6 +58,12 @@ NOT_INVERTED: set[str] = {
     "pi-hooks",
     "codex-plugins",
     "codex-servers",
+    # `codex-config` writes TOML text into a file loadout does not own, so like
+    # the two above it returns a fragment rather than a parsed document. Its two
+    # halves invert separately: `codex-servers`'s inverse is pinned in
+    # tests/test_extract_servers.py, and policy round-trips via
+    # `codex-mcp-permissions`, which stays registered for exactly that reason.
+    "codex-config",
 }
 
 INVERTED = sorted(EXTRACTORS)

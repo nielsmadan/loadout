@@ -77,16 +77,18 @@ def test_a_set_variable_relocates_every_slice_of_that_agent(
     assert resolved and all(p.startswith("/moved/") for p in resolved)
 
 
-def test_only_codexs_config_toml_slices_are_staged() -> None:
+def test_only_claudes_mcp_is_staged() -> None:
     """A staged slice's destination is another tool's merge step, not a file a
     harness reads. Recorded as a shape rather than an exception so it is not lost.
 
-    Three of the four are Codex's, for one reason: `config.toml` carries
-    `[projects.…]`, model settings and everything else Codex keeps, so loadout
-    cannot rewrite it from a source. Claude's `mcp` is staged for a different
-    reason — `${CLAUDE_CONFIG_DIR}/.claude.json` is runtime state loadout does
-    not own either, and `claude mcp add-json` is the merge step outside it
-    (ADR 0004). Every other slice writes a file it owns outright.
+    Codex's three were staged because `config.toml` carries `[projects.…]` and
+    everything else Codex keeps, so loadout could not rewrite it from a base.
+    Declared ownership removed that need (ADR 0017): loadout strips the keys it
+    declares and leaves the rest, so those slices write the real destination.
+
+    Claude's `mcp` stays staged for a different reason that declared ownership
+    does not reach — `${CLAUDE_CONFIG_DIR}/.claude.json` is runtime state, and
+    `claude mcp add-json` is the merge step outside loadout (ADR 0004).
     """
     staged = {
         (agent, name)
@@ -94,12 +96,7 @@ def test_only_codexs_config_toml_slices_are_staged() -> None:
         for name, output in slices.items()
         if output.output is not None
     }
-    assert staged == {
-        ("codex", "mcp-permissions"),
-        ("codex", "plugins"),
-        ("codex", "mcp"),
-        ("claude", "mcp"),
-    }
+    assert staged == {("claude", "mcp")}
 
 
 def test_settings_is_never_a_source_slice() -> None:

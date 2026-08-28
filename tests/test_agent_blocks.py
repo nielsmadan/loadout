@@ -79,9 +79,13 @@ def test_an_empty_permissions_list_selects_nothing(tmp_path: Path) -> None:
 
 
 def test_a_staged_slice_renders_in_repo_rather_than_to_a_destination(tmp_path: Path) -> None:
-    """codex.mcp has no destination — sync_config.py consumes it."""
-    root = build(tmp_path, "\n[codex]\n")
-    assert any(p.endswith("codex/mcp-permissions.toml") for p in rendered(root))
+    """claude.mcp has no destination — `claude mcp add-json` consumes it."""
+    root = build(tmp_path, "\n[claude]\n")
+    # The staged document holds servers, so the slice renders nothing without one.
+    (root / "mcp.toml").write_text(
+        '[jina]\ntransport = "http"\nurl = "https://jina.example"\n', encoding="utf-8"
+    )
+    assert any(p.endswith("claude/mcp-servers.generated.json") for p in rendered(root))
 
 
 def test_an_unknown_agent_is_rejected_with_the_known_ones(tmp_path: Path) -> None:

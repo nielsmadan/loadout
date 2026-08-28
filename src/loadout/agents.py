@@ -108,29 +108,22 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
             source_slice="hooks",
             owned_key="hooks",
         ),
-        # The one slice with no destination: sync_config.py reads this staged
-        # file and merges it into ~/.codex/config.toml, which holds keys loadout
-        # does not own. Spec 4c asks whether that merge survives; until it does
-        # not, "staged" is a shape the preset has to express.
-        "mcp-permissions": SliceOutput(
-            renderer="codex-mcp-permissions", output="codex/mcp-permissions.toml"
+        # Definitions and approval policy land in the same `[mcp_servers.<name>]`
+        # table, so one renderer emits both: two slices would declare the table
+        # twice and Codex would refuse to parse its own config.
+        "mcp": SliceOutput(
+            renderer="codex-config",
+            destination="${CODEX_HOME:-~/.codex}/config.toml",
         ),
-        # Staged for the same reason as mcp-permissions, and it is the reason plugins has no
-        # Codex destination: enablement and marketplace registration both live in
-        # config.toml, which holds `[projects.…]`, model settings and everything
-        # else Codex keeps — a file loadout does not own and cannot rewrite from
-        # a source. Two staged files, one merge step outside loadout.
+        # The same destination, disjoint keys. config.toml also holds
+        # `[projects.…]` Codex writes itself and a block another tool manages, so
+        # loadout declares what it owns and strips only that (ADR 0017) rather
+        # than rewriting the file from a base it could not hold.
         "plugins": SliceOutput(
             renderer="codex-plugins",
-            output="codex/plugins.toml",
+            destination="${CODEX_HOME:-~/.codex}/config.toml",
             source_slice="plugins",
         ),
-        # Staged for the same reason: sync_config.py merges this into
-        # ~/.codex/config.toml alongside mcp-permissions.toml and
-        # developer-instructions.md. Despite the destination's eventual name,
-        # this file holds only [mcp_servers.*] — the definitions, not the rest
-        # of config.toml, which loadout does not own.
-        "mcp": SliceOutput(renderer="codex-servers", output="codex/config.toml"),
     },
     "opencode": {
         "skills": SliceOutput(destination="${XDG_CONFIG_HOME:-~/.config}/opencode/skills"),

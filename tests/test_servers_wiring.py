@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from loadout.agents import GLOBAL_PRESET
-from loadout.emit import render_global, render_project
+from loadout.emit import Merged, render_global, render_project
 from loadout.templates import vendored_path
 
 
@@ -117,15 +117,18 @@ def test_a_global_source_renders_claude_servers_without_being_named(tmp_path: Pa
     assert document == {"jina": {"type": "http", "url": "https://mcp.jina.ai/v1"}}
 
 
-def test_codex_global_writes_config_toml(tmp_path: Path) -> None:
+def test_codex_global_writes_config_toml(tmp_path: Path, fake_home: Path) -> None:
+    """No longer staged: declared ownership lets loadout write the real file, so
+    `[mcp_servers.…]` reaches Codex without a merge script the user provides."""
     root = build_global(tmp_path, "\n[codex]\n")
 
     rendered = render_global(root)
 
-    staged = next(p for p in rendered if p == root / "codex" / "config.toml")
-    text = rendered[staged]
-    assert "[mcp_servers.jina]" in text
-    assert text.endswith("\n") and not text.endswith("\n\n")
+    merged = rendered[fake_home / ".codex" / "config.toml"]
+    assert isinstance(merged, Merged)
+    assert merged.owned == frozenset({"mcp_servers"})
+    assert "[mcp_servers.jina]" in merged.document
+    assert root / "codex" / "config.toml" not in rendered
 
 
 def test_pi_global_writes_its_own_mcp_json(tmp_path: Path) -> None:

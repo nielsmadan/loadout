@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from loadout.emit import render_global
+from loadout.emit import Merged, render_global
 from loadout.errors import LoadoutError
 
 FRAGMENT: dict[str, Any] = {
@@ -88,8 +88,9 @@ def test_one_fragment_reaches_all_three_harnesses(tmp_path: Path) -> None:
         {"source": "git:github.com/obra/superpowers", "extensions": []},
         "/packages/nono",
     ]
-    _, codex = written(outputs, "plugins.toml")
-    assert tomllib.loads(codex)["plugins"] == {
+    _, codex = written(outputs, "config.toml")
+    assert isinstance(codex, Merged)
+    assert tomllib.loads(codex.document)["plugins"] == {
         "superpowers@claude-plugins-official": {"enabled": True},
         "nono@nolabs-ai": {"enabled": True},
     }

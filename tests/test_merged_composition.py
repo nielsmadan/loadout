@@ -36,7 +36,7 @@ def registered(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setitem(
             registry.RENDERERS,
             name,
-            MergedTomlSpec(fn=lambda _content, text=document: text, owns=frozenset({owns})),
+            MergedTomlSpec(fn=lambda _rules, _content, text=document: text, owns=frozenset({owns})),
         )
 
 
@@ -83,11 +83,11 @@ def test_two_slices_declaring_one_key_is_refused() -> None:
 
 
 def test_a_merged_slice_cannot_share_a_file_with_one_that_rewrites_it_whole() -> None:
-    """`codex-plugins` builds its document from scratch; merging into the same file
+    """`codex-servers` builds its document from scratch; merging into the same file
     would have it discard whatever the merged slice wrote."""
-    with pytest.raises(LoadoutError, match="cannot compose with plugins"):
+    with pytest.raises(LoadoutError, match="cannot compose with servers-text"):
         compose_permission_document(
-            [_contributor("servers", "t-servers"), _contributor("plugins", "codex-plugins")],
+            [_contributor("servers", "t-servers"), _contributor("servers-text", "codex-servers")],
             EMPTY_RULES,
             DESTINATION,
         )

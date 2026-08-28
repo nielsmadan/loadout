@@ -173,7 +173,7 @@ def _preserved(path: Path, keys: tuple[str, ...]) -> dict[str, Any]:
 
 def _resolve_renderer(
     name: str, label: str
-) -> JsonSpec | TextSpec | ValueSpec | DocumentTextSpec | DocumentJsonSpec:
+) -> JsonSpec | TextSpec | ValueSpec | DocumentTextSpec | DocumentJsonSpec | MergedTomlSpec:
     spec = RENDERERS.get(name)
     if spec is None:
         known = ", ".join(sorted(RENDERERS))
@@ -243,7 +243,7 @@ def _permission_content(
     composition — there is no `content_slice` to name, since a server has one
     source of truth (mcp.toml), not fragments to merge.
     """
-    if target.renderer.endswith("-servers"):
+    if target.renderer.endswith("-servers") or target.renderer == "codex-config":
         return dict(servers)
     if target.content_slice is not None:
         return slice_document(target.content, target.content_slice, manifest)
@@ -273,6 +273,7 @@ def _refuse_composition(
 
 def _compose_merged(
     contributors: list[tuple[PermissionTarget, dict[str, Any], dict[str, Any]]],
+    rules: Rules,
     path: Path,
 ) -> Merged | None:
     """Every slice writing this file, unioned into one application.
@@ -312,7 +313,7 @@ def _compose_merged(
                 f"stripped and rewritten"
             )
         owned |= spec.owns
-        fragments.append(spec.fn(content))
+        fragments.append(spec.fn(rules, content))
     return Merged(frozenset(owned), concat_documents(tuple(fragments)))
 
 
@@ -346,7 +347,7 @@ def compose_permission_document(
         )
         return spec.fn(rules if first.select_all else EMPTY_RULES)
 
-    merged = _compose_merged(contributors, path)
+    merged = _compose_merged(contributors, rules, path)
     if merged is not None:
         return merged
 
@@ -383,7 +384,7 @@ def compose_permission_document(
                 f"{label}: the preset gives it owned_key {owned_key!r}, so its renderer "
                 f"must produce that key's value rather than a whole document"
             )
-        if isinstance(target_spec, TextSpec | DocumentTextSpec | DocumentJsonSpec):
+        if isinstance(target_spec, TextSpec | DocumentTextSpec | DocumentJsonSpec | MergedTomlSpec):
             raise LoadoutError(
                 f"{label}: a whole-file renderer cannot compose with another slice writing {path}"
             )

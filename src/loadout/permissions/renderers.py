@@ -117,7 +117,7 @@ class MergedTomlSpec:
     derived from what is written cannot express a removal (ADR 0017).
     """
 
-    fn: Callable[[dict[str, Any]], str]
+    fn: Callable[[Rules, dict[str, Any]], str]
     owns: frozenset[str]
 
 
@@ -283,6 +283,15 @@ def _codex_definition_block(server: Server, block: Any) -> None:
         for key in sorted(server.env):
             variables[key] = server.env[key]
         block["env"] = variables
+
+
+def render_codex_plugins_merged(rules: Rules, content: dict[str, Any]) -> str:
+    """Plugins render from their own slice; `rules` is the merged shape, not input.
+
+    Every merged renderer takes the same pair so composition needs no per-renderer
+    signature, the way `JsonSpec` already hands every renderer `(rules, base)`.
+    """
+    return render_codex_plugins(content)
 
 
 def render_codex_config(rules: Rules, content: dict[str, Any]) -> str:
@@ -498,14 +507,18 @@ def render_pi_project(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
 # --------------------------------------------------------------------------
 
 
-RENDERERS: dict[str, JsonSpec | TextSpec | ValueSpec | DocumentTextSpec | DocumentJsonSpec] = {
+RENDERERS: dict[
+    str, JsonSpec | TextSpec | ValueSpec | DocumentTextSpec | DocumentJsonSpec | MergedTomlSpec
+] = {
     "claude": JsonSpec(render_claude),
     "claude-hooks": ValueSpec(render_claude_hooks),
     "codex-hooks": ValueSpec(render_codex_hooks),
     "opencode-hooks": DocumentTextSpec(render_opencode_adapter),
     "pi-hooks": DocumentTextSpec(render_pi_adapter),
     "claude-plugins": ValueSpec(render_claude_plugins),
-    "codex-plugins": DocumentTextSpec(render_codex_plugins),
+    "codex-plugins": MergedTomlSpec(
+        render_codex_plugins_merged, frozenset({"plugins", "marketplaces"})
+    ),
     "pi-plugins": ValueSpec(render_pi_plugins),
     "claude-mcp-permissions": JsonSpec(render_claude_mcp, ensure_ascii=True, owns_whole_file=True),
     "codex": TextSpec(render_codex),
@@ -519,5 +532,6 @@ RENDERERS: dict[str, JsonSpec | TextSpec | ValueSpec | DocumentTextSpec | Docume
     "opencode-servers": ValueSpec(render_opencode_servers),
     "claude-servers": DocumentJsonSpec(render_claude_servers),
     "codex-servers": DocumentTextSpec(render_codex_servers),
+    "codex-config": MergedTomlSpec(render_codex_config, frozenset({"mcp_servers"})),
     "pi-servers": DocumentJsonSpec(render_pi_servers),
 }
