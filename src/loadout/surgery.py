@@ -32,36 +32,25 @@ def _assigned_key(line: str) -> str | None:
     return match.group(1) if match else None
 
 
-def strip_owned(existing: str, owned: frozenset[str]) -> str:
-    """Remove every top-level scalar and every table rooted at an owned name.
+def _blocks(text: str) -> tuple[list[str], list[tuple[str, list[str]]]]:
+    """Split into the preamble and each table block, keeping every line verbatim.
 
-    `owned` is **declared**, never derived from what is being written. Deriving it
-    from the current document cannot express a removal: a server dropped from the
-    source is absent from the derived set, so nothing strips it and it survives
-    every later run — stale, and indistinguishable from content a person added.
-    That is a live defect in the prototype this ports (ADR 0017).
+    A block runs from its header to the line before the next one, trailing blanks
+    included, so foreign spacing survives a rewrite untouched.
     """
-    kept: list[str] = []
-    skipping = False
-    for line in existing.splitlines():
-        root = _table_root(line)
-        if root is not None:
-            skipping = root in owned
-        elif not skipping and (key := _assigned_key(line)) is not None and key in owned:
-            continue
-        if not skipping:
-            kept.append(line)
-    while kept and not kept[-1].strip():
-        kept.pop()
-    return "\n".join(kept)
-
-
-def _split_document(document: str) -> tuple[list[str], list[str]]:
-    lines = document.splitlines()
-    for index, line in enumerate(lines):
-        if _table_root(line) is not None:
-            return lines[:index], lines[index:]
-    return lines, []
+    preamble: list[str] = []
+    blocks: list[tuple[str, list[str]]] = []
+    current: list[str] | None = None
+    for line in text.splitlines():
+        match = TABLE_HEADER.match(line)
+        if match is not None:
+            current = [line]
+            blocks.append((match.group(1).strip(), current))
+        elif current is None:
+            preamble.append(line)
+        else:
+            current.append(line)
+    return preamble, blocks
 
 
 def apply_toml(existing: str, owned: frozenset[str], document: str) -> str:
@@ -71,26 +60,48 @@ def apply_toml(existing: str, owned: frozenset[str], document: str) -> str:
     a multi-line basic string are not in the parsed model, so a round trip destroys
     exactly the content this exists to preserve. The file is safe because nothing
     rewrites those bytes, not because a writer was careful.
+
+    Owned content is replaced **where it already sits** and appended only when new.
+    Moving it instead would reorder the file whenever the harness appends a table of
+    its own, and `check` would report that reshuffle as drift on every run — the
+    spurious `modified outside loadout` this guard exists to avoid.
     """
-    scalars, tables = _split_document(document)
-    body = strip_owned(existing, owned)
+    want_preamble, want_blocks = _blocks(document)
+    have_preamble, have_blocks = _blocks(existing)
+    wanted = dict(want_blocks)
 
-    # A bare key after a table header reads as a member of that table, so an owned
-    # scalar has to land above the first one rather than at the end.
-    lines = body.splitlines()
-    cut = next((i for i, line in enumerate(lines) if _table_root(line) is not None), len(lines))
-    scalar_block = [line for line in scalars if line.strip()]
-    head, tail = lines[:cut], lines[cut:]
-    while head and not head[-1].strip():
-        head.pop()
+    scalars = {key: line for line in want_preamble if (key := _assigned_key(line)) is not None}
+    kept_preamble: list[str] = []
+    placed: set[str] = set()
+    for line in have_preamble:
+        key = _assigned_key(line)
+        if key is None or key not in owned:
+            kept_preamble.append(line)
+        elif key in scalars:
+            kept_preamble.append(scalars[key])
+            placed.add(key)
+    while kept_preamble and not kept_preamble[-1].strip():
+        kept_preamble.pop()
+    for key, line in scalars.items():
+        if key not in placed:
+            kept_preamble.append(line)
 
-    parts: list[str] = []
-    if head or scalar_block:
-        parts.append("\n".join([*head, *scalar_block]))
-    if tail:
-        parts.append("\n".join(tail))
-    if tables:
-        parts.append("\n".join(tables).strip("\n"))
+    kept_blocks: list[list[str]] = []
+    seen: set[str] = set()
+    for path, lines in have_blocks:
+        root = _table_root(lines[0])
+        if root is not None and root in owned:
+            if path in wanted:
+                kept_blocks.append(list(wanted[path]))
+                seen.add(path)
+            continue
+        kept_blocks.append(lines)
+    for path, lines in want_blocks:
+        if path not in seen:
+            kept_blocks.append(list(lines))
+
+    parts = ["\n".join(kept_preamble).strip("\n")] if kept_preamble else []
+    parts += ["\n".join(block).strip("\n") for block in kept_blocks]
     merged = "\n\n".join(part for part in parts if part.strip())
     return merged + "\n" if merged else ""
 

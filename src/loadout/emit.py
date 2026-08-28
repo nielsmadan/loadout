@@ -56,6 +56,7 @@ from .resolve import INSTRUCTIONS, SETTINGS, json_slice, resolve_item
 from .servers import SERVERS_SOURCE, Server, parse_servers
 from .skills import SKILL_DOCUMENT, Skill, discover_skills, render_skill
 from .sources import Source
+from .surgery import apply_toml
 from .templates import resolve_template
 
 PERMISSIONS_SOURCE = ("permissions.toml",)
@@ -76,7 +77,26 @@ class Copied:
     source: Path
 
 
-Output = str | Copied
+@dataclass(frozen=True)
+class Merged:
+    """Keys applied into a destination loadout does not own outright.
+
+    Where a base cannot exist — `~/.codex/config.toml` carries project tables the
+    harness writes, a block another tool manages and comments none of it survives
+    a reserialise — the deletion guarantee comes from stripping declared keys at
+    the destination instead (ADR 0017).
+
+    `owned` is declared, never derived from `document`. A set derived from what is
+    being written cannot express a removal: drop the last server and the root goes
+    unnamed, so nothing strips it and every server survives with its approval
+    intact.
+    """
+
+    owned: frozenset[str]
+    document: str
+
+
+Output = str | Copied | Merged
 
 
 def permission_sources(manifest: Manifest) -> tuple[Source, ...]:
@@ -901,6 +921,8 @@ def write_all(root: Path, profile: str = "default") -> list[Path]:
         path.parent.mkdir(parents=True, exist_ok=True)
         if isinstance(content, Copied):
             atomic_copy(path, content.source)
+        elif isinstance(content, Merged):
+            atomic_write(path, _applied(path, content))
         else:
             atomic_write(path, content)
         written.append(path)
@@ -915,9 +937,20 @@ def check_all(root: Path, profile: str = "default") -> list[tuple[Path, str, str
                 drift.append((path, describe_file(path), describe_file(expected.source)))
             continue
         actual = path.read_text(encoding="utf-8") if path.is_file() else ""
-        if actual != expected:
-            drift.append((path, actual, expected))
+        # Applying is identity on everything loadout does not own, so this compares
+        # owned keys alone: the harness writing its own project table cannot read
+        # as drift.
+        wanted = _applied(path, expected) if isinstance(expected, Merged) else expected
+        if actual != wanted:
+            drift.append((path, actual, wanted))
     return drift
+
+
+def _applied(path: Path, merged: Merged) -> str:
+    """The destination with loadout's keys written in. The caller reads the file;
+    the renderer that produced `merged` never did (ADR 0001)."""
+    existing = path.read_text(encoding="utf-8") if path.is_file() else ""
+    return apply_toml(existing, merged.owned, merged.document)
 
 
 def _copy_drifted(path: Path, source: Path) -> bool:

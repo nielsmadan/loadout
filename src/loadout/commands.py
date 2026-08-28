@@ -14,6 +14,7 @@ from pathlib import Path
 
 from .emit import (
     Copied,
+    Merged,
     check_all,
     collect_notices,
     declared_profiles,
@@ -142,6 +143,9 @@ def _render_variants(
         for path, content in rendered.items():
             if isinstance(content, Copied):
                 continue  # verbatim by definition, so it has no per-profile form to vary
+            if isinstance(content, Merged):
+                continue  # its legitimate content includes foreign material, so the
+                # set of acceptable forms is not finite and cannot be enumerated here
             try:
                 key = rebase_to / path.relative_to(source_root)
             except ValueError:
@@ -192,6 +196,13 @@ def _modified_outside_loadout(root: Path, profile: str) -> list[tuple[Path, str,
             # supporting file just as much as a SKILL.md.
             if path.is_file() and path.read_bytes() != expected.source.read_bytes():
                 modified.append((path, describe_file(path), describe_file(expected.source)))
+            continue
+        if isinstance(expected, Merged):
+            # Applying replaces owned keys and passes everything else through, so
+            # sync cannot destroy a foreign edit here and there is nothing for this
+            # guard to protect. An edit to an *owned* key is still overwritten
+            # silently; `check` reports it, and covering it properly needs a
+            # baseline this guard does not have for a file loadout does not own.
             continue
         forms = acceptable.get(path, set())
         if not path.is_file() or not forms:
