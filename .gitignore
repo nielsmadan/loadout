@@ -18,3 +18,4 @@ htmlcov/
 # A worktree is a separate repository; committing one loses work and confuses
 # every clone.
 .claude/worktrees/
+.worktrees/
