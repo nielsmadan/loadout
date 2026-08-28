@@ -66,3 +66,11 @@ assignment of the owned key does not move a foreign key that came first, whereas
 preserved keys after rendering would.
 
 The other three project outputs are loadout-only and keep rendering from `{}`.
+
+## Amendment (2026-08-28, codex delivery)
+
+[0017](0017-ownership-may-be-declared-instead-of-derived.md) adds a second way to reach this
+decision's invariant, for the case a base cannot express: where a slice **declares** the keys
+it owns, the strip happens at the destination rather than in the repo. A base becomes optional
+there. The rule that generated content is regenerated unconditionally, and never read back into
+itself, is unchanged.
