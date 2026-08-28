@@ -38,6 +38,7 @@ from .permissions.renderers import (
     DocumentJsonSpec,
     DocumentTextSpec,
     JsonSpec,
+    MergedTomlSpec,
     TextSpec,
     ValueSpec,
 )
@@ -56,7 +57,7 @@ from .resolve import INSTRUCTIONS, SETTINGS, json_slice, resolve_item
 from .servers import SERVERS_SOURCE, Server, parse_servers
 from .skills import SKILL_DOCUMENT, Skill, discover_skills, render_skill
 from .sources import Source
-from .surgery import apply_toml
+from .surgery import apply_toml, concat_documents
 from .templates import resolve_template
 
 PERMISSIONS_SOURCE = ("permissions.toml",)
@@ -249,11 +250,77 @@ def _permission_content(
     return {}
 
 
+def _refuse_composition(
+    contributors: list[tuple[PermissionTarget, dict[str, Any], dict[str, Any]]],
+    path: Path,
+    description: str,
+    suffix: str,
+) -> None:
+    """A file with a single owner cannot take a second slice.
+
+    Threading through a renderer that builds its document from scratch would
+    silently discard everything rendered before it, so this refuses instead.
+    """
+    if len(contributors) == 1:
+        return
+    first = contributors[0][0]
+    others = ", ".join(target.name for target, _, _ in contributors[1:])
+    raise LoadoutError(
+        f"permissions.{first.name}: {path} {description}, so it cannot compose "
+        f"with {others}; {suffix}"
+    )
+
+
+def _compose_merged(
+    contributors: list[tuple[PermissionTarget, dict[str, Any], dict[str, Any]]],
+    path: Path,
+) -> Merged | None:
+    """Every slice writing this file, unioned into one application.
+
+    Applying each slice on its own would mean the second read the first's result —
+    ADR 0001's feedback loop, one layer down — so the declared keys are unioned and
+    the fragments concatenated, and `write_all` touches the destination once.
+    """
+    specs = [
+        _resolve_renderer(target.renderer, f"permissions.{target.name}")
+        for target, _, _ in contributors
+    ]
+    if not any(isinstance(spec, MergedTomlSpec) for spec in specs):
+        return None
+
+    first = contributors[0][0]
+    plain = ", ".join(
+        target.name
+        for (target, _, _), spec in zip(contributors, specs, strict=True)
+        if not isinstance(spec, MergedTomlSpec)
+    )
+    if plain:
+        raise LoadoutError(
+            f"permissions.{first.name}: {path} is merged into a file loadout does not "
+            f"own, so it cannot compose with {plain}, which rewrite it whole"
+        )
+
+    owned: set[str] = set()
+    fragments: list[str] = []
+    for (target, _, content), spec in zip(contributors, specs, strict=True):
+        assert isinstance(spec, MergedTomlSpec)
+        clash = owned & spec.owns
+        if clash:
+            raise LoadoutError(
+                f"permissions.{target.name}: {sorted(clash)} is already owned by another "
+                f"slice writing {path}; two slices declaring one key cannot both be "
+                f"stripped and rewritten"
+            )
+        owned |= spec.owns
+        fragments.append(spec.fn(content))
+    return Merged(frozenset(owned), concat_documents(tuple(fragments)))
+
+
 def compose_permission_document(
     contributors: list[tuple[PermissionTarget, dict[str, Any], dict[str, Any]]],
     rules: Rules,
     path: Path,
-) -> str:
+) -> str | Merged:
     """Render every slice that writes this one file, composed into one document.
 
     Slices **thread** rather than merge: each renderer takes the document built
@@ -274,24 +341,22 @@ def compose_permission_document(
     spec = _resolve_renderer(first.renderer, f"permissions.{first.name}")
 
     if isinstance(spec, TextSpec):
-        if len(contributors) > 1:
-            others = ", ".join(t.name for t, _, _ in contributors[1:])
-            raise LoadoutError(
-                f"permissions.{first.name}: {path} is rendered as text, so it cannot "
-                f"compose with {others}; a text target owns its whole file"
-            )
+        _refuse_composition(
+            contributors, path, "is rendered as text", "a text target owns its whole file"
+        )
         return spec.fn(rules if first.select_all else EMPTY_RULES)
+
+    merged = _compose_merged(contributors, path)
+    if merged is not None:
+        return merged
 
     if isinstance(spec, DocumentTextSpec | DocumentJsonSpec):
         # A generated adapter is a JavaScript module and `.mcp.json` a whole
         # JSON document — either way there is no second slice to compose into
         # it, and no residual it could preserve.
-        if len(contributors) > 1:
-            others = ", ".join(t.name for t, _, _ in contributors[1:])
-            raise LoadoutError(
-                f"permissions.{first.name}: {path} is rendered as a whole document, so "
-                f"it cannot compose with {others}; it owns its whole file"
-            )
+        _refuse_composition(
+            contributors, path, "is rendered as a whole document", "it owns its whole file"
+        )
         if isinstance(spec, DocumentTextSpec):
             return spec.fn(contributors[0][2])
         return _serialize_json(spec.fn(contributors[0][2]))

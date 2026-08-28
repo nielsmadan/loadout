@@ -101,6 +101,24 @@ class DocumentJsonSpec:
     fn: Callable[[dict[str, Any]], dict[str, Any]]
 
 
+@dataclass(frozen=True)
+class MergedTomlSpec:
+    """A renderer contributing top-level keys to a file loadout does not own.
+
+    Unlike `DocumentTextSpec` this **composes**: several slices write into
+    `~/.codex/config.toml`, and applying each on its own would mean the second
+    read the first's result — ADR 0001's feedback loop, rebuilt one layer down.
+    The composing step unions the declared keys and concatenates the fragments so
+    a single application covers every slice.
+
+    `owns` is declared here rather than read off `fn`'s output, because a set
+    derived from what is written cannot express a removal (ADR 0017).
+    """
+
+    fn: Callable[[dict[str, Any]], str]
+    owns: frozenset[str]
+
+
 # --------------------------------------------------------------------------
 # claude — mcp-permissions.json: PermissionRequest hook policy, fully owned.
 # --------------------------------------------------------------------------

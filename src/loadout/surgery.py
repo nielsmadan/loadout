@@ -115,3 +115,21 @@ def reject_nested(values: dict[str, object], label: str) -> None:
     for key, value in values.items():
         if isinstance(value, dict):
             raise LoadoutError(f"{label}: {key!r} is a table; only top-level keys may be managed")
+
+
+def concat_documents(fragments: tuple[str, ...]) -> str:
+    """Join TOML fragments so every top-level key stays above every table.
+
+    Concatenating naively puts a later fragment's scalars after an earlier one's
+    table header, where TOML reads them as members of that table — the key would
+    still be spelled right and would configure something else entirely.
+    """
+    preambles: list[str] = []
+    blocks: list[str] = []
+    for fragment in fragments:
+        preamble, tables = _blocks(fragment)
+        preambles.extend(line for line in preamble if line.strip())
+        blocks.extend("\n".join(lines).strip("\n") for _path, lines in tables)
+    parts = ["\n".join(preambles)] if preambles else []
+    parts += blocks
+    return "\n\n".join(part for part in parts if part.strip())
