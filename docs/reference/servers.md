@@ -70,15 +70,15 @@ Four harnesses, two scopes:
 | harness | global | project |
 |---|---|---|
 | Claude | staged `claude/mcp-servers.generated.json` | `.mcp.json` |
-| Codex | staged `codex/config.toml` (`[mcp_servers.*]` only) | **none — open question** |
+| Codex | `~/.codex/config.toml` → `[mcp_servers.*]` | **none — open question** |
 | OpenCode | `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` → `mcp` | `opencode.json` → `mcp` |
 | Pi | `${PI_CODING_AGENT_DIR:-~/.pi/agent}/mcp.json` | **none — `.mcp.json` already serves it** |
 
 Renderers, keyed the way `RENDERERS` in `permissions/renderers.py` names them: `claude-servers`
 (global — a flat `{name: entry}` map, staged), `claude-project-servers` (project — the same
 per-entry shape wrapped in `{"mcpServers": …}`, owning `.mcp.json` outright),
-`codex-servers` (TOML text, staged — the function is scope-agnostic but only the global preset
-entry is wired), `opencode-servers` (one `ValueSpec` used at both scopes, contributing the `mcp`
+`codex-servers` (TOML text; the function is scope-agnostic and no preset entry uses it now that
+`codex-config` renders definitions and policy together — it stays registered for extraction), `opencode-servers` (one `ValueSpec` used at both scopes, contributing the `mcp`
 key to `opencode.json` — the same document `permissions` also writes), `pi-servers` (`DocumentJsonSpec`,
 global only).
 
@@ -106,9 +106,13 @@ recorded six times ([AGENTS.md](../../AGENTS.md), "This machine is not the world
 `test_codex_gets_no_project_destination_yet` in `tests/test_servers_wiring.py` names the day to
 delete it: when the probe answers.
 
-Codex's *global* destination is unaffected by this question — `~/ac/mcp/sync.py` already writes
-`[mcp_servers.*]` into `~/.codex/config.toml` today, and loadout's `codex-servers` renderer
-reproduces that byte-for-byte. The open question is project scope only.
+Codex's *global* destination is unaffected by this question — loadout writes `[mcp_servers.*]`
+into `~/.codex/config.toml` itself, owning that one key and passing the rest of the file
+through. The open question is project scope only.
+
+Note the global renderer is `codex-config`, not `codex-servers`: definitions and approval
+policy share the `[mcp_servers.<name>]` table, so one renderer emits both. `codex-servers`
+remains registered because its inverse is what extraction reads back.
 
 ### Claude's global entry is staged, not written
 

@@ -353,8 +353,8 @@ path, not a file loadout can render, which collides with
 **loadout's own `mcp` slice reproduces this table's shape rather than fighting it.** It renders the
 same staged-input-plus-external-invocation split for Claude's global entry, writes `.mcp.json`
 directly at Claude's project scope, writes OpenCode's and Pi's global and project files directly,
-and stages Codex's `[mcp_servers.*]` the same way it already stages `mcp-permissions.toml`. See
-[servers.md](servers.md).
+and writes Codex's `[mcp_servers.*]` into `config.toml` directly, owning that key and leaving the
+rest of the file alone. See [servers.md](servers.md).
 
 ## plugins
 

@@ -62,10 +62,37 @@ the allowlist in the same class. See [README](README.md#the-wrapper-command-bypa
 
 | output | ownership |
 |---|---|
-| `codex/rules/permissions.rules` | fully owned, text |
-| `codex/mcp-permissions.toml` | fully owned |
+| `~/.codex/rules/permissions.rules` | fully owned, text |
+| `~/.codex/config.toml` | **declared keys only** — see below |
+| `~/.codex/AGENTS.md`, `~/.codex/hooks.json`, `~/.codex/skills/` | fully owned |
 
 MCP decisions map `allow → approve`, `ask → prompt`, `deny → deny`.
 
-`~/.codex/config.toml` itself is reconciled by table-ownership merge, handled separately
-by `~/ac/codex/sync_config.py`.
+### config.toml is co-owned
+
+loadout cannot rewrite `config.toml` from a source: it carries `[projects."…"]` tables Codex
+writes as projects are opened, a block another tool may manage, comments and a multi-line
+`developer_instructions`. None of that could live in the repo, so there is no base document
+for it.
+
+Instead loadout **declares the keys it owns**, strips exactly those with line-wise text
+surgery — never a parse-and-reserialise, which would discard the comments — and writes current
+values back. Everything else is passed through untouched. See
+[0017](../decisions/0017-ownership-may-be-declared-instead-of-derived.md).
+
+| slice | owns | source |
+|---|---|---|
+| `mcp` | `mcp_servers` | `permissions.toml` (approval policy) + `mcp.toml` (definitions) |
+| `plugins` | `plugins`, `marketplaces` | the `plugins` slice |
+| `defaults` | whatever the fragment names | `loadout/defaults/<name>.json` |
+
+`mcp` renders both halves from **one** renderer. Codex keys a server's definition and its
+approval policy off the same `[mcp_servers.<name>]` table, so two slices writing it would
+declare that table twice and Codex would refuse to parse its own config.
+
+`defaults` is **opt-in** — it strips every key it manages, so a machine that never asked for it
+never has its hand-maintained settings touched. Its key names are the user's, not a set loadout
+could enumerate, so ownership there is *derived* and cannot express a removal on its own. It
+therefore keeps an owned-key record beside its fragment (`loadout/defaults/<name>.owned`); the
+union of that record and the fragment's current keys is what gets stripped, which is what makes
+deleting a key remove it from `config.toml` rather than stranding it there forever.

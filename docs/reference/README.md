@@ -155,7 +155,7 @@ only.
 | harness | shell policy | MCP policy | same document? |
 |---|---|---|---|
 | Claude | `settings.json` → `permissions.{allow,ask,deny}` | **both** the same `settings.json` list (as `mcp__<server>__<tool>` patterns) **and** a separate `mcp-permissions.json` | split — MCP policy is rendered twice, to two consumers |
-| Codex | `.codex/rules/permissions.rules` | a separate staged `mcp-permissions.toml` → `[mcp_servers.<name>].tools.<tool>` | split |
+| Codex | `.codex/rules/permissions.rules` | `config.toml` → `[mcp_servers.<name>].tools.<tool>`, owned by declared key | split |
 | OpenCode | `opencode.json` → `permission.bash` | the same `opencode.json` → `permission.<server>_<tool>` | shared |
 | Pi | `pi/permissions.json` → `permission.bash` | the same document → `permission.mcp` | shared |
 

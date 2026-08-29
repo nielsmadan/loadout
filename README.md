@@ -208,6 +208,24 @@ concatenate, and `null` removes, which is how a profile switches one plugin off 
 overlay instead of restating a list. See [docs/reference/plugins.md](docs/reference/plugins.md)
 for what a plugin reference holds and what each harness makes of it.
 
+`defaults` (Codex only) must be named for a stronger reason: it manages **top-level keys of
+`~/.codex/config.toml`**, a file loadout does not own, and it strips every key it manages. A
+machine that never asked for it must never have its hand-maintained Codex settings touched, so
+absence means *loadout manages none of them*. It takes fragment names resolved as
+`<source>/defaults/<name>.json`, whose keys and values become top-level TOML:
+
+```toml
+[codex]
+defaults = "codex"        # loadout/defaults/codex.json → model, model_reasoning_effort, …
+```
+
+Because the key names are yours rather than a set loadout could enumerate, that slice keeps an
+owned-key record beside its fragment — `loadout/defaults/<name>.owned`, generated and committed.
+It is what lets *removing* a key from the fragment remove it from `config.toml`, instead of
+stranding it there with nothing able to say it was ever managed. Edit the fragment, never the
+record; `loadout check` reports a record that disagrees with it. See
+[0017](docs/decisions/0017-ownership-may-be-declared-instead-of-derived.md).
+
 An unknown agent name, or a slice an agent does not offer, is an error listing what is available.
 
 Each destination in the preset carries that harness's config-directory variable —

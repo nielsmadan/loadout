@@ -48,18 +48,20 @@ schema, so the harness decides. (Validation invented from one machine's files is
 | harness | destination | rendered |
 |---|---|---|
 | Claude | `~/.claude/settings.json` → `enabledPlugins` | `"<name>@<marketplace>": true` |
-| Codex | staged `codex/plugins.toml` | `[plugins."<name>@<marketplace>"]`, `[marketplaces.<name>]` |
+| Codex | `~/.codex/config.toml` → `plugins`, `marketplaces` | `[plugins."<name>@<marketplace>"]`, `[marketplaces.<name>]` |
 | Pi | `~/.pi/agent/settings.json` → `packages` | the source, or an object carrying its filters |
 | OpenCode | — | nothing; see below |
 
 **Claude's is the fourth slice landing in `settings.json`**, after settings, permissions and
 hooks. It owns one key and nothing else in the file.
 
-**Codex's is staged, not deployed.** Enablement and marketplace registration both live in
-`config.toml`, which also holds `[projects.…]`, model settings and everything else Codex keeps —
-a file loadout does not own and cannot rewrite from a source. So it renders beside
-`codex/mcp-permissions.toml` for the same merge step, and the same open question applies to
-both.
+**Codex's writes `config.toml` directly, owning two keys of it.** Enablement and marketplace
+registration both live there, alongside `[projects.…]` Codex writes itself and everything else
+it keeps — a file loadout cannot rewrite from a source. It was staged for a merge step outside
+loadout until declared ownership removed the need: loadout now strips `plugins` and
+`marketplaces` and leaves the rest untouched. See
+[0017](../decisions/0017-ownership-may-be-declared-instead-of-derived.md) and
+[codex.md](codex.md#configtoml-is-co-owned).
 
 **Pi renders a bare source string when nothing filters the package, and an object when
 something does.** Both are Pi's own forms (`docs/packages.md`, shipped with the binary): the

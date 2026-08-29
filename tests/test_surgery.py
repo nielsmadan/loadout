@@ -106,3 +106,24 @@ def test_a_table_valued_key_is_refused_by_name() -> None:
     what it configures rather than failing."""
     with pytest.raises(LoadoutError, match="'nested' is a table"):
         reject_nested({"model": "x", "nested": {"a": 1}}, "codex.settings")
+
+
+def test_removing_every_server_removes_the_whole_table_tree() -> None:
+    """The case that separates declared ownership from derived, and the only one
+    that does.
+
+    Stripping by root means a document keeping *any* server still names
+    `mcp_servers`, so a derived owned set covers the removed siblings by accident.
+    Drop them all — or drop the slice — and a derived set no longer names the root
+    at all, nothing strips it, and every server survives with its approval intact.
+
+    `projects` is asserted alongside so this cannot pass against a strip that
+    emptied the file.
+    """
+    document = 'model = "gpt-5.6-sol"\n'
+
+    result = apply_toml(LIVE, OWNED, document)
+
+    assert "mcp_servers" not in result
+    assert '[projects."/Users/me/ac"]' in result
+    assert 'model = "gpt-5.6-sol"' in result

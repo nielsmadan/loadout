@@ -169,6 +169,14 @@ plus `merge_extractions`, which reports harness divergence rather than unioning 
 The native slices render from their own fragments rather than from rules and live beside it:
 `hooks.py` (with `adapters.py`) and `plugins.py`, both registered in `RENDERERS` like everything
 else, so `emit.py` composes them into a shared file without knowing what they are.
+`surgery.py` writes into a destination loadout does *not* own — `~/.codex/config.toml` — by
+stripping the keys a slice declares and leaving every other byte alone. It never parses and
+reserialises: comments, another tool's managed block and a multi-line string are not in the
+parsed model, so the file is safe because nothing rewrites those bytes, not because a writer was
+careful. `record.py` holds the other half for a slice whose key names are the user's rather than
+a set loadout could enumerate: the union of what was written last time and what is written now
+is what gets stripped, which is the only reason *removing* a key removes it. See
+[0017](docs/decisions/0017-ownership-may-be-declared-instead-of-derived.md).
 `machine.py` reads `$XDG_CONFIG_HOME/loadout/config.toml` — the only place machine state is
 *stored*, and what `--global` resolves the root and profile from. It is not the only machine
 state that is *read*: `manifest.py:resolve_destination` expands `${VAR}` in a destination
