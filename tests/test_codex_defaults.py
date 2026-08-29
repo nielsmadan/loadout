@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from loadout.emit import check_all, write_all
+from loadout.emit import check_all, collect_notices, write_all
 
 FRAGMENT = {"model": "gpt-5.6-sol", "model_reasoning_effort": "max"}
 
@@ -106,3 +106,20 @@ def test_a_stale_record_is_reported_as_drift(tmp_path: Path, fake_home: Path) ->
     record.write_text("# tampered\nmodel\n", encoding="utf-8")
 
     assert [path for path, _, _ in check_all(tmp_path)] == [record]
+
+
+def test_a_defaults_fragment_is_not_parsed_as_a_plugins_fragment(
+    tmp_path: Path, fake_home: Path
+) -> None:
+    """Notices read marketplaces out of a *plugins* fragment, which parses the
+    document as one. Done for every slice it rejects any other shape: a defaults
+    fragment's keys — or a hooks fragment's event names — read as stray sections
+    and the whole render fails with `plugins: unknown section(s) model`.
+
+    Latent until a second source-slice kind existed; `hooks` would have hit it
+    just as hard on any agent that declared one.
+    """
+    prepare(tmp_path, fake_home, FRAGMENT)
+
+    assert collect_notices(tmp_path) is not None
+    write_all(tmp_path)

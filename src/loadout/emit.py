@@ -684,14 +684,16 @@ def collect_notices(root: Path, profile: str = "default") -> tuple[Notice, ...]:
         if not _selected(target, profile):
             continue
         document = slice_document(target.content, target.content_slice, manifest)
-        found.extend(
-            notices_for(
-                target.agent,
-                target.content_slice,
-                document,
-                _known_marketplaces(target.agent, document),
-            )
+        # Only a plugins fragment has marketplaces, and reading them parses the
+        # document as one. Evaluated for every slice it rejects any other shape:
+        # a `defaults` fragment's keys, or a hooks fragment's event names, read as
+        # stray sections of a plugins document and the whole render fails.
+        known = (
+            _known_marketplaces(target.agent, document)
+            if target.content_slice == "plugins"
+            else frozenset()
         )
+        found.extend(notices_for(target.agent, target.content_slice, document, known))
     return tuple(found)
 
 
