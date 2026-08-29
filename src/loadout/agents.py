@@ -115,6 +115,16 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
             renderer="codex-config",
             destination="${CODEX_HOME:-~/.codex}/config.toml",
         ),
+        # Opt-in, not automatic: it strips every key it manages, so a machine that
+        # never asked for it must never have its hand-maintained settings touched.
+        # Ownership here is derived from the fragment — the key names are the
+        # user's, not a set loadout could know — so it carries an owned-key record
+        # beside its fragment. See `_attach_records`.
+        "defaults": SliceOutput(
+            renderer="codex-settings",
+            destination="${CODEX_HOME:-~/.codex}/config.toml",
+            source_slice="defaults",
+        ),
         # The same destination, disjoint keys. config.toml also holds
         # `[projects.…]` Codex writes itself and a block another tool manages, so
         # loadout declares what it owns and strips only that (ADR 0017) rather

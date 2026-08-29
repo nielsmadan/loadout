@@ -15,6 +15,7 @@ ARTIFACT_TYPES = frozenset(
         "hooks",
         "mcp",
         "plugins",
+        "defaults",
         "skills",
         "templates",
     }

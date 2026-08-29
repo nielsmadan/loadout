@@ -21,6 +21,7 @@ from ..servers import (
     render_opencode_servers,
     render_pi_servers,
 )
+from ..surgery import reject_nested
 from .rules import MCP_SEED, Rules, is_glob, mcp_native, mcp_parts
 
 JsonRenderer = Callable[[Rules, dict[str, Any]], dict[str, Any]]
@@ -118,7 +119,11 @@ class MergedTomlSpec:
     """
 
     fn: Callable[[Rules, dict[str, Any]], str]
-    owns: frozenset[str]
+    # A fixed set where the roots are known ahead of time (`mcp_servers`), or a
+    # function of the content where they are not. A derived set cannot express a
+    # removal on its own (ADR 0017); the caller unions it with the recorded set,
+    # and that union is what makes deletion work.
+    owns: frozenset[str] | Callable[[dict[str, Any]], frozenset[str]]
 
 
 # --------------------------------------------------------------------------
@@ -283,6 +288,27 @@ def _codex_definition_block(server: Server, block: Any) -> None:
         for key in sorted(server.env):
             variables[key] = server.env[key]
         block["env"] = variables
+
+
+def _fragment_keys(content: dict[str, Any]) -> frozenset[str]:
+    """Ownership derived from the fragment — the key names are the user's, not a
+    set loadout could enumerate. Derived alone cannot express a removal, so the
+    caller unions this with the recorded set (ADR 0017, `_attach_records`)."""
+    return frozenset(content)
+
+
+def render_codex_settings(rules: Rules, content: dict[str, Any]) -> str:
+    """Top-level Codex settings, as scalars.
+
+    No banner: `apply_toml` keeps only assignment lines from a rendered document,
+    so a comment here would be dropped anyway, and emitting one would suggest
+    config.toml carries a generated header when it does not.
+    """
+    reject_nested(content, "codex.defaults")
+    document = tomlkit.document()
+    for key in sorted(content):
+        document[key] = content[key]
+    return tomlkit.dumps(document)
 
 
 def render_codex_plugins_merged(rules: Rules, content: dict[str, Any]) -> str:
@@ -533,5 +559,6 @@ RENDERERS: dict[
     "claude-servers": DocumentJsonSpec(render_claude_servers),
     "codex-servers": DocumentTextSpec(render_codex_servers),
     "codex-config": MergedTomlSpec(render_codex_config, frozenset({"mcp_servers"})),
+    "codex-settings": MergedTomlSpec(render_codex_settings, _fragment_keys),
     "pi-servers": DocumentJsonSpec(render_pi_servers),
 }

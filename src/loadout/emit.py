@@ -53,6 +53,7 @@ from .project import (
     project_config_path,
     project_slices,
 )
+from .record import read_record, render_record
 from .resolve import INSTRUCTIONS, SETTINGS, json_slice, resolve_item
 from .servers import SERVERS_SOURCE, Server, parse_servers
 from .skills import SKILL_DOCUMENT, Skill, discover_skills, render_skill
@@ -95,6 +96,13 @@ class Merged:
 
     owned: frozenset[str]
     document: str
+    # Where the owned-key record lives, and what it should now say. Read as an
+    # input and written as an output by the same slice — the shape ADR 0001
+    # forbids a *renderer*, permitted here because the caller does both, exactly
+    # as it does when reading a destination. `check` compares it so a stale or
+    # hand-edited record is reported rather than silently changing what is
+    # stripped.
+    records: tuple[tuple[Path, str], ...] = ()
 
 
 Output = str | Copied | Merged
@@ -305,16 +313,55 @@ def _compose_merged(
     fragments: list[str] = []
     for (target, _, content), spec in zip(contributors, specs, strict=True):
         assert isinstance(spec, MergedTomlSpec)
-        clash = owned & spec.owns
+        declared = spec.owns(content) if callable(spec.owns) else spec.owns
+        clash = owned & declared
         if clash:
             raise LoadoutError(
                 f"permissions.{target.name}: {sorted(clash)} is already owned by another "
                 f"slice writing {path}; two slices declaring one key cannot both be "
                 f"stripped and rewritten"
             )
-        owned |= spec.owns
+        owned |= declared
         fragments.append(spec.fn(rules, content))
     return Merged(frozenset(owned), concat_documents(tuple(fragments)))
+
+
+def _attach_records(
+    document: str | Merged,
+    contributors: list[tuple[PermissionTarget, dict[str, Any], dict[str, Any]]],
+    manifest: Manifest,
+) -> str | Merged:
+    """Union the recorded keys into what gets stripped, and say what to record next.
+
+    A renderer whose `owns` is a function of its content has *derived* ownership,
+    which cannot express a removal on its own: drop a key from the fragment and it
+    is no longer named, so nothing strips it and it survives every later run. The
+    record is the other half — what was written last time — and the union of the
+    two is what makes deletion work (ADR 0017).
+
+    The record sits beside the fragment it belongs to. A slice composing several
+    fragments keeps one record, beside the first, because the keys belong to the
+    composed document rather than to any one fragment.
+    """
+    if not isinstance(document, Merged):
+        return document
+
+    owned = document.owned
+    records: list[tuple[Path, str]] = []
+    for target, _, content in contributors:
+        spec = _resolve_renderer(target.renderer, f"permissions.{target.name}")
+        if not isinstance(spec, MergedTomlSpec) or not callable(spec.owns):
+            continue
+        if not target.content or target.content_slice is None:
+            continue
+        first = resolve_item(manifest.sources, target.content[0], json_slice(target.content_slice))
+        path = first.path.with_suffix(".owned")
+        present = frozenset(content)
+        owned |= read_record(path) | present
+        records.append((path, render_record(present)))
+    if not records:
+        return document
+    return Merged(owned, document.document, tuple(records))
 
 
 def compose_permission_document(
@@ -716,7 +763,9 @@ def render_global(root: Path, profile: str = "default") -> dict[Path, Output]:
                     _claim(path, _owner_label(target), claimed)
                 group.append((target, residual, content))
         for path, contributors in groups.items():
-            outputs[path] = compose_permission_document(contributors, rules, path)
+            outputs[path] = _attach_records(
+                compose_permission_document(contributors, rules, path), contributors, manifest
+            )
 
     for skills_target in manifest.skills:
         _expand_skills(skills_target, manifest, outputs, claimed)
@@ -875,6 +924,9 @@ def render_project(root: Path) -> dict[Path, Output]:
             _claim(path, owner, claimed)
         group.append((contributor, residual, content))
     for path, contributors in groups.items():
+        # No records here: a record is tied to a source-slice fragment, and project
+        # scope renders from the project's own config rather than the global
+        # manifest's sources. No project slice has derived ownership today.
         outputs[path] = compose_permission_document(contributors, rules, path)
     return outputs
 
@@ -989,6 +1041,10 @@ def write_all(root: Path, profile: str = "default") -> list[Path]:
             atomic_copy(path, content.source)
         elif isinstance(content, Merged):
             atomic_write(path, _applied(path, content))
+            for record_path, text in content.records:
+                record_path.parent.mkdir(parents=True, exist_ok=True)
+                atomic_write(record_path, text)
+                written.append(record_path)
         else:
             atomic_write(path, content)
         written.append(path)
@@ -1009,6 +1065,11 @@ def check_all(root: Path, profile: str = "default") -> list[tuple[Path, str, str
         wanted = _applied(path, expected) if isinstance(expected, Merged) else expected
         if actual != wanted:
             drift.append((path, actual, wanted))
+        if isinstance(expected, Merged):
+            for record_path, text in expected.records:
+                on_disk = record_path.read_text(encoding="utf-8") if record_path.is_file() else ""
+                if on_disk != text:
+                    drift.append((record_path, on_disk, text))
     return drift
 
 

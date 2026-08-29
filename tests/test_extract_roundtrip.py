@@ -64,6 +64,12 @@ NOT_INVERTED: set[str] = {
     # tests/test_extract_servers.py, and policy round-trips via
     # `codex-mcp-permissions`, which stays registered for exactly that reason.
     "codex-config",
+    # `codex-settings` renders whatever scalars the fragment names, so inverting it
+    # means deciding which of config.toml's top-level keys are loadout's. That is
+    # precisely the question the owned-key record answers, and extraction is handed
+    # a document rather than a record — so the inverse is not merely unwritten, it
+    # is not determinable from the input extraction gets.
+    "codex-settings",
 }
 
 INVERTED = sorted(EXTRACTORS)
