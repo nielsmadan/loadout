@@ -1,7 +1,6 @@
 # 0014 — A vendored template is source, not generated output
 
-**Status:** accepted (2026-08-15, templates). Settles open question 4 of
-`docs/superpowers/specs/2026-08-09-templates-design.md`.
+**Status:** accepted (2026-08-15, templates). Settles the template source-ownership question.
 
 ## Context
 

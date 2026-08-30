@@ -177,9 +177,7 @@ environment variable name from an opaque header string.
 
 ## Not built
 
-- **The reverse notice.** The design this slice argues from
-  ([2026-08-22-mcp-definitions-slice-design.md](../superpowers/specs/2026-08-22-mcp-definitions-slice-design.md#6-three-failure-modes-all-reported-none-fatal))
-  describes reporting in both directions — a policy entry naming a server nothing defines, as well
+- **The reverse notice.** Reporting was designed in both directions — a policy entry naming a server nothing defines, as well
   as a server nothing permits. Only the second direction is built (`unpermitted_servers` above);
   the first has no function and no test.
 

@@ -164,6 +164,10 @@ silently when left to memory.
 `cli.py` → `commands.py` → `emit.py` → `composition.py` (instructions) and
 `permissions/` (`rules.py` parses, `renderers.py` renders, keyed by name in `RENDERERS`).
 `manifest.py` parses `loadout.toml`; `sources.py` and `resolve.py` resolve fragments.
+`resolve.py:_slice_root` caches resolved source roots by `Source` value. This is safe for the
+one-process-per-command CLI, but a long-lived embedding must clear or bypass that cache after
+replacing a source directory or symlink; otherwise a stale root can surface as a misleading
+escape error.
 `extract.py` runs `permissions/renderers.py` backwards — one extractor per `RENDERERS` key,
 plus `merge_extractions`, which reports harness divergence rather than unioning it.
 The native slices render from their own fragments rather than from rules and live beside it:
