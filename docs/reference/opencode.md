@@ -66,6 +66,16 @@ output count across the repo is 12 distinct paths, not 13.
 `[opencode.extra]` in `permissions.toml` supplies additional `permission.<key>` toggles
 verbatim — currently `skill`, `webfetch`, `websearch`, `codesearch`.
 
+`opencode/AGENTS.md` → the global instructions document. It is a document at a path, like the
+other three harnesses — **not** the `instructions` key in `opencode.json`, which is a separate
+include feature for rule files someone else already wrote (globs and remote URLs among them).
+Loadout leaves that key untouched, so nothing is included twice. Upstream calls the document
+"global rules … applied across all opencode sessions".
+
+**Until this destination existed, OpenCode fell back to `~/.claude/CLAUDE.md`** — which loadout
+also writes. OpenCode was reading Claude's document, with Claude's fragments in it, and the
+fallback is silent, so nothing looked broken.
+
 ## Gotcha: v2 renames nearly every key
 
 OpenCode v2 renames most configuration keys, including

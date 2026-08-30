@@ -21,7 +21,7 @@ declared per renderer — what that harness's document is *able* to carry. Decla
 the point; a lenient comparison would hide it.
 
 **Document round trip.** `render(extract(document)) == document`, byte for byte. This is the
-acceptance criterion in the extraction spec, and it is what catches a missed pair collapse.
+acceptance criterion in the extraction spec.
 
 The two are not redundant. Removing the pair collapse produces a *different source* that renders
 the *same bytes*, so only the rules property catches it; the mutation check in this repo's

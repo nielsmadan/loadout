@@ -55,7 +55,7 @@ schema, so the harness decides. (Validation invented from one machine's files is
 **Claude's is the fourth slice landing in `settings.json`**, after settings, permissions and
 hooks. It owns one key and nothing else in the file.
 
-**Codex's writes `config.toml` directly, owning two keys of it.** Enablement and marketplace
+**Codex writes `config.toml` directly, owning two keys of it.** Enablement and marketplace
 registration both live there, alongside `[projects.…]` Codex writes itself and everything else
 it keeps — a file loadout cannot rewrite from a source. It was staged for a merge step outside
 loadout until declared ownership removed the need: loadout now strips `plugins` and
