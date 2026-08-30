@@ -73,6 +73,18 @@ class SkillsTarget:
 
 
 @dataclass(frozen=True)
+class ModuleConfigTarget:
+    """Which agent gets the module-config tree, and the root it lands under.
+
+    Carries no list for the same reason `SkillsTarget` does not: the relative
+    path inside the source tree is the declaration.
+    """
+
+    agent: str
+    destinations: tuple[PurePosixPath, ...]
+
+
+@dataclass(frozen=True)
 class PermissionTarget:
     """One generated permission file, its renderer, and its base document.
 
@@ -112,6 +124,7 @@ class Manifest:
     targets: tuple[InstructionTarget, ...]
     permissions: tuple[PermissionTarget, ...] = ()
     skills: tuple[SkillsTarget, ...] = ()
+    module_config: tuple[ModuleConfigTarget, ...] = ()
 
 
 def _require(block: dict[str, object], key: str, label: str) -> object:
@@ -414,12 +427,13 @@ COMMON_BLOCK = "all"
 
 RESERVED_KEYS = frozenset({"source", "instructions", "permissions", "extends", COMMON_BLOCK})
 
-# permissions, mcp-permissions and skills render with no authoring decision to make, so an
-# agent block that names none of them still gets them. For skills the directory
-# is the declaration (spec 4a §2): dropping a tree in renders it everywhere. instructions and settings must be
+# permissions, mcp-permissions, skills and module-config render with no authoring
+# decision to make, so an agent block that names none of them still gets them. For
+# skills and module-config the directory is the declaration (spec 4a §2): dropping a
+# tree in renders it everywhere. instructions and settings must be
 # named: instructions need an `order` (spec 1 §7 — alphabetical demonstrably
 # fails), and settings names an input rather than an output.
-AUTOMATIC_SLICES = ("permissions", "mcp-permissions", "mcp", "skills")
+AUTOMATIC_SLICES = ("permissions", "mcp-permissions", "mcp", "skills", "module-config")
 
 
 def _agent_slice_names(agent: str, block: dict[str, object]) -> list[str]:
@@ -441,7 +455,12 @@ def _agent_slice_names(agent: str, block: dict[str, object]) -> list[str]:
 
 def _parse_agents(
     data: dict[str, object], path: Path, claimed: set[PurePosixPath]
-) -> tuple[tuple[InstructionTarget, ...], tuple[PermissionTarget, ...], tuple[SkillsTarget, ...]]:
+) -> tuple[
+    tuple[InstructionTarget, ...],
+    tuple[PermissionTarget, ...],
+    tuple[SkillsTarget, ...],
+    tuple[ModuleConfigTarget, ...],
+]:
     """Agent-keyed blocks: `[claude]` with slices beneath it.
 
     Each slice becomes the same target the older spelling declares by hand; the
@@ -464,6 +483,7 @@ def _parse_agents(
     targets: list[InstructionTarget] = []
     permissions: list[PermissionTarget] = []
     skills: list[SkillsTarget] = []
+    module_config: list[ModuleConfigTarget] = []
     for agent in sorted(known_agents()):
         declared = data.get(agent)
         if declared is None:
@@ -500,6 +520,9 @@ def _parse_agents(
             if slice_name == "skills":
                 skills.append(SkillsTarget(agent=agent, destinations=destinations))
                 continue
+            if slice_name == "module-config":
+                module_config.append(ModuleConfigTarget(agent=agent, destinations=destinations))
+                continue
             if slice_name == "instructions":
                 targets.append(
                     InstructionTarget(
@@ -531,7 +554,7 @@ def _parse_agents(
                     destinations=destinations,
                 )
             )
-    return tuple(targets), tuple(permissions), tuple(skills)
+    return tuple(targets), tuple(permissions), tuple(skills), tuple(module_config)
 
 
 def _build_manifest(data: dict[str, object], path: Path) -> Manifest:
@@ -543,7 +566,9 @@ def _build_manifest(data: dict[str, object], path: Path) -> Manifest:
     claimed: set[PurePosixPath] = set()
     targets = _parse_instructions(data.get("instructions", {}), path, claimed)
     permissions = _parse_permissions(data.get("permissions", {}), path, claimed)
-    agent_targets, agent_permissions, agent_skills = _parse_agents(data, path, claimed)
+    agent_targets, agent_permissions, agent_skills, agent_module_config = _parse_agents(
+        data, path, claimed
+    )
     targets += agent_targets
     permissions += agent_permissions
 
@@ -558,4 +583,10 @@ def _build_manifest(data: dict[str, object], path: Path) -> Manifest:
         raise LoadoutError(
             f"{path}: no [<agent>], [instructions.<agent>] or [permissions.<name>] targets declared"
         )
-    return Manifest(sources=sources, targets=targets, permissions=permissions, skills=agent_skills)
+    return Manifest(
+        sources=sources,
+        targets=targets,
+        permissions=permissions,
+        skills=agent_skills,
+        module_config=agent_module_config,
+    )

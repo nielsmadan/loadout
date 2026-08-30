@@ -11,6 +11,10 @@ the verified negatives below are precisely what a decision to re-add would have 
 This page records *where things are*. Matcher semantics and rendering behaviour live in the
 per-harness pages; [README.md](README.md) indexes those.
 
+A module's *own* configuration is not one of the seven and gets no row in the summary — it
+belongs to the module rather than the harness, and only Pi's is enumerated here. See
+[module config](#module-config).
+
 **Verified 2026-08-09**, hooks section updated 2026-08-11, against Claude Code 2.1.226, codex-cli 0.147.0, OpenCode 1.18.15, Pi
 0.84.1 and Antigravity (`agy`) 1.1.11, by inspecting the installed binaries and shipped docs —
 not by reading upstream documentation. Method per harness: `strings` over the Claude, Codex,
@@ -447,6 +451,14 @@ details from it that no other harness documents:
 
 Pi also accepts extra skill directories in settings, and documents `~/.claude/skills` and
 `~/.codex/skills` as the intended values.
+
+## module config
+
+Distinct from both plugins (enablement) and settings (the harness's own file): the
+configuration an installed module reads for itself. Pi fixes the directory and leaves the
+filename to each module, so there are two shapes in use and neither is derivable from a
+module's name. Enumerated, with the verified negatives, in
+[module-config.md](module-config.md); loadout renders it for Pi.
 
 ## Managed / enterprise tier
 

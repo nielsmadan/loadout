@@ -173,6 +173,10 @@ plus `merge_extractions`, which reports harness divergence rather than unioning 
 The native slices render from their own fragments rather than from rules and live beside it:
 `hooks.py` (with `adapters.py`) and `plugins.py`, both registered in `RENDERERS` like everything
 else, so `emit.py` composes them into a shared file without knowing what they are.
+`module_config.py` is the exception that proves the shape: it has no renderer and no `RENDERERS`
+entry, because a module's own config is copied byte-for-byte to an authored relative path — the
+harness fixes the directory and each module picks its filename, so there is nothing to render
+and nothing to derive. See [module-config](docs/reference/module-config.md).
 `surgery.py` writes into a destination loadout does *not* own — `~/.codex/config.toml` — by
 stripping the keys a slice declares and leaving every other byte alone. It never parses and
 reserialises: comments, another tool's managed block and a multi-line string are not in the

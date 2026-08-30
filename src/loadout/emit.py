@@ -6,7 +6,7 @@ import shutil
 import tempfile
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .composition import HEADER, load_fragment, render
@@ -16,6 +16,7 @@ from .manifest import (
     MANIFEST_NAME,
     InstructionTarget,
     Manifest,
+    ModuleConfigTarget,
     PermissionTarget,
     SkillsTarget,
     declared_profile_files,
@@ -24,6 +25,7 @@ from .manifest import (
     manifest_path,
     resolve_destination,
 )
+from .module_config import MODULE_CONFIG_SUBDIR, discover_module_config
 from .notices import (
     OPENCODE_SKILL_FLAGS,
     Notice,
@@ -771,6 +773,10 @@ def render_global(root: Path, profile: str = "default") -> dict[Path, Output]:
 
     for skills_target in manifest.skills:
         _expand_skills(skills_target, manifest, outputs, claimed)
+    # After skills, so a module-config path that lands on a rendered destination
+    # collides with it rather than depending on which ran first.
+    for module_config_target in manifest.module_config:
+        _expand_module_config(module_config_target, manifest, outputs, claimed)
     return outputs
 
 
@@ -821,6 +827,49 @@ def _expand_skills(
                 path = directory / relative
                 _claim(path, f"{target.agent}.skills", claimed)
                 outputs[path] = Copied(source=skill.document.parent / relative)
+
+
+def module_config_files(manifest: Manifest, agent: str) -> tuple[tuple[PurePosixPath, Path], ...]:
+    """Every module-config file offered for one agent, as (relative, source).
+
+    Two sources offering one relative path is ambiguous exactly as two offering
+    one skill name is, and is refused for the same reason: the winner would
+    depend on manifest order rather than on anything the author wrote.
+    """
+    seen: dict[PurePosixPath, str] = {}
+    collected: list[tuple[PurePosixPath, Path]] = []
+    for source in manifest.sources:
+        if MODULE_CONFIG_SUBDIR not in source.use:
+            continue
+        agent_root = source.path / MODULE_CONFIG_SUBDIR / agent
+        for relative in discover_module_config(agent_root):
+            if relative in seen:
+                raise LoadoutError(
+                    f"module config {str(relative)!r} for {agent} is offered by both "
+                    f"{seen[relative]!r} and {source.name!r}; rename one, or drop it "
+                    f"from a source's `use`"
+                )
+            seen[relative] = source.name
+            collected.append((relative, agent_root / Path(str(relative))))
+    return tuple(sorted(collected, key=lambda item: str(item[0])))
+
+
+def _expand_module_config(
+    target: ModuleConfigTarget,
+    manifest: Manifest,
+    outputs: dict[Path, Output],
+    claimed: dict[Path, str],
+) -> None:
+    files = module_config_files(manifest, target.agent)
+    if not files:
+        return
+    label = f"{target.agent}.{MODULE_CONFIG_SUBDIR}"
+    for destination in target.destinations:
+        base = resolve_destination(str(destination), label)
+        for relative, source in files:
+            path = base / Path(str(relative))
+            _claim(path, label, claimed)
+            outputs[path] = Copied(source=source)
 
 
 def render_all(root: Path, profile: str = "default") -> dict[Path, Output]:

@@ -195,8 +195,10 @@ settings     = "claude"
 [pi]
 ```
 
-`[codex]` and `[pi]` with no keys are complete declarations. **`permissions` and `mcp` render
-without being asked for**, because neither has an authoring decision to make. `instructions` must
+`[codex]` and `[pi]` with no keys are complete declarations. **`permissions`, `mcp`, `skills`
+and `module-config` render without being asked for**, because none has an authoring decision to
+make — for the last two the directory is the declaration, so dropping a tree in renders it. Say
+`skills = false` or `module-config = false` to opt out; an absent key means *automatic*. `instructions` must
 be named — it needs an order, and alphabetical is wrong (see Profiles). `settings` must be named
 because it is an input rather than an output.
 
@@ -207,6 +209,13 @@ manage this*, not *none*. Both take fragment names, resolved as `<source>/hooks/
 concatenate, and `null` removes, which is how a profile switches one plugin off with a one-key
 overlay instead of restating a list. See [docs/reference/plugins.md](docs/reference/plugins.md)
 for what a plugin reference holds and what each harness makes of it.
+
+`module-config` carries a module's *own* configuration — Pi's `pi-statusline.json` and the like.
+Files under `<source>/module-config/<agent>/` are copied verbatim to the same relative path
+beneath that harness's config directory, keeping the module's formatting and any executable bit.
+The path is authored rather than derived because it has to be: `pi-subagents` reads
+`extensions/subagent/config.json`. See
+[docs/reference/module-config.md](docs/reference/module-config.md).
 
 `defaults` (Codex only) must be named for a stronger reason: it manages **top-level keys of
 `~/.codex/config.toml`**, a file loadout does not own, and it strips every key it manages. A

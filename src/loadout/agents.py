@@ -169,6 +169,12 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
     },
     "pi": {
         "skills": SliceOutput(destination="${PI_CODING_AGENT_DIR:-~/.pi/agent}/skills"),
+        # The destination is a *root*, not a file: each path under
+        # <source>/module-config/pi/ lands beneath it as authored. Pi fixes the
+        # directory and never the filename, and a module's directory need not
+        # even match its package — pi-subagents reads extensions/subagent/ — so
+        # there is nothing here to derive a filename from.
+        "module-config": SliceOutput(destination="${PI_CODING_AGENT_DIR:-~/.pi/agent}"),
         "instructions": SliceOutput(destination="${PI_CODING_AGENT_DIR:-~/.pi/agent}/AGENTS.md"),
         "permissions": SliceOutput(
             renderer="pi",

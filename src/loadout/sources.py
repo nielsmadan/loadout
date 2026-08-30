@@ -17,6 +17,7 @@ ARTIFACT_TYPES = frozenset(
         "plugins",
         "defaults",
         "skills",
+        "module-config",
         "templates",
     }
 )

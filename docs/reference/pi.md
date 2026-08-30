@@ -17,6 +17,9 @@ literal in the renderer — bumping the extension means bumping it there.
 file moves with it. Verified 2026-08-09 against pi 0.84.1. See
 [Relocating the config directory](README.md#relocating-the-config-directory).
 
+Modules keep their own configuration beside this file — Pi offers no config API, so each
+picks its own path. See [module-config.md](module-config.md).
+
 ## Resolution
 
 **Last matching rule wins**; the package docs say "put broad catch-alls first."

@@ -37,6 +37,11 @@ test is a gap.
 | `dest-collision-resolved` | collisions are detected on the resolved path, not the template | [README](../../README.md#loadouttoml) | `test_two_templates_that_expand_to_one_path_collide` |
 | `dest-env-literal` | only `${...}` substitutes; a bare `$` is left alone | [README](../../README.md#loadouttoml) | `test_a_destination_with_no_reference_is_left_alone` |
 
+| `module-config-shapes` | both Pi shapes land at their authored relative paths | [module-config](module-config.md#why-the-path-is-authored-never-derived) | `test_both_shapes_land_at_their_authored_relative_paths` |
+| `module-config-verbatim` | bytes are copied, not reserialised, and the exec bit survives | [module-config](module-config.md#what-loadout-does) | `test_the_bytes_are_copied_rather_than_reserialised`, `test_an_executable_file_keeps_its_mode` |
+| `module-config-automatic` | the directory is the declaration; `module-config = false` opts out | [module-config](module-config.md#what-loadout-does) | `test_the_directory_is_the_declaration`, `test_module_config_false_switches_it_off` |
+| `module-config-collision` | two sources offering one path, or a path on a rendered destination, are refused | [module-config](module-config.md#what-loadout-does) | `test_a_path_offered_by_two_sources_is_refused`, `test_a_path_colliding_with_a_rendered_destination_is_refused` |
+
 ## Claude
 
 | id | behaviour | source | pinned by |

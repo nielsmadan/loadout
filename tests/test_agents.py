@@ -62,7 +62,11 @@ def test_every_destination_resolves_to_the_documented_default(
         if output.destination is None:
             continue
         resolved = str(resolve_destination(output.destination, f"{agent}.{name}"))
-        assert defaults[agent] in resolved, f"{agent}.{name} -> {resolved}"
+        # A destination is usually a file under the config directory, but may be
+        # the directory itself — module-config names a root that authored
+        # relative paths land beneath. Trailing slash so both forms compare the
+        # same way, and `/.pi/agentfoo` still fails.
+        assert defaults[agent] in resolved + "/", f"{agent}.{name} -> {resolved}"
 
 
 def test_a_set_variable_relocates_every_slice_of_that_agent(
