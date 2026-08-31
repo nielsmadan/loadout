@@ -209,3 +209,10 @@ person's setup; a repo's configuration is the same for everyone who checks it ou
   [0005](decisions/0005-a-deny-cannot-carry-exceptions.md). The unresolved part is that a
   ceiling has to reason about command *shape* — "does this command take another command as
   an argument" — rather than string prefixes.
+
+  A weaker version of the same idea already ran in `~/ac`: `aiperm`'s
+  `prevent_global_weakening` refused a project rule that would undo a global deny. That tool
+  was retired on 2026-09-01 (`cca42c2`) because the rest of it re-implemented loadout's
+  renderers, but the check is worth keeping in mind — it is the tier-crossing half of the same
+  problem, and cheaper than shape analysis because it compares two rule sets rather than
+  reasoning about what a command does.
