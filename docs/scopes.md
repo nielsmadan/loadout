@@ -198,10 +198,9 @@ person's setup; a repo's configuration is the same for everyone who checks it ou
   [0014](decisions/0014-a-vendored-template-is-source-not-output.md).
 - MCP **server definitions shipped** on 2026-08-24 — `mcp` now renders `<source>/mcp.toml` to six
   of the eight harness/scope destinations; see [reference/servers.md](reference/servers.md).
-  **`~/ac` itself has not cut over.** `mcp/servers.toml` and `mcp/sync.py` remain the live
-  generator until someone moves the source to `loadout/mcp.toml`, deletes `preserve = ["mcp"]` in
-  the same change, and retires `mcp/sync.py` — each step requiring the user's explicit approval,
-  since `~/ac` is the live oracle this design was checked against. Not to be confused with the
+  **`~/ac` cut over on 2026-08-29** (`48126e0`): the source is `loadout/mcp.toml`, `preserve =
+  ["mcp"]` is gone from the manifest, and `mcp/servers.toml` and `mcp/sync.py` are deleted. Not to
+  be confused with the
   `mcp-permissions` slice, which renders tool-approval *policy* from `permissions.toml` and is
   complete on all four harnesses — the two shared a word before the rename and produced one wrong
   gap analysis from it. See [reference/config.md](reference/config.md#mcp--retracted-as-a-gap-and-built).

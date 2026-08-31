@@ -102,9 +102,8 @@ servers EXIST. Which of their tools may be called is the separate `[mcp]` sectio
 permissions/permissions.toml"*. The distinction was load-bearing in the live system before loadout
 had a model for either half; now loadout's own naming matches it.
 
-**`~/ac` itself has not cut over.** `mcp/servers.toml` and `mcp/sync.py` are still the live
-generator until someone moves the source to `loadout/mcp.toml`, deletes `preserve = ["mcp"]` in
-the same change, and retires `mcp/sync.py` — with the user's approval at every step. See
+**`~/ac` cut over on 2026-08-29** (`48126e0`). `loadout/mcp.toml` is the source, the manifest
+carries no `preserve = ["mcp"]`, and `mcp/servers.toml` and `mcp/sync.py` are gone. See
 [scopes.md](../scopes.md#still-open).
 
 An earlier version of this section listed `opencode.mcp` and `pi.mcp` as unbuilt destinations. It
