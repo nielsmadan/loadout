@@ -185,15 +185,14 @@ person's setup; a repo's configuration is the same for everyone who checks it ou
   and its plugin enablement was never established. `docs/reference/antigravity.md` keeps the
   findings and [0012](decisions/0012-antigravity-is-dropped-until-it-matures.md) lists what has
   to become true to re-add it.
-- Per-project-type templates (`aiconf`) — **the mechanism is built; the remaining artifact types
-  are not.** A template carries four — permissions, instructions, skills, MCP — so it was always
-  a dimension rather than a milestone: build the mechanism once alongside the first artifact type
-  that can use it, and let each later type plug into it. That first type is **permissions**, the
-  only one project scope has. A project declares `templates = ["web"]`, the name resolves against
-  a vendored copy and then the global source's sources, and the result merges as the lowest tier.
-  What is still open is each further type plugging into the same resolution as project scope grows
-  it. All four remain in scope per
-  [0007](decisions/0007-loadout-owns-all-agent-configuration.md). See
+- Per-project-type templates — **done.** A template carries four artifact types — permissions,
+  instructions, skills, MCP — and each plugged into the same resolution as it shipped, which is
+  what "a dimension rather than a milestone" meant. A project declares `templates = ["web"]`, the
+  name resolves against a vendored copy and then the global source's sources, and the result
+  merges as the lowest tier. `aiconf`, the shell-and-skill mechanism this replaced, was retired
+  from `~/ac` on 2026-08-31 (`a4e1228`), closing
+  [0007](decisions/0007-loadout-owns-all-agent-configuration.md)'s consequence that it would
+  disappear rather than shrink. See
   [reference/templates.md](reference/templates.md) and
   [0014](decisions/0014-a-vendored-template-is-source-not-output.md).
 - MCP **server definitions shipped** on 2026-08-24 — `mcp` now renders `<source>/mcp.toml` to six
