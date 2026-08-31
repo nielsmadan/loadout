@@ -155,3 +155,27 @@ def test_an_executable_file_keeps_its_mode(tmp_path: Path, monkeypatch: pytest.M
 
     write_all(root)
     assert (tmp_path / "agent" / "hook.sh").stat().st_mode & 0o111
+
+
+def test_the_slice_is_not_pi_specific(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two harnesses, each reading only its own subtree. Claude's case is a hook
+    script: the hooks slice registers a command by path, this puts a file there."""
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
+    monkeypatch.setenv("PI_CODING_AGENT_DIR", str(tmp_path / "pi"))
+    root = build(
+        tmp_path / "src",
+        '[claude]\ninstructions = ["intro"]\n\n[pi]\n',
+        {
+            "claude/hooks/notify.sh": "#!/bin/sh\necho claude\n",
+            "pi/pi-statusline.json": STATUSLINE,
+        },
+    )
+    (root / "instructions").mkdir(exist_ok=True)
+    (root / "instructions" / "intro.md").write_text("intro\n", encoding="utf-8")
+
+    write_all(root)
+    assert (tmp_path / "claude" / "hooks" / "notify.sh").is_file()
+    assert (tmp_path / "pi" / "pi-statusline.json").is_file()
+    # Neither harness receives the other's tree.
+    assert not (tmp_path / "claude" / "pi-statusline.json").exists()
+    assert not (tmp_path / "pi" / "hooks").exists()

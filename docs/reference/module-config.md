@@ -82,8 +82,14 @@ surfaces the difference.
 
 ## Other harnesses
 
-Pi is the only agent with a `module-config` entry today. The mechanism is harness-neutral
-and each addition is one preset line, but neither candidate has demand yet: Claude's
-`~/.claude/hooks/` scripts are still symlinked by `~/ac/sync.sh`, and OpenCode has no
-module config to speak of, because there a plugin's `.ts` file *is* its enablement
-(see [plugins.md](plugins.md)).
+Claude and Pi both have a `module-config` entry, and they exercise the mechanism differently
+— which is the point of it being harness-neutral rather than a Pi special case.
+
+**Claude's case is hook scripts.** The hooks slice registers a command *by path*
+(`~/.claude/hooks/enforce-fix-failures.sh`); module-config puts the file at that path. Two
+slices, one for the declaration and one for the file it names, and the exec bit that makes
+the second runnable is preserved by the copy.
+
+**OpenCode has nothing to carry.** There a plugin's `.ts` file *is* its enablement, so the
+file belongs to the plugins slice rather than this one — see [plugins.md](plugins.md). Codex
+has no module-config entry because no candidate has appeared.

@@ -51,6 +51,11 @@ class SliceOutput:
 GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
     "claude": {
         "skills": SliceOutput(destination="${CLAUDE_CONFIG_DIR:-~/.claude}/skills"),
+        # A root, not a file — see the pi entry below. Claude's case is hook
+        # scripts: the hooks slice registers a command by path, and this puts the
+        # script at that path. Two slices, one for the declaration and one for the
+        # file it names.
+        "module-config": SliceOutput(destination="${CLAUDE_CONFIG_DIR:-~/.claude}"),
         "instructions": SliceOutput(destination="${CLAUDE_CONFIG_DIR:-~/.claude}/CLAUDE.md"),
         "permissions": SliceOutput(
             renderer="claude",

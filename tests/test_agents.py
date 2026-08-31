@@ -78,7 +78,9 @@ def test_a_set_variable_relocates_every_slice_of_that_agent(
         for o in agent_slices("claude").values()
         if o.destination is not None
     ]
-    assert resolved and all(p.startswith("/moved/") for p in resolved)
+    # Trailing slash for the same reason as above: a root destination resolves to
+    # `/moved` exactly, while `/movedfoo` must still fail.
+    assert resolved and all((p + "/").startswith("/moved/") for p in resolved)
 
 
 def test_only_claudes_mcp_is_staged() -> None:
