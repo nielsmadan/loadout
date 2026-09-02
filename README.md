@@ -87,13 +87,16 @@ place loadout *stores* state that is not part of a source (see
 machine state loadout *reads*: a destination template resolves environment variables at render
 time, per [0011](docs/decisions/0011-a-destination-follows-a-relocated-harness.md).
 
-    loadout init --global --source ~/ac    # scaffold a global source and write the machine config
+    loadout init --global --source ~/ac    # adopt or scaffold a source and write machine config
     loadout init --global --force          # reinitialise, overwriting an existing machine config
 
-`init --global` creates `<source>/loadout/` holding `loadout.toml`, `permissions.toml` and
-`instructions/`, then writes the machine config pointing at it. It refuses to overwrite an
-existing machine config without `--force`. It is non-interactive so it works in a script:
-`--source` is required unless stdin is a TTY, in which case it prompts with a default.
+If `<source>/loadout.toml` exists, `init --global` adopts that source without changing its tree
+and writes the machine config pointing at `<source>`. Otherwise, it creates `<source>/loadout/`
+holding `loadout.toml`, `permissions.toml` and `instructions/`, then points the machine config
+there. It refuses to choose if both `<source>/loadout.toml` and
+`<source>/loadout/loadout.toml` exist, or to overwrite an existing machine config without
+`--force`. It is non-interactive so it works in a script: `--source` is required unless stdin
+is a TTY, in which case it prompts with a default.
 
 A missing machine config is **not** an error — it means this machine has no global scope,
 which is correct for someone who only uses project scope. `loadout sync --global` without one

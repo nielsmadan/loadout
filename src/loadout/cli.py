@@ -87,7 +87,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--source",
         type=Path,
         default=None,
-        help="[--global] directory to hold the new global source; required unless stdin is a TTY",
+        help=(
+            "[--global] existing global source root, or directory to hold a new source; "
+            "required unless stdin is a TTY"
+        ),
     )
     init.add_argument(
         "--force",

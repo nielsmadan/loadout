@@ -176,16 +176,8 @@ deny = []
 """
 
 
-def init_global(source_parent: Path, config_path: Path, force: bool = False) -> list[str]:
-    if config_path.exists() and not force:
-        raise LoadoutError(
-            f"{config_path} already exists; this machine is already initialised for "
-            f"global scope. Pass --force to reinitialise it."
-        )
-
-    loadout_dir = source_parent / "loadout"
+def _scaffold_global_source(loadout_dir: Path) -> list[str]:
     actions: list[str] = []
-
     if loadout_dir.is_dir():
         actions.append(f"{loadout_dir} already exists")
     else:
@@ -218,17 +210,46 @@ def init_global(source_parent: Path, config_path: Path, force: bool = False) -> 
         instructions_dir.mkdir()
         gitkeep.write_text("", encoding="utf-8")
         actions.append(f"created {instructions_dir}")
+    return actions
+
+
+def init_global(source_parent: Path, config_path: Path, force: bool = False) -> list[str]:
+    if config_path.exists() and not force:
+        raise LoadoutError(
+            f"{config_path} already exists; this machine is already initialised for "
+            f"global scope. Pass --force to reinitialise it."
+        )
+
+    root_manifest = source_parent / MANIFEST_NAME
+    loadout_dir = source_parent / "loadout"
+    nested_manifest = loadout_dir / MANIFEST_NAME
+    if root_manifest.is_file() and nested_manifest.is_file():
+        raise LoadoutError(
+            f"both {root_manifest} and {nested_manifest} exist; refusing to choose which "
+            f"manifest defines the global source"
+        )
+
+    actions: list[str] = []
+    if root_manifest.is_file():
+        source_root = source_parent
+        actions.append(
+            f"{root_manifest} already exists; adopted {source_parent} as the global source"
+        )
+    else:
+        source_root = loadout_dir
+        actions.extend(_scaffold_global_source(loadout_dir))
 
     config_path.parent.mkdir(parents=True, exist_ok=True)
     overwriting = config_path.exists()
-    config_path.write_text(f'source = "{loadout_dir.resolve()}"\n', encoding="utf-8")
+    config_path.write_text(f'source = "{source_root.resolve()}"\n', encoding="utf-8")
     actions.append(f"{'overwrote' if overwriting else 'created'} {config_path}")
 
-    actions.append(
-        f"{manifest_file} declares a source but no targets yet; add an "
-        f"[instructions.<agent>] or [permissions.<name>] block, then run "
-        f"`loadout sync --global`."
-    )
+    if source_root == loadout_dir:
+        actions.append(
+            f"{nested_manifest} declares a source but no targets yet; add an "
+            f"[instructions.<agent>] or [permissions.<name>] block, then run "
+            f"`loadout sync --global`."
+        )
     return actions
 
 

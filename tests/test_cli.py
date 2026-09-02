@@ -572,6 +572,24 @@ def test_init_global_creates_the_source_and_machine_config(
     assert "sync --global" in out
 
 
+def test_init_global_adopts_a_root_manifest_and_syncs_it(
+    root: Path, tmp_path: Path, monkeypatch, capsys
+) -> None:
+    xdg_home = tmp_path / "cfg"
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_home))
+
+    assert loadout.main(["init", "--global", "--source", str(root)]) == 0
+
+    out = capsys.readouterr().out
+    config_path = xdg_home / "loadout" / "config.toml"
+    assert config_path.read_text(encoding="utf-8") == f'source = "{root.resolve()}"\n'
+    assert "adopted" in out
+    assert not (root / "loadout" / "loadout.toml").exists()
+
+    assert loadout.main(["sync", "--global"]) == 0
+    assert (root / "out" / "shared.md").is_file()
+
+
 def test_init_global_without_source_and_without_a_tty_errors(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:

@@ -245,6 +245,49 @@ def test_init_global_manifest_is_parseable_toml(tmp_path: Path) -> None:
     assert data["source"][0] == {"name": "global", "path": "."}
 
 
+def test_init_global_adopts_a_root_manifest_without_scaffolding_beside_it(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "ac"
+    instructions_dir = source_root / "loadout" / "instructions"
+    instructions_dir.mkdir(parents=True)
+    manifest_file = source_root / "loadout.toml"
+    manifest = '[[source]]\nname = "ac"\npath = "loadout"\n'
+    manifest_file.write_text(manifest, encoding="utf-8")
+    (instructions_dir / "shared.md").write_text("Existing fragment.\n", encoding="utf-8")
+    config_path = tmp_path / "cfg" / "loadout" / "config.toml"
+
+    actions = init_global(source_root, config_path)
+
+    config = load_machine_config(config_path)
+    assert config is not None
+    assert config.source == source_root.resolve()
+    assert manifest_file.read_text(encoding="utf-8") == manifest
+    assert (instructions_dir / "shared.md").read_text(encoding="utf-8") == "Existing fragment.\n"
+    assert not (source_root / "loadout" / "loadout.toml").exists()
+    assert not (source_root / "loadout" / "permissions.toml").exists()
+    assert not (instructions_dir / ".gitkeep").exists()
+    assert any(str(manifest_file) in action and "adopted" in action for action in actions)
+
+
+def test_init_global_refuses_to_choose_between_two_existing_manifests(tmp_path: Path) -> None:
+    source_parent = tmp_path / "home"
+    root_manifest = source_parent / "loadout.toml"
+    nested_manifest = source_parent / "loadout" / "loadout.toml"
+    nested_manifest.parent.mkdir(parents=True)
+    root_manifest.write_text("root\n", encoding="utf-8")
+    nested_manifest.write_text("nested\n", encoding="utf-8")
+    config_path = tmp_path / "cfg" / "loadout" / "config.toml"
+
+    with pytest.raises(LoadoutError) as excinfo:
+        init_global(source_parent, config_path)
+
+    message = str(excinfo.value)
+    assert str(root_manifest) in message
+    assert str(nested_manifest) in message
+    assert not config_path.exists()
+
+
 def test_init_global_refuses_when_a_machine_config_exists(tmp_path: Path) -> None:
     source_parent = tmp_path / "home"
     config_path = tmp_path / "cfg" / "loadout" / "config.toml"
