@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from loadout.emit import Merged, render_global
+from loadout.emit import Merged, check_all, render_global, write_all
 from loadout.errors import LoadoutError
 
 FRAGMENT: dict[str, Any] = {
@@ -94,6 +94,50 @@ def test_one_fragment_reaches_all_three_harnesses(tmp_path: Path) -> None:
         "superpowers@claude-plugins-official": {"enabled": True},
         "nono@nolabs-ai": {"enabled": True},
     }
+
+
+def test_pi_preserves_its_runtime_changelog_cursor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent_dir = tmp_path / "pi-agent"
+    monkeypatch.setenv("PI_CODING_AGENT_DIR", str(agent_dir))
+    live = agent_dir / "settings.json"
+    live.parent.mkdir(parents=True)
+    live.write_text(
+        json.dumps({"lastChangelogVersion": "0.84.1", "theme": "dark"}), encoding="utf-8"
+    )
+    manifest = MANIFEST.replace(
+        '[pi]\nplugins = ["kit"]', '[pi]\npreserve = ["theme"]\nplugins = ["kit"]'
+    )
+    root = build(tmp_path / "source", {"kit": FRAGMENT}, manifest)
+
+    write_all(root)
+    document = json.loads(live.read_text(encoding="utf-8"))
+    assert document["lastChangelogVersion"] == "0.84.1"
+    assert document["theme"] == "dark"
+    assert document["packages"] == [
+        {"source": "git:github.com/obra/superpowers", "extensions": []},
+        "/packages/nono",
+    ]
+
+    document["lastChangelogVersion"] = "0.85.0"
+    live.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    assert check_all(root) == []
+    write_all(root)
+    assert json.loads(live.read_text(encoding="utf-8"))["lastChangelogVersion"] == "0.85.0"
+
+
+def test_pi_runtime_changelog_cursor_cannot_be_a_settings_source(tmp_path: Path) -> None:
+    manifest = MANIFEST.replace(
+        '[pi]\nplugins = ["kit"]', '[pi]\nsettings = "pi"\nplugins = ["kit"]'
+    )
+    root = build(tmp_path, {"kit": FRAGMENT}, manifest)
+    (root / "settings" / "pi.json").write_text(
+        '{"lastChangelogVersion": "0.84.1"}', encoding="utf-8"
+    )
+
+    with pytest.raises(LoadoutError, match="lastChangelogVersion"):
+        render_global(root)
 
 
 def test_claude_plugins_compose_with_permissions_and_the_settings_residual(

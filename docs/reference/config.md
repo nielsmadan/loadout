@@ -160,6 +160,12 @@ Observed top-level keys, to show how little the vocabularies overlap:
   `defaultThinkingLevel`, `enabledModels`, `packages`
 - **Antigravity** — `~/.gemini/antigravity-cli/settings.json` held only `permissions`
 
+Pi's `lastChangelogVersion` is present in the file but is not part of its settings vocabulary:
+verified negative against Pi 0.84.1's shipped `docs/settings.md` **All Settings** enumeration.
+`dist/modes/interactive/interactive-mode.js:getChangelogForDisplay` reads it as the last-seen
+changelog cursor and writes the running version after an update. loadout therefore preserves it
+from the live destination and refuses it in a versioned settings fragment.
+
 `model` is the only key name shared by more than one harness, and its values are drawn from
 different vocabularies (`opus` vs `openrouter/deepseek/deepseek-v4-flash-0731`), so even that one
 does not translate.

@@ -239,6 +239,10 @@ concatenate, and `null` removes, which is how a profile switches one plugin off 
 overlay instead of restating a list. See [docs/reference/plugins.md](docs/reference/plugins.md)
 for what a plugin reference holds and what each harness makes of it.
 
+Pi's plugin declaration shares `settings.json` with `lastChangelogVersion`, a cursor Pi updates
+after upgrades. The built-in Pi preset preserves that live key automatically; it does not belong
+in a settings fragment and loadout refuses a fragment that tries to manage it.
+
 `module-config` carries a module's *own* configuration — Pi's `pi-statusline.json` and the like.
 Files under `<source>/module-config/<agent>/` are copied verbatim to the same relative path
 beneath that harness's config directory, keeping the module's formatting and any executable bit.

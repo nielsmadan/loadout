@@ -275,6 +275,7 @@ so most rows here are about what a harness *cannot* say. Source for all of them 
 | `pl-strict-reference` | `source` / `marketplace` are loadout's own vocabulary, so a typo is refused; nested blocks are not | `test_an_unknown_key_on_a_reference_is_refused`, `test_a_plugin_name_at_the_top_level_is_refused` |
 | `pl-null-off` | a `null` overlay switches a plugin off without deleting the fragment that declares it | `test_a_null_overlay_switches_a_plugin_off` |
 | `pl-compose` | `enabledPlugins` is the fourth slice in `settings.json` and displaces none of the other three | `test_claude_plugins_compose_with_permissions_and_the_settings_residual` |
+| `pl-pi-runtime` | Pi's preset preserves its live `lastChangelogVersion` cursor through plugin rendering and refuses to take ownership of it through a settings fragment | `test_pi_preserves_its_runtime_changelog_cursor`, `test_pi_runtime_changelog_cursor_cannot_be_a_settings_source` |
 | `pl-opencode-absent` | OpenCode has no enablement list, so naming the slice is an error | `test_opencode_rejects_a_plugins_key` |
 | `pl-not-automatic` | unlike permissions and mcp, an absent `plugins` key means "not managed", not "none" | `test_an_agent_block_naming_no_plugins_renders_none` |
 | `pl-x-projection` | each inverse recovers only the half its harness states | `test_claude_carries_the_marketplace_and_drops_the_source`, `test_codex_carries_the_marketplace_registration_as_well`, `test_pi_carries_the_source_and_its_filters` |

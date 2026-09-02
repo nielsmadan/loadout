@@ -535,6 +535,11 @@ def _parse_agents(
                 )
                 continue
             raw_select = block.get(slice_name)
+            preserve = tuple(
+                dict.fromkeys(
+                    (*spec.preserve, *_str_list(block.get("preserve", []), label, "preserve"))
+                )
+            )
             permissions.append(
                 PermissionTarget(
                     agent=agent,
@@ -549,7 +554,7 @@ def _parse_agents(
                     ),
                     owned_key=spec.owned_key,
                     content_slice=spec.source_slice,
-                    preserve=tuple(_str_list(block.get("preserve", []), label, "preserve")),
+                    preserve=preserve,
                     select_all=raw_select != [],
                     destinations=destinations,
                 )

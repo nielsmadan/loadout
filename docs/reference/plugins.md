@@ -69,6 +69,13 @@ string loads every resource the package offers, the object narrows it with `skil
 `extensions`, `prompts` and `themes`. That filter map is why a `pi` block exists — see
 [Enablement as a volume control](#enablement-gets-used-as-a-volume-control).
 
+**Pi's file is co-owned with runtime state.** Verified negative against Pi 0.84.1's shipped
+`docs/settings.md` **All Settings** enumeration: `lastChangelogVersion` is not a setting.
+`dist/modes/interactive/interactive-mode.js:getChangelogForDisplay` reads and advances it as a
+last-seen changelog cursor. The Pi preset preserves that key from the live destination, so an
+upgrade does not create loadout drift; a settings fragment naming it is refused rather than
+turning the cursor into versioned source.
+
 **OpenCode is out of the slice**, and that is a finding rather than an omission: a plugin is on
 there because a `.ts` file exists in `~/.config/opencode/plugins/`, and its dependencies live in
 an npm manifest `npm`/`bun` owns. There is no enablement list to render, so `plugins` under

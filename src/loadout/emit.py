@@ -419,6 +419,7 @@ def compose_permission_document(
         label = f"permissions.{target.name}"
         target_spec = _resolve_renderer(target.renderer, label)
         owned_key = target.owned_key
+        preserve += target.preserve
 
         if isinstance(target_spec, ValueSpec):
             if owned_key is None:
@@ -443,7 +444,6 @@ def compose_permission_document(
                 f"owner and cannot compose with another slice"
             )
         document = target_spec.fn(rules if target.select_all else EMPTY_RULES, document)
-        preserve += target.preserve
         spec = target_spec
 
     overlap = [k for k in preserve if k in document]

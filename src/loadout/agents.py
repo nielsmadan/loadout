@@ -25,6 +25,10 @@ class SliceOutput:
     whole document. Settings is the residual every file starts from, so it is
     never a `source_slice` — spec 1 §3's ownership map, made executable.
 
+    `preserve` names foreign top-level keys this destination's other owner
+    maintains. It is preset-level so a harness-specific runtime key does not
+    have to be rediscovered and restated in every manifest.
+
     `preserve_foreign` is project scope's residual: the existing file becomes the
     renderer's base. It is **not** a spelling of `PermissionTarget.preserve`, and
     merging the two reorders keys:
@@ -41,6 +45,7 @@ class SliceOutput:
     output: str | None = None
     source_slice: str | None = None
     owned_key: str | None = None
+    preserve: tuple[str, ...] = ()
     preserve_foreign: bool = False
 
 
@@ -203,6 +208,7 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
             destination="${PI_CODING_AGENT_DIR:-~/.pi/agent}/settings.json",
             source_slice="plugins",
             owned_key="packages",
+            preserve=("lastChangelogVersion",),
         ),
         # pi-mcp-adapter's own file, written directly — Pi has no runtime
         # state co-mingled with server definitions the way Claude does.
