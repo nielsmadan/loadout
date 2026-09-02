@@ -17,6 +17,32 @@ One source of truth for AI coding-agent configuration, rendered out to every har
     loadout check --profile NAME  # check drift under a specific active profile
     loadout explain <name>        # show which source a fragment resolves from, and which targets use it
 
+## Bundled skill
+
+Install the version-matched `loadout` skill into the configured global Loadout source:
+
+    loadout skill install          # show the source path and confirm
+    loadout skill install --yes    # non-interactive
+    loadout skill status
+    loadout skill uninstall        # remove the owned source copy and generated outputs
+
+The command reads the machine config and active profile, then vendors the bundled tree as a normal
+`skills/loadout/` source. The ordinary skill renderer deploys it to every configured agent with a
+global skills destination and `sync` runs at the end. If several declared sources offer skills,
+choose one with `--source NAME`; `--profile NAME` overrides the machine's active profile.
+
+An ownership marker inside the source copy records the installed content hash and is not rendered
+to agents. Reinstalling refreshes an unchanged older copy. A source copy you edited, an unowned
+skill with the same name, or a generated output edited outside Loadout is reported and left alone.
+Uninstall removes only the owned source and unchanged files rendered from it; unrelated files in
+the destination directory survive.
+
+Invoke the installed skill as `loadout` using the harness's skill syntax. Configuration defaults
+to personal rules for the current project; use `--project` for committed repository configuration
+or `--global` for machine-wide configuration. The skill edits Loadout sources, applies generic
+requests to configured agents that support them, and runs the matching sync command. Restart an
+already-running agent session after first installation so it refreshes its skill catalog.
+
 `explain` takes a fragment name, optionally qualified as `source/name` to disambiguate when more
 than one source declares a fragment with the same name. `explain` is global scope only —
 instruction fragments are not part of project scope (see below).
@@ -520,7 +546,7 @@ Full detail, including the content-hash definition: [docs/reference/templates.md
 | Code | Meaning |
 | ---- | ------- |
 | 0 | clean — nothing to do, or drift check found no differences |
-| 1 | drift — generated files are out of date, run `loadout sync`; or `template sync` refused a modified vendored copy |
+| 1 | drift or refused safe update — generated files are out of date, a vendored template or bundled skill was modified, or a skill path conflicts |
 | 2 | usage error — invalid or missing command-line arguments |
 | 3 | source error — the manifest, a source, or a fragment is missing or invalid |
 | 4 | internal error — an unexpected exception; a traceback is printed to stderr |

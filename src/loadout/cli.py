@@ -11,13 +11,16 @@ from .commands import (
     cmd_harness_add,
     cmd_init,
     cmd_init_global,
+    cmd_skill_install,
+    cmd_skill_status,
+    cmd_skill_uninstall,
     cmd_sync,
     cmd_template_add,
     cmd_template_list,
     cmd_template_sync,
     cmd_template_vendor,
 )
-from .errors import LoadoutError
+from .errors import LoadoutError, UsageError
 from .machine import load_machine_config, machine_config_path
 
 
@@ -114,6 +117,31 @@ def build_parser() -> argparse.ArgumentParser:
             template_sub.add_argument("name", help="template name")
         add_root(template_sub)
 
+    skill = subparsers.add_parser("skill", help="manage the bundled loadout skill")
+    skill_subparsers = skill.add_subparsers(dest="skill_command")
+    for sub_name, sub_help in (
+        ("install", "vendor the bundled skill into a global loadout source and sync"),
+        ("status", "show the bundled skill's global source state"),
+        ("uninstall", "remove the owned source copy and its generated outputs"),
+    ):
+        skill_sub = skill_subparsers.add_parser(sub_name, help=sub_help)
+        skill_sub.add_argument(
+            "--profile",
+            default=None,
+            help="global profile whose sources and configured agents to use",
+        )
+        skill_sub.add_argument(
+            "--source",
+            default=None,
+            help="global source to hold the skill when more than one offers skills",
+        )
+        if sub_name != "status":
+            skill_sub.add_argument(
+                "--yes",
+                action="store_true",
+                help="apply the displayed source change without confirmation",
+            )
+
     return parser
 
 
@@ -128,6 +156,14 @@ def _resolve_root_and_profile(args: argparse.Namespace) -> tuple[Path, str]:
             )
         return config.source, args.profile or config.profile or "default"
     return args.root.resolve(), args.profile or "default"
+
+
+def _resolve_global(profile: str | None) -> tuple[Path, str]:
+    config_path = machine_config_path()
+    config = load_machine_config(config_path)
+    if config is None:
+        raise LoadoutError(f"no machine config at {config_path}; run `loadout init --global` first")
+    return config.source, profile or config.profile or "default"
 
 
 def _dispatch_template(args: argparse.Namespace) -> int:
@@ -147,6 +183,15 @@ def _dispatch_init(args: argparse.Namespace) -> int:
     return cmd_init(args.root.resolve(), tuple(args.harnesses))
 
 
+def _dispatch_skill(args: argparse.Namespace) -> int:
+    root, profile = _resolve_global(args.profile)
+    if args.skill_command == "status":
+        return cmd_skill_status(root, profile, args.source)
+    if args.skill_command == "install":
+        return cmd_skill_install(root, profile, args.source, yes=args.yes)
+    return cmd_skill_uninstall(root, profile, args.source, yes=args.yes)
+
+
 def _dispatch(args: argparse.Namespace) -> int:
     if args.command == "explain":
         return cmd_explain(args.root.resolve(), args.name)
@@ -154,8 +199,8 @@ def _dispatch(args: argparse.Namespace) -> int:
         return _dispatch_init(args)
     if args.command == "harness":
         return cmd_harness_add(args.root.resolve(), args.name)
-    if args.command == "template":
-        return _dispatch_template(args)
+    if args.command in {"skill", "template"}:
+        return _dispatch_skill(args) if args.command == "skill" else _dispatch_template(args)
     root, profile = _resolve_root_and_profile(args)
     if args.command == "sync":
         return cmd_sync(root, profile=profile, force=args.force)
@@ -168,10 +213,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command is None:
         parser.print_usage(file=sys.stderr)
         return 2
-    if args.command == "harness" and args.harness_command != "add":
-        parser.print_usage(file=sys.stderr)
-        return 2
-    if args.command == "template" and args.template_command is None:
+    if (
+        (args.command == "harness" and args.harness_command != "add")
+        or (args.command == "template" and args.template_command is None)
+        or (args.command == "skill" and args.skill_command is None)
+    ):
         parser.print_usage(file=sys.stderr)
         return 2
     if args.command == "init":
@@ -187,6 +233,9 @@ def main(argv: list[str] | None = None) -> int:
             stream.reconfigure(encoding="utf-8")
     try:
         return _dispatch(args)
+    except UsageError as error:
+        print(f"loadout: {error}", file=sys.stderr)
+        return 2
     except LoadoutError as error:
         print(f"loadout: {error}", file=sys.stderr)
         return 3

@@ -12,6 +12,7 @@ import tempfile
 from collections.abc import Iterable
 from pathlib import Path
 
+from .bundled_skill import bundled_skill_path
 from .emit import (
     Copied,
     Merged,
@@ -22,7 +23,7 @@ from .emit import (
     render_all,
     write_all,
 )
-from .errors import LoadoutError
+from .errors import LoadoutError, UsageError
 from .machine import machine_config_path
 from .manifest import MANIFEST_NAME, InstructionTarget, load_manifest, manifest_path
 from .project import (
@@ -33,6 +34,14 @@ from .project import (
 )
 from .resolve import resolve_fragment, resolve_item
 from .scaffold import add_harness, init_global, init_project
+from .skill_installation import (
+    SkillSourceLocation,
+    SourceSkillState,
+    configured_skill_agents,
+    inspect_skill_source,
+    install_skill_source,
+    uninstall_skill_source,
+)
 from .templates import (
     TEMPLATES,
     VENDORED,
@@ -77,6 +86,104 @@ def cmd_harness_add(root: Path, harness: str) -> int:
     for action in add_harness(root, harness):
         print(action)
     return 0
+
+
+def _print_skill_location(
+    root: Path, profile: str, source_name: str | None
+) -> tuple[Path, SkillSourceLocation, tuple[str, ...]]:
+    bundle = bundled_skill_path()
+    location = inspect_skill_source(root, profile, bundle, source_name)
+    agents = configured_skill_agents(root, profile)
+    print(f"source {location.source}: {location.path} ({location.state.value})")
+    print(f"configured agents: {', '.join(agents) if agents else 'none'}")
+    return bundle, location, agents
+
+
+def _confirm_skill_change(action: str, path: Path, yes: bool) -> bool:
+    if yes:
+        return True
+    try:
+        response = input(f"{action} the loadout skill at {path} and sync global config? [y/N] ")
+    except (EOFError, OSError) as error:
+        raise UsageError(f"skill {action} requires --yes when input is not interactive") from error
+    return response.strip().lower() in {"y", "yes"}
+
+
+def cmd_skill_status(root: Path, profile: str, source_name: str | None = None) -> int:
+    _print_skill_location(root, profile, source_name)
+    return 0
+
+
+def cmd_skill_install(
+    root: Path,
+    profile: str,
+    source_name: str | None = None,
+    *,
+    yes: bool = False,
+) -> int:
+    agents = configured_skill_agents(root, profile)
+    if not agents:
+        print("configured agents: none")
+        print("no configured agents receive global skills; no changes made")
+        return 0
+    bundle, location, _ = _print_skill_location(root, profile, source_name)
+    if location.state in {SourceSkillState.CONFLICTING, SourceSkillState.MODIFIED}:
+        detail = (
+            "exists and is not owned by loadout"
+            if location.state is SourceSkillState.CONFLICTING
+            else "was modified after installation"
+        )
+        print(f"loadout: {location.path} {detail}; no changes made", file=sys.stderr)
+        return 1
+    if location.state is not SourceSkillState.INSTALLED and not _confirm_skill_change(
+        "install", location.path, yes
+    ):
+        print("declined; no changes made")
+        return 0
+    try:
+        changed = install_skill_source(location, bundle)
+    except LoadoutError as error:
+        print(f"loadout: {error}", file=sys.stderr)
+        return 1
+    print(
+        f"{'installed' if changed else 'already installed'} loadout skill in "
+        f"source {location.source}: {location.path}"
+    )
+    return cmd_sync(root, profile=profile)
+
+
+def cmd_skill_uninstall(
+    root: Path,
+    profile: str,
+    source_name: str | None = None,
+    *,
+    yes: bool = False,
+) -> int:
+    _, location, _ = _print_skill_location(root, profile, source_name)
+    if location.state is SourceSkillState.MISSING:
+        print("loadout skill is not installed; no changes made")
+        return 0
+    if location.state in {SourceSkillState.CONFLICTING, SourceSkillState.MODIFIED}:
+        detail = (
+            "exists and is not owned by loadout"
+            if location.state is SourceSkillState.CONFLICTING
+            else "was modified after installation"
+        )
+        print(f"loadout: {location.path} {detail}; no changes made", file=sys.stderr)
+        return 1
+    if not _confirm_skill_change("uninstall", location.path, yes):
+        print("declined; no changes made")
+        return 0
+    try:
+        removed = uninstall_skill_source(location, root=root, profile=profile)
+    except LoadoutError as error:
+        print(f"loadout: {error}", file=sys.stderr)
+        return 1
+    print(
+        f"uninstalled loadout skill from source {location.source}: {location.path} "
+        f"({len(removed)} generated files removed)"
+    )
+    return cmd_sync(root, profile=profile)
 
 
 def _display(path: Path, root: Path) -> str:

@@ -39,7 +39,7 @@ EXCLUDED_DIRECTORIES = frozenset(
     }
 )
 EXCLUDED_SUFFIXES = (".pyc", ".pyo", ".swp")
-EXCLUDED_NAMES = frozenset({".DS_Store"})
+EXCLUDED_NAMES = frozenset({".DS_Store", ".loadout-bundle.toml"})
 
 _OPEN_MARKER = re.compile(r"^::: *([a-z][a-z0-9 _-]*?) *$")
 _CLOSE_MARKER = re.compile(r"^::: *$")
