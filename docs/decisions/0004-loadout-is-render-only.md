@@ -41,3 +41,25 @@ they permit.
 
 Amended to read: **loadout never mutates rules; scaffolding commands may write
 configuration.** Recorded as an amendment rather than a silent reinterpretation.
+
+## Amendment (2026-09-03): this ADR does not govern external invocation
+
+It was cited three times — `agents.py`, [servers.md](../reference/servers.md#claudes-global-entry-is-staged-not-written)
+and [config.md](../reference/config.md#mcp) — for the proposition that "render and invoke stay
+separate (ADR 0004)", used to justify staging Claude's global MCP servers to a file that
+something else feeds to `claude mcp add-json`.
+
+**Nothing above says that.** This ADR is about loadout never editing the *rule source* it
+renders from — there is no `loadout allow`, so no agent widens its own permissions through
+loadout. Whether loadout shells out to a harness's CLI is a different question that this
+decision never considered, and citing it for that reads a general prohibition out of a specific
+one.
+
+The staging may still be the right shape for other reasons — a read-modify-write against a file
+the harness rewrites continuously carries a race this ADR has nothing to say about. But it is
+not required here, and the factual premise the citations rested on ("there is no file loadout
+can render into") was false: `${CLAUDE_CONFIG_DIR:-~}/.claude.json` carries a top-level
+`mcpServers` map, which is where `claude mcp add-json --scope user` writes.
+
+Scope, stated once so it is not re-derived: **0004 constrains what loadout writes into its own
+sources. It says nothing about what loadout may invoke, or which destinations it may own.**

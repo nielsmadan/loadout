@@ -352,12 +352,13 @@ only option — `~/ac` generated one until 2026-08-11 and now emits real `mcpSer
 configs and adds them. The adapter also loads servers from Agent Plugins 1.0 packages
 (<https://agent-plugins.org/>), prefixed `<plugin>__<server>`.
 
-**Claude is the exception and the only one with no writable global file.** `~/.claude.json` mixes
-MCP server definitions with session state and per-project history, and `~/.claude/settings.json`
-has no `mcpServers` key at all. `~/ac/mcp/sync.py` therefore generates an input file and feeds it
-through `claude mcp add-json` rather than writing config directly — a harness-owned mutation
-path, not a file loadout can render, which collides with
-[0004](../decisions/0004-loadout-is-render-only.md).
+**Claude is the exception, but not for the reason recorded here until 2026-09-03.**
+`${CLAUDE_CONFIG_DIR:-~}/.claude.json` does carry a top-level `mcpServers` map — it is where
+`claude mcp add-json --scope user` writes — so a writable file exists. What makes it awkward is
+that the same file holds session state, per-project history and caches that Claude rewrites
+continuously, so a read-modify-write races the harness. loadout stages an input file and lets
+`claude mcp add-json` register it. See [servers.md](servers.md#claudes-global-entry-is-staged-not-written)
+for the corrected reasoning and the add-only defect that follows from it.
 
 **loadout's own `mcp` slice reproduces this table's shape rather than fighting it.** It renders the
 same staged-input-plus-external-invocation split for Claude's global entry, writes `.mcp.json`

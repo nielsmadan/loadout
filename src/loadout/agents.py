@@ -89,11 +89,13 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
             source_slice="plugins",
             owned_key="enabledPlugins",
         ),
-        # ${CLAUDE_CONFIG_DIR}/.claude.json is runtime state — history, project
-        # entries, caches — and settings.json has no mcpServers key, so there is
-        # no file to write. loadout renders this staged document and stops;
-        # something else feeds it to `claude mcp add-json`. Render and invoke
-        # stay separate (ADR 0004).
+        # Staged: loadout renders this document and stops, and something else
+        # feeds it to `claude mcp add-json`. Not because there is no file —
+        # ${CLAUDE_CONFIG_DIR}/.claude.json carries a top-level mcpServers map —
+        # but because that file is ~465KB of session state and caches the harness
+        # rewrites continuously, which a read-modify-write races. ADR 0004 was
+        # cited here and does not apply; see its 2026-09-03 amendment and
+        # docs/reference/servers.md.
         "mcp": SliceOutput(renderer="claude-servers", output="claude/mcp-servers.generated.json"),
     },
     "codex": {
