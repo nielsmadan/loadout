@@ -25,6 +25,7 @@ from loadout.extract import EXTRACTORS, VALUE_EXTRACTORS, extract_codex_servers,
 from loadout.permissions.renderers import RENDERERS
 from loadout.servers import (
     Server,
+    render_claude_global_servers,
     render_claude_project_servers,
     render_claude_servers,
     render_codex_servers,
@@ -191,31 +192,34 @@ def test_opencode_extraction_does_not_alias_the_document() -> None:
 
 
 def test_claude_global_http_server_round_trips() -> None:
-    document = render_claude_servers(HTTP)
+    document = render_claude_global_servers(HTTP)
 
     extraction = extract_value("claude-servers", document)
 
     assert extraction.notes == ()
     assert extraction.value == HTTP
-    assert render_claude_servers(extraction.value) == document
+    assert render_claude_global_servers(extraction.value) == document
 
 
 def test_claude_global_stdio_server_round_trips() -> None:
-    document = render_claude_servers(STDIO_WITH_ENV)
+    document = render_claude_global_servers(STDIO_WITH_ENV)
 
     extraction = extract_value("claude-servers", document)
 
     assert extraction.notes == ()
     assert extraction.value == STDIO_WITH_ENV
-    assert render_claude_servers(extraction.value) == document
+    assert render_claude_global_servers(extraction.value) == document
 
 
-def test_claude_global_document_has_no_mcpservers_wrapper() -> None:
-    """Distinguishes it from `claude-project-servers`: the flat map itself is
-    the whole staged document, not the value of a `mcpServers` key."""
-    document = render_claude_servers(HTTP)
-    assert "mcpServers" not in document
-    assert "jina" in document
+def test_claude_global_wraps_in_mcpservers_and_owns_only_that_key() -> None:
+    """Global and project now share the wrapper; what differs is ownership.
+    `.mcp.json` is loadout's outright, while `.claude.json` gets one key carved
+    out of a file the harness keeps a hundred others in — so the wrapper has to
+    be there for `apply_json` to have something to place."""
+    document = render_claude_global_servers(HTTP)
+    assert set(document) == {"mcpServers"}
+    assert "jina" in document["mcpServers"]
+    assert render_claude_servers(HTTP) == document["mcpServers"]
 
 
 # --- pi-servers -------------------------------------------------------------

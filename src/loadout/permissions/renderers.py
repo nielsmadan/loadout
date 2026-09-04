@@ -15,8 +15,8 @@ from ..plugins import render_claude_plugins, render_codex_plugins, render_pi_plu
 from ..servers import (
     Server,
     is_http,
+    render_claude_global_servers,
     render_claude_project_servers,
-    render_claude_servers,
     render_codex_servers,
     render_opencode_servers,
     render_pi_servers,
@@ -102,6 +102,20 @@ class DocumentJsonSpec:
     """
 
     fn: Callable[[dict[str, Any]], dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class MergedJsonSpec:
+    """`MergedTomlSpec`'s JSON sibling, for a JSON file loadout does not own.
+
+    Does not compose: JSON fragments cannot be concatenated the way TOML tables
+    can, so `_merged_document` refuses more than one contributor per file rather
+    than inventing a merge. One slice per file is the only shape this supports,
+    and the only shape needed — Claude's `mcpServers` is alone in `.claude.json`.
+    """
+
+    fn: Callable[[dict[str, Any]], dict[str, Any]]
+    owns: frozenset[str]
 
 
 @dataclass(frozen=True)
@@ -534,7 +548,14 @@ def render_pi_project(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
 
 
 RENDERERS: dict[
-    str, JsonSpec | TextSpec | ValueSpec | DocumentTextSpec | DocumentJsonSpec | MergedTomlSpec
+    str,
+    JsonSpec
+    | TextSpec
+    | ValueSpec
+    | DocumentTextSpec
+    | DocumentJsonSpec
+    | MergedTomlSpec
+    | MergedJsonSpec,
 ] = {
     "claude": JsonSpec(render_claude),
     "claude-hooks": ValueSpec(render_claude_hooks),
@@ -556,7 +577,7 @@ RENDERERS: dict[
     "claude-project": JsonSpec(render_claude_project),
     "claude-project-servers": DocumentJsonSpec(render_claude_project_servers),
     "opencode-servers": ValueSpec(render_opencode_servers),
-    "claude-servers": DocumentJsonSpec(render_claude_servers),
+    "claude-servers": MergedJsonSpec(render_claude_global_servers, frozenset({"mcpServers"})),
     "codex-servers": DocumentTextSpec(render_codex_servers),
     "codex-config": MergedTomlSpec(render_codex_config, frozenset({"mcp_servers"})),
     "codex-settings": MergedTomlSpec(render_codex_settings, _fragment_keys),

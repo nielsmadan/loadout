@@ -114,35 +114,44 @@ Note the global renderer is `codex-config`, not `codex-servers`: definitions and
 policy share the `[mcp_servers.<name>]` table, so one renderer emits both. `codex-servers`
 remains registered because its inverse is what extraction reads back.
 
-### Claude's global entry is staged, not written
+### Claude's global entry writes `.claude.json`
 
-`GLOBAL_PRESET["claude"]["mcp"]` sets `output` and no `destination` — loadout renders
-`claude/mcp-servers.generated.json` and stops; something else feeds it to `claude mcp add-json`,
-exactly as `mcp/sync.py` did before it.
+`GLOBAL_PRESET["claude"]["mcp"]` owns the top-level `mcpServers` key of
+`${CLAUDE_CONFIG_DIR:-~}/.claude.json` and leaves the ~100 keys beside it untouched —
+`apply_json` in `surgery.py`, the JSON sibling of the applier Codex's `config.toml` uses.
 
-**Two earlier justifications for that shape were wrong, corrected 2026-09-03.** The first was
-"`settings.json` has no `mcpServers` key, so there is no file loadout can render into" — true of
-`settings.json`, but `${CLAUDE_CONFIG_DIR:-~}/.claude.json` carries a **top-level `mcpServers`
-map**, which is exactly where `claude mcp add-json --scope user` writes. Verified against
-Claude Code 2.1.251. The claim was gathered from `~/.claude.json` on a machine that sets
-`CLAUDE_CONFIG_DIR`, where that path is a stale leftover and the live file is elsewhere — the
-variable this project documents, missed in its own evidence. The second was "render and invoke
-stay separate ([0004](../decisions/0004-loadout-is-render-only.md))"; 0004 governs loadout not
-editing its own rule sources and says nothing about invocation, as its 2026-09-03 amendment now
-records.
+**It was staged until 2026-09-04, on two premises that were both false.** The first: that
+`settings.json` has no `mcpServers` key, "so there is no file to write". True of
+`settings.json`, but `.claude.json` carries that key at top level — it is where
+`claude mcp add-json --scope user` writes. The evidence had been gathered from
+`~/.claude.json` on a machine that sets `CLAUDE_CONFIG_DIR`, where that path is a stale
+leftover; this project's own headline variable, missed in its own reference. The second:
+that "render and invoke stay separate (ADR 0004)". 0004 governs loadout not editing its
+rule sources and says nothing about invocation — see its amendment.
 
-What does argue for staging is **churn**: that file is ~465 KB across 102 top-level keys, and
-Claude rewrites it continuously mid-session (`lastCost`, `lastSessionId`, per-project entries,
-six cache blobs). A read-modify-write races those writes in a way `~/.codex/config.toml` does
-not. Formatting is not an obstacle — Claude writes it as `json.dumps(indent=2,
-ensure_ascii=False)` byte for byte, bar a trailing newline — so the open question is the race,
-not the mechanism.
+**Why parsing is safe here and forbidden for TOML.** `apply_toml` works line-wise because a
+round trip loses comments, another tool's managed block and multi-line strings. JSON has none
+of those, and Python preserves key order, so `json.dumps(indent=2, ensure_ascii=False)`
+reproduces Claude Code 2.1.251's ~465 KB file byte for byte, bar a trailing newline. Owned
+keys are assigned in place rather than popped and re-added, for the same reason `apply_toml`
+replaces where content already sits: moving the key would reshuffle the file whenever the
+harness rewrote it, and `check` would report that as drift on every run.
 
-**This slice is add-only, and that is a defect.** `sync_claude_mcp` lists what is registered and
-calls `add-json` for the rest; nothing removes. Dropping a server from `mcp.toml` therefore
-leaves it registered forever — the deletion problem
-[0017](../decisions/0017-ownership-may-be-declared-instead-of-derived.md) solved for Codex,
-still open here, and the reason Claude is the one harness where `mcp.toml` is not authoritative.
+**One key, statically owned, so `record.py` is not needed.** Codex needs a record because the
+key *names* are the user's — `[plugins."x@y"]`, `[marketplaces.z]` — an open set loadout
+cannot enumerate. Here the owned set is the constant `{"mcpServers"}`, so writing the map is
+enough for add, update *and* delete.
+
+That last one closed a real defect. The staged path was **add-only**: `sync_claude_mcp` listed
+what was registered and called `add-json` for the rest, and `claude mcp add-json` refuses to
+overwrite an existing name (exits 0 saying so). Dropping a server from `mcp.toml` left it
+registered, and *editing* one silently did nothing — so `mcp.toml` was authoritative for
+neither deletion nor modification on the one harness this affected.
+
+**What remains true of the objection.** That file is rewritten by the harness mid-session, so a
+read-modify-write races those writes in a way `~/.codex/config.toml` does not. `check`'s
+comparison is unaffected — applying is identity on an already-applied file — but a sync running
+concurrently with a live session can lose a harness write. Unmeasured.
 
 At project scope Claude reads `.mcp.json` — a file loadout owns outright, no CLI involved. The
 CLI problem is global-only, which is why project scope is the easier half despite being the

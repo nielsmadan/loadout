@@ -122,6 +122,16 @@ def _toml_array(values: tuple[str, ...]) -> str:
 # --------------------------------------------------------------------------
 
 
+def render_claude_global_servers(servers: dict[str, Server]) -> dict[str, Any]:
+    """Claude's global entry, as the `mcpServers` key of a file loadout does not own.
+
+    The same per-server shape as project scope; only the wrapper and the ownership
+    differ. `.mcp.json` is loadout's outright, `.claude.json` is the harness's with
+    one key carved out.
+    """
+    return {"mcpServers": render_claude_servers(servers)}
+
+
 def render_claude_servers(servers: dict[str, Server]) -> dict[str, Any]:
     config: dict[str, Any] = {}
     for name, server in servers.items():

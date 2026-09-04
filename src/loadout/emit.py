@@ -40,6 +40,7 @@ from .permissions.renderers import (
     DocumentJsonSpec,
     DocumentTextSpec,
     JsonSpec,
+    MergedJsonSpec,
     MergedTomlSpec,
     TextSpec,
     ValueSpec,
@@ -60,7 +61,7 @@ from .resolve import INSTRUCTIONS, SETTINGS, json_slice, resolve_item
 from .servers import SERVERS_SOURCE, Server, parse_servers
 from .skills import SKILL_DOCUMENT, Skill, discover_skills, render_skill
 from .sources import Source
-from .surgery import apply_toml, concat_documents
+from .surgery import apply_json, apply_toml, concat_documents
 from .templates import resolve_template
 
 PERMISSIONS_SOURCE = ("permissions.toml",)
@@ -105,6 +106,9 @@ class Merged:
     # hand-edited record is reported rather than silently changing what is
     # stripped.
     records: tuple[tuple[Path, str], ...] = ()
+    # Which applier writes it. TOML must not be reserialised; JSON may be, because
+    # it has no comments, managed blocks or multi-line strings to lose.
+    fmt: str = "toml"
 
 
 Output = str | Copied | Merged
@@ -183,7 +187,15 @@ def _preserved(path: Path, keys: tuple[str, ...]) -> dict[str, Any]:
 
 def _resolve_renderer(
     name: str, label: str
-) -> JsonSpec | TextSpec | ValueSpec | DocumentTextSpec | DocumentJsonSpec | MergedTomlSpec:
+) -> (
+    JsonSpec
+    | TextSpec
+    | ValueSpec
+    | DocumentTextSpec
+    | DocumentJsonSpec
+    | MergedTomlSpec
+    | MergedJsonSpec
+):
     spec = RENDERERS.get(name)
     if spec is None:
         known = ", ".join(sorted(RENDERERS))
@@ -296,20 +308,34 @@ def _compose_merged(
         _resolve_renderer(target.renderer, f"permissions.{target.name}")
         for target, _, _ in contributors
     ]
-    if not any(isinstance(spec, MergedTomlSpec) for spec in specs):
+    if not any(isinstance(spec, MergedTomlSpec | MergedJsonSpec) for spec in specs):
         return None
 
     first = contributors[0][0]
     plain = ", ".join(
         target.name
         for (target, _, _), spec in zip(contributors, specs, strict=True)
-        if not isinstance(spec, MergedTomlSpec)
+        if not isinstance(spec, MergedTomlSpec | MergedJsonSpec)
     )
     if plain:
         raise LoadoutError(
             f"permissions.{first.name}: {path} is merged into a file loadout does not "
             f"own, so it cannot compose with {plain}, which rewrite it whole"
         )
+
+    json_specs = [spec for spec in specs if isinstance(spec, MergedJsonSpec)]
+    if json_specs:
+        if len(contributors) > 1:
+            names = ", ".join(target.name for target, _, _ in contributors)
+            raise LoadoutError(
+                f"permissions.{first.name}: {path} takes one merged JSON slice, but "
+                f"{names} all write it; JSON fragments cannot be concatenated the way "
+                f"TOML tables can"
+            )
+        json_spec = json_specs[0]
+        _, _, content = contributors[0]
+        document = json.dumps(json_spec.fn(content), indent=2, ensure_ascii=False)
+        return Merged(json_spec.owns, document, fmt="json")
 
     owned: set[str] = set()
     fragments: list[str] = []
@@ -363,7 +389,7 @@ def _attach_records(
         records.append((path, render_record(present)))
     if not records:
         return document
-    return Merged(owned, document.document, tuple(records))
+    return Merged(owned, document.document, tuple(records), document.fmt)
 
 
 def compose_permission_document(
@@ -434,7 +460,10 @@ def compose_permission_document(
                 f"{label}: the preset gives it owned_key {owned_key!r}, so its renderer "
                 f"must produce that key's value rather than a whole document"
             )
-        if isinstance(target_spec, TextSpec | DocumentTextSpec | DocumentJsonSpec | MergedTomlSpec):
+        if isinstance(
+            target_spec,
+            TextSpec | DocumentTextSpec | DocumentJsonSpec | MergedTomlSpec | MergedJsonSpec,
+        ):
             raise LoadoutError(
                 f"{label}: a whole-file renderer cannot compose with another slice writing {path}"
             )
@@ -1128,7 +1157,8 @@ def _applied(path: Path, merged: Merged) -> str:
     """The destination with loadout's keys written in. The caller reads the file;
     the renderer that produced `merged` never did (ADR 0001)."""
     existing = path.read_text(encoding="utf-8") if path.is_file() else ""
-    return apply_toml(existing, merged.owned, merged.document)
+    apply = apply_json if merged.fmt == "json" else apply_toml
+    return apply(existing, merged.owned, merged.document)
 
 
 def _copy_drifted(path: Path, source: Path) -> bool:

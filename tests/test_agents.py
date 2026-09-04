@@ -57,6 +57,13 @@ def test_every_destination_resolves_to_the_documented_default(
         "opencode": "/.config/opencode/",
         "pi": "/.pi/agent/",
     }
+    # `.claude.json` is the one Claude path that does not sit under `~/.claude/`:
+    # the harness resolves it as `$CLAUDE_CONFIG_DIR/.claude.json`, falling back to
+    # `$HOME/.claude.json`. Setting the variable to `~/.claude` therefore *moves*
+    # this file while leaving every sibling where it was — the asymmetry that makes
+    # it worth naming rather than folding into the table above.
+    exceptions = {("claude", "mcp"): "/.claude.json"}
+
     monkeypatch.delenv(RELOCATION_VARIABLE[agent], raising=False)
     for name, output in agent_slices(agent).items():
         if output.destination is None:
@@ -66,7 +73,8 @@ def test_every_destination_resolves_to_the_documented_default(
         # the directory itself — module-config names a root that authored
         # relative paths land beneath. Trailing slash so both forms compare the
         # same way, and `/.pi/agentfoo` still fails.
-        assert defaults[agent] in resolved + "/", f"{agent}.{name} -> {resolved}"
+        wanted = exceptions.get((agent, name), defaults[agent])
+        assert wanted in resolved + "/", f"{agent}.{name} -> {resolved}"
 
 
 def test_a_set_variable_relocates_every_slice_of_that_agent(
@@ -83,7 +91,7 @@ def test_a_set_variable_relocates_every_slice_of_that_agent(
     assert resolved and all((p + "/").startswith("/moved/") for p in resolved)
 
 
-def test_only_claudes_mcp_is_staged() -> None:
+def test_no_global_slice_is_staged() -> None:
     """A staged slice's destination is another tool's merge step, not a file a
     harness reads. Recorded as a shape rather than an exception so it is not lost.
 
@@ -92,9 +100,10 @@ def test_only_claudes_mcp_is_staged() -> None:
     Declared ownership removed that need (ADR 0017): loadout strips the keys it
     declares and leaves the rest, so those slices write the real destination.
 
-    Claude's `mcp` stays staged for a different reason that declared ownership
-    does not reach — `${CLAUDE_CONFIG_DIR}/.claude.json` is runtime state, and
-    `claude mcp add-json` is the merge step outside loadout (ADR 0004).
+    Claude's `mcp` was the last one, on the premise that `.claude.json` had no
+    writable key and that ADR 0004 forbade the alternative. Both were wrong (see
+    0004's 2026-09-04 amendment), and `apply_json` closed it. Nothing is staged
+    now, and this asserts the empty set so a reintroduction is deliberate.
     """
     staged = {
         (agent, name)
@@ -102,7 +111,7 @@ def test_only_claudes_mcp_is_staged() -> None:
         for name, output in slices.items()
         if output.output is not None
     }
-    assert staged == {("claude", "mcp")}
+    assert staged == set()
 
 
 def test_settings_is_never_a_source_slice() -> None:

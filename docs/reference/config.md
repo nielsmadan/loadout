@@ -352,16 +352,14 @@ only option — `~/ac` generated one until 2026-08-11 and now emits real `mcpSer
 configs and adds them. The adapter also loads servers from Agent Plugins 1.0 packages
 (<https://agent-plugins.org/>), prefixed `<plugin>__<server>`.
 
-**Claude is the exception, but not for the reason recorded here until 2026-09-03.**
-`${CLAUDE_CONFIG_DIR:-~}/.claude.json` does carry a top-level `mcpServers` map — it is where
-`claude mcp add-json --scope user` writes — so a writable file exists. What makes it awkward is
-that the same file holds session state, per-project history and caches that Claude rewrites
-continuously, so a read-modify-write races the harness. loadout stages an input file and lets
-`claude mcp add-json` register it. See [servers.md](servers.md#claudes-global-entry-is-staged-not-written)
-for the corrected reasoning and the add-only defect that follows from it.
+**Claude looked like the exception and is not.** `${CLAUDE_CONFIG_DIR:-~}/.claude.json` carries
+a top-level `mcpServers` map — where `claude mcp add-json --scope user` writes — so loadout owns
+that one key and leaves the rest of the file to the harness, exactly as it does for Codex's
+`config.toml`. It staged an input file for `claude mcp add-json` until 2026-09-04; see
+[servers.md](servers.md#claudes-global-entry-writes-claudejson) for why that was wrong and what
+it cost.
 
-**loadout's own `mcp` slice reproduces this table's shape rather than fighting it.** It renders the
-same staged-input-plus-external-invocation split for Claude's global entry, writes `.mcp.json`
+**loadout's own `mcp` slice reproduces this table's shape rather than fighting it.** It writes `.mcp.json`
 directly at Claude's project scope, writes OpenCode's and Pi's global and project files directly,
 and writes Codex's `[mcp_servers.*]` into `config.toml` directly, owning that key and leaving the
 rest of the file alone. See [servers.md](servers.md).

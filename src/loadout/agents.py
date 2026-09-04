@@ -89,14 +89,15 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
             source_slice="plugins",
             owned_key="enabledPlugins",
         ),
-        # Staged: loadout renders this document and stops, and something else
-        # feeds it to `claude mcp add-json`. Not because there is no file —
-        # ${CLAUDE_CONFIG_DIR}/.claude.json carries a top-level mcpServers map —
-        # but because that file is ~465KB of session state and caches the harness
-        # rewrites continuously, which a read-modify-write races. ADR 0004 was
-        # cited here and does not apply; see its 2026-09-03 amendment and
-        # docs/reference/servers.md.
-        "mcp": SliceOutput(renderer="claude-servers", output="claude/mcp-servers.generated.json"),
+        # Owns one key of a file the harness keeps ~100 others in. Staged for
+        # `claude mcp add-json` until 2026-09-04, which could add a server but
+        # never update or remove one; apply_json closes that. The owned set is
+        # static, so no record is needed — unlike Codex, whose key names are the
+        # user's. See docs/reference/servers.md.
+        "mcp": SliceOutput(
+            renderer="claude-servers",
+            destination="${CLAUDE_CONFIG_DIR:-~}/.claude.json",
+        ),
     },
     "codex": {
         "skills": SliceOutput(destination="${CODEX_HOME:-~/.codex}/skills"),

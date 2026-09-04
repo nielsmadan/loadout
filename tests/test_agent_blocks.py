@@ -78,14 +78,17 @@ def test_an_empty_permissions_list_selects_nothing(tmp_path: Path) -> None:
     assert "alpha" not in doc
 
 
-def test_a_staged_slice_renders_in_repo_rather_than_to_a_destination(tmp_path: Path) -> None:
-    """claude.mcp has no destination — `claude mcp add-json` consumes it."""
+def test_claude_mcp_writes_a_destination_rather_than_staging(tmp_path: Path) -> None:
+    """It staged into the repo until 2026-09-04; now it owns one key of a file the
+    harness also writes, so nothing in the repo is produced for it."""
     root = build(tmp_path, "\n[claude]\n")
-    # The staged document holds servers, so the slice renders nothing without one.
+    # The slice renders nothing without a server to render.
     (root / "mcp.toml").write_text(
         '[jina]\ntransport = "http"\nurl = "https://jina.example"\n', encoding="utf-8"
     )
-    assert any(p.endswith("claude/mcp-servers.generated.json") for p in rendered(root))
+    paths = rendered(root)
+    assert not any(p.endswith("mcp-servers.generated.json") for p in paths)
+    assert any(p.endswith("/.claude.json") for p in paths)
 
 
 def test_an_unknown_agent_is_rejected_with_the_known_ones(tmp_path: Path) -> None:

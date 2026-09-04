@@ -887,7 +887,14 @@ def extract_claude_global_servers(document: Any) -> ValueExtraction:
         )
     notes: list[Note] = []
     servers: dict[str, Server] = {}
-    for name, entry in document.items():
+    # Unlike `.mcp.json`, unowned keys here are expected rather than reportable:
+    # loadout owns `mcpServers` and the harness owns the hundred keys beside it.
+    config = document.get("mcpServers", {})
+    if not isinstance(config, Mapping):
+        return ValueExtraction(
+            {}, (Note("unrecognised", "claude-servers: mcpServers is not a table"),)
+        )
+    for name, entry in config.items():
         server = _extract_claude_server(name, entry, notes)
         if server is not None:
             servers[name] = server

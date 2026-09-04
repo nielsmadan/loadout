@@ -42,6 +42,12 @@ test is a gap.
 | `module-config-automatic` | the directory is the declaration; `module-config = false` opts out | [module-config](module-config.md#what-loadout-does) | `test_the_directory_is_the_declaration`, `test_module_config_false_switches_it_off` |
 | `module-config-collision` | two sources offering one path, or a path on a rendered destination, are refused | [module-config](module-config.md#what-loadout-does) | `test_a_path_offered_by_two_sources_is_refused`, `test_a_path_colliding_with_a_rendered_destination_is_refused` |
 
+| `json-surgery-identity` | applying loadout's keys to an already-applied file is a no-op, so `check` reports no drift | [servers](servers.md#claudes-global-entry-writes-claudejson) | `test_applying_what_is_already_there_is_identity` |
+| `json-surgery-in-place` | an owned key is replaced where it sits, never moved to the end | [servers](servers.md#claudes-global-entry-writes-claudejson) | `test_an_owned_key_is_replaced_where_it_sits` |
+| `json-surgery-delete` | an owned key the document drops is removed — add, update and delete from one mechanism | [servers](servers.md#claudes-global-entry-writes-claudejson) | `test_an_owned_key_the_document_drops_is_removed` |
+| `json-surgery-foreign` | keys loadout does not own survive untouched | [servers](servers.md#claudes-global-entry-writes-claudejson) | `test_keys_loadout_does_not_own_survive_untouched` |
+| `nothing-staged` | no global slice renders in-repo for an external merge step | [ADR 0004](../decisions/0004-loadout-is-render-only.md) | `test_no_global_slice_is_staged` |
+
 ## Claude
 
 | id | behaviour | source | pinned by |

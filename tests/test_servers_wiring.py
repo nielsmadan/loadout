@@ -82,16 +82,17 @@ def build_global(tmp_path: Path, agent_block: str, mcp_toml: str | None = JINA) 
     return tmp_path
 
 
-def test_claude_global_is_staged_rather_than_written() -> None:
-    """${CLAUDE_CONFIG_DIR}/.claude.json is runtime state — history, project
-    entries, caches — and settings.json has no mcpServers key, so there is no
-    file to write. loadout renders a staged document and stops; something else
-    feeds it to `claude mcp add-json`. Render and invoke stay separate (ADR 0004).
+def test_claude_global_writes_claude_json() -> None:
+    """Staged until 2026-09-04 on two premises that were both wrong: that
+    `settings.json` having no `mcpServers` key meant no file existed, and that
+    ADR 0004 kept render and invoke separate. `.claude.json` carries a top-level
+    `mcpServers` map, and 0004 governs rule sources, not invocation — see its
+    amendment. loadout owns that one key and leaves the other hundred alone.
     """
     entry = GLOBAL_PRESET["claude"]["mcp"]
 
-    assert entry.output is not None
-    assert entry.destination is None
+    assert entry.output is None
+    assert entry.destination == "${CLAUDE_CONFIG_DIR:-~}/.claude.json"
 
 
 def test_no_mcp_toml_means_no_servers_output(tmp_path: Path) -> None:
@@ -112,9 +113,13 @@ def test_a_global_source_renders_claude_servers_without_being_named(tmp_path: Pa
 
     rendered = render_global(root)
 
-    staged = next(p for p in rendered if str(p).endswith("mcp-servers.generated.json"))
-    document = json.loads(rendered[staged])
-    assert document == {"jina": {"type": "http", "url": "https://mcp.jina.ai/v1"}}
+    written = next(p for p in rendered if str(p).endswith(".claude.json"))
+    merged = rendered[written]
+    assert isinstance(merged, Merged)
+    assert merged.owned == frozenset({"mcpServers"})
+    assert json.loads(merged.document) == {
+        "mcpServers": {"jina": {"type": "http", "url": "https://mcp.jina.ai/v1"}}
+    }
 
 
 def test_codex_global_writes_config_toml(tmp_path: Path, fake_home: Path) -> None:
