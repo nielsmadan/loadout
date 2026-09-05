@@ -1,62 +1,46 @@
 ---
 name: loadout
-description: Use when changing AI coding-agent configuration in a repository or on this machine, especially where loadout may own generated harness files.
+description: Use when adopting existing agent configuration into Loadout, setting up Loadout in a project or global source, or changing Claude, Codex, OpenCode or Pi configuration. Handles onboarding, permissions, instructions, skills, settings, hooks, plugins and MCP through their authoritative sources.
 ---
 
 # Loadout
 
-Change loadout's authoritative source, never a generated Claude, Codex, OpenCode, or Pi file.
-Read [the configuration reference](references/configuration.md) before choosing a source.
+Edit the declared source for each configured consumer. Generated harness files are outputs.
 
 ## Instructions
 
-1. Resolve the scope. No flag means `--personal` for the current project; the alternatives are
-   `--project` and `--global`. Accept at most one scope.
-2. Locate the project root or machine config, then read the selected loadout config and relevant
-   fragments. For `--global`, resolve the actual `XDG_CONFIG_HOME` environment value before
-   inspecting a machine config: use `$XDG_CONFIG_HOME/loadout/config.toml` when it is non-empty,
-   otherwise use `~/.config/loadout/config.toml`; never probe both. If that scope is not
-   initialized, report the matching `loadout init` command and make no changes.
-3. Identify configured agents from the selected source. A generic request applies to every
-   configured agent with a sound mapping; an agent-specific request applies only to that agent.
-   Treat MCP server definitions as `mcp`; tool approval for those servers is the separate
-   `mcp-permissions` artifact.
-4. Choose the narrowest existing authoritative fragment. Preserve comments, ordering, naming
-   conventions, and unrelated content. Use an existing mechanical command such as
-   `loadout harness add` or `loadout template add` when it exactly represents the request.
-5. Run `loadout sync --root <repo>` for personal/project scope. For global scope, run
-   `loadout sync --global --profile <name>` when the request explicitly names a profile;
-   otherwise run `loadout sync --global` for the active profile.
-6. Report the source files changed, agents reached, unsupported agents, and sync result.
-
-## Ask before writing
-
-- Personal scope cannot represent the requested artifact: stop and end with one direct question
-  asking whether to use the applicable project or global scope. Never widen personal
-  configuration into committed or machine-wide configuration without confirmation.
-- A non-default global profile is active and the user did not name a profile: ask whether the
-  change belongs only to that profile or to the default inherited configuration.
-- Competing mappings would materially change behavior, or an agent-specific change would alter a
-  shared fragment consumed by other agents: show the outcomes and ask.
-
-Partial agent support is not ambiguous: update supported configured agents and report exclusions.
-Global settings have sound mappings for Claude and OpenCode through `settings`, and for Codex
-through its `defaults` slice. Report configured Pi agents as unsupported rather than inventing or
-editing a harness-owned settings file.
-If sync refuses a generated file changed outside loadout, report the conflict and leave the source
-edit visible. Never use `--force` unless the user explicitly requests it.
+1. For setup or migration, read [onboarding](references/onboarding.md). Preview with
+   `loadout init --dry-run --json`, resolve scope, agents and ownership, then apply the approved
+   transaction. Never execute discovered scripts or installers.
+2. For ordinary changes, read [configuration routing](references/configuration.md). Default to
+   personal configuration for the current project; explicit project/global scope takes precedence.
+   Locate the existing config and follow its declared producers, including native artifact parts
+   and trees. Ask before widening scope or changing a source shared by other consumers.
+3. Apply a generic request to configured agents with a sound mapping. Report unsupported consumers.
+   Keep MCP server definitions separate from MCP tool-approval policy. Preserve ordering, comments,
+   private sources and unrelated fields; never create overlapping producers.
+4. Sync the edited source: `loadout sync --root <repo>` for project/personal changes;
+   `loadout sync --global` for the active global profile, or
+   `loadout sync --global --profile <name>` when explicitly selected. Ask whether an unnamed change
+   under a non-default profile belongs to that profile or its inherited default.
+5. Report source files changed, agents reached, unsupported consumers and the sync result.
 
 ## Examples
 
-- “Allow `just test` for me” edits `loadout/permissions.local.toml` and syncs the project.
-- “Add this instruction to the project” edits a committed project instruction fragment and syncs.
-- “Change the global OpenCode model” edits the selected global settings fragment and syncs the
-  active global profile.
+- “Set up Loadout here” previews discovery, resolves the scope and configured agents, and shows
+  checkpoint paths and removals before applying. Success leaves editable source and a staged migration.
+- “Allow `just test` for me” edits the existing personal permissions producer and syncs. If a
+  migrated native route has no personal producer, ask before changing committed ownership.
+- “Change the global Pi model” follows the declared native settings part when present, edits its
+  `defaultModel` value and syncs the selected profile.
 
 ## Troubleshooting
 
-- If the selected scope is unsupported, make no changes and ask about the narrowest supported
-  scope.
-- If global configuration is absent, report `loadout init --global` and stop.
-- If sync reports an externally modified output, preserve both the source edit and the output;
-  report the conflicting path instead of forcing the sync.
+- An unresolved preview needs an explicit scope, mapping, source selection or ownership decision;
+  `--yes` only approves a resolved plan. Retain unsupported inputs and report their paths.
+- A missing personal producer requires a scope decision. Do not silently edit shared source or
+  invent a second contributor claiming the same keys.
+- External output drift requires reconciliation. Preserve the source edit and output, report the
+  path, and never force sync without an explicit request to discard the external edit.
+- An interrupted init reports a protected journal. Use the onboarding reference to resume or
+  recover; successful baseline commits remain.

@@ -1,5 +1,16 @@
 # Loadout configuration routing
 
+Read scope selection, then native producers when an `artifacts` reference exists. The capability
+matrix and legacy source rules apply only to routes produced by the legacy presets.
+
+- [Scope selection](#scope-selection)
+- [Native producers](#native-producers)
+- [Capability matrix](#capability-matrix)
+- [Configured agents](#configured-agents)
+- [Source rules](#source-rules)
+- [Global profiles](#global-profiles)
+- [Sync and failures](#sync-and-failures)
+
 ## Scope selection
 
 | invocation | ownership | initialization | sync |
@@ -15,11 +26,38 @@ project config is `<repo>/loadout/config.toml`. For global scope, first resolve 
 `~/.config/loadout/config.toml`. Never probe both. The machine config names the global source
 directory and optionally the active profile.
 
-If project scope is absent, report `loadout init --harness <name> --root <repo>`. If global scope
-is absent, report `loadout init --global`. Initialization and adoption of existing harness files
-are outside this workflow.
+If the scope is absent, use the onboarding reference when setup is requested. An ordinary settings
+change does not itself authorize migration and its Git checkpoint; report the missing setup.
+
+## Native producers
+
+Read the config's `artifacts` file, resolved relative to that config. For each requested category,
+find records whose `agents` include the configured consumer, then follow `parts.<category>.source`
+or the opaque record's `category` and `source`. Sources are relative to the owning config's
+directory, even when its artifacts index is nested. Project `presets = false` means these routes
+are the complete producer set: legacy
+filenames and unsupported entries in the matrix below do not describe these native capabilities.
+
+Native JSON/TOML contributors preserve literal null, false, arrays and ordered objects. A part's
+explicit `keys` reserve its fields even when empty; without `keys`, its present top-level keys are
+owned. A `renderer` part uses the named portable permission format instead. Each field has one
+producer. Never add a portable overlay that hides native edits or a contributor claiming another
+part's keys. A tree owns descendants: add a skill within its existing source tree, never a
+colliding child artifact route. Optional private sources under category `local/` remain private.
+
+For personal requests, use an existing declared personal producer only if it can represent the
+change. If none exists, ask before editing committed/shared/global source or changing ownership.
+Do not assume a legacy `permissions.local.toml` participates in a native project. Preserve private
+mode and ignore rules. Ask before a consumer-specific change affects other agents sharing a part.
+
+Global native Pi settings can own `defaultModel`; native Claude MCP can own `mcpServers` inside
+the mixed runtime registration. Follow those explicit producers instead of applying the legacy
+limitations below. Partial ownership preserves runtime/auth fields; never promote the whole live
+document into committed source. Categories without routes need an explicit binding decision.
 
 ## Capability matrix
+
+Legacy preset routes only; check declared native producers first.
 
 | artifact | personal project | shared project | global |
 |---|---|---|---|
@@ -57,25 +95,28 @@ agent. During the legacy transition, also recognize explicit `[instructions.<nam
 `[permissions.<name>]` targets by their renderer and destination. If a legacy target's arbitrary
 name, renderer, and destination do not establish one harness unambiguously, ask rather than
 guessing or enabling an agent.
+Also include artifact records' `agents`, filtered by the requested category. Agent membership does
+not itself create an output route. `harness add` refuses native projects until their producer
+routes are explicitly designed; do not add a harness name alone and claim it receives configuration.
 
 A generic request covers every configured agent supporting the artifact. A request that names an
 agent covers only that agent. Never enable a new harness as a side effect. Partial support means
 apply the supported mappings and report each exclusion; it is a question only when two valid
 mappings have materially different effects.
 
-Global settings fragments reach Claude and OpenCode because their document renderers preserve the
+For legacy presets, global settings fragments reach Claude and OpenCode because their document renderers preserve the
 settings residual. Codex top-level settings use the separate `defaults` slice and
 `defaults/<name>.json` fragments; map requests for a Codex model or other top-level default there.
 Pi's permission document does not preserve a settings residual, so report Pi as unsupported instead
 of editing its harness-owned settings file.
 
-Project MCP server definitions reach Claude and OpenCode directly. Pi reads Claude's `.mcp.json`
+For legacy presets, project MCP server definitions reach Claude and OpenCode directly. Pi reads Claude's `.mcp.json`
 when that shared destination is present; a Pi-only project has no MCP output. Codex has no verified
 project MCP destination. Global MCP server definitions render for all four configured agents;
 Claude's output is staged for a separate `claude mcp add-json` step rather than written into its
 runtime state, so report that remaining application step.
 
-Project skills reach Claude, OpenCode, and Pi. Codex has no verified project skills directory, so
+For legacy presets, project skills reach Claude, OpenCode, and Pi. Codex has no verified project skills directory, so
 report it as unsupported for a Codex-only or Codex-specific project skill request.
 
 ## Source rules

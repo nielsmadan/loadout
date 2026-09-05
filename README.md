@@ -26,16 +26,25 @@ Install the version-matched `loadout` skill into the configured global Loadout s
     loadout skill status
     loadout skill uninstall        # remove the owned source copy and generated outputs
 
-The command reads the machine config and active profile, then vendors the bundled tree as a normal
-`skills/loadout/` source. The ordinary skill renderer deploys it to every configured agent with a
-global skills destination and `sync` runs at the end. If several declared sources offer skills,
-choose one with `--source NAME`; `--profile NAME` overrides the machine's active profile.
+The command reads the machine config and active profile. Legacy manifests vendor a normal
+`skills/loadout/` source; if several declared sources offer skills, choose one with `--source NAME`.
+Native manifests install into every active skill-directory tree route, deduplicating shared source
+paths and reporting each route's consumers. `--profile NAME` overrides the active profile.
 
-An ownership marker inside the source copy records the installed content hash and is not rendered
-to agents. Reinstalling refreshes an unchanged older copy. A source copy you edited, an unowned
+An ownership marker records the installed content hash. Legacy markers stay inside the source
+copy and are excluded by the skill renderer; native markers live in `.loadout-bundles/` outside
+deployable trees. Native installation work and recoverable originals stay under private,
+gitignored `.loadout-state/`. Reinstalling refreshes an unchanged older copy. A source copy you edited, an unowned
 skill with the same name, or a generated output edited outside Loadout is reported and left alone.
 Uninstall removes only the owned source and unchanged files rendered from it; unrelated files in
 the destination directory survive.
+Native changes preflight all selected destinations, roll back failed changes while their postimages
+still match, and update normal deployment receipts. A rollback conflict retains originals and
+`recovery.json` in the reported private work directory for explicit reconciliation.
+Mixed native/legacy installs recheck frozen legacy output bytes, modes and absences immediately
+before each write or removal; concurrent edits are preserved and earlier changes roll back.
+If a native source copy disappears, reinstall repairs it using its unchanged external ownership
+marker; uninstall removes that marker. Invalid or changed ownership metadata blocks the operation.
 
 Invoke the installed skill as `loadout` using the harness's skill syntax. Configuration defaults
 to personal rules for the current project; use `--project` for committed repository configuration
@@ -102,23 +111,31 @@ place loadout *stores* state that is not part of a source (see
 machine state loadout *reads*: a destination template resolves environment variables at render
 time, per [0011](docs/decisions/0011-a-destination-follows-a-relocated-harness.md).
 
-    loadout init --global --source ~/ac    # adopt or scaffold a source and write machine config
-    loadout init --global --force          # reinitialise, overwriting an existing machine config
+    loadout init --global --dry-run --json
+    loadout init --global --source /work/dotfiles --harness claude --harness pi --yes
 
-If `<source>/loadout.toml` exists, `init --global` adopts that source without changing its tree
-and writes the machine config pointing at `<source>`. Otherwise, it creates `<source>/loadout/`
-holding `loadout.toml`, `permissions.toml` and `instructions/`, then points the machine config
-there. It refuses to choose if both `<source>/loadout.toml` and
-`<source>/loadout/loadout.toml` exist, or to overwrite an existing machine config without
-`--force`. It is non-interactive so it works in a script: `--source` is required unless stdin
-is a TTY, in which case it prompts with a default.
+Global init discovers existing configuration in live harness roots and the selected directory,
+which defaults to cwd. It migrates into `<source>/loadout/`, with explicit native category routes
+and private sources where required, and registers that actual manifest directory. An existing
+Loadout manifest is recognized as source and left intact; repeat init reports no migration.
+A conflicting machine registration requires `--registration replace` or `--registration keep`.
+`--force` remains an alias for registration replacement only. `--yes` approves resolved operations;
+it never chooses between conflicting sources.
+
+Use `--mapping` and `--select-source` JSON arguments for unusual layouts or duplicate copies.
+The [migration reference](docs/reference/migration.md#cli-workflow) documents their exact shape.
+Unresolved previews exit 2 without mutation. Supported configurations get a read-only preview of
+checkpoint paths, source/output writes, private exclusions and removals before approval. Applying
+checkpoints eligible originals through Git, migrates and syncs, then stages the final source and
+ignore changes. The final migration is not automatically committed. Choose a dedicated directory;
+new repositories at HOME or the filesystem root are refused.
 
 A missing machine config is **not** an error — it means this machine has no global scope,
 which is correct for someone who only uses project scope. `loadout sync --global` without one
 fails and names the file to create. `loadout init` at project scope notes its absence and
 carries on.
 
-`--global` and `--root` are mutually exclusive; `--global` resolves the root from the machine
+For `sync` and `check`, `--global` and `--root` are mutually exclusive; `--global` resolves the root from the machine
 config. `--profile` still wins over the machine config's `profile` when both are given.
 
 ## `loadout.toml`
@@ -443,34 +460,34 @@ anything you put directly into a generated output is silently discarded at the n
 Per-repo permissions and instructions, layered on top of the global manifest above. A repo opts
 in once:
 
-    loadout init --harness claude --harness opencode   # repeatable, one per harness
-    loadout harness add pi                             # enable one more, later
+    loadout init --project --harness claude --harness opencode --dry-run
+    loadout init --project --harness claude --harness opencode --yes
 
-`init` scaffolds `loadout/`:
+`init` adopts existing configuration, retaining native behavior and private scope. Harness roots
+can establish membership; explicit `--harness` selections resolve shared-file ambiguity. Every
+category receives source slots and supported core categories receive active, initially dormant
+routes. Existing empty outputs retain their presence. A typical migrated source contains:
 
 ```text
-loadout/config.toml               enabled harnesses, the instruction order, and any templates
-loadout/permissions.toml          committed, shared with everyone working in this repo
-loadout/permissions.local.toml    personal, gitignored
-loadout/instructions/*.md         instruction fragments, named by config.toml's `instructions`
-loadout/templates/<name>/         a vendored template, committed — see Templates below
+loadout/config.toml               harnesses, presets = false, artifacts reference
+loadout/artifacts.toml            destinations and each category's source producers
+loadout/<category>/               native or verified portable source fragments and trees
+loadout/<category>/local/         discovered personal/private source, gitignored
 ```
 
-Both commands also add every output the enabled harnesses generate to `.gitignore`. Generated
-project files are **gitignored and never committed** — the merged output mixes in
-`permissions.local.toml`'s personal rules, so two people would conflict on every regeneration.
+Generated project files are ignored and removed from the final index while their on-disk outputs
+remain available to the harness. Existing source is never reinterpreted on repeat init: use
+check/sync after editing its declared producers. Edit the fragment named by its artifact route,
+not an output or an unreferenced legacy filename. The bundled skill asks before widening personal
+changes when no personal producer exists.
 
-`CLAUDE.md` and `AGENTS.md` are ignored only once something can generate them — an `instructions`
-order or a declared template — so a repo using loadout for permissions alone keeps its
-hand-written instruction files committable. Add an order to an already-initialised project and
-re-run `loadout init --harness <the same list>` to extend `.gitignore`; it is idempotent.
+Legacy project configs retain their preset behavior: `loadout/permissions.toml` is shared,
+`permissions.local.toml` is personal, and `config.toml` selects instructions and templates.
+`loadout harness add pi` adds legacy preset routes. Native projects receive an actionable refusal
+because adding a name alone would not establish sources or destinations; define their explicit
+routes with the bundled skill first.
 
-**Which file do I edit?** `loadout/permissions.toml` (shared) or `loadout/permissions.local.toml`
-(personal) — never a generated output. Same rule as global scope: a generated file carries no
-marker that it's generated, and anything written directly into one is discarded the next time
-it's regenerated.
-
-Known harnesses and what each one generates:
+Legacy preset harnesses and their outputs (native routes can preserve additional artifacts):
 
 | harness | generates |
 | --- | --- |
@@ -598,7 +615,7 @@ Full detail, including the content-hash definition: [docs/reference/templates.md
 | Code | Meaning |
 | ---- | ------- |
 | 0 | clean — nothing to do, or drift check found no differences |
-| 1 | drift or refused safe update — generated files are out of date, a vendored template or bundled skill was modified, or a skill path conflicts |
-| 2 | usage error — invalid or missing command-line arguments |
+| 1 | drift, refused safe update, interrupted migration, or recovery conflicts |
+| 2 | usage error, unresolved init choices, or missing noninteractive approval |
 | 3 | source or deployment error — missing/invalid input or receipt, unsafe destination or ownership collision |
 | 4 | internal error — an unexpected exception; a traceback is printed to stderr |

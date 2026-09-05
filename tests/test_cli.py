@@ -10,6 +10,12 @@ import loadout
 from loadout.errors import LoadoutError
 
 
+def _init_repo(root: Path) -> None:
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    for key, value in (("user.name", "Fixture"), ("user.email", "fixture@example.invalid")):
+        subprocess.run(["git", "-C", str(root), "config", key, value], check=True)
+
+
 def _write_machine_config(xdg_home: Path, source: Path, profile: str | None = None) -> Path:
     config_path = xdg_home / "loadout" / "config.toml"
     config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -406,18 +412,29 @@ def test_duplicate_output_across_targets_returns_3_not_0(root: Path, capsys) -> 
 
 
 def test_init_sync_check_round_trips_for_a_project_only_repo(tmp_path: Path, capsys) -> None:
-    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    _init_repo(tmp_path)
     assert (
         loadout.main(
-            ["init", "--harness", "claude", "--harness", "opencode", "--root", str(tmp_path)]
+            [
+                "init",
+                "--project",
+                "--yes",
+                "--harness",
+                "claude",
+                "--harness",
+                "opencode",
+                "--root",
+                str(tmp_path),
+            ]
         )
         == 0
     )
     capsys.readouterr()
 
     assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
-    assert (tmp_path / ".claude" / "settings.json").is_file()
-    assert (tmp_path / "opencode.json").is_file()
+    assert (tmp_path / "loadout" / "artifacts.toml").is_file()
+    assert not (tmp_path / ".claude" / "settings.json").exists()
+    assert not (tmp_path / "opencode.json").exists()
 
     assert loadout.main(["check", "--root", str(tmp_path)]) == 0
 
@@ -425,32 +442,45 @@ def test_init_sync_check_round_trips_for_a_project_only_repo(tmp_path: Path, cap
 def test_init_warns_but_succeeds_with_a_tracked_instruction_file_present(
     tmp_path: Path, capsys
 ) -> None:
-    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    _init_repo(tmp_path)
     (tmp_path / "CLAUDE.md").write_text("# project rules\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(tmp_path), "add", "CLAUDE.md"], check=True)
 
-    assert loadout.main(["init", "--harness", "claude", "--root", str(tmp_path)]) == 0
+    assert (
+        loadout.main(["init", "--project", "--yes", "--harness", "claude", "--root", str(tmp_path)])
+        == 0
+    )
     out = capsys.readouterr().out
     assert "CLAUDE.md" in out
     assert (tmp_path / "loadout" / "config.toml").is_file()
 
 
 def test_init_rejects_duplicate_harnesses(tmp_path: Path, capsys) -> None:
-    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    _init_repo(tmp_path)
 
     assert (
         loadout.main(
-            ["init", "--harness", "claude", "--harness", "claude", "--root", str(tmp_path)]
+            [
+                "init",
+                "--project",
+                "--yes",
+                "--harness",
+                "claude",
+                "--harness",
+                "claude",
+                "--root",
+                str(tmp_path),
+            ]
         )
         == 3
     )
-    assert "duplicate" in capsys.readouterr().err
+    assert "distinct" in capsys.readouterr().err
     assert not (tmp_path / "loadout" / "config.toml").exists()
 
 
 def test_explain_in_a_project_only_repo_names_both_manifests(tmp_path: Path, capsys) -> None:
-    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
-    loadout.main(["init", "--harness", "claude", "--root", str(tmp_path)])
+    _init_repo(tmp_path)
+    loadout.main(["init", "--project", "--yes", "--harness", "claude", "--root", str(tmp_path)])
     capsys.readouterr()
 
     assert loadout.main(["explain", "foo", "--root", str(tmp_path)]) == 3
@@ -460,18 +490,21 @@ def test_explain_in_a_project_only_repo_names_both_manifests(tmp_path: Path, cap
 
 
 def test_check_returns_1_when_a_project_output_has_drifted(tmp_path: Path, capsys) -> None:
-    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
-    loadout.main(["init", "--harness", "claude", "--root", str(tmp_path)])
-    loadout.main(["sync", "--root", str(tmp_path)])
+    _init_repo(tmp_path)
+    loadout.main(["init", "--project", "--yes", "--harness", "claude", "--root", str(tmp_path)])
+    settings = next((tmp_path / "loadout/settings").rglob("*.json"))
+    settings.write_text('{"model":"authored"}\n', encoding="utf-8")
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
     capsys.readouterr()
 
-    tampered = tmp_path / ".claude" / "mcp-permissions.json"
+    tampered = tmp_path / ".claude" / "settings.json"
     tampered.write_text("tampered\n", encoding="utf-8")
 
     assert loadout.main(["check", "--root", str(tmp_path)]) == 1
     err = capsys.readouterr().err
     assert "DRIFT" in err
-    assert "tampered" in err
+    assert "settings.json" in err
+    assert tampered.read_text() == "tampered\n"
 
 
 def test_global_without_a_machine_config_names_init(tmp_path, monkeypatch, capsys) -> None:
@@ -562,23 +595,30 @@ def test_init_global_creates_the_source_and_machine_config(
 ) -> None:
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
     source_parent = tmp_path / "home"
+    source_parent.mkdir()
+    _init_repo(source_parent)
 
-    assert loadout.main(["init", "--global", "--source", str(source_parent)]) == 0
+    assert (
+        loadout.main(
+            ["init", "--global", "--source", str(source_parent), "--harness", "claude", "--yes"]
+        )
+        == 0
+    )
 
     out = capsys.readouterr().out
     loadout_dir = source_parent / "loadout"
     assert (loadout_dir / "loadout.toml").is_file()
     assert (tmp_path / "cfg" / "loadout" / "config.toml").is_file()
-    assert "sync --global" in out
+    assert "Migration complete" in out
 
 
 def test_init_global_adopts_a_root_manifest_and_syncs_it(
-    root: Path, tmp_path: Path, monkeypatch, capsys
+    root: Path, fake_home: Path, monkeypatch, capsys
 ) -> None:
-    xdg_home = tmp_path / "cfg"
+    xdg_home = fake_home / "cfg"
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_home))
 
-    assert loadout.main(["init", "--global", "--source", str(root)]) == 0
+    assert loadout.main(["init", "--global", "--source", str(root), "--yes"]) == 0
 
     out = capsys.readouterr().out
     config_path = xdg_home / "loadout" / "config.toml"
@@ -590,56 +630,66 @@ def test_init_global_adopts_a_root_manifest_and_syncs_it(
     assert (root / "out" / "shared.md").is_file()
 
 
-def test_init_global_without_source_and_without_a_tty_errors(
+def test_init_global_without_source_uses_cwd_and_requires_agents(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
     monkeypatch.setattr(sys, "stdin", _NoTTY())
 
-    assert loadout.main(["init", "--global"]) == 3
+    monkeypatch.chdir(tmp_path)
+    assert loadout.main(["init", "--global"]) == 2
 
     err = capsys.readouterr().err
-    assert "--source" in err
+    assert "agents-required" in err
     assert not (tmp_path / "cfg" / "loadout" / "config.toml").exists()
 
 
-def test_global_and_harness_are_mutually_exclusive() -> None:
-    with pytest.raises(SystemExit) as caught:
-        loadout.main(["init", "--global", "--harness", "claude"])
-    assert caught.value.code == 2
+def test_global_accepts_explicit_harnesses(tmp_path: Path) -> None:
+    assert (
+        loadout.main(
+            ["init", "--global", "--root", str(tmp_path), "--harness", "claude", "--dry-run"]
+        )
+        == 0
+    )
 
 
-def test_init_without_global_or_harness_still_requires_harness() -> None:
-    with pytest.raises(SystemExit) as caught:
-        loadout.main(["init"])
-    assert caught.value.code == 2
+def test_init_without_scope_reports_unresolved_choices(tmp_path: Path, monkeypatch, capsys) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert loadout.main(["init", "--dry-run"]) == 2
+    assert "scope-required" in capsys.readouterr().err
 
 
-def test_init_global_round_trips_to_sync_no_targets_declared(
+def test_init_global_round_trips_with_dormant_native_routes(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
-    """The honest test of the state init --global leaves behind: it declares a
-    source but no targets, so sync fails with load_manifest's existing,
-    actionable error rather than a broken or silently-empty sync."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
     source_parent = tmp_path / "home"
+    source_parent.mkdir()
+    _init_repo(source_parent)
 
-    assert loadout.main(["init", "--global", "--source", str(source_parent)]) == 0
+    assert (
+        loadout.main(
+            ["init", "--global", "--source", str(source_parent), "--harness", "claude", "--yes"]
+        )
+        == 0
+    )
     capsys.readouterr()
 
-    assert loadout.main(["sync", "--global"]) == 3
-
-    err = capsys.readouterr().err
-    manifest_file = source_parent / "loadout" / "loadout.toml"
-    assert str(manifest_file) in err
-    assert "no [<agent>], [instructions.<agent>] or [permissions.<name>] targets declared" in err
+    assert loadout.main(["sync", "--global"]) == 0
+    assert loadout.main(["check", "--global"]) == 0
+    artifact_file = source_parent / "loadout" / "artifacts.toml"
+    assert 'category = "skills"' in artifact_file.read_text()
+    assert 'format = "tree"' in artifact_file.read_text()
 
 
 def test_init_notes_a_missing_machine_config(tmp_path: Path, monkeypatch, capsys) -> None:
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
-    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    _init_repo(tmp_path)
 
-    assert loadout.main(["init", "--harness", "claude", "--root", str(tmp_path)]) == 0
+    assert (
+        loadout.main(["init", "--project", "--yes", "--harness", "claude", "--root", str(tmp_path)])
+        == 0
+    )
 
     out = capsys.readouterr().out
     assert "init --global" in out

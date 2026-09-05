@@ -3,8 +3,50 @@
 `discovery.discover()` inventories existing agent configuration. `migration.plan_migration()`
 builds and verifies an immutable plan; neither function applies it, changes Git, prompts, or
 executes discovered scripts. `migration_transaction` prepares and applies a resolved plan through
-the deployment writer, with a scoped Git checkpoint and explicit recovery. The legacy init CLI
-still uses `scaffold.py`; CLI integration consumes this separate library boundary.
+the deployment writer, with a scoped Git checkpoint and explicit recovery. The init CLI consumes
+these APIs through `init_workflow.py`; legacy internal scaffold helpers remain available.
+
+## CLI workflow
+
+```sh
+loadout init --dry-run --json
+loadout init --project --harness claude --harness opencode --dry-run --json
+loadout init --project --harness claude --harness opencode --yes
+loadout init --global --source /work/dotfiles --harness pi --yes
+```
+
+Interactive init asks only unresolved scope/agent/mapping choices and confirms the prepared
+transaction before mutation. Global source selection defaults to cwd. Explicit `--project` or
+`--global` wins; absent flags allow existing scope detection. `--harness` is repeatable in both
+scopes. Noninteractive callers supply unresolved choices and `--yes` approval. Dry-run and JSON
+previews never prompt or modify the selected directory, Git, machine registration or outputs.
+Preview JSON contains metadata only and remains parseable on incomplete plans (exit 2).
+
+Use repeatable `--mapping` JSON objects with `source`, `destination`, `agents`, optionally `kind`
+(`harness`, `shared`, `file`), `category` and `destination_template`. `--select-source` takes a JSON
+object with `destination` and the chosen inventoried `source`; directory selections cover matching
+relative files. Paths are literal and relative paths resolve against cwd. For example:
+
+```sh
+loadout init --global --source /work/dotfiles --harness claude \
+  --mapping '{"source":"/work/dotfiles/claude","destination":"/home/user/.claude","agents":["claude"]}' \
+  --select-source '{"source":"/work/dotfiles/claude","destination":"/home/user/.claude"}' \
+  --dry-run --json
+```
+
+`--yes` approves a complete plan, including the shown Git checkpoint and final staging. It does
+not choose conflicting originals or machine registrations. Registration conflicts require
+`--registration keep` or `--registration replace` (`--force` aliases replace). Registration uses
+the active XDG machine-config location, writes the actual `source` manifest directory, and is part
+of transaction recovery even when the existing source needs no migration. Matching registration
+keeps its profile. Existing initialized sources get a clear no-migration result, with normal
+check/sync as the next operation; repeat init does not reinterpret generated files as originals.
+
+Resume with `loadout init --resume /path/to/journal.json --yes`; recover with
+`loadout init --recover /path/to/journal.json --yes`. Add `--json` for machine-readable results.
+Interrupted transactions and recovery conflicts exit 1 and identify the protected journal or
+conflicting paths. Recovery retains successful baseline commits. Ordinary invalid input or unsafe
+deployment errors exit 3. The bundled skill's onboarding reference follows these same CLI forms.
 
 ```python
 from pathlib import Path

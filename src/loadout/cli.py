@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import traceback
 from pathlib import Path
@@ -9,8 +10,6 @@ from .commands import (
     cmd_check,
     cmd_explain,
     cmd_harness_add,
-    cmd_init,
-    cmd_init_global,
     cmd_skill_install,
     cmd_skill_status,
     cmd_skill_uninstall,
@@ -20,7 +19,10 @@ from .commands import (
     cmd_template_sync,
     cmd_template_vendor,
 )
+from .discovery import project_root
 from .errors import LoadoutError, UsageError
+from .init_options import InitOptions, parse_mapping, parse_selection
+from .init_workflow import run_init, run_recovery
 from .machine import load_machine_config, machine_config_path
 
 
@@ -68,20 +70,22 @@ def build_parser() -> argparse.ArgumentParser:
     add_root(explain)
 
     init = subparsers.add_parser(
-        "init", help="scaffold loadout/ for this project, or --global for this machine"
+        "init", help="adopt existing agent configuration into editable loadout source"
     )
     init.add_argument(
         "--harness",
         dest="harnesses",
         action="append",
         default=None,
-        help="harness to generate configuration for (repeatable); required unless --global",
+        help="configured harness (repeatable); otherwise detect configured roots",
     )
-    init.add_argument(
+    scope = init.add_mutually_exclusive_group()
+    scope.add_argument("--project", action="store_true", help="adopt project configuration")
+    scope.add_argument(
         "--global",
         dest="use_global",
         action="store_true",
-        help="scaffold this machine's global source instead of a project",
+        help="adopt global configuration and register its source on this machine",
     )
     init.add_argument(
         "--source",
@@ -89,13 +93,48 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "[--global] existing global source root, or directory to hold a new source; "
-            "required unless stdin is a TTY"
+            "default: cwd"
         ),
     )
     init.add_argument(
         "--force",
         action="store_true",
-        help="[--global] overwrite an existing machine config",
+        help="alias for --registration replace; never resolves source conflicts",
+    )
+    init.add_argument(
+        "--mapping",
+        action="append",
+        default=[],
+        help="root mapping JSON: source, destination, agents; optional kind/category/destination_template",
+    )
+    init.add_argument(
+        "--select-source",
+        action="append",
+        default=[],
+        help="conflicting-copy selection JSON: destination, source",
+    )
+    init.add_argument(
+        "--registration",
+        choices=("keep", "replace"),
+        help="resolve a conflicting global machine registration",
+    )
+    init.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="preview without changing source, Git or destinations",
+    )
+    init.add_argument("--json", action="store_true", help="emit machine-readable preview or result")
+    init.add_argument(
+        "--yes",
+        action="store_true",
+        help="approve a fully resolved migration and its Git operations",
+    )
+    recovery = init.add_mutually_exclusive_group()
+    recovery.add_argument("--resume", type=Path, help="resume a protected migration journal")
+    recovery.add_argument(
+        "--recover",
+        type=Path,
+        help="restore unchanged transaction postimages; keep successful baseline",
     )
     add_root(init)
 
@@ -181,9 +220,38 @@ def _dispatch_template(args: argparse.Namespace) -> int:
 
 
 def _dispatch_init(args: argparse.Namespace) -> int:
-    if args.use_global:
-        return cmd_init_global(args.source, force=args.force)
-    return cmd_init(args.root.resolve(), tuple(args.harnesses))
+    if args.resume or args.recover:
+        if (
+            args.dry_run
+            or args.project
+            or args.use_global
+            or args.source
+            or args.harnesses
+            or args.mapping
+            or args.select_source
+            or args.registration
+            or args.force
+        ):
+            raise UsageError("--resume/--recover accept only --yes and --json")
+        return run_recovery(
+            args.resume or args.recover, recover=bool(args.recover), yes=args.yes, as_json=args.json
+        )
+    if args.force and args.registration == "keep":
+        raise UsageError("--force conflicts with --registration keep")
+    return run_init(
+        InitOptions(
+            root=args.root.expanduser().absolute(),
+            scope="global" if args.use_global else "project" if args.project else None,
+            source=args.source.expanduser().absolute() if args.source else None,
+            agents=tuple(args.harnesses or ()),
+            mappings=tuple(parse_mapping(value) for value in args.mapping),
+            selections=tuple(parse_selection(value) for value in args.select_source),
+            registration="replace" if args.force else args.registration,
+            dry_run=args.dry_run,
+            json=args.json,
+            yes=args.yes,
+        )
+    )
 
 
 def _dispatch_skill(args: argparse.Namespace) -> int:
@@ -201,7 +269,7 @@ def _dispatch(args: argparse.Namespace) -> int:
     if args.command == "init":
         return _dispatch_init(args)
     if args.command == "harness":
-        return cmd_harness_add(args.root.resolve(), args.name)
+        return cmd_harness_add(project_root(args.root), args.name)
     if args.command in {"skill", "template"}:
         return _dispatch_skill(args) if args.command == "skill" else _dispatch_template(args)
     root, profile = _resolve_root_and_profile(args)
@@ -223,11 +291,6 @@ def main(argv: list[str] | None = None) -> int:
     ):
         parser.print_usage(file=sys.stderr)
         return 2
-    if args.command == "init":
-        if args.use_global and args.harnesses:
-            parser.error("argument --global: not allowed with argument --harness")
-        if not args.use_global and not args.harnesses:
-            parser.error("the following arguments are required: --harness")
     # Notices and drift reports carry the same em dashes the fragments do, and
     # `print` would raise UnicodeEncodeError under a POSIX/C locale. loadout opens
     # every file as UTF-8 explicitly; its own output gets the same treatment.
@@ -237,11 +300,18 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return _dispatch(args)
     except UsageError as error:
+        _init_error_json(args, 2)
         print(f"loadout: {error}", file=sys.stderr)
         return 2
     except LoadoutError as error:
+        _init_error_json(args, 3)
         print(f"loadout: {error}", file=sys.stderr)
         return 3
     except Exception:
         traceback.print_exc()
         return 4
+
+
+def _init_error_json(args: argparse.Namespace, code: int) -> None:
+    if args.command == "init" and args.json:
+        print(json.dumps({"status": "error", "complete": False, "exit_code": code}))

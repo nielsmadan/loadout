@@ -14,6 +14,36 @@ test is a gap.
 
 ## Migration planning
 
+CLI integration is covered in `tests/test_init_workflow.py` and `tests/test_cli.py`:
+
+| behaviour | pinned by |
+|---|---|
+| metadata-only unresolved preview, explicit scope and approval | `test_unresolved_json_preview_does_not_mutate`, `test_noninteractive_apply_requires_explicit_approval`, `test_explicit_project_scope_does_not_adopt_global_live_state` |
+| project adoption, checkpoint/staging and nested repeat no-op | `test_project_preview_and_apply_adopt_and_stage` |
+| global cwd default, actual source registration and explicit replacement | `test_global_defaults_to_cwd_and_registers_actual_manifest`, `test_existing_source_registration_is_an_explicit_transaction` |
+| duplicate source choices are independent of approval | `test_global_copy_conflict_requires_selection_even_with_yes` |
+| interactive choice/decline and cancellation before mutation | `test_interactive_scope_and_agent_choices_then_decline`, `test_global_prompt_cancellation_with_yes_does_not_mutate` |
+| preview values stay private; malformed mapping shapes are usage errors | `test_preview_never_prints_secret_values`, `test_invalid_mapping_shape_is_usage_error` |
+| resume/recover JSON results and preserved recovery conflicts | `test_cli_resume_and_recover_use_the_reported_journal`, `test_cli_recovery_conflicts_report_paths_and_nonzero_status` |
+| native harness-add avoids false membership | `test_native_harness_add_refuses_without_creating_false_membership` |
+
+Native bundled-skill lifecycle is covered in `tests/test_native_skill_installation.py`:
+
+| behaviour | pinned by |
+|---|---|
+| distinct/shared active trees, bytes/assets and receipt-coherent uninstall | `test_native_install_update_uninstall_and_receipts` |
+| all-target conflict preflight and modified-source/output preservation | `test_one_conflicting_target_preserves_every_target`, `test_new_occupied_output_is_preflighted_before_source_changes` |
+| native hashing includes intentional supporting assets and additions | `test_native_hash_preserves_intentional_assets_and_detects_all_additions` |
+| failed deployment rolls back source, outputs and receipts | `test_native_failure_rolls_back_sources_outputs_and_receipts` |
+| rollback failure retains protected recovery outside deployable trees | `test_failed_rollback_retains_private_recovery_outside_native_trees` |
+| native/legacy targets work together, no-target state is explicit | `test_native_and_legacy_routes_install_together`, `test_artifact_manifest_without_skills_reports_no_routes` |
+| mixed CLI changes finish normal global sync and reject changed routing | `test_native_cli_finishes_global_sync_for_pending_legacy_outputs`, `test_native_configuration_changes_invalidate_inspection` |
+| mixed update/uninstall checks frozen legacy preimages at each mutation and rolls back native sources, outputs and receipts while preserving concurrent files | `test_legacy_race_preserves_user_output_and_rolls_back_native_changes`, `test_missing_legacy_output_cannot_be_occupied_during_native_deployment` |
+| missing native sources retain external ownership for reinstall and uninstall | `test_missing_native_source_keeps_marker_ownership_for_reinstall_and_uninstall` |
+| missing-source ownership metadata remains guarded against invalid content and changes after inspection | `test_missing_native_source_rejects_marker_changes_after_inspection`, `test_missing_native_source_does_not_claim_invalid_ownership_metadata` |
+| CLI status reports actual source trees and consumers | `test_native_cli_reports_each_source_and_installs` |
+| package includes onboarding reference | `test_built_wheel_contains_the_complete_skill_tree` in `tests/test_bundled_skill.py` |
+
 All rows below are exercised in `tests/test_migration.py`; the contract is
 [migration.md](migration.md).
 

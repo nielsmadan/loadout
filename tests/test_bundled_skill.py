@@ -52,3 +52,4 @@ def test_built_wheel_contains_the_complete_skill_tree(tmp_path: Path) -> None:
         names = set(archive.namelist())
     assert "loadout/_skills/loadout/SKILL.md" in names
     assert "loadout/_skills/loadout/references/configuration.md" in names
+    assert "loadout/_skills/loadout/references/onboarding.md" in names

@@ -639,10 +639,21 @@ def _initialized(inventory: Inventory) -> MigrationPlan:
             inventory = replace(inventory, agents=config.harnesses)
         else:
             manifest = load_manifest(config_path)
-            agents = (
-                manifest.artifacts.agents()
-                if manifest.artifacts
-                else tuple(dict.fromkeys(p.agent for p in manifest.permissions if p.agent))
+            agents = tuple(
+                dict.fromkeys(
+                    (
+                        *(manifest.artifacts.agents() if manifest.artifacts else ()),
+                        *(p.agent for p in manifest.permissions if p.agent),
+                        *(
+                            p.renderer.split("-", 1)[0]
+                            for p in manifest.permissions
+                            if p.renderer.split("-", 1)[0] in PROJECT_ROOTS
+                        ),
+                        *(t.name for t in manifest.targets if t.name in PROJECT_ROOTS),
+                        *(s.agent for s in manifest.skills),
+                        *(m.agent for m in manifest.module_config),
+                    )
+                )
             )
             if inventory.agents and set(inventory.agents) != set(agents):
                 raise LoadoutError("configured harness selection differs")

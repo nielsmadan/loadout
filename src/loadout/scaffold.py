@@ -284,6 +284,12 @@ def add_harness(root: Path, harness: str) -> list[str]:
     config = load_project_config(config_path)
     if harness in config.harnesses:
         raise LoadoutError(f"{harness} is already enabled in {config_path}")
+    if not config.presets:
+        raise LoadoutError(
+            f"{config_path} uses explicit artifact routes (presets = false); add routes for "
+            f"{harness} in its declared artifacts file before updating harnesses. "
+            "Use the loadout skill to choose sources and destination ownership."
+        )
 
     updated = replace(config, harnesses=(*config.harnesses, harness))
     _rewrite_harnesses(config_path, updated.harnesses)

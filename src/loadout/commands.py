@@ -27,6 +27,7 @@ from .emit import (
 from .errors import LoadoutError, UsageError
 from .machine import machine_config_path
 from .manifest import MANIFEST_NAME, InstructionTarget, load_manifest, manifest_path
+from .native_skill_installation import SkillCommand, run_native_skill
 from .project import (
     PROJECT_CONFIG_NAME,
     PROJECT_DIR,
@@ -38,6 +39,7 @@ from .scaffold import add_harness, init_global, init_project
 from .skill_installation import (
     SkillSourceLocation,
     SourceSkillState,
+    _load_skill_profile,
     configured_skill_agents,
     inspect_skill_source,
     install_skill_source,
@@ -122,6 +124,8 @@ def _confirm_skill_change(action: str, path: Path, yes: bool) -> bool:
 
 
 def cmd_skill_status(root: Path, profile: str, source_name: str | None = None) -> int:
+    if _load_skill_profile(root, profile).artifacts is not None:
+        return run_native_skill(root, profile, source_name, command=SkillCommand("status"))
     _print_skill_location(root, profile, source_name)
     return 0
 
@@ -133,6 +137,14 @@ def cmd_skill_install(
     *,
     yes: bool = False,
 ) -> int:
+    if _load_skill_profile(root, profile).artifacts is not None:
+        return run_native_skill(
+            root,
+            profile,
+            source_name,
+            command=SkillCommand("install", yes),
+            sync=lambda: cmd_sync(root, profile=profile),
+        )
     agents = configured_skill_agents(root, profile)
     if not agents:
         print("configured agents: none")
@@ -171,6 +183,14 @@ def cmd_skill_uninstall(
     *,
     yes: bool = False,
 ) -> int:
+    if _load_skill_profile(root, profile).artifacts is not None:
+        return run_native_skill(
+            root,
+            profile,
+            source_name,
+            command=SkillCommand("uninstall", yes),
+            sync=lambda: cmd_sync(root, profile=profile),
+        )
     _, location, _ = _print_skill_location(root, profile, source_name)
     if location.state is SourceSkillState.MISSING:
         print("loadout skill is not installed; no changes made")
