@@ -94,3 +94,14 @@ def test_normalise_is_the_one_the_guard_uses(tmp_path: Path) -> None:
     """Recorded here and compared in commands.py, so the two must be the same
     function — a record hashed with a different normaliser accepts nothing."""
     assert commands.normalise is normalise
+
+
+def test_a_record_that_cannot_be_written_is_not_an_error(tmp_path: Path, monkeypatch) -> None:
+    """The files are already on disk when this runs, so a failure here would report a
+    completed sync as broken. A sandbox that grants the machine config file without
+    the directory beside it is the case that forced this."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "denied"))
+    (tmp_path / "denied").write_text("not a directory", encoding="utf-8")
+
+    assert record_written(tmp_path, "default", {Path("/dest/out.md"): entry()}) is None
+    assert read_written(tmp_path) == {}

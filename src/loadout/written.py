@@ -143,7 +143,7 @@ def record_written(
     profile: str,
     entries: Mapping[Path, WrittenEntry],
     env: Mapping[str, str] | None = None,
-) -> Path:
+) -> Path | None:
     """Merge this run's writes into the record, keeping what earlier runs wrote.
 
     Retention is the point, not laziness: a destination this run no longer renders is
@@ -172,8 +172,17 @@ def record_written(
             for dest, entry in sorted(merged.items(), key=lambda item: str(item[0]))
         },
     }
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    except OSError:
+        # A record that cannot be written degrades to no record, which is the
+        # behaviour that existed before it — never a failed sync. The files are
+        # already on disk by the time this runs, so raising here would report a
+        # completed sync as broken. A sandbox denying the state directory is the
+        # case that forced this: the profile may grant the machine config file
+        # without granting the directory beside it.
+        return None
     return path
 
 

@@ -75,5 +75,9 @@ record went away.
   location and lifetime.
 - A future change to the normaliser silently invalidates stored digests. That degrades to the
   two-variant set — one warn-and-force cycle after upgrading, never a wrong acceptance.
+- A record that cannot be written — a sandbox granting the machine config file but not the
+  directory beside it, a read-only filesystem — is not an error. The outputs are already on
+  disk when it runs, so raising would report a completed sync as broken; it degrades to no
+  record, which is the same fail-closed path as a corrupt one.
 - Concurrent syncs of one root: last writer wins the record. The same one-process assumption
   `resolve.py`'s source cache already relies on.
