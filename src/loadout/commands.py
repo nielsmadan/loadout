@@ -28,13 +28,14 @@ from .errors import LoadoutError, UsageError
 from .machine import machine_config_path
 from .manifest import MANIFEST_NAME, InstructionTarget, load_manifest, manifest_path
 from .native_skill_installation import SkillCommand, run_native_skill
+from .native_templates import validate_template_change, validate_template_tree
 from .project import (
     PROJECT_CONFIG_NAME,
     PROJECT_DIR,
     load_project_config,
     project_config_path,
 )
-from .resolve import resolve_fragment, resolve_item
+from .resolve import resolve_fragment
 from .scaffold import add_harness, init_global, init_project
 from .skill_installation import (
     SkillSourceLocation,
@@ -46,13 +47,12 @@ from .skill_installation import (
     uninstall_skill_source,
 )
 from .templates import (
-    TEMPLATES,
     VENDORED,
     copy_tree,
     declare,
-    declared_sources,
     record_hash,
     resolve_template,
+    resolve_upstream_template,
     template_divergence,
     template_files,
     tree_hash,
@@ -306,10 +306,12 @@ def _modified_outside_loadout(
             # supporting file just as much as a SKILL.md.
             if (
                 path.is_file()
-                and path.read_bytes() != expected.source.read_bytes()
+                and path.read_bytes() != expected.read_bytes()
                 and not accepts_bytes(written.get(path), path.read_bytes())
             ):
-                modified.append((path, describe_file(path), describe_file(expected.source)))
+                modified.append(
+                    (path, describe_file(path), describe_file(expected.source, expected.prefix))
+                )
             continue
         if isinstance(expected, Merged):
             # Applying replaces owned keys and passes everything else through, so
@@ -402,7 +404,7 @@ def _entries_for(outputs: Mapping[Path, Output]) -> dict[Path, WrittenEntry]:
     entries: dict[Path, WrittenEntry] = {}
     for path, content in outputs.items():
         if isinstance(content, Copied):
-            entries[path] = copied_entry(content.source)
+            entries[path] = copied_entry(content.source, content.prefix)
         elif isinstance(content, Merged):
             entries[path] = merged_entry(content.owned)
         else:
@@ -457,7 +459,7 @@ def cmd_check(root: Path, profile: str = "default") -> int:
     # `check` used to end every drift with "run `loadout sync`" even where sync was
     # about to refuse, sending the reader in a circle and teaching them --force. Ask
     # the guard the same question sync will, and say which answer applies.
-    hand_edited = _modified_outside_loadout(root, render_all(root, profile))
+    hand_edited = _modified_outside_loadout(root, render_all(root, profile), profile)
     blocked = {path for path, _, _ in hand_edited or ()}
     if blocked:
         for path in sorted(blocked):
@@ -517,6 +519,7 @@ def cmd_template_add(root: Path, name: str) -> int:
     committed config, where it would fail every later render.
     """
     found = resolve_template(name, root)
+    validate_template_change(root, name, found)
     if declare(root, name):
         print(f"declared {name} in {PROJECT_DIR}/{PROJECT_CONFIG_NAME}")
     else:
@@ -534,6 +537,7 @@ def cmd_template_vendor(root: Path, name: str) -> int:
             f"`loadout template sync {name}` to update it"
         )
     found = resolve_template(name, root)
+    validate_template_change(root, name, found)
     copy_tree(found.path, local)
     declare(root, name)
     record_hash(root, name, tree_hash(local))
@@ -585,10 +589,14 @@ def cmd_template_sync(root: Path, name: str) -> int:
         )
 
     recorded = config.vendored_hash(name)
-    current = tree_hash(local)
     # A vendored copy resolves ahead of every source, so the upstream has to be
     # reached past it deliberately.
-    upstream = resolve_item(declared_sources(), name, TEMPLATES).path
+    found = resolve_upstream_template(name)
+    upstream = found.path
+    if not config.presets:
+        validate_template_tree(local)
+        validate_template_tree(upstream)
+    current = tree_hash(local)
 
     # Refuse unless the copy can be *proved* unmodified, rather than refusing only
     # when it can be proved modified. Those differ exactly when there is no
@@ -632,11 +640,13 @@ def cmd_template_sync(root: Path, name: str) -> int:
     # date" instead. Nothing asked for that. The no-provenance gate above already
     # falls through to here when the copy matches, which is the self-heal.
     if tree_hash(upstream) == current:
+        validate_template_change(root, name, found)
         print(f"{name} is up to date")
         if recorded is None:
             record_hash(root, name, current)
         return 0
 
+    validate_template_change(root, name, found)
     changed = _tree_diff(local, upstream, name)
     copy_tree(upstream, local)
     record_hash(root, name, tree_hash(local))

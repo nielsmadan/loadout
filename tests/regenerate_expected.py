@@ -49,12 +49,12 @@ def render_everything() -> dict[str, str]:
             # expected tree holds their bytes: the comparison is about what lands
             # at the destination, not about how it got there.
             files[f"project/{path.relative_to(root)}"] = (
-                _decode(content.source) if isinstance(content, Copied) else content
+                _decode(content) if isinstance(content, Copied) else content
             )
     return files
 
 
-def _decode(source: Path) -> str:
+def _decode(source: Copied) -> str:
     """The expected tree is text, and a `Copied` file need not be.
 
     `Copied` exists because a skill carries executables and a mode does not
@@ -64,10 +64,10 @@ def _decode(source: Path) -> str:
     expected tree is real work that nothing needs yet.
     """
     try:
-        return source.read_text(encoding="utf-8")
+        return source.read_bytes().decode("utf-8")
     except UnicodeDecodeError as error:
         raise SystemExit(
-            f"{source} is not UTF-8, and the expected tree is text-only. A fixture "
+            f"{source.source} is not UTF-8, and the expected tree is text-only. A fixture "
             f"skill may carry a binary supporting file at its destination, but not "
             f"one the expected output has to hold — use a text file, or teach this "
             f"script and the comparison in test_project_output.py to handle bytes."

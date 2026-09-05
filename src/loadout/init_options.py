@@ -22,6 +22,7 @@ class InitOptions:
     dry_run: bool = False
     json: bool = False
     yes: bool = False
+    starter: str | None = None
 
 
 def _object(value: str, required: set[str], optional: set[str]) -> dict[str, Any]:

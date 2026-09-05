@@ -463,12 +463,9 @@ def test_rendering_never_uses_destination_content(tmp_path: Path) -> None:
     assert render_project(tmp_path) == expected
 
 
-@pytest.mark.parametrize("declaration", ['instructions = ["intro"]', 'templates = ["web"]'])
-def test_explicit_project_mode_refuses_ignored_legacy_inputs(
-    tmp_path: Path, declaration: str
-) -> None:
-    project(tmp_path, "", extra="presets = false\n" + declaration + "\n")
-    with pytest.raises(LoadoutError, match="legacy instructions or templates"):
+def test_explicit_project_mode_refuses_ignored_legacy_inputs(tmp_path: Path) -> None:
+    project(tmp_path, "", extra='presets = false\ninstructions = ["intro"]\n')
+    with pytest.raises(LoadoutError, match="legacy instructions"):
         load_project_config(tmp_path / "loadout/config.toml")
 
 

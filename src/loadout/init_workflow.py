@@ -51,6 +51,7 @@ def _plan(options: InitOptions) -> MigrationPlan:
             mappings=options.mappings,
         ),
         selections=options.selections,
+        starter=options.starter,
     )
 
 
@@ -88,6 +89,16 @@ def _resolve(options: InitOptions) -> tuple[InitOptions, MigrationPlan]:
         if not answer:
             break
         options = _resolution(options, answer)
+        plan = _plan(options)
+    if (
+        plan.complete
+        and not plan.already_initialized
+        and plan.inventory.scope == "project"
+        and options.starter is None
+        and not options.yes
+    ):
+        answer = _answer("Optional project starter [none/frontend/backend; default none]: ")
+        options = replace(options, starter=answer or "none")
         plan = _plan(options)
     return options, plan
 
@@ -144,6 +155,7 @@ def _show(preview: dict[str, Any], *, as_json: bool) -> None:
         f"Scope: {preview['scope'] or 'unresolved'}; agents: {', '.join(preview['agents']) or 'unresolved'}"
     )
     print(f"Source: {preview['source_root']}")
+    print(f"Starter: {preview['starter']}")
     for note in preview["notes"]:
         print(note)
     git = preview.get("git")

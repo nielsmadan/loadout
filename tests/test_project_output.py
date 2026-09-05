@@ -46,9 +46,7 @@ def test_every_project_output_matches_the_expected_output(project: Path) -> None
     rendered = {str(p.relative_to(project)): c for p, c in render_project(project).items()}
     assert set(rendered) == set(OUTPUTS) | skill_outputs(*SKILL_DIRS)
     for name, content in sorted(rendered.items()):
-        actual = (
-            content.source.read_text(encoding="utf-8") if isinstance(content, Copied) else content
-        )
+        actual = content.read_bytes().decode("utf-8") if isinstance(content, Copied) else content
         assert actual == (EXPECTED / name).read_text(encoding="utf-8"), name
 
 

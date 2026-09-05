@@ -9,6 +9,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .artifacts import Artifacts, Copied, Merged, Output, render_artifacts, validate_artifact_paths
+from .bundled_templates import BUNDLED
 from .composition import HEADER, load_fragment, render
 from .deployment import (
     DeploymentConflict,
@@ -35,6 +36,7 @@ from .manifest import (
 )
 from .module_config import MODULE_CONFIG_SUBDIR, discover_module_config
 from .native_documents import apply_document
+from .native_templates import native_template_prefix
 from .notices import (
     OPENCODE_SKILL_FLAGS,
     Notice,
@@ -980,7 +982,7 @@ def _project_source_inputs(root: Path, config: ProjectConfig) -> tuple[Path, ...
     inputs = [root / PROJECT_DIR]
     templates = [resolve_template(name, root) for name in config.templates]
     inputs.extend(template.path for template in templates)
-    if any(template.source != VENDORED for template in templates):
+    if any(template.source not in {VENDORED, BUNDLED} for template in templates):
         path = machine_config_path()
         machine = load_machine_config(path)
         assert machine is not None
@@ -992,7 +994,18 @@ def render_project(root: Path) -> dict[Path, Output]:
     config = load_project_config(project_config_path(root))
     if config.presets:
         return _render_project_presets(root, config)
-    return _with_artifacts({}, config.artifacts, project_root=root)
+    templates = tuple(resolve_template(name, root) for name in config.templates)
+    prefix = native_template_prefix(config, templates)
+    return (
+        render_artifacts(
+            config.artifacts,
+            project_root=root,
+            source_inputs=_project_source_inputs(root, config),
+            instruction_prefix=prefix,
+        )
+        if config.artifacts is not None
+        else {}
+    )
 
 
 def _render_project_presets(root: Path, config: ProjectConfig) -> dict[Path, Output]:
@@ -1238,9 +1251,7 @@ def write_outputs(
         if path in deployment.managed:
             continue
         if isinstance(content, Copied):
-            frozen[path] = FrozenFile(
-                content.source.read_bytes(), content.source.stat().st_mode & 0o7777
-            )
+            frozen[path] = FrozenFile(content.read_bytes(), content.source.stat().st_mode & 0o7777)
         elif isinstance(content, Merged):
             frozen[path] = _applied(path, content)
             frozen.update(content.records)
@@ -1270,8 +1281,10 @@ def check_all(root: Path, profile: str = "default") -> list[tuple[Path, str, str
         if path in deployment.managed:
             continue
         if isinstance(expected, Copied):
-            if _copy_drifted(path, expected.source):
-                drift.append((path, describe_file(path), describe_file(expected.source)))
+            if _copy_drifted(path, expected.source, expected.prefix):
+                drift.append(
+                    (path, describe_file(path), describe_file(expected.source, expected.prefix))
+                )
             continue
         actual = path.read_text(encoding="utf-8") if path.is_file() else ""
         # Applying is identity on everything loadout does not own, so this compares
@@ -1311,10 +1324,10 @@ def _applied(path: Path, merged: Merged) -> str:
     return apply(existing, merged.owned, merged.document)
 
 
-def _copy_drifted(path: Path, source: Path) -> bool:
+def _copy_drifted(path: Path, source: Path, prefix: bytes = b"") -> bool:
     if not path.is_file():
         return True
-    if path.read_bytes() != source.read_bytes():
+    if path.read_bytes() != prefix + source.read_bytes():
         return True
     return _executable(path) != _executable(source)
 
@@ -1323,10 +1336,10 @@ def _executable(path: Path) -> bool:
     return bool(path.stat().st_mode & 0o111)
 
 
-def describe_file(path: Path) -> str:
+def describe_file(path: Path, prefix: bytes = b"") -> str:
     # Drift on a copied file reports a summary, not the content: a tree carries
     # binaries, and a byte diff of one is noise rather than a review.
     if not path.is_file():
         return "(absent)\n"
     suffix = " (executable)" if _executable(path) else ""
-    return f"{path.stat().st_size} bytes{suffix}\n"
+    return f"{len(prefix) + path.stat().st_size} bytes{suffix}\n"

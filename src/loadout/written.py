@@ -202,8 +202,8 @@ def text_entry(path: Path, content: str) -> WrittenEntry:
     )
 
 
-def copied_entry(source: Path) -> WrittenEntry:
-    data = source.read_bytes()
+def copied_entry(source: Path, prefix: bytes = b"") -> WrittenEntry:
+    data = prefix + source.read_bytes()
     return WrittenEntry(
         kind="copied", sha256=_digest(data), executable=bool(source.stat().st_mode & 0o111)
     )

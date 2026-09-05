@@ -45,8 +45,8 @@ class ProjectConfig:
     def __post_init__(self) -> None:
         if not isinstance(self.presets, bool):
             raise LoadoutError("presets must be a boolean")
-        if not self.presets and (self.instructions or self.templates or self.vendored):
-            raise LoadoutError("presets = false cannot use legacy instructions or templates")
+        if not self.presets and self.instructions:
+            raise LoadoutError("presets = false cannot use legacy instructions")
         if not self.harnesses:
             raise LoadoutError("at least one harness is required")
         if len(set(self.harnesses)) != len(self.harnesses):
@@ -56,6 +56,8 @@ class ProjectConfig:
             known = ", ".join(sorted(KNOWN_HARNESSES))
             raise LoadoutError(f"unknown harness(es) {', '.join(bad)} (known: {known})")
         if self.artifacts is not None:
+            if self.presets and any(r.template_instructions for r in self.artifacts.records):
+                raise LoadoutError("template_instructions routes require presets = false")
             extra = set(self.artifacts.agents()) - set(self.harnesses)
             if extra:
                 raise LoadoutError(

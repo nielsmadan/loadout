@@ -163,7 +163,7 @@ def _worker() -> None:
             emit_empty = False
             mode = 0o600
             if isinstance(output, Copied):
-                content = output.source.read_bytes()
+                content = output.read_bytes()
                 mode = stat.S_IMODE(output.source.stat().st_mode)
             elif isinstance(output, Merged):
                 content = output.document.encode()

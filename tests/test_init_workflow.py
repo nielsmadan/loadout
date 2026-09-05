@@ -140,7 +140,7 @@ def test_global_prompt_cancellation_with_yes_does_not_mutate(tmp_path, monkeypat
 
 def test_interactive_scope_and_agent_choices_then_decline(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
-    replies = iter(("project", "claude", "n"))
+    replies = iter(("project", "claude", "none", "n"))
     monkeypatch.setattr("builtins.input", lambda prompt: next(replies))
     assert loadout.main(["init", "--root", str(tmp_path)]) == 0
     assert "declined" in capsys.readouterr().out

@@ -55,6 +55,12 @@ the mixed runtime registration. Follow those explicit producers instead of apply
 limitations below. Partial ownership preserves runtime/auth fields; never promote the whole live
 document into committed source. Categories without routes need an explicit binding decision.
 
+Native project instruction routes with `template_instructions = true` prepend the selected
+templates' `instructions.md` before the route's own source body. Edit that body for project rules;
+edit `loadout/templates/<name>/instructions.md` only when changing the template tier. Template
+copies keep hash provenance, and `template sync` refuses modified copies. Other populated template
+categories cannot overlay native producers: edit their declared artifact sources instead.
+
 ## Capability matrix
 
 Legacy preset routes only; check declared native producers first.

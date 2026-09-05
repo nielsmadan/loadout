@@ -15,8 +15,8 @@ artifacts = "artifacts.toml"
 ```
 
 `presets` defaults to `true`, preserving the existing project outputs. Setting it to `false`
-makes the artifact routes the complete output list. Legacy `instructions` and `templates`
-declarations are rejected in that mode because their inputs would otherwise be ignored. Every
+makes the artifact routes the complete output list. Legacy `instructions` declarations remain
+rejected; template instructions require the explicit composition routes below. Every
 artifact agent must occur in the project's `harnesses` list.
 
 Global `loadout.toml` accepts the same `artifacts` reference. It can coexist with existing
@@ -162,6 +162,38 @@ without a renderer also copies its source. `tree` copies every regular file recu
 including native `SKILL.md`, scripts, hidden files and binary assets. Only scaffold `.gitkeep`
 files are excluded. Added files are discovered on the next render; per-agent membership and
 nested paths come from the routes. Shared consumers use one record with several agents.
+
+## Template instruction routes
+
+Native projects (`presets = false`) may opt a required copy/text instruction route into their
+declared template tiers:
+
+```toml
+[[artifact]]
+agents = ["claude"]
+output = "CLAUDE.md"
+format = "copy"
+category = "instructions"
+source = "instructions/native/claude/CLAUDE.md"
+template_instructions = true
+```
+
+The flag defaults to false. It requires project scope, a required `instructions` source, and
+`copy` or `text` without a renderer. It cannot be used with legacy project presets. Every
+configured agent needs an opted-in route when template prose is selected. Fresh project init
+marks only its top-level `CLAUDE.md`/`AGENTS.md` routes; nested files and trees stay independent.
+
+Rendering prepends template instruction tiers in declared order and preserves the original body
+bytes and source mode. A prefix activates a dormant empty instruction source. Removing the
+prefix restores ordinary empty-source behavior. Other populated template categories are refused
+before source mutation; edit their native category sources through existing routes. See
+[templates](templates.md#bundled-starters-and-native-projects).
+
+`Copied(source, prefix=b"")` retains the existing output type and mode contract; content consumers
+use `Copied.read_bytes()` to include its frozen prefix. The renderer's
+`render_artifacts(..., instruction_prefix=...)` parameter accepts already-resolved template bytes;
+it never resolves templates or reads destinations itself. `render_project` resolves and validates
+the selected tiers before passing this input.
 
 ## Empty slots and path safety
 

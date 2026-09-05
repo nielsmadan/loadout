@@ -463,6 +463,12 @@ in once:
     loadout init --project --harness claude --harness opencode --dry-run
     loadout init --project --harness claude --harness opencode --yes
 
+Add `--starter frontend` or `--starter backend` to preview and vendor a small instruction seed.
+The default is `none`; interactive init offers the same optional choice. Starters ship in the
+package and work offline. They add no dependencies, permission grants, models or credentials.
+Starter selection, provenance and outputs participate in the migration checkpoint/staging and
+recovery workflow. Global init does not activate project starters.
+
 `init` adopts existing configuration, retaining native behavior and private scope. Harness roots
 can establish membership; explicit `--harness` selections resolve shared-file ambiguity. Every
 category receives source slots and supported core categories receive active, initially dormant
@@ -600,8 +606,15 @@ vendored = "sha256:9f2a1c4e…"
 
 Templates are referenced **by name, never by path** — a path in a committed file means nothing on
 a colleague's machine. A name resolves to `loadout/templates/<name>/` if this repo vendored it,
-and otherwise to the `templates/` directory of a source the machine's global manifest declares.
+then to the `templates/` directory of a source the machine's global manifest declares, and finally
+to the packaged `frontend` or `backend` catalog when no declared source matches.
 Two sources offering one name is an error, not a silent preference.
+
+Native projects compose template instructions only into copy/text instruction routes marked
+`template_instructions = true`. Fresh migrations mark the top-level `CLAUDE.md` and `AGENTS.md`
+routes, preserving each original body and mode beneath the template text. Other populated template
+categories require explicit native source edits and are refused before template commands mutate
+the project. Edit the category sources named in `artifacts.toml` for their first entries.
 
 `template sync` is **refuse-and-diff**: it updates an unmodified copy, and on a copy you have
 edited it prints the diff and exits 1 without changing anything. `loadout check` reports such a

@@ -14,6 +14,15 @@ root for a new repository. Project discovery finds the enclosing Loadout/Git roo
 directories. Configured roots establish agents; a shared AGENTS.md or installed binary does not.
 Repeat `--harness` when membership needs an explicit selection.
 
+Offer an optional project starter with `--starter none|frontend|backend`; default to `none`.
+These packaged templates work offline and provide short instruction seeds with empty categories.
+Reuse the same selection in preview and apply. They are vendored with content-hash provenance and
+participate in recovery/staging. Global init cannot activate project starters. A native project
+receives template prose only on explicit `template_instructions = true` instruction routes;
+original body bytes and modes survive. Other populated template categories require explicit
+native source edits before selection. Follow the exact template command reported for an already
+initialized source, then sync its managed outputs.
+
 Read the complete JSON `issues`, candidates and dispositions. An incomplete preview exits 2 and
 changes nothing. Prompts are available in an interactive terminal; JSON and dry-run never prompt.
 Resolve only actual ambiguities, preserving unsupported and runtime/private entries. Unknown

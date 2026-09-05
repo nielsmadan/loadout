@@ -269,7 +269,7 @@ def _skill_outputs(root: Path, profile: str) -> dict[Path, _ExpectedOutput]:
         if any(path.is_relative_to(directory) for directory in directories):
             if isinstance(output, Copied):
                 selected[path] = _ExpectedOutput(
-                    output.source.read_bytes(), bool(output.source.stat().st_mode & 0o111)
+                    output.read_bytes(), bool(output.source.stat().st_mode & 0o111)
                 )
             elif isinstance(output, Merged):
                 raise LoadoutError(f"skill output {path} unexpectedly requires a merged document")

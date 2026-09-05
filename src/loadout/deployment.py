@@ -159,7 +159,7 @@ def freeze_output(path: Path, output: Output) -> FrozenFile:
         frozen = read_file(output.source)
         if frozen is None:
             raise LoadoutError(f"copied source disappeared: {output.source}")
-        return frozen
+        return FrozenFile(output.prefix + frozen.content, frozen.mode)
     if isinstance(output, Merged):
         actual = read_file(path)
         text = apply_document(

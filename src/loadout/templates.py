@@ -17,6 +17,7 @@ import re
 import shutil
 from pathlib import Path
 
+from .bundled_templates import BUNDLED, bundled_template
 from .errors import LoadoutError
 from .machine import load_machine_config, machine_config_path
 from .manifest import load_manifest, manifest_path
@@ -77,13 +78,36 @@ def resolve_template(name: str, root: Path, config_path: Path | None = None) -> 
     if local.is_dir():
         return ResolvedItem(name=name, source=VENDORED, path=local)
 
+    try:
+        return resolve_upstream_template(name, config_path)
+    except LoadoutError as error:
+        raise LoadoutError(f"{error} Vendored path: {local}.") from error
+
+
+def resolve_upstream_template(name: str, config_path: Path | None = None) -> ResolvedItem:
+    path = machine_config_path() if config_path is None else config_path
+    bundled = bundled_template(name)
+    if bundled is not None and not path.exists():
+        return _bundled_template(name, bundled)
     sources = declared_sources(config_path)
     try:
         return resolve_item(sources, name, TEMPLATES)
     except LoadoutError as error:
+        if bundled is not None and not any(
+            (s.path / TEMPLATES_SUBDIR / name).exists()
+            or (s.path / TEMPLATES_SUBDIR / name).is_symlink()
+            for s in sources
+        ):
+            return _bundled_template(name, bundled)
         searched = ", ".join(str(s.path / TEMPLATES_SUBDIR / name) for s in sources)
         where = searched or "(no source offers templates)"
-        raise LoadoutError(f"{error} Searched {local} and {where}.") from error
+        raise LoadoutError(f"{error} Searched {where}.") from error
+
+
+def _bundled_template(name: str, path: Path) -> ResolvedItem:
+    if not (path / "instructions.md").is_file():
+        raise LoadoutError(f"bundled starter missing at {path}; reinstall the loadout package")
+    return ResolvedItem(name=name, source=BUNDLED, path=path)
 
 
 # `[^\S\n]*` and not `\s*`: `\s` matches the newline, so a greedy trailing `\s*$`

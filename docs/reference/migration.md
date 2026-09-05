@@ -12,6 +12,7 @@ these APIs through `init_workflow.py`; legacy internal scaffold helpers remain a
 loadout init --dry-run --json
 loadout init --project --harness claude --harness opencode --dry-run --json
 loadout init --project --harness claude --harness opencode --yes
+loadout init --project --harness claude --starter frontend --dry-run --json
 loadout init --global --source /work/dotfiles --harness pi --yes
 ```
 
@@ -21,6 +22,16 @@ transaction before mutation. Global source selection defaults to cwd. Explicit `
 scopes. Noninteractive callers supply unresolved choices and `--yes` approval. Dry-run and JSON
 previews never prompt or modify the selected directory, Git, machine registration or outputs.
 Preview JSON contains metadata only and remains parseable on incomplete plans (exit 2).
+
+`--starter none|frontend|backend` selects optional project advice; `none` is the default.
+Interactive fresh-project init offers the same choice before approval unless `--yes` accepts the
+default. The selected template is resolved by normal precedence, vendored with hash provenance,
+and included in preview `starter`, frozen source/output expectations, staging and recovery.
+Packaged frontend/backend fallbacks work offline. Global activation returns a scope issue.
+An explicit starter on an initialized source reports the exact template command to use.
+Native instruction routes preserve original body bytes and modes beneath the selected template
+text. Unsupported populated template categories, private overrides and unsafe links are refused
+before mutation; see [templates](templates.md#bundled-starters-and-native-projects).
 
 Use repeatable `--mapping` JSON objects with `source`, `destination`, `agents`, optionally `kind`
 (`harness`, `shared`, `file`), `category` and `destination_template`. `--select-source` takes a JSON
@@ -180,7 +191,7 @@ operations. Existing Git history is outside this planner's ownership.
 
 `MigrationPlan` exposes frozen `source_writes`, `generated_writes`, `expected_outputs`,
 `required_absences`, `obsolete`, `originals`, `ignores`, `private_paths`, `checkpoint_paths`,
-`preconditions`, and `artifact_routes`. Its JSON-serializable `preview()` contains metadata rather than file
+`preconditions`, `starter_dependencies`, and `artifact_routes`. Its JSON-serializable `preview()` contains metadata rather than file
 contents or fingerprints of secret values. `complete` requires a successful isolated validation
 and no issues, or a recognized existing-source no-op. Generated partial content is the authored
 document, not a frozen replacement for runtime fields. Transaction preparation must reread and
@@ -268,7 +279,9 @@ There is no final migration commit.
 Git privacy is checked again before checkpointing and final staging, including during resume.
 The journal preserves the original decisions and fingerprints the applicable `.gitignore` files,
 repository excludes, global excludes and effective ignore settings for original, canonical and
-new source paths, including the targets of global exclude-file symlinks. A policy change requires
+new source paths and selected starter dependencies, including the targets of global exclude-file
+symlinks. Starter dependency policies are captured when the starter is selected and rechecked
+at preparation, so a changed upstream policy also invalidates the initial plan. A policy change requires
 rediscovery; generated-path ignores cannot mask a new privacy rule. Only the transaction's
 recorded ignore-file changes are accepted. Git identity
 and signing settings may still be repaired after a failed checkpoint.

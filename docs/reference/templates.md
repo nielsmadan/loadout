@@ -20,8 +20,8 @@ plugins — describe *your* setup: your model, your effort level, your hooks int
 Nothing is categorically excluded, because a source's `use` already decides what it contributes,
 but a template that sets `model = "opus"` is a smell rather than a feature.
 
-**Scope as built.** The mechanism is complete and wired to every artifact type project scope
-has — **permissions, instructions, skills and MCP server definitions**. Each plugged into the
+**Legacy preset scope.** Templates contribute **permissions, instructions, skills and MCP server
+definitions**. Each plugged into the
 same resolution as it shipped, without changing anything here, which is what "a dimension rather
 than a milestone" meant: see `docs/scopes.md`.
 
@@ -68,14 +68,67 @@ The same algorithm `resolve_fragment` uses, one level up:
    and must not, per the rule above; the machine config
    ([0010](../decisions/0010-a-machine-config-locates-the-global-source.md)) is where this
    machine's paths already live.
-3. No match: an error naming every place searched, the vendored path included.
-4. **More than one match: an error listing both.** Never a silent preference — the winner would
+3. With no declared-source match, `frontend` and `backend` resolve from the installed package's
+   offline catalog. These names also work without machine configuration. A malformed configured
+   machine source remains an error. Qualifying a source name never selects the package fallback.
+4. No match: an error naming every place searched, the vendored path included.
+5. **More than one declared-source match: an error listing both.** Never a silent preference — the winner would
    otherwise depend on manifest order rather than on anything the author wrote. Qualify as
    `company/web` to disambiguate.
 
 Given `~/ac/loadout.toml` declaring `[[source]] path = "loadout"`, templates resolve from
 `~/ac/loadout/templates/<name>/`. Everything under a source belongs to loadout, which is what
 makes "where do I edit" answerable from the path.
+
+## Bundled starters and native projects
+
+`loadout init --project --starter frontend` or `--starter backend` vendors the selected template
+with normal content-hash provenance. `--starter none` is the default. Interactive fresh-project
+init offers this choice unless `--yes` already accepts the default. Selection is project-scoped;
+a global source can offer these template names but cannot activate their advice machine-wide.
+
+The packaged seeds cover frontend accessibility, responsive layouts and UI states, or backend
+boundaries, authorization, failures and compatibility. Each includes empty category scaffolds.
+They add no dependency installs, permissive rules, model choices or credentials. The seed is
+editable source at `loadout/templates/<name>/instructions.md`; later local edits use normal
+modified-copy refusal during `template sync`.
+
+For `presets = false`, a template's UTF-8 `instructions.md` is trimmed and concatenated in
+declared order, with two newlines between tiers and before each original native body. Only
+required project copy/text instruction routes explicitly setting `template_instructions = true`
+receive that prefix. Source bodies remain byte-identical, including their trailing whitespace,
+and outputs retain the source file's full mode. A selected template also activates an empty
+opted-in route. Removing all template text makes such an otherwise empty route dormant again.
+Existing nested instructions and command trees keep their independent routes and content.
+
+Fresh project migration marks the top-level `CLAUDE.md` and `AGENTS.md` routes, including dormant
+ones. Every configured agent must have an opted-in route when template prose is selected.
+An existing manually authored native config gets an actionable route error if one is missing;
+legacy `instructions = [...]` remains unsupported in this mode.
+
+Native templates currently compose instruction text only. Empty `permissions.toml`, `mcp.toml`
+and `.gitkeep` scaffolds are accepted. A populated permission, MCP, skill or other contribution
+is refused with its category/path and a remedy: place that content in an explicitly routed
+project source, then remove it from the template. `template add`, `vendor` and `sync` preflight
+these limits before changing configuration, copies or provenance. Source symlinks are refused.
+Native `template sync` validates both vendored and upstream trees before reading template
+contents for hashes or refusal diffs.
+This prevents template data from being silently ignored or overlaying native producers.
+
+Init includes the selected template in preview metadata, source writes, output expectations,
+fresh-source validation, staging and recovery. Private/Git-ignored or credential-bearing template
+overrides require a public template before init can vendor them into committed source. Errors
+name paths without printing content. The same conservative credential heuristic used for
+migration does not prove arbitrary content secret-free.
+The approved plan records template files and directory membership, including empty directories;
+adding a file or directory invalidates it. Upstream Git privacy decisions and applicable ignore
+policies are preserved through preparation, application and interrupted resume, including
+effective exclude-file targets. A policy change requires rediscovery even if it has not yet
+changed whether an existing template file is ignored.
+
+Repeat init with an explicit starter reports the exact `template vendor`/`template sync` and
+normal `sync` commands instead of discarding the choice. A vendored clone resolves before reading
+machine configuration and works independently of its original template source.
 
 ## The content hash
 

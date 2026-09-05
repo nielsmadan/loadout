@@ -27,6 +27,7 @@ from .migration_models import (
     SourceWrite,
 )
 from .migration_paths import DestinationLayout, entry_path
+from .migration_starters import select_starter
 from .migration_validation import validate_plan
 from .native_documents import key_fingerprints, parse_document
 from .permissions.renderers import RENDERERS, JsonSpec, TextSpec
@@ -604,6 +605,15 @@ class _PlanBuilder:
                 )
         for category in sorted(CATEGORIES):
             self.write(Path(category) / ".gitkeep", b"")
+        if project:
+            for destination, record in self.records.items():
+                if (
+                    destination.parent == self.inventory.root
+                    and destination.name in {"AGENTS.md", "CLAUDE.md"}
+                    and record.get("category") == "instructions"
+                    and not record.get("optional")
+                ):
+                    record["template_instructions"] = True
         for category in ("module-config", "support", "templates"):
             self.write(
                 Path(category) / "README.md",
@@ -680,7 +690,16 @@ def _initialized(inventory: Inventory) -> MigrationPlan:
 
 
 def plan_migration(
-    inventory: Inventory, *, selections: tuple[SourceSelection, ...] = ()
+    inventory: Inventory,
+    *,
+    selections: tuple[SourceSelection, ...] = (),
+    starter: str | None = None,
+) -> MigrationPlan:
+    return select_starter(_plan_migration(inventory, selections=selections), starter)
+
+
+def _plan_migration(
+    inventory: Inventory, *, selections: tuple[SourceSelection, ...]
 ) -> MigrationPlan:
     if inventory.initialized is not None:
         return _initialized(inventory)

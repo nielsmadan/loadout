@@ -172,6 +172,9 @@ class MigrationPlan:
     notes: tuple[str, ...] = ()
     categories: tuple[CategoryReadiness, ...] = ()
     artifact_routes: tuple[tuple[str, Path], ...] = ()
+    starter: str | None = None
+    starter_dependencies: tuple[Path, ...] = ()
+    starter_privacy_policy: tuple[tuple[str, str | None], ...] = ()
 
     @property
     def complete(self) -> bool:
@@ -183,6 +186,8 @@ class MigrationPlan:
             "complete": self.complete,
             "validated": self.validated,
             "already_initialized": self.already_initialized,
+            "starter": self.starter or "none",
+            "starter_dependencies": [str(p) for p in self.starter_dependencies],
             "source_writes": [
                 {"path": str(w.path), "mode": w.mode, "private": w.private}
                 for w in self.source_writes

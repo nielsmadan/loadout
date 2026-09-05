@@ -50,6 +50,10 @@ class Copied:
     """
 
     source: Path
+    prefix: bytes = b""
+
+    def read_bytes(self) -> bytes:
+        return self.prefix + self.source.read_bytes()
 
 
 @dataclass(frozen=True)
@@ -103,6 +107,7 @@ class Artifact:
     order: tuple[str, ...] = ()
     emit_empty: bool = False
     partial: bool = False
+    template_instructions: bool = False
 
     @property
     def label(self) -> str:
@@ -203,6 +208,7 @@ def _record(raw: object, label: str, scope: ArtifactScope) -> Artifact:
             "renderer",
             "optional",
             "partial",
+            "template_instructions",
         },
         label,
     )
@@ -241,7 +247,21 @@ def _record(raw: object, label: str, scope: ArtifactScope) -> Artifact:
         order=_strings(raw.get("order", []), f"{label}.order"),
         emit_empty=_boolean(raw.get("emit_empty", False), f"{label}.emit_empty"),
         partial=_boolean(raw.get("partial", False), f"{label}.partial"),
+        template_instructions=_boolean(
+            raw.get("template_instructions", False), f"{label}.template_instructions"
+        ),
     )
+    if record.template_instructions and (
+        scope != "project"
+        or record.format not in {"copy", "text"}
+        or len(record.parts) != 1
+        or record.parts[0].category != "instructions"
+        or record.parts[0].renderer is not None
+        or record.parts[0].optional
+    ):
+        raise LoadoutError(
+            f"{label}: template_instructions requires a required project copy/text instruction source"
+        )
     _validate_renderers(record)
     return record
 
@@ -514,7 +534,9 @@ def _regular_file(path: Path) -> None:
         raise LoadoutError(f"artifact source must be a regular file: {path}")
 
 
-def _opaque(artifacts: Artifacts, artifact: Artifact, destination: Path) -> dict[Path, Output]:
+def _opaque(
+    artifacts: Artifacts, artifact: Artifact, destination: Path, instruction_prefix: bytes
+) -> dict[Path, Output]:
     part = artifact.parts[0]
     path = _source(artifacts.source_root, part.source, optional=part.optional)
     if path is None:
@@ -544,9 +566,10 @@ def _opaque(artifacts: Artifacts, artifact: Artifact, destination: Path) -> dict
         if rules == EMPTY_RULES and not artifact.emit_empty:
             return {}
         return {destination: spec.fn(rules)}
-    if path.stat().st_size == 0 and not artifact.emit_empty:
+    prefix = instruction_prefix if artifact.template_instructions else b""
+    if path.stat().st_size == 0 and not artifact.emit_empty and not prefix:
         return {}
-    return {destination: Copied(path)}
+    return {destination: Copied(path, prefix)}
 
 
 def render_artifacts(
@@ -555,6 +578,7 @@ def render_artifacts(
     project_root: Path | None = None,
     occupied: Iterable[Path] = (),
     source_inputs: Iterable[Path] = (),
+    instruction_prefix: bytes = b"",
 ) -> dict[Path, Output]:
     destinations = validate_artifact_paths(
         artifacts, project_root=project_root, occupied=occupied, source_inputs=source_inputs
@@ -580,5 +604,5 @@ def render_artifacts(
             elif document is not None:
                 outputs[destination] = document
         else:
-            outputs.update(_opaque(artifacts, artifact, destination))
+            outputs.update(_opaque(artifacts, artifact, destination, instruction_prefix))
     return outputs

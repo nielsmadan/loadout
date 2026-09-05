@@ -114,6 +114,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="conflicting-copy selection JSON: destination, source",
     )
     init.add_argument(
+        "--starter",
+        choices=("none", "frontend", "backend"),
+        help="optional project template to vendor; default: none",
+    )
+    init.add_argument(
         "--registration",
         choices=("keep", "replace"),
         help="resolve a conflicting global machine registration",
@@ -129,13 +134,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="approve a fully resolved migration and its Git operations",
     )
-    recovery = init.add_mutually_exclusive_group()
-    recovery.add_argument("--resume", type=Path, help="resume a protected migration journal")
-    recovery.add_argument(
-        "--recover",
-        type=Path,
-        help="restore unchanged transaction postimages; keep successful baseline",
-    )
+    _add_init_recovery(init)
     add_root(init)
 
     harness = subparsers.add_parser("harness", help="manage this project's enabled harnesses")
@@ -219,6 +218,16 @@ def _dispatch_template(args: argparse.Namespace) -> int:
     return cmd_template_sync(root, args.name)
 
 
+def _add_init_recovery(init: argparse.ArgumentParser) -> None:
+    recovery = init.add_mutually_exclusive_group()
+    recovery.add_argument("--resume", type=Path, help="resume a protected migration journal")
+    recovery.add_argument(
+        "--recover",
+        type=Path,
+        help="restore unchanged transaction postimages; keep successful baseline",
+    )
+
+
 def _dispatch_init(args: argparse.Namespace) -> int:
     if args.resume or args.recover:
         if (
@@ -231,6 +240,7 @@ def _dispatch_init(args: argparse.Namespace) -> int:
             or args.select_source
             or args.registration
             or args.force
+            or args.starter
         ):
             raise UsageError("--resume/--recover accept only --yes and --json")
         return run_recovery(
@@ -250,6 +260,7 @@ def _dispatch_init(args: argparse.Namespace) -> int:
             dry_run=args.dry_run,
             json=args.json,
             yes=args.yes,
+            starter=args.starter,
         )
     )
 
