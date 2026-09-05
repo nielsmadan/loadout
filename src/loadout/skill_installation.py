@@ -141,7 +141,10 @@ def inspect_skill_source(
 
 def configured_skill_agents(root: Path, profile: str) -> tuple[str, ...]:
     manifest = _load_skill_profile(root, profile)
-    return tuple(sorted({target.agent for target in manifest.skills}))
+    agents = {target.agent for target in manifest.skills}
+    if manifest.artifacts is not None:
+        agents.update(manifest.artifacts.agents("skills"))
+    return tuple(sorted(agents))
 
 
 def _write_marker(path: Path, digest: str) -> None:

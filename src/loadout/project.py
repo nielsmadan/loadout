@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .agents import SliceOutput
+from .artifacts import Artifacts, artifact_reference
 from .errors import LoadoutError
 
 PROJECT_DIR = "loadout"
@@ -38,8 +39,14 @@ class ProjectConfig:
     templates: tuple[str, ...] = ()
     vendored: tuple[tuple[str, str], ...] = ()
     instructions: tuple[str, ...] = ()
+    artifacts: Artifacts | None = None
+    presets: bool = True
 
     def __post_init__(self) -> None:
+        if not isinstance(self.presets, bool):
+            raise LoadoutError("presets must be a boolean")
+        if not self.presets and (self.instructions or self.templates or self.vendored):
+            raise LoadoutError("presets = false cannot use legacy instructions or templates")
         if not self.harnesses:
             raise LoadoutError("at least one harness is required")
         if len(set(self.harnesses)) != len(self.harnesses):
@@ -48,6 +55,12 @@ class ProjectConfig:
         if bad:
             known = ", ".join(sorted(KNOWN_HARNESSES))
             raise LoadoutError(f"unknown harness(es) {', '.join(bad)} (known: {known})")
+        if self.artifacts is not None:
+            extra = set(self.artifacts.agents()) - set(self.harnesses)
+            if extra:
+                raise LoadoutError(
+                    f"artifact agents must be configured harnesses: {', '.join(sorted(extra))}"
+                )
         if len(set(self.templates)) != len(self.templates):
             raise LoadoutError("duplicate template in the list")
         if len(set(self.instructions)) != len(self.instructions):
@@ -79,11 +92,13 @@ def load_project_config(path: Path) -> ProjectConfig:
     except tomllib.TOMLDecodeError as error:
         raise LoadoutError(f"{path}: invalid TOML: {error}") from error
 
-    unknown = sorted(set(data) - {"harnesses", "templates", "template", "instructions"})
+    unknown = sorted(
+        set(data) - {"harnesses", "templates", "template", "instructions", "artifacts", "presets"}
+    )
     if unknown:
         raise LoadoutError(
             f"{path}: unrecognised key(s) {', '.join(unknown)}; 'harnesses', "
-            f"'templates', 'instructions' and [template.<name>] are the keys this "
+            f"'templates', 'instructions', 'artifacts', 'presets' and [template.<name>] are the keys this "
             f"file accepts"
         )
 
@@ -109,6 +124,10 @@ def load_project_config(path: Path) -> ProjectConfig:
             templates=tuple(raw_templates),
             vendored=_parse_provenance(data.get("template", {}), path),
             instructions=tuple(raw_instructions),
+            artifacts=artifact_reference(data["artifacts"], path, "project")
+            if "artifacts" in data
+            else None,
+            presets=data.get("presets", True),
         )
     except LoadoutError as error:
         raise LoadoutError(f"{path}: {error}") from error
@@ -239,11 +258,17 @@ def project_outputs(
     Deduplicated because three harnesses share one `AGENTS.md`, and
     order-preserving for the reason `dedupe()` is: never a set().
     """
-    selected = config.harnesses if harnesses is None else harnesses
+    selected = tuple(config.harnesses if harnesses is None else harnesses)
     writes_instructions = bool(config.instructions or config.templates)
     paths = [
         spec.output
-        for _, name, spec in project_slices(selected)
+        for _, name, spec in project_slices(selected if config.presets else ())
         if spec.output is not None and (name != "instructions" or writes_instructions)
     ]
+    if config.artifacts is not None:
+        paths.extend(
+            str(record.output)
+            for record in config.artifacts.records
+            if record.output is not None and set(record.agents).intersection(selected)
+        )
     return tuple(dict.fromkeys(paths))

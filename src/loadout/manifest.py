@@ -1,19 +1,17 @@
 from __future__ import annotations
 
-import os
-import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from .agents import GLOBAL_PRESET, known_agents
+from .artifacts import Artifacts, artifact_reference
+from .destinations import resolve_destination
 from .errors import LoadoutError
 from .sources import Source, parse_sources
 
 MANIFEST_NAME = "loadout.toml"
-
-_ENV_REFERENCE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
-
+__all__ = ["resolve_destination"]
 
 DEFAULT_PROFILE = "default"
 
@@ -125,6 +123,8 @@ class Manifest:
     permissions: tuple[PermissionTarget, ...] = ()
     skills: tuple[SkillsTarget, ...] = ()
     module_config: tuple[ModuleConfigTarget, ...] = ()
+    artifacts: Artifacts | None = None
+    config_paths: tuple[Path, ...] = ()
 
 
 def _require(block: dict[str, object], key: str, label: str) -> object:
@@ -137,60 +137,6 @@ def _str_list(value: object, label: str, key: str) -> tuple[str, ...]:
     if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
         raise LoadoutError(f"{label}: {key} must be a list of strings")
     return tuple(str(v) for v in value)
-
-
-def _expand_env(template: str, label: str) -> str:
-    """Substitute `${VAR}` and `${VAR:-fallback}`.
-
-    Which variable a harness reads is recorded in docs/reference/, never here.
-    An empty value counts as unset, matching `machine_config_path`; an empty
-    fallback does too, so `${VAR:-}` cannot quietly resolve to nothing.
-    """
-
-    def substitute(match: re.Match[str]) -> str:
-        name, fallback = match.group(1), match.group(2)
-        value = os.environ.get(name)
-        if value:
-            return value
-        if fallback:
-            return fallback
-        raise LoadoutError(
-            f"{label}: destination {template!r} reads ${{{name}}}, which is unset or "
-            f"empty, and has no fallback; give it one as ${{{name}:-<path>}}"
-        )
-
-    expanded = _ENV_REFERENCE.sub(substitute, template)
-    # Anything brace-shaped left over is a reference this grammar does not cover
-    # (`${VAR-x}`, `${VAR:?x}`, `${}`, an unclosed brace, a nested fallback). Left
-    # alone it would become literal path text and be written to as a directory. A
-    # stray `}` is the tell for the nested case, where the substitution succeeded
-    # and only the inner reference's closing brace survives.
-    if "${" in expanded or "}" in expanded:
-        raise LoadoutError(
-            f"{label}: destination {template!r} contains a reference loadout does not "
-            f"understand; only ${{VAR}} and ${{VAR:-fallback}} are substituted"
-        )
-    return expanded
-
-
-def resolve_destination(template: str, label: str) -> Path:
-    """Resolve a destination template to the machine path `sync` will write.
-
-    Deferred to render time rather than parse time for two reasons: a target the
-    active profile does not select must not be able to fail the run over a variable
-    this machine has no reason to set, and `~` resolves here too, so the checks
-    below see the whole path rather than half of one."""
-    expanded = _expand_env(template, label)
-    try:
-        path = Path(expanded).expanduser()
-    except RuntimeError as error:
-        raise LoadoutError(f"{label}: destination {template!r}: {error}") from error
-    if not path.is_absolute() or ".." in path.parts:
-        raise LoadoutError(
-            f"{label}: destination {template!r} resolves to {str(path)!r}, which must be "
-            f"an absolute path with no '..' components"
-        )
-    return path
 
 
 def _destinations(value: object, label: str) -> tuple[PurePosixPath, ...]:
@@ -366,7 +312,7 @@ def _read_toml(path: Path) -> dict[str, object]:
     return data
 
 
-def _resolve_extends(root: Path, profile: str) -> dict[str, object]:
+def _resolve_extends(root: Path, profile: str) -> tuple[dict[str, object], tuple[Path, ...]]:
     """Flatten a profile onto the one it extends, so it states only deltas.
 
     Blocks merge **per key**, so a profile naming one key inherits the rest —
@@ -401,7 +347,7 @@ def _resolve_extends(root: Path, profile: str) -> dict[str, object]:
                 merged[key] = {**existing, **value}
             else:
                 merged[key] = value
-    return merged
+    return merged, tuple(profile_path(root, name) for name in seen)
 
 
 def load_profile(root: Path, profile: str = DEFAULT_PROFILE) -> Manifest:
@@ -416,7 +362,8 @@ def load_profile(root: Path, profile: str = DEFAULT_PROFILE) -> Manifest:
     path = profile_path(root, profile)
     if not path.is_file():
         return load_manifest(manifest_path(root))
-    return _build_manifest(_resolve_extends(root, profile), path)
+    data, config_paths = _resolve_extends(root, profile)
+    return _build_manifest(data, path, config_paths=config_paths)
 
 
 def load_manifest(path: Path) -> Manifest:
@@ -425,7 +372,9 @@ def load_manifest(path: Path) -> Manifest:
 
 COMMON_BLOCK = "all"
 
-RESERVED_KEYS = frozenset({"source", "instructions", "permissions", "extends", COMMON_BLOCK})
+RESERVED_KEYS = frozenset(
+    {"source", "instructions", "permissions", "extends", "artifacts", COMMON_BLOCK}
+)
 
 # permissions, mcp-permissions, skills and module-config render with no authoring
 # decision to make, so an agent block that names none of them still gets them. For
@@ -562,9 +511,14 @@ def _parse_agents(
     return tuple(targets), tuple(permissions), tuple(skills), tuple(module_config)
 
 
-def _build_manifest(data: dict[str, object], path: Path) -> Manifest:
-    raw_sources = data.get("source")
-    if not isinstance(raw_sources, list) or not raw_sources:
+def _build_manifest(
+    data: dict[str, object], path: Path, *, config_paths: tuple[Path, ...] = ()
+) -> Manifest:
+    artifacts = (
+        artifact_reference(data["artifacts"], path, "global") if "artifacts" in data else None
+    )
+    raw_sources = data.get("source", [] if artifacts is not None else None)
+    if not isinstance(raw_sources, list) or (not raw_sources and artifacts is None):
         raise LoadoutError(f"{path}: at least one [[source]] entry is required")
     sources = parse_sources(list(raw_sources), path.parent)
 
@@ -584,7 +538,7 @@ def _build_manifest(data: dict[str, object], path: Path) -> Manifest:
                 f"output; a base must be an input, never something loadout writes"
             )
 
-    if not targets and not permissions:
+    if not targets and not permissions and artifacts is None:
         raise LoadoutError(
             f"{path}: no [<agent>], [instructions.<agent>] or [permissions.<name>] targets declared"
         )
@@ -594,4 +548,6 @@ def _build_manifest(data: dict[str, object], path: Path) -> Manifest:
         permissions=permissions,
         skills=agent_skills,
         module_config=agent_module_config,
+        artifacts=artifacts,
+        config_paths=config_paths or (path,),
     )

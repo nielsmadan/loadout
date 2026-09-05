@@ -4,14 +4,16 @@ import json
 import os
 import shutil
 import tempfile
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from .artifacts import Artifacts, Copied, render_artifacts, validate_artifact_paths
 from .composition import HEADER, load_fragment, render
 from .documents import merge_documents
 from .errors import LoadoutError
+from .machine import load_machine_config, machine_config_path
 from .manifest import (
     MANIFEST_NAME,
     InstructionTarget,
@@ -62,24 +64,12 @@ from .servers import SERVERS_SOURCE, Server, parse_servers
 from .skills import SKILL_DOCUMENT, Skill, discover_skills, render_skill
 from .sources import Source
 from .surgery import apply_json, apply_toml, concat_documents
-from .templates import resolve_template
+from .templates import VENDORED, resolve_template
 
 PERMISSIONS_SOURCE = ("permissions.toml",)
 PROJECT_SOURCE = "permissions.toml"
 PROJECT_LOCAL_SOURCE = "permissions.local.toml"
-
-
-@dataclass(frozen=True)
-class Copied:
-    """A file reproduced from a source path rather than rendered from rules.
-
-    A skill is a tree and only `SKILL.md` goes through composition; the rest is
-    carried across untouched. Naming the source instead of its decoded text is
-    what lets a byte be a byte: `scripts/` files are executable in three skills
-    today, and a mode does not survive a `str`.
-    """
-
-    source: Path
+__all__ = ["Copied"]
 
 
 @dataclass(frozen=True)
@@ -820,7 +810,12 @@ def render_global(root: Path, profile: str = "default") -> dict[Path, Output]:
     # collides with it rather than depending on which ran first.
     for module_config_target in manifest.module_config:
         _expand_module_config(module_config_target, manifest, outputs, claimed)
-    return outputs
+    return _with_artifacts(
+        outputs,
+        manifest.artifacts,
+        occupied=claimed,
+        source_inputs=_global_source_inputs(root, manifest),
+    )
 
 
 SKILLS_SUBDIR = "skills"
@@ -926,8 +921,8 @@ def render_all(root: Path, profile: str = "default") -> dict[Path, Output]:
             f"or {PROJECT_DIR}/{PROJECT_CONFIG_NAME}"
         )
 
-    if has_global:
-        outputs.update(render_global(root, profile))
+    global_outputs = render_global(root, profile) if has_global else {}
+    outputs.update(global_outputs)
     if has_project:
         project_outputs = render_project(root)
         collisions = sorted(str(p) for p in project_outputs if p in outputs)
@@ -936,11 +931,96 @@ def render_all(root: Path, profile: str = "default") -> dict[Path, Output]:
                 f"path collision between global and project scope: {', '.join(collisions)}"
             )
         outputs.update(project_outputs)
+    if has_global and has_project:
+        _validate_scope_artifacts(root, profile, global_outputs, project_outputs)
     return outputs
+
+
+def _validate_scope_artifacts(
+    root: Path,
+    profile: str,
+    global_outputs: Mapping[Path, Output],
+    project_outputs: Mapping[Path, Output],
+) -> None:
+    manifest = load_profile(root, profile)
+    config = load_project_config(project_config_path(root))
+    global_artifacts = manifest.artifacts
+    project_artifacts = config.artifacts
+    project_paths = (
+        validate_artifact_paths(project_artifacts, project_root=root) if project_artifacts else ()
+    )
+    if global_artifacts is not None:
+        validate_artifact_paths(
+            global_artifacts,
+            occupied=(*project_outputs, *project_paths),
+            source_inputs=_project_source_inputs(root, config),
+        )
+    if project_artifacts is not None:
+        validate_artifact_paths(
+            project_artifacts,
+            project_root=root,
+            occupied=global_outputs,
+            source_inputs=_global_source_inputs(root, manifest),
+        )
+
+
+def _with_artifacts(
+    outputs: dict[Path, Output],
+    artifacts: Artifacts | None,
+    *,
+    project_root: Path | None = None,
+    occupied: Mapping[Path, str] | None = None,
+    source_inputs: Iterable[Path] = (),
+) -> dict[Path, Output]:
+    if artifacts is not None:
+        outputs.update(
+            render_artifacts(
+                artifacts,
+                project_root=project_root,
+                occupied=(*outputs, *(occupied or {})),
+                source_inputs=source_inputs,
+            )
+        )
+    return outputs
+
+
+def _legacy_source_inputs(sources: tuple[Source, ...]) -> tuple[Path, ...]:
+    return tuple(
+        source.path / (f"{name}.toml" if name in {"permissions", "mcp"} else name)
+        for source in sources
+        for name in sorted(source.use)
+    )
+
+
+def _global_source_inputs(root: Path, manifest: Manifest) -> tuple[Path, ...]:
+    return (
+        *_legacy_source_inputs(manifest.sources),
+        manifest_path(root),
+        *manifest.config_paths,
+        *(root / str(t.base) for t in manifest.permissions if t.base is not None),
+    )
+
+
+def _project_source_inputs(root: Path, config: ProjectConfig) -> tuple[Path, ...]:
+    inputs = [root / PROJECT_DIR]
+    templates = [resolve_template(name, root) for name in config.templates]
+    inputs.extend(template.path for template in templates)
+    if any(template.source != VENDORED for template in templates):
+        path = machine_config_path()
+        machine = load_machine_config(path)
+        assert machine is not None
+        inputs.extend((path, manifest_path(machine.source)))
+    return tuple(inputs)
 
 
 def render_project(root: Path) -> dict[Path, Output]:
     config = load_project_config(project_config_path(root))
+    if config.presets:
+        return _render_project_presets(root, config)
+    return _with_artifacts({}, config.artifacts, project_root=root)
+
+
+def _render_project_presets(root: Path, config: ProjectConfig) -> dict[Path, Output]:
     project_dir = root / PROJECT_DIR
 
     # Templates are the lowest tier, in declared order: a template describes a
@@ -1022,7 +1102,13 @@ def render_project(root: Path) -> dict[Path, Output]:
         # scope renders from the project's own config rather than the global
         # manifest's sources. No project slice has derived ownership today.
         outputs[path] = compose_permission_document(contributors, rules, path)
-    return outputs
+    return _with_artifacts(
+        outputs,
+        config.artifacts,
+        project_root=root,
+        occupied=claimed,
+        source_inputs=_project_source_inputs(root, config),
+    )
 
 
 def project_skill_trees(root: Path, config: ProjectConfig) -> tuple[Skill, ...]:

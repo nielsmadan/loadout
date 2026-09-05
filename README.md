@@ -213,11 +213,22 @@ Only `${VAR}` and `${VAR:-fallback}` are substituted. Anything else brace-shaped
 template ends up being created as a directory. A bare `$` with no brace is left alone, so a
 literal `${` cannot be expressed in a destination.
 
-`[permissions.<name>]` targets accept `destinations` the same way. At least one source is
-required, and at least one `[instructions.<agent>]` or `[permissions.<name>]` target must be
+`[permissions.<name>]` targets accept `destinations` the same way. Structured manifests require
+at least one source, and at least one `[instructions.<agent>]` or `[permissions.<name>]` target must be
 declared; no two targets, of either kind, may share an `output` path, and — among the targets
 selected for the active profile — no two may share a `destination` either; that raises a
 `LoadoutError` naming both.
+
+### Native artifacts
+
+An `artifacts = "artifacts.toml"` reference adds explicit routes for native settings, permissions,
+instructions, scripts and skill trees. Routes declare their agents and destinations; composite
+documents have separate category owners, with conflicts rather than implicit override order.
+An artifacts-only global manifest can omit `[[source]]`. Project config accepts the same
+reference and `presets = false` to use explicit routes in place of its built-in outputs.
+
+See [native artifact routes](docs/reference/artifacts.md) for the schema, dormant empty slots,
+portable permission adapters and path-safety rules.
 
 ### Agent blocks
 

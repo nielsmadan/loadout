@@ -176,6 +176,25 @@ Every row is pinned by `tests/test_extract_roundtrip.py`, `tests/test_extract_me
 | `x-twice-listed` | a verdict is every category a harness listed the entry in, not the last one | `test_harnesses_agreeing_a_rule_appears_twice_keep_both_entries`, `test_a_rule_one_harness_lists_twice_and_another_once_is_reported` — **not reachable through the pipeline**, see below |
 | `x-machine-merges-back` | a source rendered to all nine documents merges back to itself with no divergence | `test_a_machine_rendered_from_one_source_merges_back_to_it` |
 
+## Native artifacts
+
+The opt-in [artifact routes](artifacts.md) share the existing output boundary. These tests live
+in `tests/test_artifacts.py`; legacy whole-document fixtures remain unchanged.
+
+| id | behaviour | pinned by |
+|---|---|---|
+| `a-literal-json` | null, false, empty values and native permission order survive composition | `test_json_composition_preserves_literal_values_and_permission_order`, `test_literal_json_rejects_duplicate_keys_and_non_json_values` |
+| `a-literal-toml` | nested maps and arrays preserve values and explicit top-level order | `test_toml_composition_keeps_nested_maps_arrays_and_top_level_order`, `test_toml_arrays_of_maps_preserve_key_order` |
+| `a-one-owner` | explicit owners reserve dormant keys; overlaps and extra fields fail | `test_explicit_owners_collide_even_when_one_is_empty`, `test_settings_cannot_take_a_dormant_category_key`, `test_explicit_key_list_never_silently_discards_extra_fields` |
+| `a-empty-slots` | empty sources stay dormant; first entries activate output; explicit empty presence survives | `test_empty_documents_are_dormant_and_first_entries_activate_them`, `test_empty_document_presence_is_explicit`, `test_empty_copy_presence_is_explicit`, `test_missing_sources_require_explicit_optional_declarations` |
+| `a-rules-adapters` | portable adapters reproduce existing renderers and reject incompatible ownership | `test_permission_json_adapters_match_existing_renderers`, `test_permission_text_adapters_match_existing_renderers`, `test_incompatible_or_whole_file_renderers_are_rejected`, `test_empty_renderer_reserves_its_keys_without_creating_an_output` |
+| `a-native-trees` | per-agent instructions and skill trees retain bytes and modes | `test_native_per_agent_instructions_and_skill_tree_copy_bytes_and_modes` |
+| `a-path-safety` | escaped paths, symlinks, overlapping routes and source/output collisions fail | `test_paths_cannot_escape_their_roots`, `test_symlinks_are_refused_before_native_deployment`, `test_declared_routes_reject_duplicate_and_ancestor_collisions`, `test_sources_and_outputs_cannot_overlap`, `test_outputs_cannot_replace_their_configuration` |
+| `a-coexistence` | explicit and legacy routes cannot overwrite each other or authored inputs | `test_legacy_preset_and_artifact_cannot_claim_the_same_path`, `test_global_artifacts_collide_with_legacy_destinations`, `test_global_artifacts_cannot_overwrite_legacy_inputs`, `test_project_artifacts_cannot_overwrite_legacy_permission_sources`, `test_empty_global_and_project_routes_cannot_overlap` |
+| `a-routing` | explicit project mode rejects ignored declarations; agents and source roots are validated | `test_explicit_project_mode_refuses_ignored_legacy_inputs`, `test_project_config_validates_direct_presets_and_agent_membership`, `test_global_artifacts_follow_destination_templates_and_expose_skill_agents`, `test_artifact_reference_is_relative_to_owning_config_even_when_nested` |
+| `a-dependencies` | cross-scope outputs protect source/config dependencies, inherited profiles and resolved templates | `test_project_artifacts_protect_global_source_dependencies`, `test_global_artifacts_protect_project_source_dependencies`, `test_artifacts_protect_declared_template_dependencies` |
+| `a-source-only` | composition ignores live output and supports a fresh source root | `test_standalone_composition_is_pure`, `test_rendering_never_uses_destination_content`, `test_artifact_configuration_can_be_reconstructed_under_a_fresh_root` |
+
 ## Skills
 
 A skill is a tree, so the slice pins two things nothing else does: that the shared case survives
