@@ -48,6 +48,35 @@ All rows below are exercised in `tests/test_migration.py`; the contract is
 | recognizable unsupported global harness trees block migration | `test_global_unsupported_harness_tree_is_unresolved` |
 | instruction discovery preconditions every traversed directory | `test_instruction_search_records_each_traversed_directory`, `test_instruction_search_preconditions_canonical_root_listing` |
 
+## Migration transactions
+
+All rows below are exercised in `tests/test_migration_transaction.py`; the contract is
+[migration.md](migration.md#applying-a-resolved-plan).
+
+| behaviour | pinned by |
+|---|---|
+| project checkpoint, staging, source edits and normal sync/check | `test_project_migration_checkpoints_stages_and_uses_normal_lifecycle` |
+| global partial fields, adopted modes and explicit registration | `test_global_migration_preserves_foreign_fields_and_registers_explicit_write`, `test_partial_document_symlink_freezes_foreign_bytes_before_replacement` |
+| existing-source no-op retains explicit registration | `test_existing_source_noop_can_write_explicit_registration` |
+| new baseline includes ordinary source and excludes private namespaces | `test_new_repository_checkpoint_filters_private_namespaces_and_ignored_files`, `test_new_repository_cannot_start_at_home` |
+| enclosing root, detached HEAD and linked worktrees | `test_nested_global_source_uses_enclosing_repository_only`, `test_existing_checkpoint_changes_only_adopted_index_entries`, `test_linked_worktree_preserves_other_checkout_index` |
+| unrelated partial staging and unstaged ignore hunks survive | `test_unrelated_partial_index_and_ignore_hunks_survive` |
+| symlink topology, runtime visibility, external originals and retirement | `test_directory_symlink_retains_runtime_visibility_and_external_targets`, `test_file_and_directory_symlinks_checkpoint_link_entries_and_retire_only_originals` |
+| ambiguous staging and unmerged index refuse preflight | `test_partially_staged_adopted_files_require_resolution_even_when_private`, `test_unmerged_index_is_rejected_before_preimages` |
+| input/index/HEAD and Git privacy changes invalidate preparation | `test_stale_preparation_is_rejected_before_journal`, `test_source_privacy_change_in_info_exclude_blocks_preparation` |
+| unresolved plans cannot reach application | `test_unresolved_plan_cannot_be_prepared` |
+| hook, identity and signing failures preserve original inputs | `test_hook_failure_has_journal_and_does_not_write_source`, `test_identity_failure_keeps_initial_files_and_can_resume_after_configuration`, `test_signing_failure_preserves_requested_signing_and_original_files` |
+| first entry, edit and last deletion use the adopted receipt | `test_first_skill_entry_edit_and_last_deletion_use_adopted_receipt` |
+| literal Git paths and representable ignore patterns | `test_literal_metacharacter_paths_do_not_expand_staging_or_ignore_rules`, `test_newline_output_is_rejected_before_git_initialization` |
+| interrupted filesystem/index writes resume without duplicate checkpoint | `test_interrupted_deployment_resumes_frozen_bytes_and_normal_receipt`, `test_interrupted_final_index_replacement_resumes_without_duplicate_commit` |
+| checkpoint survives refresh failure and recovery | `test_failure_after_checkpoint_commit_records_and_refreshes_success`, `test_recovery_after_final_staging_keeps_baseline_and_restores_original_entries` |
+| recovery preserves concurrent files and subsequent user commits | `test_recovery_preserves_conflicting_edits_and_successful_baseline`, `test_recovery_after_user_commit_preserves_committed_source_and_index` |
+| resume revalidates inputs and refuses intervening new-repo commits | `test_resume_after_hook_failure_refuses_changed_checkpoint_content`, `test_new_repository_resume_refuses_an_intervening_user_commit` |
+| resume rechecks original, canonical and new-source Git privacy at checkpoint and staging boundaries | `test_resume_rechecks_privacy_after_failed_checkpoint`, `test_resume_rechecks_privacy_after_checkpoint_and_before_staging`, `test_resume_rechecks_symlinked_exclude_file_contents` |
+| unchanged output bytes, modes and absences remain guarded across deployment, retirement and final index interruptions | `test_resume_validates_unchanged_outputs_at_every_completion_boundary`, `test_unchanged_outputs_validate_before_retiring_originals`, `test_final_index_resume_validates_dormant_outputs` |
+| ancestor aliases, including nested source directories in enclosing repositories, preserve physical checkpoint paths, terminal link entries, source staging and private directory modes | `test_source_ancestor_alias_preserves_checkpoint_paths_and_link_entries`, `test_nested_source_alias_preserves_enclosing_repository_index_and_privacy`, `test_aliased_source_keeps_private_namespaces_protected` |
+| preimages stay private through hooks; malformed state is refused | `test_untrusted_recovery_state_is_rejected_before_checkpoint`, `test_journal_is_ignored_during_the_real_checkpoint_hook`, `test_loaded_journal_rejects_invalid_shape_before_recovery` |
+
 ## Cross-cutting
 
 | id | behaviour | source | pinned by |

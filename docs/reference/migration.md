@@ -1,9 +1,10 @@
-# Read-only migration planning
+# Migration planning and transactions
 
 `discovery.discover()` inventories existing agent configuration. `migration.plan_migration()`
 builds and verifies an immutable plan; neither function applies it, changes Git, prompts, or
-executes discovered scripts. The legacy init CLI still uses `scaffold.py`; transaction and CLI
-integration consume this separate library boundary.
+executes discovered scripts. `migration_transaction` prepares and applies a resolved plan through
+the deployment writer, with a scoped Git checkpoint and explicit recovery. The legacy init CLI
+still uses `scaffold.py`; CLI integration consumes this separate library boundary.
 
 ```python
 from pathlib import Path
@@ -152,4 +153,105 @@ categories do not imply retention. Retirements name individual entries, never wh
 Destination comparisons use the planned layout below the selected root or home boundary, so a
 harness-root symlink that the transaction will replace cannot make its old canonical files look
 like future generated outputs. Workspace ancestor aliases still identify the same physical root.
-The transaction must preserve retained private/runtime entries when replacing a shared ancestor.
+The transaction preserves retained private/runtime entries when replacing a shared ancestor.
+
+## Applying a resolved plan
+
+```python
+from loadout.migration_transaction import (
+    apply_migration,
+    prepare_migration,
+    recover_migration,
+    resume_migration,
+)
+
+prepared = prepare_migration(plan)
+preview = prepared.preview()
+result = apply_migration(prepared)
+```
+
+Preparation is read-only apart from disposable validation/ignore-check directories. It requires
+a complete plan, repeats serialized-source reconstruction, freezes complete destination bytes
+and modes, and adds receipt, parent, Git privacy, index and ref preconditions. Preview lists the
+exact baseline and final staging paths without file contents. Apply rechecks those preconditions;
+there is no unresolved-plan or `--yes` bypass in this API. Already initialized source produces
+an explicit no-op. A caller may pass `machine_write=SourceWrite(...)` for an explicitly planned
+machine registration; that exact write and its preimage participate in recovery, including for
+an existing-source no-op. The library does not infer or overwrite a machine configuration path.
+
+Partial JSON/TOML postimages include the existing foreign fields and adopted mode before a link
+is removed. Opaque sources retain bytes and modes; private source namespaces have mode `0700`.
+Adopted link entries are removed before normal installation. A harness directory link becomes
+an ordinary directory containing generated files and links to inventoried retained entries in
+the original canonical container. Those links preserve runtime/auth visibility and terminal
+link semantics; canonical external targets remain untouched. An uninventoried child, unsafe
+ancestor, or retained entry depending on a retired source blocks preparation. Mapped originals
+retire individually after their replacement outputs validate.
+
+The initial installation uses `deployment.apply_deployment`, including its normal pending and
+complete ownership receipts. Its optional `write` callback lets the transaction durably record
+each existing writer operation. Subsequent `sync`/`check` use ordinary native ownership, including
+first entries, edits, last-entry deletion, and output drift protection.
+
+## Git checkpoint and final staging
+
+An enclosing repository is reused, including a linked worktree or detached/unborn HEAD. New
+repositories require a dedicated directory outside HOME and the filesystem root. For an existing
+repository, the alternate baseline index starts from HEAD and adds only eligible adopted input
+and topology entries. For a new repository it captures nonignored contents, excluding discovered
+private/runtime/canonical namespaces and recognizable security paths. Ordinary application paths
+named `projects`, `debug` or `history` remain eligible. The exact path preview is reviewable;
+these exclusions do not establish that arbitrary content is secret-free, and existing history
+is not rewritten.
+
+A baseline commit is made only when its index differs from HEAD. It uses normal Git identity,
+signing and existing hooks; failures preserve the original configuration and identify a recovery
+journal. Discovered harness scripts/installers are not run. Symlink descendants are translated
+to their Git link entries and eligible canonical files. Ancestor aliases of the selected root
+are normalized to the physical repository for checkpoint, staging and ignore paths, including
+aliases to a nested directory inside an enclosing repository. Adopted terminal symlinks keep
+their own Git entries. Unmerged indexes and ambiguous partially staged adopted files, including
+private/generated files affected by final removal, block preflight.
+Unrelated staged and unstaged work is preserved.
+
+After a successful checkpoint, only affected entries in the captured original index are refreshed
+to the new HEAD, under a guarded index lock. Final staging adds public source, removes generated
+and retired/private inputs from the index, and stages only Loadout's own `.gitignore` additions
+on top of the existing index version. Unrelated unstaged ignore lines remain unstaged. A new
+repository also retains ignore content included in its baseline. Generated files stay on disk
+and are ignored. Root-relative literal pathspecs and escaped ignore patterns preserve filename
+metacharacters; an individual ignore path containing a newline is rejected before mutation.
+There is no final migration commit.
+
+Git privacy is checked again before checkpointing and final staging, including during resume.
+The journal preserves the original decisions and fingerprints the applicable `.gitignore` files,
+repository excludes, global excludes and effective ignore settings for original, canonical and
+new source paths, including the targets of global exclude-file symlinks. A policy change requires
+rediscovery; generated-path ignores cannot mask a new privacy rule. Only the transaction's
+recorded ignore-file changes are accepted. Git identity
+and signing settings may still be repaired after a failed checkpoint.
+
+## Interruption and recovery
+
+The protected journal is `<selected-root>/.loadout-state/migrations/<id>/journal.json`. Its
+container is mode `0700`, files are mode `0600`, and its own `*` ignore is installed before
+preimages, including before a checkpoint hook can run. Tracked, symlinked, foreign-owned or
+public state containers are refused. Completed journals remain private recovery records; they
+are not authored configuration or staging inputs.
+
+`MigrationFailure.journal` gives the actionable path. `resume_migration(path)` continues the
+frozen operations after checking their state. A checkpoint interrupted after committing is
+recognized from its recorded alternate index and parent, and its original-index refresh can
+finish without another commit. A retry after identity/hook failure rechecks the original input
+and privacy preconditions before committing. The journal also records every generated output's
+complete bytes and mode, including outputs requiring no write. Apply and resume validate the
+whole output inventory and required absences before retirement and completion, including a
+retry after final index replacement. `recover_migration(path)` restores only unchanged transaction
+postimages and returns `RecoveryResult.conflicts`; concurrent edits and their preserved
+preimages remain available for explicit reconciliation. An intervening Git ref/index change
+blocks rollback of the affected transaction. Successful baseline commits are never rolled back.
+
+Filesystem writes, Git refs and the index are separate guarded operations, not one atomic unit.
+Power loss or concurrent edits can therefore require explicit recovery. An initialized repository
+and successful baseline remain after recovery; no reset, clean, stash deletion, signing bypass,
+or broad recursive cleanup is used.

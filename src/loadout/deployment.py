@@ -6,7 +6,7 @@ import os
 import stat
 import subprocess
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -568,7 +568,19 @@ def _receipt_bytes(scope: DeploymentScope, receipt: Receipt) -> FrozenFile:
     return FrozenFile((json.dumps(document, indent=2) + "\n").encode(), 0o600)
 
 
-def apply_deployment(plan: DeploymentPlan) -> list[Path]:
+def apply_deployment(
+    plan: DeploymentPlan,
+    *,
+    write: Callable[[Path, FrozenFile | None], None] | None = None,
+) -> list[Path]:
+    def install(path: Path, value: FrozenFile | None) -> None:
+        if write is not None:
+            write(path, value)
+        elif value is None:
+            path.unlink()
+        else:
+            atomic_install(path, value)
+
     if plan.conflicts:
         raise DeploymentConflict("; ".join(plan.conflicts))
     for scope_plan in plan.scopes:
@@ -585,20 +597,17 @@ def apply_deployment(plan: DeploymentPlan) -> list[Path]:
         directory = scope.receipt_path.parent
         directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         if not (directory / ".gitignore").exists():
-            atomic_install(directory / ".gitignore", FrozenFile(b"*\n", 0o600))
+            install(directory / ".gitignore", FrozenFile(b"*\n", 0o600))
         pending = Receipt(
             (*scope_plan.previous.entries, *scope_plan.previous.pending), scope_plan.entries
         )
-        atomic_install(scope.receipt_path, _receipt_bytes(scope, pending))
+        install(scope.receipt_path, _receipt_bytes(scope, pending))
         for change in scope_plan.changes:
             if read_file(change.path) != change.before:
                 raise LoadoutError(f"deployment changed after planning: {change.path}")
             if change.before == change.after:
                 continue
-            if change.after is None:
-                change.path.unlink()
-            else:
-                atomic_install(change.path, change.after)
+            install(change.path, change.after)
             written.append(change.path)
-        atomic_install(scope.receipt_path, _receipt_bytes(scope, Receipt(scope_plan.entries)))
+        install(scope.receipt_path, _receipt_bytes(scope, Receipt(scope_plan.entries)))
     return written
