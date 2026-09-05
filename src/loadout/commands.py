@@ -11,10 +11,12 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 from .bundled_skill import bundled_skill_path
+from .deployment import DeploymentConflict, managed_paths
 from .emit import (
     Copied,
     Merged,
     Output,
+    artifact_deployment_scopes,
     check_all,
     collect_notices,
     declared_profiles,
@@ -253,7 +255,7 @@ def _committed_variants(root: Path, profiles: Iterable[str]) -> dict[Path, set[s
 
 
 def _modified_outside_loadout(
-    root: Path, outputs: Mapping[Path, Output]
+    root: Path, outputs: Mapping[Path, Output], profile: str = "default"
 ) -> list[tuple[Path, str, str]] | None:
     """Files matching no output loadout itself could have written — None if unknowable.
 
@@ -273,7 +275,10 @@ def _modified_outside_loadout(
     written = read_written(root)
 
     modified: list[tuple[Path, str, str]] = []
+    artifacts = managed_paths(artifact_deployment_scopes(root, profile), outputs)
     for path, expected in outputs.items():
+        if path in artifacts:
+            continue
         if isinstance(expected, Copied):
             # A copied file has no per-profile form, so it is compared against its
             # source directly. check_all only *reports* drift; this is the guard
@@ -325,11 +330,12 @@ def _diff(rel: str, actual: str, expected: str, context: int) -> list[str]:
 
 
 def cmd_sync(root: Path, profile: str = "default", force: bool = False) -> int:
+    root = root.absolute()
     # Rendered once and reused for the guard, the write and the record, so what is
     # recorded is provably what was written rather than a third render of it.
     outputs = render_all(root, profile)
     if not force:
-        modified = _modified_outside_loadout(root, outputs)
+        modified = _modified_outside_loadout(root, outputs, profile)
         if modified is None:
             print("note: no committed baseline — skipping the modified-file check", file=sys.stderr)
         elif modified:
@@ -359,10 +365,14 @@ def cmd_sync(root: Path, profile: str = "default", force: bool = False) -> int:
                 print(f"\nThe complete diff is at {_write_full_diff(full)}", file=sys.stderr)
             return 1
 
-    for path in write_outputs(outputs):
-        print(f"wrote {_display(path, root)}")
-    # After the write, so a run that aborts part-way records nothing and the next
-    # sync falls back to the two renders — losing the record fails closed.
+    try:
+        written = write_outputs(outputs, scopes=artifact_deployment_scopes(root, profile), force=force)
+    except DeploymentConflict as error:
+        print(f"Sync aborted: {error}", file=sys.stderr)
+        return 1
+    for path in written:
+        action = "wrote" if path.exists() else "retired"
+        print(f"{action} {_display(path, root)}")
     record_written(root, profile, _entries_for(outputs))
     _report_notices(root, profile)
     return 0

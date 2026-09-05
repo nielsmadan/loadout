@@ -5,12 +5,18 @@ import os
 import shutil
 import tempfile
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from .artifacts import Artifacts, Copied, render_artifacts, validate_artifact_paths
+from .artifacts import Artifacts, Copied, Merged, Output, render_artifacts, validate_artifact_paths
 from .composition import HEADER, load_fragment, render
+from .deployment import (
+    DeploymentConflict,
+    DeploymentScope,
+    FrozenFile,
+    apply_deployment,
+    prepare_deployment,
+)
 from .documents import merge_documents
 from .errors import LoadoutError
 from .machine import load_machine_config, machine_config_path
@@ -28,6 +34,7 @@ from .manifest import (
     resolve_destination,
 )
 from .module_config import MODULE_CONFIG_SUBDIR, discover_module_config
+from .native_documents import apply_document
 from .notices import (
     OPENCODE_SKILL_FLAGS,
     Notice,
@@ -69,39 +76,7 @@ from .templates import VENDORED, resolve_template
 PERMISSIONS_SOURCE = ("permissions.toml",)
 PROJECT_SOURCE = "permissions.toml"
 PROJECT_LOCAL_SOURCE = "permissions.local.toml"
-__all__ = ["Copied"]
-
-
-@dataclass(frozen=True)
-class Merged:
-    """Keys applied into a destination loadout does not own outright.
-
-    Where a base cannot exist — `~/.codex/config.toml` carries project tables the
-    harness writes, a block another tool manages and comments none of it survives
-    a reserialise — the deletion guarantee comes from stripping declared keys at
-    the destination instead (ADR 0017).
-
-    `owned` is declared, never derived from `document`. A set derived from what is
-    being written cannot express a removal: drop the last server and the root goes
-    unnamed, so nothing strips it and every server survives with its approval
-    intact.
-    """
-
-    owned: frozenset[str]
-    document: str
-    # Where the owned-key record lives, and what it should now say. Read as an
-    # input and written as an output by the same slice — the shape ADR 0001
-    # forbids a *renderer*, permitted here because the caller does both, exactly
-    # as it does when reading a destination. `check` compares it so a stale or
-    # hand-edited record is reported rather than silently changing what is
-    # stripped.
-    records: tuple[tuple[Path, str], ...] = ()
-    # Which applier writes it. TOML must not be reserialised; JSON may be, because
-    # it has no comments, managed blocks or multi-line strings to lose.
-    fmt: str = "toml"
-
-
-Output = str | Copied | Merged
+__all__ = ["Copied", "Merged", "Output"]
 
 
 def permission_sources(manifest: Manifest) -> tuple[Source, ...]:
@@ -325,7 +300,7 @@ def _compose_merged(
         json_spec = json_specs[0]
         _, _, content = contributors[0]
         document = json.dumps(json_spec.fn(content), indent=2, ensure_ascii=False)
-        return Merged(json_spec.owns, document, fmt="json")
+        return Merged(json_spec.owns, document, format="json")
 
     owned: set[str] = set()
     fragments: list[str] = []
@@ -382,7 +357,7 @@ def _attach_records(
         records.append((path, render_record(present)))
     if not records:
         return document
-    return Merged(owned, document.document, tuple(records), document.fmt)
+    return Merged(owned, document.document, tuple(records), document.format)
 
 
 def compose_permission_document(
@@ -1213,37 +1188,87 @@ def atomic_copy(path: Path, source: Path) -> None:
         raise
 
 
-def write_all(root: Path, profile: str = "default") -> list[Path]:
-    return write_outputs(render_all(root, profile))
+def artifact_deployment_scopes(root: Path, profile: str = "default") -> tuple[DeploymentScope, ...]:
+    root = root.absolute()
+    scopes: list[DeploymentScope] = []
+    if manifest_path(root).is_file():
+        manifest = load_profile(root, profile)
+        scopes.append(
+            DeploymentScope(
+                "global", root, root, manifest.artifacts, _global_source_inputs(root, manifest)
+            )
+        )
+    if project_config_path(root).is_file():
+        config = load_project_config(project_config_path(root))
+        scopes.append(
+            DeploymentScope(
+                "project",
+                root,
+                project_config_path(root).parent,
+                config.artifacts,
+                _project_source_inputs(root, config),
+            )
+        )
+    return tuple(
+        scope
+        for scope in scopes
+        if scope.artifacts is not None
+        or scope.receipt_path.exists()
+        or scope.receipt_path.is_symlink()
+    )
 
 
-def write_outputs(outputs: Mapping[Path, Output]) -> list[Path]:
-    """Write an already-rendered mapping.
+def write_all(root: Path, profile: str = "default", *, force: bool = False) -> list[Path]:
+    root = root.absolute()
+    outputs = render_all(root, profile)
+    return write_outputs(outputs, scopes=artifact_deployment_scopes(root, profile), force=force)
 
-    Split from `write_all` so a caller that must render once — to guard, write and
-    then record the same bytes — cannot accidentally render three times and record
-    something it did not write.
-    """
-    written: list[Path] = []
+
+def write_outputs(
+    outputs: Mapping[Path, Output],
+    *,
+    scopes: tuple[DeploymentScope, ...] = (),
+    force: bool = False,
+) -> list[Path]:
+    deployment = prepare_deployment(scopes, outputs, force=force)
+    if deployment.conflicts:
+        raise DeploymentConflict("; ".join(deployment.conflicts))
+    frozen: dict[Path, str | FrozenFile] = {}
     for path, content in outputs.items():
-        path.parent.mkdir(parents=True, exist_ok=True)
+        if path in deployment.managed:
+            continue
         if isinstance(content, Copied):
-            atomic_copy(path, content.source)
+            frozen[path] = FrozenFile(
+                content.source.read_bytes(), content.source.stat().st_mode & 0o7777
+            )
         elif isinstance(content, Merged):
-            atomic_write(path, _applied(path, content))
-            for record_path, text in content.records:
-                record_path.parent.mkdir(parents=True, exist_ok=True)
-                atomic_write(record_path, text)
-                written.append(record_path)
+            frozen[path] = _applied(path, content)
+            frozen.update(content.records)
         else:
-            atomic_write(path, content)
+            frozen[path] = content
+    written = apply_deployment(deployment)
+    for path in deployment.detached:
+        print(f"note: detached deployment retained for explicit cleanup: {path}")
+    for path, frozen_content in frozen.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if isinstance(frozen_content, FrozenFile):
+            _atomic_frozen_copy(path, frozen_content.content, frozen_content.mode)
+        else:
+            atomic_write(path, frozen_content)
         written.append(path)
     return written
 
 
 def check_all(root: Path, profile: str = "default") -> list[tuple[Path, str, str]]:
-    drift: list[tuple[Path, str, str]] = []
-    for path, expected in render_all(root, profile).items():
+    root = root.absolute()
+    outputs = render_all(root, profile)
+    deployment = prepare_deployment(artifact_deployment_scopes(root, profile), outputs)
+    drift = list(deployment.drift)
+    for path in deployment.detached:
+        print(f"note: detached deployment retained for explicit cleanup: {path}")
+    for path, expected in outputs.items():
+        if path in deployment.managed:
+            continue
         if isinstance(expected, Copied):
             if _copy_drifted(path, expected.source):
                 drift.append((path, describe_file(path), describe_file(expected.source)))
@@ -1263,11 +1288,26 @@ def check_all(root: Path, profile: str = "default") -> list[tuple[Path, str, str
     return drift
 
 
+def _atomic_frozen_copy(path: Path, content: bytes, mode: int) -> None:
+    target = path.resolve() if path.is_symlink() else path
+    fd, temporary = tempfile.mkstemp(dir=target.parent, prefix=".loadout-")
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(content)
+            os.fchmod(handle.fileno(), mode)
+        os.replace(temporary, target)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
+
+
 def _applied(path: Path, merged: Merged) -> str:
     """The destination with loadout's keys written in. The caller reads the file;
     the renderer that produced `merged` never did (ADR 0001)."""
     existing = path.read_text(encoding="utf-8") if path.is_file() else ""
-    apply = apply_json if merged.fmt == "json" else apply_toml
+    if merged.native:
+        return apply_document(existing, merged.owned, merged.document, merged.format)
+    apply = apply_json if merged.format == "json" else apply_toml
     return apply(existing, merged.owned, merged.document)
 
 

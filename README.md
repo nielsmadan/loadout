@@ -77,6 +77,12 @@ record cannot vouch for the other's write.
 `check` asks the same question and says which answer applies, rather than sending you to `sync`
 where `sync` is about to refuse.
 
+Explicit [artifact routes](docs/reference/artifacts.md) use private deployment receipts instead.
+They accept the last deployed bytes and mode or the current source output, even before a Git
+commit. Occupied new destinations require a matching output or explicit `--force` adoption.
+Removed outputs are retired only while their recorded ownership still matches. Partial JSON/TOML
+routes guard authored keys and preserve runtime fields.
+
 ## Global scope
 
 Global scope is the configuration that applies to every project on this machine. A **machine
@@ -228,7 +234,9 @@ An artifacts-only global manifest can omit `[[source]]`. Project config accepts 
 reference and `presets = false` to use explicit routes in place of its built-in outputs.
 
 See [native artifact routes](docs/reference/artifacts.md) for the schema, dormant empty slots,
-portable permission adapters and path-safety rules.
+portable permission adapters, partial runtime-document ownership, deployment receipts and
+path-safety rules. Receipts live in a private, self-ignored `.loadout-state/` beside the owning
+config; keep that directory out of commits and source copies.
 
 ### Agent blocks
 
@@ -592,5 +600,5 @@ Full detail, including the content-hash definition: [docs/reference/templates.md
 | 0 | clean — nothing to do, or drift check found no differences |
 | 1 | drift or refused safe update — generated files are out of date, a vendored template or bundled skill was modified, or a skill path conflicts |
 | 2 | usage error — invalid or missing command-line arguments |
-| 3 | source error — the manifest, a source, or a fragment is missing or invalid |
+| 3 | source or deployment error — missing/invalid input or receipt, unsafe destination or ownership collision |
 | 4 | internal error — an unexpected exception; a traceback is printed to stderr |

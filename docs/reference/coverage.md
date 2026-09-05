@@ -179,7 +179,7 @@ Every row is pinned by `tests/test_extract_roundtrip.py`, `tests/test_extract_me
 ## Native artifacts
 
 The opt-in [artifact routes](artifacts.md) share the existing output boundary. These tests live
-in `tests/test_artifacts.py`; legacy whole-document fixtures remain unchanged.
+in `tests/test_artifacts.py` and `tests/test_deployment.py`; legacy whole-document fixtures remain unchanged.
 
 | id | behaviour | pinned by |
 |---|---|---|
@@ -194,6 +194,17 @@ in `tests/test_artifacts.py`; legacy whole-document fixtures remain unchanged.
 | `a-routing` | explicit project mode rejects ignored declarations; agents and source roots are validated | `test_explicit_project_mode_refuses_ignored_legacy_inputs`, `test_project_config_validates_direct_presets_and_agent_membership`, `test_global_artifacts_follow_destination_templates_and_expose_skill_agents`, `test_artifact_reference_is_relative_to_owning_config_even_when_nested` |
 | `a-dependencies` | cross-scope outputs protect source/config dependencies, inherited profiles and resolved templates | `test_project_artifacts_protect_global_source_dependencies`, `test_global_artifacts_protect_project_source_dependencies`, `test_artifacts_protect_declared_template_dependencies` |
 | `a-source-only` | composition ignores live output and supports a fresh source root | `test_standalone_composition_is_pure`, `test_rendering_never_uses_destination_content`, `test_artifact_configuration_can_be_reconstructed_under_a_fresh_root` |
+| `a-receipt-guard` | previous/current bytes and full modes permit source changes while manual edits block | `test_source_changes_sync_against_receipt_and_current_desired_bytes`, `test_manual_output_edits_block_then_force_explicit_target`, `test_committed_baseline_does_not_override_artifact_receipt`, `test_relative_root_uses_artifact_receipts` |
+| `a-adoption` | missing receipts never authorize overwriting occupied conflicting output | `test_new_occupied_path_requires_adoption_without_git_baseline`, `test_matching_existing_output_can_be_adopted_and_missing_receipt_is_conservative` |
+| `a-receipt-private` | versioned private receipts stay Git-ignored; tracked, symlinked or invalid state blocks | `test_receipt_is_versioned_private_and_gitignored`, `test_bad_receipt_blocks_even_force`, `test_artifacts_cannot_consume_or_write_metadata` |
+| `a-retirement` | rename/delete/last-entry retirement preserves unowned neighbors and rejects modified output | `test_rename_and_last_route_removal_retire_only_receipted_files`, `test_tree_deletion_and_last_file_cleanup`, `test_force_does_not_delete_modified_retirement`, `test_deleted_artifact_reference_still_retires_previous_outputs` |
+| `a-partial-json` | runtime fields survive authored changes, last-key and whole-route removal | `test_json_partial_preserves_runtime_and_removes_authored_keys`, `test_partial_route_removal_strips_ownership_and_keeps_runtime`, `test_partial_manual_owned_changes_block_but_force_preserves_foreign` |
+| `a-partial-adoption` | new key ownership must match or be absent; dormant optional parts do not create runtime files | `test_partial_first_sync_refuses_occupied_owned_keys`, `test_partial_new_owned_key_must_be_absent_or_match_source`, `test_empty_partial_source_stays_absent_then_activates`, `test_emit_empty_partial_explicitly_creates_runtime_file`, `test_optional_partial_source_removal_retires_last_owned_key` |
+| `a-partial-toml` | foreign TOML bytes survive syntax-aware changes and typed fingerprints distinguish dates from strings | `test_partial_toml_preserves_exact_foreign_bytes_through_changes_and_removal`, `test_toml_syntax_aware_removal_handles_dotted_and_array_tables`, `test_toml_fingerprints_preserve_types_and_nonfinite_values`, `test_nested_toml_temporal_value_becoming_string_is_applied` |
+| `a-partial-order` | authored JSON/TOML key order is applied and guarded while foreign fields and runtime-only changes survive | `test_partial_explicit_order_changes_sync_and_preserve_runtime`, `test_partial_manual_owned_order_changes_block_sync_and_retirement`, `test_interrupted_partial_order_guards_previous_and_pending_ownership` |
+| `a-pending-retirement` | retirement validates every key in previous and pending ownership after an interrupted expansion | `test_interrupted_ownership_expansion_retirement_guards_every_removed_key` |
+| `a-scope-lifecycle` | scopes remain isolated, profiles reuse fingerprints, and relocated roots detach without cleanup | `test_receipts_stay_scope_local_and_global_removal_keeps_project`, `test_removed_receipt_owner_cannot_collide_with_new_scope_output`, `test_profile_switch_uses_previous_deployment_without_committed_source`, `test_moving_checkout_preserves_detached_old_outputs`, `test_relocated_global_root_keeps_old_deployment` |
+| `a-frozen-apply` | frozen bytes/modes and preimage checks protect application, including interrupted writes and retirement | `test_frozen_plan_copies_original_bytes_and_mode`, `test_plan_rechecks_destinations_and_receipts_before_mutation`, `test_interrupted_sync_resumes_then_accepts_a_new_source_revision`, `test_interrupted_retirement_can_finish`, `test_symlinks_never_followed_even_with_force` |
 
 ## Skills
 

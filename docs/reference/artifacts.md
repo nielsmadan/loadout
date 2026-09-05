@@ -69,6 +69,47 @@ insertion order; absent names do not create keys. JSON uses two-space indentatio
 newline. TOML uses tomlkit. Native formatting and comments are not retained by document
 composition; use a copy route when exact source bytes are required.
 
+## Partial runtime documents
+
+Set `partial = true` on a JSON or TOML document route when its destination also carries fields
+the harness maintains:
+
+```toml
+[[artifact]]
+agents = ["pi"]
+destination = "${PI_CODING_AGENT_DIR:-~/.pi/agent}/settings.json"
+format = "json"
+partial = true
+[artifact.parts]
+settings = {source = "settings/pi.json"}
+```
+
+Only the contributors' top-level keys belong to this route. An authored Pi `defaultModel` can coexist
+with its live `lastChangelogVersion`; Codex settings and `mcp_servers` can coexist with live
+`projects` tables in `${CODEX_HOME:-~/.codex}/config.toml`. Claude global server registrations
+use a JSON part owning `mcpServers` at `${CLAUDE_CONFIG_DIR:-~}/.claude.json`, a different
+destination from Claude's settings directory.
+
+Authored values reconstruct entirely from source. Sync reads foreign fields at apply planning
+time and carries them forward. JSON preserves their values and nested order; writing an owned
+change serializes the resulting object with two-space indentation. Native TOML updates use
+tomlkit's syntax tree, retaining foreign comments, whitespace, quoted keys, multiline strings,
+arrays and tables. Legacy TOML slices retain their existing surgery behavior.
+
+Receipts retain previous key ownership, so dropping a source key removes its deployed key,
+including the last key. Removing the whole route strips its owned keys and leaves the runtime
+file in place. An optional missing source acts like an empty contributor. Empty partial sources
+do not create absent runtime files unless `emit_empty = true` is explicit.
+
+The drift guard compares the relative order of owned keys and their typed values, including
+nested order and TOML dates, times, infinities and NaN. Sync applies authored `order` changes;
+manual owned-order changes must match the previous deployment or current desired source.
+Foreign changes and formatting-only rewrites do not count as owned edits.
+Adding ownership over an existing foreign key requires that key to match the authored value,
+or explicit `--force` adoption. Changing a route between whole-file and partial ownership, or
+between document formats, requires reconciling its receipt first; force cannot erase the
+previously foreign region by changing the ownership policy.
+
 ## Existing permission renderers
 
 A JSON contributor can read portable permission rules through a compatible existing renderer:
@@ -144,8 +185,12 @@ config cannot be overwritten by an artifact output. Legacy source and config dep
 protected within and across scopes, including inherited profile files, base documents, and
 resolved templates with the configuration that locates them.
 
+`.git` and `.loadout-state` are protected metadata. Routes cannot name them as sources or
+destinations, and a tree containing either is rejected before copying its files.
+
 Artifact rendering never reads destination content. It feeds the same `str`/`Copied` writer
-boundary as existing outputs. `project_outputs` includes explicit routes for ignore generation;
+boundary as existing outputs; partial documents use the existing `Merged` output with an
+explicit format and native-syntax policy. `project_outputs` includes explicit routes for ignore generation;
 the parsed artifact model exposes source paths, destination roots, category and agent membership.
 `load_artifacts` and `render_artifacts` are reusable for reconstruction in a fresh source and
 destination root; `compose_document` accepts already-loaded literal objects.
@@ -153,3 +198,50 @@ destination root; `compose_document` accepts already-loaded literal objects.
 `tests/test_artifacts.py` covers literal values and ordering, dormant activation, renderer
 fidelity, per-agent trees and mode preservation, membership, source roots and collision/symlink
 rejection. Existing whole-document fixture tests continue to cover legacy output.
+
+## Deployment lifecycle
+
+Every explicit artifact uses a local receipt at `.loadout-state/global.json` beside the global
+manifest or `loadout/.loadout-state/project.json` beside the project config. Receipts are
+versioned JSON with logical routes, their last deployment roots, full file modes, SHA-256
+fingerprints and partial key ownership. They carry no source or runtime values. Nothing is
+stamped into generated documents. The directory is mode 0700, receipts are mode 0600, and its
+own `.gitignore` contains `*`. Tracked, symlinked, public or malformed receipt state is rejected.
+
+Sync accepts a destination matching its previous deployment or the current desired source.
+This allows edits, branch checkouts and profile switches without requiring the source state to
+have been committed. Whole native documents use mode 0600; copies retain all source mode bits.
+Partial documents retain the adopted mode and guard subsequent changes to it.
+
+With no receipt, an absent destination can be created, and a matching existing file can be
+adopted. A partial document can also claim absent keys while leaving existing foreign keys
+alone. An occupied conflicting path blocks sync, including outside a Git repository. Force
+may replace explicitly configured outputs or their owned keys; it never follows symlinks,
+changes ownership policy or deletes a modified retirement.
+
+Deleted and renamed files, empty trees, removed routes and removed artifact references retire
+only their previous unchanged ownership. Unowned neighboring files survive; directories are
+left in place. Check reports stale files and stale ownership receipts. Keep the owning config
+until retirement completes, so Loadout can still locate its scope's receipt.
+
+A receipt also records the source checkout and resolved deployment root. Moving the checkout
+or changing a destination's environment expansion detaches the old deployment. Sync reports
+its path and retains it for explicit cleanup, without probing or deleting files at the old
+root. Detached records remain in the receipt so subsequent runs still report them.
+
+Sync freezes generated and copied bytes and modes before its first write, checks destination
+preimages again, and records pending fingerprints before installing files. If interrupted,
+rerunning sync accepts both the previous and pending deployment. Each file and receipt is
+installed atomically; the whole sync is not a rollback transaction. Receipts contain hashes,
+not backups: restoring retired output requires its authored source.
+Retirement checks the union of previous and pending ownership against a complete accepted
+deployment, so an interrupted ownership expansion cannot authorize removing a later foreign edit.
+
+`deployment.prepare_deployment(scopes, outputs)` returns an immutable `DeploymentPlan` with
+frozen `FileChange` preimages/postimages, prior receipts, conflicts, drift and detached paths.
+`emit.artifact_deployment_scopes(root, profile)` discovers the scope metadata;
+`deployment.apply_deployment(plan)` rechecks preimages and performs the guarded writes.
+This boundary is reusable by callers planning deployment without mutating files.
+
+Lifecycle and partial-document behavior are exercised through public sync/check commands in
+`tests/test_deployment.py`.

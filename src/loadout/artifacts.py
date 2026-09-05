@@ -7,7 +7,7 @@ import tomllib
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any, Literal
 
 import tomlkit
 from tomlkit.exceptions import ParseError
@@ -18,9 +18,6 @@ from .destinations import resolve_destination
 from .errors import LoadoutError
 from .permissions.renderers import RENDERERS, JsonSpec, TextSpec
 from .permissions.rules import EMPTY_RULES, parse_rules
-
-if TYPE_CHECKING:
-    from .emit import Output
 
 ArtifactScope = Literal["project", "global"]
 CATEGORIES = frozenset(
@@ -56,6 +53,38 @@ class Copied:
 
 
 @dataclass(frozen=True)
+class Merged:
+    """Keys applied into a destination loadout does not own outright.
+
+    Where a base cannot exist — `~/.codex/config.toml` carries project tables the
+    harness writes, a block another tool manages and comments none of it survives
+    a reserialise — the deletion guarantee comes from stripping declared keys at
+    the destination instead (ADR 0017).
+
+    `owned` is declared, never derived from `document`. A set derived from what is
+    being written cannot express a removal: drop the last server and the root goes
+    unnamed, so nothing strips it and every server survives with its approval
+    intact.
+    """
+
+    owned: frozenset[str]
+    document: str
+    # Where the owned-key record lives, and what it should now say. Read as an
+    # input and written as an output by the same slice — the shape ADR 0001
+    # forbids a *renderer*, permitted here because the caller does both, exactly
+    # as it does when reading a destination. `check` compares it so a stale or
+    # hand-edited record is reported rather than silently changing what is
+    # stripped.
+    records: tuple[tuple[Path, str], ...] = ()
+    format: str = "toml"
+    native: bool = False
+    emit_empty: bool = False
+
+
+Output = str | Copied | Merged
+
+
+@dataclass(frozen=True)
 class ArtifactPart:
     category: str
     source: PurePosixPath
@@ -73,6 +102,7 @@ class Artifact:
     parts: tuple[ArtifactPart, ...] = ()
     order: tuple[str, ...] = ()
     emit_empty: bool = False
+    partial: bool = False
 
     @property
     def label(self) -> str:
@@ -126,6 +156,8 @@ def relative_path(value: object, label: str) -> PurePosixPath:
     path = PurePosixPath(raw)
     if path.is_absolute() or ".." in path.parts or path == PurePosixPath("."):
         raise LoadoutError(f"{label} must be a relative path inside its root: {raw!r}")
+    if any(part in {".git", ".loadout-state"} for part in path.parts):
+        raise LoadoutError(f"{label} overlaps protected metadata: {raw!r}")
     return path
 
 
@@ -170,6 +202,7 @@ def _record(raw: object, label: str, scope: ArtifactScope) -> Artifact:
             "source",
             "renderer",
             "optional",
+            "partial",
         },
         label,
     )
@@ -194,7 +227,7 @@ def _record(raw: object, label: str, scope: ArtifactScope) -> Artifact:
             raise LoadoutError(f"{label}.parts must be a non-empty table of contributors")
         parts = tuple(_part(k, v, f"{label}.parts.{k}") for k, v in raw_parts.items())
     else:
-        if "parts" in raw or "order" in raw:
+        if "parts" in raw or "order" in raw or "partial" in raw:
             raise LoadoutError(f"{label}: {format_name} records cannot declare parts or order")
         category = _string(raw.get("category"), f"{label}.category")
         part_data = {k: raw[k] for k in ("source", "renderer", "optional") if k in raw}
@@ -207,6 +240,7 @@ def _record(raw: object, label: str, scope: ArtifactScope) -> Artifact:
         parts=parts,
         order=_strings(raw.get("order", []), f"{label}.order"),
         emit_empty=_boolean(raw.get("emit_empty", False), f"{label}.emit_empty"),
+        partial=_boolean(raw.get("partial", False), f"{label}.partial"),
     )
     _validate_renderers(record)
     return record
@@ -306,6 +340,8 @@ def artifact_destination(record: Artifact, project_root: Path | None = None) -> 
         assert record.destination is not None
         path = resolve_destination(record.destination, record.label)
         _no_symlinks(path)
+    if any(part in {".git", ".loadout-state"} for part in path.parts):
+        raise LoadoutError(f"{record.label}: destination overlaps protected metadata: {path}")
     _destination_entry(path, tree=record.format == "tree")
     return path
 
@@ -336,6 +372,7 @@ def validate_artifact_paths(
     claimed = {p.absolute(): "another output" for p in occupied}
     inputs = [
         artifacts.path,
+        artifacts.source_root / ".loadout-state",
         *(artifacts.source_root / p.source for r in artifacts.records for p in r.parts),
     ]
     if artifacts.config_path is not None:
@@ -487,6 +524,8 @@ def _opaque(artifacts: Artifacts, artifact: Artifact, destination: Path) -> dict
             raise LoadoutError(f"artifact tree source must be a directory: {path}")
         outputs: dict[Path, Output] = {}
         for item in sorted(path.rglob("*")):
+            if any(part in {".git", ".loadout-state"} for part in item.relative_to(path).parts):
+                raise LoadoutError(f"artifact tree contains protected metadata: {item}")
             _no_symlinks(item, artifacts.source_root)
             if item.is_dir():
                 continue
@@ -523,8 +562,22 @@ def render_artifacts(
     outputs: dict[Path, Output] = {}
     for artifact, destination in zip(artifacts.records, destinations, strict=True):
         if artifact.format in DOCUMENT_FORMATS:
-            document = compose_document(artifact, _documents(artifacts, artifact))
-            if document is not None:
+            documents = _documents(artifacts, artifact)
+            document = compose_document(artifact, documents)
+            if artifact.partial:
+                owned = frozenset(
+                    key
+                    for part, values in zip(artifact.parts, documents, strict=True)
+                    for key in _owned_keys(part, values)
+                )
+                outputs[destination] = Merged(
+                    owned,
+                    document or "",
+                    format=artifact.format,
+                    native=True,
+                    emit_empty=artifact.emit_empty,
+                )
+            elif document is not None:
                 outputs[destination] = document
         else:
             outputs.update(_opaque(artifacts, artifact, destination))
