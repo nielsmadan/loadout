@@ -89,18 +89,13 @@ def _merge_preamble(
             continue
         key = _assigned_key(line)
         if key is not None and key in owned and _opens_multiline(line):
+            # The value spans lines the renderer's single-line form does not, so the
+            # replacement goes in and the old body is skipped to its closing delimiter.
+            # Emitting the new line without skipping would orphan that body at top
+            # level and the document would stop parsing.
             if key in scalars:
-                # Replacing it would leave the rest of the value orphaned at top level
-                # and the document would stop parsing. A newline *inside* the value is
-                # fine — the renderer escapes it onto one line and that form merges
-                # cleanly. It is the destination's shape that cannot be replaced.
-                raise LoadoutError(
-                    f"{key!r} is written across several lines in the destination, which a "
-                    f"line-wise merge cannot replace without orphaning the rest of it. "
-                    f"Rewrite it on one line, or leave the key to whatever owns the file."
-                )
-            # Removing one needs no such care. Declaring a key owned and rendering no
-            # value for it is how loadout evicts a key another tool keeps writing.
+                kept.append(scalars[key])
+                placed.add(key)
             dropping = True
             continue
         if key is None or key not in owned:

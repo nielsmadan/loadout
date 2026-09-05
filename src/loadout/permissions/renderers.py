@@ -10,6 +10,7 @@ from typing import Any
 import tomlkit
 
 from ..adapters import render_opencode_adapter, render_pi_adapter
+from ..errors import LoadoutError
 from ..hooks import render_claude_hooks, render_codex_hooks
 from ..plugins import render_claude_plugins, render_codex_plugins, render_pi_plugins
 from ..servers import (
@@ -304,11 +305,41 @@ def _codex_definition_block(server: Server, block: Any) -> None:
         block["env"] = variables
 
 
+REMOVE_KEY = "$remove"
+
+
+def _removed(content: dict[str, Any], label: str) -> tuple[str, ...]:
+    """Keys this fragment owns in order to delete them.
+
+    A fragment otherwise says "own this key and give it this value", which cannot
+    express "own this key and write nothing" — and `null` is taken: `merge_documents`
+    reads it as *drop from the fragment*, which un-owns the key rather than evicting
+    it from the destination. So removals are named in their own list.
+
+    The case that forced it: the nono Codex pack writes a `developer_instructions`
+    block into `~/.codex/config.toml` on every `nono update`, and the answer is to
+    delete it, not to maintain a rival value for it.
+    """
+    raw = content.get(REMOVE_KEY, [])
+    if not isinstance(raw, list) or not all(isinstance(name, str) and name for name in raw):
+        raise LoadoutError(f"{label}: {REMOVE_KEY} must be a list of key names")
+    both = sorted(set(raw) & set(content))
+    if both:
+        raise LoadoutError(
+            f"{label}: {', '.join(both)} is both given a value and listed in "
+            f"{REMOVE_KEY}; a key is either managed or evicted, not both"
+        )
+    return tuple(raw)
+
+
 def _fragment_keys(content: dict[str, Any]) -> frozenset[str]:
     """Ownership derived from the fragment — the key names are the user's, not a
-    set loadout could enumerate. Derived alone cannot express a removal, so the
-    caller unions this with the recorded set (ADR 0017, `_attach_records`)."""
-    return frozenset(content)
+    set loadout could enumerate. Derived alone cannot express a removal *of a key the
+    fragment never mentions again*, so the caller unions this with the recorded set
+    (ADR 0017, `_attach_records`); `$remove` covers the other case, a key that must
+    stay owned because something else keeps writing it back."""
+    keys = frozenset(content) - {REMOVE_KEY}
+    return keys | frozenset(_removed(content, "codex.defaults"))
 
 
 def render_codex_settings(rules: Rules, content: dict[str, Any]) -> str:
@@ -318,10 +349,14 @@ def render_codex_settings(rules: Rules, content: dict[str, Any]) -> str:
     so a comment here would be dropped anyway, and emitting one would suggest
     config.toml carries a generated header when it does not.
     """
-    reject_nested(content, "codex.defaults")
+    _removed(content, "codex.defaults")
+    managed = {key: value for key, value in content.items() if key != REMOVE_KEY}
+    reject_nested(managed, "codex.defaults")
     document = tomlkit.document()
-    for key in sorted(content):
-        document[key] = content[key]
+    for key in sorted(managed):
+        document[key] = managed[key]
+    # A removed key is deliberately absent from the rendered document: `apply_toml`
+    # strips every owned key it does not carry, which is what does the eviction.
     return tomlkit.dumps(document)
 
 

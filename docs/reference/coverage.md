@@ -54,6 +54,10 @@ test is a gap.
 | `written-still-blocks` | a real hand edit matches neither render nor record, and still blocks | [ADR 0019](../decisions/0019-sync-records-what-it-wrote.md) | `test_hand_edited_output_blocks_sync`, `test_a_hand_edited_copy_still_blocks` |
 | `written-when` | `--force` records; `check` does not | [ADR 0019](../decisions/0019-sync-records-what-it-wrote.md) | `test_force_records_what_it_wrote`, `test_check_records_nothing` |
 
+| `defaults-remove` | `$remove` owns a key in order to delete it, and strips a multi-line value's body with it | [README](../../README.md#loadouttoml) | `test_a_removed_key_is_owned_but_rendered_nowhere`, `test_a_removed_key_is_stripped_from_the_destination` |
+| `defaults-remove-conflict` | a key both valued and removed is an error, not a silent preference | [README](../../README.md#loadouttoml) | `test_a_key_cannot_be_both_valued_and_removed`, `test_remove_must_be_a_list_of_names` |
+| `toml-multiline` | a multi-line owned value is replaced or removed without orphaning its body | [ADR 0017](../decisions/0017-ownership-may-be-declared-instead-of-derived.md) | `test_a_multiline_destination_value_is_replaced_not_corrupted`, `test_a_multiline_owned_key_is_removed_when_no_value_is_rendered` |
+
 ## Claude
 
 | id | behaviour | source | pinned by |

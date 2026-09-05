@@ -215,16 +215,22 @@ def test_a_destination_that_is_not_an_object_is_refused() -> None:
         apply_json("[1, 2]", JSON_OWNED, document("jina"))
 
 
-def test_a_multiline_destination_value_is_refused_not_corrupted() -> None:
-    """Replacing the assignment line would orphan the lines below it and the file
-    would stop parsing — verified against ~/.codex/config.toml's developer_instructions,
-    which is why that key stayed outside loadout."""
-    existing = 'model = "old"\ndeveloper_instructions = """\nbody\n"""\nother = 1\n'
+def test_a_multiline_destination_value_is_replaced_not_corrupted() -> None:
+    """The old body is skipped to its closing delimiter as the new value goes in.
+    Emitting the replacement without skipping would orphan those lines at top level
+    and the file would stop parsing — the failure this pins against."""
+    existing = 'model = "keep"\ndeveloper_instructions = """\nold body\n"""\nother = 1\n'
 
-    with pytest.raises(LoadoutError, match="across several lines"):
-        apply_toml(
-            existing, frozenset({"developer_instructions"}), 'developer_instructions = "new"\n'
-        )
+    out = apply_toml(
+        existing,
+        frozenset({"developer_instructions"}),
+        'developer_instructions = "new"\n',
+    )
+
+    parsed = tomllib.loads(out)
+    assert parsed["developer_instructions"] == "new"
+    assert parsed["model"] == "keep" and parsed["other"] == 1
+    assert "old body" not in out
 
 
 def test_a_newline_inside_an_escaped_value_merges_fine() -> None:

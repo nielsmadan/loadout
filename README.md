@@ -277,6 +277,22 @@ stranding it there with nothing able to say it was ever managed. Edit the fragme
 record; `loadout check` reports a record that disagrees with it. See
 [0017](docs/decisions/0017-ownership-may-be-declared-instead-of-derived.md).
 
+The record covers a key you *stop* managing. A key something else keeps writing back needs the
+opposite — stay owned forever, and never carry a value. `$remove` says that:
+
+```json
+{
+  "model": "gpt-6-astra",
+  "$remove": ["developer_instructions"]
+}
+```
+
+Every sync strips those keys from the destination, body and all if the value spans lines. There
+is no value that could mean this: `null` is already taken, and `merge_documents` reads it as
+*drop from the fragment*, which un-owns the key rather than evicting it. A key that is both
+given a value and listed in `$remove` is an error — one says write this, the other says write
+nothing.
+
 An unknown agent name, or a slice an agent does not offer, is an error listing what is available.
 
 Each destination in the preset carries that harness's config-directory variable —

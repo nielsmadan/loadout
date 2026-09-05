@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
+import tomllib
 from pathlib import Path
 
 import pytest
 
 from fixture_root import build_root
 from loadout.agents import GLOBAL_PRESET, SliceOutput
-from loadout.emit import render_global
+from loadout.emit import Merged, render_global, write_all
 from loadout.errors import LoadoutError
 from loadout.permissions.renderers import RENDERERS, JsonSpec, ValueSpec
 
@@ -269,3 +270,68 @@ def test_an_automatic_slice_renders_when_not_switched_off(tmp_path: Path) -> Non
     rendered = render_global(root)
 
     assert any("pi-permission-system" in str(p) for p in rendered)
+
+
+REMOVE_FRAGMENT = '{"model": "gpt-6", "$remove": ["developer_instructions"]}'
+
+
+def test_a_removed_key_is_owned_but_rendered_nowhere(tmp_path: Path) -> None:
+    """`$remove` exists because a fragment otherwise says "own this key and give it
+    this value", and there is no value that means "write nothing". `null` is taken —
+    merge_documents reads it as *drop from the fragment*, which un-owns the key
+    instead of evicting it."""
+    root = build(tmp_path, '[codex]\ndefaults = "d"\n')
+    (root / "defaults").mkdir(exist_ok=True)
+    (root / "defaults" / "d.json").write_text(REMOVE_FRAGMENT, encoding="utf-8")
+
+    merged = next(v for k, v in render_global(root).items() if str(k).endswith("config.toml"))
+
+    assert isinstance(merged, Merged)
+    assert "developer_instructions" in merged.owned
+    assert "developer_instructions" not in merged.document
+    assert "model" in merged.document
+
+
+def test_a_removed_key_is_stripped_from_the_destination(tmp_path: Path, fake_home: Path) -> None:
+    """End to end: a key another tool keeps writing back is gone after a sync, body
+    and all, while everything around it survives."""
+    root = build(tmp_path, '[codex]\ndefaults = "d"\n')
+    (root / "defaults").mkdir(exist_ok=True)
+    (root / "defaults" / "d.json").write_text(REMOVE_FRAGMENT, encoding="utf-8")
+    config = fake_home / ".codex" / "config.toml"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    q = '"' * 3
+    config.write_text(
+        f"developer_instructions = {q}\nsomething else wrote this\n{q}\n\n"
+        f'[projects."/work"]\ntrust_level = "trusted"\n',
+        encoding="utf-8",
+    )
+
+    write_all(root)
+
+    written = config.read_text()
+    assert "something else wrote this" not in written
+    assert tomllib.loads(written)["projects"]["/work"]["trust_level"] == "trusted"
+    assert tomllib.loads(written)["model"] == "gpt-6"
+
+
+def test_a_key_cannot_be_both_valued_and_removed(tmp_path: Path) -> None:
+    """Contradictory rather than merely redundant: one says write this, the other
+    says write nothing, and silently preferring either would surprise someone."""
+    root = build(tmp_path, '[codex]\ndefaults = "d"\n')
+    (root / "defaults").mkdir(exist_ok=True)
+    (root / "defaults" / "d.json").write_text(
+        '{"model": "gpt-6", "$remove": ["model"]}', encoding="utf-8"
+    )
+
+    with pytest.raises(LoadoutError, match="both given a value"):
+        render_global(root)
+
+
+def test_remove_must_be_a_list_of_names(tmp_path: Path) -> None:
+    root = build(tmp_path, '[codex]\ndefaults = "d"\n')
+    (root / "defaults").mkdir(exist_ok=True)
+    (root / "defaults" / "d.json").write_text('{"$remove": "developer_instructions"}', "utf-8")
+
+    with pytest.raises(LoadoutError, match=r"\$remove must be a list"):
+        render_global(root)
