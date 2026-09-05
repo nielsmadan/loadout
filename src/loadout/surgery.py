@@ -54,6 +54,63 @@ def _blocks(text: str) -> tuple[list[str], list[tuple[str, list[str]]]]:
     return preamble, blocks
 
 
+def _opens_multiline(line: str) -> bool:
+    """Whether this assignment starts a triple-quoted value it does not close.
+
+    An opener that also closes on the same line is one line and merges fine; an
+    unterminated one owns the lines below it, which a line-wise merge cannot see.
+    """
+    _, _, value = line.partition("=")
+    return value.count(chr(34) * 3) % 2 == 1 or value.count(chr(39) * 3) % 2 == 1
+
+
+def _closes_multiline(line: str) -> bool:
+    """Whether this continuation line ends the triple-quoted value it belongs to."""
+    return (chr(34) * 3) in line or (chr(39) * 3) in line
+
+
+def _merge_preamble(
+    have_preamble: list[str], scalars: dict[str, str], owned: frozenset[str]
+) -> tuple[list[str], set[str]]:
+    """The existing preamble with owned keys replaced in place or removed.
+
+    Split out of `apply_toml` so the multi-line cases read as the two different
+    operations they are: replacing one is refused because it would orphan the value's
+    body, while removing one only has to skip to the closing delimiter.
+    """
+    kept: list[str] = []
+    placed: set[str] = set()
+    # Set while skipping the body of a multi-line owned key being removed; its
+    # continuation lines are not assignments, so nothing else would drop them.
+    dropping = False
+    for line in have_preamble:
+        if dropping:
+            dropping = not _closes_multiline(line)
+            continue
+        key = _assigned_key(line)
+        if key is not None and key in owned and _opens_multiline(line):
+            if key in scalars:
+                # Replacing it would leave the rest of the value orphaned at top level
+                # and the document would stop parsing. A newline *inside* the value is
+                # fine — the renderer escapes it onto one line and that form merges
+                # cleanly. It is the destination's shape that cannot be replaced.
+                raise LoadoutError(
+                    f"{key!r} is written across several lines in the destination, which a "
+                    f"line-wise merge cannot replace without orphaning the rest of it. "
+                    f"Rewrite it on one line, or leave the key to whatever owns the file."
+                )
+            # Removing one needs no such care. Declaring a key owned and rendering no
+            # value for it is how loadout evicts a key another tool keeps writing.
+            dropping = True
+            continue
+        if key is None or key not in owned:
+            kept.append(line)
+        elif key in scalars:
+            kept.append(scalars[key])
+            placed.add(key)
+    return kept, placed
+
+
 def apply_toml(existing: str, owned: frozenset[str], document: str) -> str:
     """Write `document`'s keys into `existing`, replacing what loadout owns.
 
@@ -72,15 +129,7 @@ def apply_toml(existing: str, owned: frozenset[str], document: str) -> str:
     wanted = dict(want_blocks)
 
     scalars = {key: line for line in want_preamble if (key := _assigned_key(line)) is not None}
-    kept_preamble: list[str] = []
-    placed: set[str] = set()
-    for line in have_preamble:
-        key = _assigned_key(line)
-        if key is None or key not in owned:
-            kept_preamble.append(line)
-        elif key in scalars:
-            kept_preamble.append(scalars[key])
-            placed.add(key)
+    kept_preamble, placed = _merge_preamble(have_preamble, scalars, owned)
     while kept_preamble and not kept_preamble[-1].strip():
         kept_preamble.pop()
     for key, line in scalars.items():

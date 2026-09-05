@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import tomllib
 
 import pytest
 
@@ -212,3 +213,65 @@ def test_an_absent_destination_starts_from_an_empty_object() -> None:
 def test_a_destination_that_is_not_an_object_is_refused() -> None:
     with pytest.raises(LoadoutError, match="not an object"):
         apply_json("[1, 2]", JSON_OWNED, document("jina"))
+
+
+def test_a_multiline_destination_value_is_refused_not_corrupted() -> None:
+    """Replacing the assignment line would orphan the lines below it and the file
+    would stop parsing — verified against ~/.codex/config.toml's developer_instructions,
+    which is why that key stayed outside loadout."""
+    existing = 'model = "old"\ndeveloper_instructions = """\nbody\n"""\nother = 1\n'
+
+    with pytest.raises(LoadoutError, match="across several lines"):
+        apply_toml(
+            existing, frozenset({"developer_instructions"}), 'developer_instructions = "new"\n'
+        )
+
+
+def test_a_newline_inside_an_escaped_value_merges_fine() -> None:
+    """The distinction the guard rests on: the renderer escapes a multi-line value
+    onto one line, and that form replaces cleanly. Refusing on the value rather than
+    the destination's shape would block this, which works."""
+    existing = 'model = "old"\ndeveloper_instructions = "a\\nb\\n"\nother = 1\n'
+
+    out = apply_toml(
+        existing, frozenset({"developer_instructions"}), 'developer_instructions = "c\\nd\\n"\n'
+    )
+
+    assert tomllib.loads(out)["developer_instructions"] == "c\nd\n"
+    assert tomllib.loads(out)["other"] == 1
+
+
+def test_an_unowned_multiline_value_is_left_alone() -> None:
+    """The guard fires only for a key loadout claims; a multi-line value belonging to
+    the harness passes through untouched, which is the whole point of the merge."""
+    existing = 'developer_instructions = """\nbody\n"""\nmodel = "old"\n'
+
+    out = apply_toml(existing, frozenset({"model"}), 'model = "new"\n')
+
+    assert tomllib.loads(out)["developer_instructions"] == "body\n"
+    assert tomllib.loads(out)["model"] == "new"
+
+
+def test_a_multiline_owned_key_is_removed_when_no_value_is_rendered() -> None:
+    """Declaring a key owned and rendering nothing for it is how loadout evicts a key
+    another tool keeps writing — nono's `developer_instructions` block on Codex.
+    Removing needs none of the care replacing does: skip to the closing delimiter."""
+    existing = 'model = "keep"\ndeveloper_instructions = """\nnono says something\n"""\nother = 1\n'
+
+    out = apply_toml(existing, frozenset({"developer_instructions"}), "")
+
+    parsed = tomllib.loads(out)
+    assert "developer_instructions" not in parsed
+    assert parsed["model"] == "keep" and parsed["other"] == 1
+    assert "nono says" not in out
+
+
+def test_removing_a_multiline_key_leaves_no_orphaned_body() -> None:
+    """The failure this guards: the body lines are not assignments, so nothing else
+    would drop them and the file would stop parsing."""
+    existing = 'developer_instructions = """\nline one\nline two\n"""\nmodel = "keep"\n'
+
+    out = apply_toml(existing, frozenset({"developer_instructions"}), "")
+
+    assert "line one" not in out and "line two" not in out
+    assert tomllib.loads(out) == {"model": "keep"}
