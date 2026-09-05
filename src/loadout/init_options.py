@@ -23,6 +23,7 @@ class InitOptions:
     json: bool = False
     yes: bool = False
     starter: str | None = None
+    git_hooks: str | None = None
 
 
 def _object(value: str, required: set[str], optional: set[str]) -> dict[str, Any]:

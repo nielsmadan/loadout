@@ -12,9 +12,11 @@ import tomlkit
 
 from .discovery import discover
 from .errors import LoadoutError, UsageError
+from .git_hooks import HookPlan, plan_hooks, show_hooks
 from .init_options import InitOptions, parse_mapping, parse_selection
-from .machine import machine_config_path
+from .machine import load_machine_config, machine_config_path
 from .migration import plan_migration
+from .migration_git import git
 from .migration_models import Issue, MigrationPlan, SourceWrite
 from .migration_transaction import (
     MigrationFailure,
@@ -179,6 +181,8 @@ def _show(preview: dict[str, Any], *, as_json: bool) -> None:
         print(f"{original['action']}: {original['path']} ({original['reason']})")
     if preview.get("registration"):
         print(f"Register global source: {preview['registration']}")
+    if preview.get("git_hooks"):
+        show_hooks(preview["git_hooks"])
     for issue in preview["issues"]:
         print(f"{issue['code']}: {issue['message']}", file=sys.stderr)
         for path in issue["paths"]:
@@ -224,7 +228,8 @@ def _run_init(options: InitOptions) -> int:
     if not plan.complete:
         _show(plan.preview(), as_json=options.json)
         return 2
-    prepared = prepare_migration(plan, machine_write=machine)
+    hooks = _hooks(options, plan)
+    prepared = prepare_migration(plan, machine_write=machine, hooks=hooks)
     preview = {**prepared.preview(), "registration": str(machine.path) if machine else None}
     if options.dry_run or not options.json:
         _show(preview, as_json=options.json)
@@ -249,6 +254,28 @@ def _run_init(options: InitOptions) -> int:
     ):
         print("Global scope is not configured; use loadout init --global when needed.")
     return 0
+
+
+def _hooks(options: InitOptions, plan: MigrationPlan) -> HookPlan | None:
+    if options.git_hooks not in {None, "none", "check", "regenerate"}:
+        raise UsageError("--git-hooks must be none, check or regenerate")
+    if options.git_hooks not in {"check", "regenerate"}:
+        return None
+    root = plan.inventory.source_root if plan.inventory.scope == "global" else plan.inventory.root
+    initialize = (
+        git(plan.inventory.root, "rev-parse", "--show-toplevel", check=False).returncode != 0
+    )
+    profile = "default"
+    if plan.inventory.scope == "global" and plan.already_initialized:
+        machine = load_machine_config(machine_config_path())
+        if machine is not None and machine.source == root.resolve():
+            profile = machine.profile or "default"
+    return plan_hooks(
+        root,
+        regenerate=options.git_hooks == "regenerate",
+        profile=profile,
+        initialize=plan.inventory.root if initialize else None,
+    )
 
 
 def report_failure(error: MigrationFailure, *, as_json: bool) -> int:

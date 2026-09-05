@@ -11,6 +11,7 @@ from typing import Any
 from .artifacts import _no_symlinks
 from .deployment import MAX_MODE, FrozenFile, atomic_install
 from .errors import LoadoutError
+from .git_hooks import EVENTS, HOOK_MODE, hook_content, hooks_directory, local_directory
 from .migration_git import git
 
 
@@ -110,7 +111,7 @@ class Operation:
             or set(value) != {"path", "before", "after", "phase"}
             or not isinstance(value["path"], str)
             or value["phase"]
-            not in {"topology", "source", "deploy", "retire", "registration", "ignore"}
+            not in {"topology", "source", "deploy", "retire", "registration", "ignore", "git-hook"}
         ):
             raise LoadoutError("invalid migration journal operation fields")
         path = Path(value["path"])
@@ -293,7 +294,8 @@ def _validate_scope(journal: Journal) -> None:
             path.is_relative_to(p) for p in destinations
         ):
             raise LoadoutError(f"journal output escapes its declared scope: {path}")
-    for operation in journal.operations:
+    _validate_hooks(journal)
+    for operation in (o for o in journal.operations if o.phase != "git-hook"):
         path = operation.path
         if ".git" in path.parts or path == root or root.is_relative_to(path):
             raise LoadoutError(
@@ -321,6 +323,39 @@ def _validate_scope(journal: Journal) -> None:
         if not allowed:
             raise LoadoutError(f"journal operation escapes its declared scope: {path}")
     _validate_git(metadata, root)
+
+
+def _validate_hooks(journal: Journal) -> None:
+    for operation in journal.operations:
+        if operation.phase == "git-hook":
+            _validate_hook(journal.metadata, operation)
+
+
+def _validate_hook(metadata: dict[str, Any], operation: Operation) -> None:
+    hooks = metadata.get("git_hooks")
+    if not isinstance(hooks, dict):
+        raise LoadoutError("journal Git hook operation lacks its installation plan")
+    repository, directory = _absolute(hooks["repository"]), _absolute(hooks["directory"])
+    existing = git(repository, "rev-parse", "--show-toplevel", check=False).returncode == 0
+    source = Path(hooks["source"])
+    if (
+        not Path(metadata["root"]).is_relative_to(repository)
+        or source.is_absolute()
+        or ".." in source.parts
+        or repository / source not in {Path(metadata["root"]), Path(metadata["source_root"])}
+        or hooks_directory(repository, existing=existing) != directory
+        or not local_directory(repository, directory, existing=existing)
+        or operation.path.parent != directory
+        or operation.path.name not in EVENTS
+        or operation.before != Image()
+        or operation.after.kind != "file"
+        or operation.after.mode != HOOK_MODE
+        or operation.after.content != hook_content(operation.path.name, source, hooks["profile"])
+        or not any(
+            h["path"] == str(operation.path) and h["status"] == "install" for h in hooks["hooks"]
+        )
+    ):
+        raise LoadoutError(f"journal Git hook escapes its installation plan: {operation.path}")
 
 
 def _validate_git(metadata: dict[str, Any], root: Path) -> None:

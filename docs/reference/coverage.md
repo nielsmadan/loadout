@@ -107,6 +107,36 @@ All rows below are exercised in `tests/test_migration_transaction.py`; the contr
 | ancestor aliases, including nested source directories in enclosing repositories, preserve physical checkpoint paths, terminal link entries, source staging and private directory modes | `test_source_ancestor_alias_preserves_checkpoint_paths_and_link_entries`, `test_nested_source_alias_preserves_enclosing_repository_index_and_privacy`, `test_aliased_source_keeps_private_namespaces_protected` |
 | preimages stay private through hooks; malformed state is refused | `test_untrusted_recovery_state_is_rejected_before_checkpoint`, `test_journal_is_ignored_during_the_real_checkpoint_hook`, `test_loaded_journal_rejects_invalid_shape_before_recovery` |
 
+## Git integration
+
+The contract is [git-integration.md](git-integration.md). These cases run in
+`tests/test_git_integration.py`, with real Git events and isolated HOME/harness roots.
+
+| behaviour | pinned by |
+|---|---|
+| actual pre-commit checks partial staging and preserves HEAD on invalid source | `test_real_precommit_validates_partial_index_not_worktree` |
+| supplied alternate index, relative index and missing-index refusal | `test_real_commit_honors_alternate_index_and_relative_index_from_nested_cwd` |
+| unborn, empty, corrupt and unmerged indexes cannot silently validate nothing | `test_unborn_empty_corrupt_and_unmerged_indexes` |
+| HEAD ownership survives declaration/config/source removal; untracking outputs is allowed | `test_real_precommit_uses_head_ownership_after_declaration_removal` |
+| migrating absolute/escaping old sources validates only index dependencies; HEAD and index outputs remain protected | `test_head_source_migration_keeps_head_and_index_output_ownership` |
+| selected profile controls instruction/permission ownership before destination expansion | `test_staged_ownership_selects_profile_before_resolving_destinations` |
+| staged dependency deletion never uses the working replacement | `test_required_source_deletion_does_not_read_unstaged_replacement` |
+| bare bundled and machine template names require staged vendoring | `test_bare_templates_never_fall_back_to_machine_or_bundled_source` |
+| nested global source includes sibling dependencies and isolates global destinations | `test_nested_global_snapshot_contains_sibling_sources_and_isolates_destinations` |
+| external paths, source symlink escapes and submodule dependencies fail | `test_external_and_submodule_dependencies_fail_without_reading_live_sources` |
+| optional private files stay absent and programs stay data | `test_optional_private_source_is_absent_and_programs_are_not_executed` |
+| local custom paths, exact managed identity, other-source/occupied/shared preservation | `test_hook_installation_preserves_occupied_shared_and_other_source_hooks` |
+| linked worktree index and local hooks are independent; common hooks are preserved | `test_linked_worktree_validates_supplied_index_and_preserves_common_hooks` |
+| main checkout preserves default and absolute custom hooks shared with linked worktrees; exclusive paths still install | `test_main_checkout_preserves_hooks_shared_with_linked_worktrees` |
+| sharing is checked again after standalone preview and at migration apply/resume/recovery boundaries | `test_standalone_install_rechecks_hook_sharing_after_preview`, `test_migration_rechecks_hook_sharing_at_mutation_boundaries` |
+| explicit init preview, baseline before hooks and recovery retain Git metadata | `test_init_hook_preview_and_new_git_metadata_are_transactional` |
+| hook write interruption resumes, external hook edits survive recovery | `test_hook_failure_can_resume_and_external_hook_is_preserved_by_recovery` |
+| global init records matching registered source/profile | `test_global_init_hooks_keep_selected_source_and_registered_profile` |
+| checkout/merge regenerate with receipts and explain failure after Git completed | `test_actual_checkout_and_merge_regenerate_or_preserve_edits_after_git_completed` |
+| file checkout does not regenerate | `test_post_checkout_file_event_does_not_regenerate` |
+| missing installed CLI explains that checkout already completed | `test_missing_loadout_on_path_explains_completed_checkout` |
+| modified hook journal bytes and pre-init failure are recoverable without hook execution | `test_hook_journal_rejects_tampered_script_and_recovers_before_git_init` |
+
 ## Cross-cutting
 
 | id | behaviour | source | pinned by |

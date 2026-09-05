@@ -21,9 +21,12 @@ from .commands import (
 )
 from .discovery import project_root
 from .errors import LoadoutError, UsageError
+from .git_hook_commands import run_hook
+from .git_hooks import EVENTS, install_hooks
 from .init_options import InitOptions, parse_mapping, parse_selection
 from .init_workflow import run_init, run_recovery
 from .machine import load_machine_config, machine_config_path
+from .staged import check_staged
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -63,6 +66,10 @@ def build_parser() -> argparse.ArgumentParser:
                 "--force",
                 action="store_true",
                 help="overwrite generated files that were modified outside loadout",
+            )
+        else:
+            sub.add_argument(
+                "--staged", action="store_true", help="validate the isolated Git index"
             )
 
     explain = subparsers.add_parser("explain", help="show where a fragment comes from")
@@ -114,16 +121,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="conflicting-copy selection JSON: destination, source",
     )
     init.add_argument(
-        "--starter",
-        choices=("none", "frontend", "backend"),
-        help="optional project template to vendor; default: none",
-    )
-    init.add_argument(
-        "--registration",
-        choices=("keep", "replace"),
-        help="resolve a conflicting global machine registration",
-    )
-    init.add_argument(
         "--dry-run",
         action="store_true",
         help="preview without changing source, Git or destinations",
@@ -134,8 +131,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="approve a fully resolved migration and its Git operations",
     )
-    _add_init_recovery(init)
+    _add_init_choices(init)
     add_root(init)
+
+    _add_git_hooks(
+        subparsers.add_parser("git-hooks", help="optional repository-local Git integration")
+    )
 
     harness = subparsers.add_parser("harness", help="manage this project's enabled harnesses")
     harness_subparsers = harness.add_subparsers(dest="harness_command")
@@ -199,6 +200,19 @@ def _resolve_root_and_profile(args: argparse.Namespace) -> tuple[Path, str]:
     return args.root.resolve(), args.profile or "default"
 
 
+def _add_git_hooks(parser: argparse.ArgumentParser) -> None:
+    commands = parser.add_subparsers(dest="git_hook_command", required=True)
+    install = commands.add_parser("install", help="install only safely absent local hooks")
+    install.add_argument("--regenerate", action="store_true")
+    install.add_argument("--dry-run", action="store_true")
+    run = commands.add_parser("run", help="integrate Loadout into an existing Git hook")
+    run.add_argument("event", choices=EVENTS)
+    run.add_argument("git_arguments", nargs="*")
+    for command in (install, run):
+        command.add_argument("--root", type=Path, default=Path.cwd())
+        command.add_argument("--profile", default="default")
+
+
 def _resolve_global(profile: str | None) -> tuple[Path, str]:
     config_path = machine_config_path()
     config = load_machine_config(config_path)
@@ -218,7 +232,22 @@ def _dispatch_template(args: argparse.Namespace) -> int:
     return cmd_template_sync(root, args.name)
 
 
-def _add_init_recovery(init: argparse.ArgumentParser) -> None:
+def _add_init_choices(init: argparse.ArgumentParser) -> None:
+    init.add_argument(
+        "--starter",
+        choices=("none", "frontend", "backend"),
+        help="optional project template to vendor; default: none",
+    )
+    init.add_argument(
+        "--git-hooks",
+        choices=("none", "check", "regenerate"),
+        help="opt into pre-commit validation, optionally with post-checkout/post-merge sync",
+    )
+    init.add_argument(
+        "--registration",
+        choices=("keep", "replace"),
+        help="resolve a conflicting global machine registration",
+    )
     recovery = init.add_mutually_exclusive_group()
     recovery.add_argument("--resume", type=Path, help="resume a protected migration journal")
     recovery.add_argument(
@@ -241,6 +270,7 @@ def _dispatch_init(args: argparse.Namespace) -> int:
             or args.registration
             or args.force
             or args.starter
+            or args.git_hooks
         ):
             raise UsageError("--resume/--recover accept only --yes and --json")
         return run_recovery(
@@ -261,6 +291,7 @@ def _dispatch_init(args: argparse.Namespace) -> int:
             json=args.json,
             yes=args.yes,
             starter=args.starter,
+            git_hooks=args.git_hooks,
         )
     )
 
@@ -275,6 +306,8 @@ def _dispatch_skill(args: argparse.Namespace) -> int:
 
 
 def _dispatch(args: argparse.Namespace) -> int:
+    if args.command == "git-hooks":
+        return _dispatch_git_hooks(args)
     if args.command == "explain":
         return cmd_explain(args.root.resolve(), args.name)
     if args.command == "init":
@@ -283,9 +316,26 @@ def _dispatch(args: argparse.Namespace) -> int:
         return cmd_harness_add(project_root(args.root), args.name)
     if args.command in {"skill", "template"}:
         return _dispatch_skill(args) if args.command == "skill" else _dispatch_template(args)
+    return _dispatch_outputs(args)
+
+
+def _dispatch_git_hooks(args: argparse.Namespace) -> int:
+    if args.git_hook_command == "install":
+        return install_hooks(
+            args.root.resolve(),
+            regenerate=args.regenerate,
+            profile=args.profile,
+            dry_run=args.dry_run,
+        )
+    return run_hook(args.event, args.root.resolve(), args.profile, args.git_arguments)
+
+
+def _dispatch_outputs(args: argparse.Namespace) -> int:
     root, profile = _resolve_root_and_profile(args)
     if args.command == "sync":
         return cmd_sync(root, profile=profile, force=args.force)
+    if args.staged:
+        return check_staged(root, profile)
     return cmd_check(root, profile=profile)
 
 

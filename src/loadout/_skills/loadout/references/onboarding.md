@@ -23,6 +23,15 @@ original body bytes and modes survive. Other populated template categories requi
 native source edits before selection. Follow the exact template command reported for an already
 initialized source, then sync its managed outputs.
 
+Offer optional Git integration using `--git-hooks none|check|regenerate`, default `none`.
+`check` validates the staged dependency snapshot at pre-commit; `regenerate` also runs guarded
+sync after checkout/merge. Show preview paths and source/profile, preserving occupied or shared
+hooks and reporting the exact integration commands. A clone needs explicit `loadout git-hooks
+install --root <source-root> [--profile <name>] [--regenerate]`. Templates must be vendored and
+staged, required dependencies must be in the repository, and optional private sources may be
+absent. A post-hook failure leaves Git's completed operation in place; resolve the reported
+output conflict and retry normal sync, without adding `--force`.
+
 Read the complete JSON `issues`, candidates and dispositions. An incomplete preview exits 2 and
 changes nothing. Prompts are available in an interactive terminal; JSON and dry-run never prompt.
 Resolve only actual ambiguities, preserving unsupported and runtime/private entries. Unknown

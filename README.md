@@ -469,6 +469,13 @@ package and work offline. They add no dependencies, permission grants, models or
 Starter selection, provenance and outputs participate in the migration checkpoint/staging and
 recovery workflow. Global init does not activate project starters.
 
+Optional `--git-hooks check` installs staged-source validation at pre-commit. `--git-hooks
+regenerate` also runs guarded sync after checkout/merge. Hook choices and exact integration
+commands appear in the preview; existing/shared hooks are preserved. On a new clone, use
+`loadout git-hooks install --root . [--regenerate]`. Manual validation is `loadout check --staged`.
+See [Git integration](docs/reference/git-integration.md) for dependencies, alternate indexes,
+worktrees, profiles and post-hook failure behavior.
+
 `init` adopts existing configuration, retaining native behavior and private scope. Harness roots
 can establish membership; explicit `--harness` selections resolve shared-file ambiguity. Every
 category receives source slots and supported core categories receive active, initially dormant
