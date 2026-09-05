@@ -14,6 +14,9 @@ each harness makes of it, and which half of it each one has to drop.
 be read back into, which pattern forms have to be collapsed, and what is reported rather than
 guessed at.
 
+[migration.md](migration.md) describes read-only inventory, explicit source mapping and verified
+migration plans, including private source and the boundary consumed by a later transaction.
+
 One file per harness. Each records **what was verified** (with the date and version it
 was verified against) separately from **what upstream documents**. When a harness
 changes, re-check the verified claims first — they are the ones this project's output

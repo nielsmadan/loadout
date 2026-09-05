@@ -12,6 +12,42 @@ fixture. What the whole-document comparison uniquely covers is **wiring**, not s
 Keep this file current: a new behaviour in `docs/reference/` needs a row, and a row without a
 test is a gap.
 
+## Migration planning
+
+All rows below are exercised in `tests/test_migration.py`; the contract is
+[migration.md](migration.md).
+
+| behaviour | pinned by |
+|---|---|
+| explicit scope and shared membership ambiguity | `test_shared_instructions_do_not_invent_scope_or_harnesses` |
+| native categories, ordered literals, no original mutation | `test_project_plan_reconstructs_composite_native_data_without_mutation` |
+| verified portable conversion and silent-loss fallback | `test_permission_extraction_is_verified_after_serialization`, `test_silent_extractor_losses_use_native_fallback` |
+| opaque subtree bytes, modes and relative dependencies | `test_nested_instructions_and_program_dependency_layout`, `test_static_hook_dependency_is_inventoried_and_reconstructed` |
+| runtime exclusions depend on root roles, not ancestor names | `test_workspace_parent_names_are_not_runtime_roles`, `test_symlink_into_known_runtime_root_is_excluded` |
+| tracked nested instructions under dependency/build directories | `test_tracked_nested_instructions_survive_build_walk_filters` |
+| credentials and personal source never enter checkpoint paths | `test_credentials_and_personal_sources_are_excluded_from_checkpoints`, `test_gitignored_authored_configuration_remains_personal` |
+| global relocation and mixed runtime documents | `test_global_live_roots_honor_relocation_and_partial_runtime_ownership`, `test_default_claude_mcp_is_sibling_of_default_harness_directory`, `test_live_roots_expand_using_supplied_home` |
+| explicit dotfile roles and conflicting source selection | `test_dotfile_directory_names_require_confirmed_mapping`, `test_source_and_live_conflict_requires_explicit_selection` |
+| external symlinks require mappings and keep original targets | `test_symlink_external_target_requires_mapping_and_is_never_written` |
+| unknown and unmaterialized native input blocks completion | `test_unknown_native_and_materialization_inputs_block_complete_migration`, `test_unmapped_external_hook_dependency_blocks_completion` |
+| initialized source produces an idempotent no-migration result | `test_existing_source_is_not_reinterpreted` |
+| serialized source mutation fails isolated full comparison | `test_validation_rejects_actual_serialized_source_changes` |
+| dormant routes and first-entry activation | `test_empty_routes_do_not_suppress_fallback_instructions`, `test_dormant_document_parts_activate_on_first_entry`, `test_originally_empty_instruction_file_is_recreated` |
+| skill first entry, edit, rename and deletion | `test_skill_tree_first_entry_edit_rename_and_delete` |
+| synthetic public dotfile layouts | `test_global_synthetic_dbochman_and_anaiis_shapes` |
+| partial output mode policy and private clone behavior | `test_partial_output_mode_policy_preserves_adopted_destination_mode`, `test_private_routes_are_optional_in_a_checkout_without_personal_files` |
+| ignored generated links preserve tracked source privacy | `test_ignored_symlink_output_keeps_tracked_canonical_source_public` |
+| shared skill membership and directory preconditions | `test_shared_agents_tree_keeps_its_actual_consumers`, `test_directory_precondition_detects_a_new_authored_input` |
+| canonical runtime roles through symlinked harness roots, with unchanged crawl limits | `test_symlinked_harness_root_excludes_canonical_runtime_aliases`, `test_symlinked_harness_root_does_not_expand_inventory_boundary`, `test_symlink_cycle_in_harness_root_is_reported` |
+| private canonical originals and future private tree entries stay excluded | `test_private_instruction_excludes_canonical_original_and_aliases`, `test_private_tree_namespace_ignores_future_entries` |
+| retirement accounts for mapped trees, duplicate copies and symlink targets | `test_mapped_tree_retirement_accounts_for_every_original`, `test_duplicate_and_symlink_sources_have_explicit_retirement`, `test_mapped_private_and_runtime_originals_have_retained_dispositions` |
+| retirement uses final output topology and preserves required destinations | `test_ancestor_spelling_does_not_retire_a_generated_destination`, `test_an_original_required_by_another_output_is_not_retired`, `test_symlinked_harness_directory_uses_final_retirement_topology` |
+| dependency mappings agree in original and deployed coordinates | `test_mapped_relative_dependencies_preserve_source_and_deployed_layout`, `test_absolute_dependency_on_relocated_original_stays_blocked`, `test_relative_dependency_with_disagreeing_mapping_stays_blocked` |
+| dependency checks and retirement share final symlink topology | `test_symlinked_harness_absolute_dependency_on_retired_source_is_blocked`, `test_symlinked_harness_dependencies_follow_final_destinations` |
+| direct harness-root sources preserve HOME/relocated destination links and ancestor aliases while blocking stale source references | `test_direct_harness_root_absolute_source_dependencies_are_blocked`, `test_direct_harness_root_dependencies_keep_active_destinations` |
+| recognizable unsupported global harness trees block migration | `test_global_unsupported_harness_tree_is_unresolved` |
+| instruction discovery preconditions every traversed directory | `test_instruction_search_records_each_traversed_directory`, `test_instruction_search_preconditions_canonical_root_listing` |
+
 ## Cross-cutting
 
 | id | behaviour | source | pinned by |
