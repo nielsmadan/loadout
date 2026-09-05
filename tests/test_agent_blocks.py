@@ -335,3 +335,21 @@ def test_remove_must_be_a_list_of_names(tmp_path: Path) -> None:
 
     with pytest.raises(LoadoutError, match=r"\$remove must be a list"):
         render_global(root)
+
+
+def test_the_owned_record_names_destination_keys_not_vocabulary(tmp_path: Path) -> None:
+    """`$remove` is how the fragment speaks, not a key in config.toml. Recording it
+    verbatim — which the record did until the union used the raw fragment keys —
+    would have loadout stripping a key literally named `$remove` from the harness's
+    file, and would leave the removed key itself unrecorded."""
+    root = build(tmp_path, '[codex]\ndefaults = "d"\n')
+    (root / "defaults").mkdir(exist_ok=True)
+    (root / "defaults" / "d.json").write_text(REMOVE_FRAGMENT, encoding="utf-8")
+
+    merged = next(v for k, v in render_global(root).items() if str(k).endswith("config.toml"))
+    assert isinstance(merged, Merged)
+    record = next(text for path, text in merged.records if str(path).endswith(".owned"))
+
+    assert "$remove" not in record
+    assert "developer_instructions" in record
+    assert "model" in record

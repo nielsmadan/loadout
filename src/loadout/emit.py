@@ -384,7 +384,10 @@ def _attach_records(
             continue
         first = resolve_item(manifest.sources, target.content[0], json_slice(target.content_slice))
         path = first.path.with_suffix(".owned")
-        present = frozenset(content)
+        # The keys this fragment manages, which is what `owns` computes — not the
+        # fragment's raw keys. `$remove` is vocabulary rather than a destination key,
+        # and recording it would have loadout stripping a key named `$remove`.
+        present = spec.owns(content)
         owned |= read_record(path) | present
         records.append((path, render_record(present)))
     if not records:
