@@ -1125,8 +1125,18 @@ def atomic_copy(path: Path, source: Path) -> None:
 
 
 def write_all(root: Path, profile: str = "default") -> list[Path]:
+    return write_outputs(render_all(root, profile))
+
+
+def write_outputs(outputs: Mapping[Path, Output]) -> list[Path]:
+    """Write an already-rendered mapping.
+
+    Split from `write_all` so a caller that must render once — to guard, write and
+    then record the same bytes — cannot accidentally render three times and record
+    something it did not write.
+    """
     written: list[Path] = []
-    for path, content in render_all(root, profile).items():
+    for path, content in outputs.items():
         path.parent.mkdir(parents=True, exist_ok=True)
         if isinstance(content, Copied):
             atomic_copy(path, content.source)

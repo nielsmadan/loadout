@@ -48,6 +48,12 @@ test is a gap.
 | `json-surgery-foreign` | keys loadout does not own survive untouched | [servers](servers.md#claudes-global-entry-writes-claudejson) | `test_keys_loadout_does_not_own_survive_untouched` |
 | `nothing-staged` | no global slice renders in-repo for an external merge step | [ADR 0004](../decisions/0004-loadout-is-render-only.md) | `test_no_global_slice_is_staged` |
 
+| `written-third-variant` | an output rendered from an uncommitted source state that has since moved on is accepted | [ADR 0019](../decisions/0019-sync-records-what-it-wrote.md) | `test_editing_a_source_twice_before_committing_does_not_block`, `test_reverting_a_synced_source_edit_no_longer_blocks`, `test_two_sources_feeding_one_destination_do_not_block` |
+| `written-copied` | a copied supporting file uses the same baseline, so editing one no longer blocks forever | [ADR 0019](../decisions/0019-sync-records-what-it-wrote.md) | `test_editing_a_copied_supporting_file_twice_does_not_block` |
+| `written-degrades` | a missing, corrupt or future-version record reproduces the two-variant guard exactly | [ADR 0019](../decisions/0019-sync-records-what-it-wrote.md) | `test_without_a_record_the_revert_blocks_exactly_as_before`, `test_without_a_record_the_copied_edit_blocks_as_before`, `test_a_corrupt_record_reads_as_empty_rather_than_raising`, `test_a_future_version_reads_as_empty` |
+| `written-still-blocks` | a real hand edit matches neither render nor record, and still blocks | [ADR 0019](../decisions/0019-sync-records-what-it-wrote.md) | `test_hand_edited_output_blocks_sync`, `test_a_hand_edited_copy_still_blocks` |
+| `written-when` | `--force` records; `check` does not | [ADR 0019](../decisions/0019-sync-records-what-it-wrote.md) | `test_force_records_what_it_wrote`, `test_check_records_nothing` |
+
 ## Claude
 
 | id | behaviour | source | pinned by |

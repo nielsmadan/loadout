@@ -61,12 +61,21 @@ pass `--force` to discard it.
 Comparison is by parsed document for JSON targets, not by bytes, so a harness re-serialising
 its own config in a different key order does not read as an edit.
 
-Three cases warn without anything being wrong. The first `sync` over config that predates
-loadout — adoption is the one time loadout overwrites a file it has never written. Reverting
-an uncommitted source edit that was already synced, which leaves outputs from a source state
-that exists nowhere. And a file whose committed baseline is unavailable — outside a git repo,
-or before the first commit — where an unsynced edit cannot be told from a hand edit, so the
-check is skipped entirely and says so.
+There is a third comparison beside those two renders: **what `sync` recorded writing there
+last**, kept per destination under `$XDG_CONFIG_HOME/loadout/written/`. Without it, editing a
+source twice before committing left an output rendered from a state that is neither baseline,
+and `sync` refused a file it had written itself. The record only ever widens acceptance — delete
+it and the guard behaves exactly as it did before, warning and all.
+
+Two cases still warn without anything being wrong. The first `sync` over config that predates
+loadout — adoption is the one time loadout overwrites a file it has never written. And a file
+whose committed baseline is unavailable — outside a git repo, or before the first commit — where
+an unsynced edit cannot be told from a hand edit, so the check is skipped entirely and says so.
+A destination shared between machines through a symlinked config repo can warn too: one machine's
+record cannot vouch for the other's write.
+
+`check` asks the same question and says which answer applies, rather than sending you to `sync`
+where `sync` is about to refuse.
 
 ## Global scope
 

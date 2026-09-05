@@ -19,11 +19,21 @@ class MachineConfig:
     profile: str | None = None
 
 
-def machine_config_path(env: Mapping[str, str] | None = None) -> Path:
+def machine_state_dir(env: Mapping[str, str] | None = None) -> Path:
+    """Where state that belongs to this machine rather than to a source lives.
+
+    ADR 0010 named one place for it; ADR 0008 forbids the alternative of hiding it
+    inside a generated file. Both the machine config and the record of what `sync`
+    wrote resolve through here so they cannot drift apart.
+    """
     environ = os.environ if env is None else env
     xdg = environ.get("XDG_CONFIG_HOME")
     base = Path(xdg) if xdg else Path(environ.get("HOME", "~")).expanduser() / ".config"
-    return base / "loadout" / MACHINE_CONFIG_NAME
+    return base / "loadout"
+
+
+def machine_config_path(env: Mapping[str, str] | None = None) -> Path:
+    return machine_state_dir(env) / MACHINE_CONFIG_NAME
 
 
 def load_machine_config(path: Path) -> MachineConfig | None:

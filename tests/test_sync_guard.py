@@ -5,7 +5,9 @@ import subprocess
 from pathlib import Path
 
 import loadout
-from loadout.commands import _DIFF_LIMIT, _normalise
+from loadout.commands import _DIFF_LIMIT
+from loadout.written import normalise as _normalise
+from loadout.written import written_state_path
 
 
 def _git(root: Path, *args: str) -> None:
@@ -217,25 +219,104 @@ def test_profile_switch_does_not_block(root: Path, fake_home: Path, capsys) -> N
     assert destination.read_text() != under_variant
 
 
-def test_reverting_a_synced_source_edit_blocks(root: Path, capsys) -> None:
-    """The honest limit of a stateless accept set.
+def test_reverting_a_synced_source_edit_no_longer_blocks(root: Path, capsys) -> None:
+    """Was "the honest limit of a stateless accept set" until the record existed.
 
-    Outputs written from a source state that was never committed, and no longer exists
-    in the working tree, match neither baseline. --force resolves it and loses nothing,
-    since the rewrite comes from the reverted source.
+    The output was written from a source state that was never committed and no longer
+    exists in the working tree, so it matches neither render. It matches what sync
+    recorded writing, which is the whole point of recording it.
     """
     _adopt(root)
     fragment = root / "instructions" / "shared.md"
     original = fragment.read_text()
     fragment.write_text(original + "\nA sentence I will take back.\n", encoding="utf-8")
     assert loadout.main(["sync", "--root", str(root)]) == 0
+    # The loser, present before the final sync: without this the assertion below
+    # passes against a build where the sentence was never written at all.
+    assert "A sentence I will take back." in (root / "out" / "shared.md").read_text()
     fragment.write_text(original, encoding="utf-8")
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--root", str(root)]) == 0
+    assert "A sentence I will take back." not in (root / "out" / "shared.md").read_text()
+
+
+def test_editing_a_source_twice_before_committing_does_not_block(root: Path, capsys) -> None:
+    """The case ADR 0008 did not enumerate, and the one that actually bit.
+
+    Edit, sync, edit again, sync — an ordinary loop with a commit at the end. The
+    output on disk is rendered from a state that is neither HEAD nor the working
+    tree, so before the record this aborted and sent the user to --force.
+    """
+    _adopt(root)
+    fragment = root / "instructions" / "shared.md"
+    original = fragment.read_text()
+    fragment.write_text(original + "\nEdit A.\n", encoding="utf-8")
+    assert loadout.main(["sync", "--root", str(root)]) == 0
+    assert "Edit A." in (root / "out" / "shared.md").read_text()
+
+    fragment.write_text(original + "\nEdit A.\nEdit B.\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--root", str(root)]) == 0
+    written = (root / "out" / "shared.md").read_text()
+    assert "Edit A." in written and "Edit B." in written
+
+
+def test_two_sources_feeding_one_destination_do_not_block(root: Path) -> None:
+    """The live failure: with two inputs composing into one file you need not edit
+    the same source twice. Edit one, sync, edit the other, and the output is a cross
+    of committed and working state that neither render produces."""
+    _adopt(root)
+    first = root / "settings" / "claude.json"
+    second = root / "settings" / "claude-afk.json"
+    first.write_text(json.dumps({"model": "one"}) + "\n", encoding="utf-8")
+    assert loadout.main(["sync", "--root", str(root)]) == 0
+    assert "one" in (root / "perm" / "claude-empty.json").read_text()
+
+    second.write_text(json.dumps({"effortLevel": "high"}) + "\n", encoding="utf-8")
+
+    assert loadout.main(["sync", "--root", str(root)]) == 0
+    document = json.loads((root / "perm" / "claude-empty.json").read_text())
+    assert document["model"] == "one"
+    assert document["effortLevel"] == "high"
+
+
+def test_without_a_record_the_revert_blocks_exactly_as_before(root: Path, capsys) -> None:
+    """Degradation is the property that makes this safe to ship: delete the record
+    and the guard is the two-variant one, warning included."""
+    _adopt(root)
+    fragment = root / "instructions" / "shared.md"
+    original = fragment.read_text()
+    fragment.write_text(original + "\nTaken back.\n", encoding="utf-8")
+    assert loadout.main(["sync", "--root", str(root)]) == 0
+    fragment.write_text(original, encoding="utf-8")
+    written_state_path(root).unlink()
     capsys.readouterr()
 
     assert loadout.main(["sync", "--root", str(root)]) == 1
     assert "out/shared.md was modified outside loadout" in capsys.readouterr().err
+
+
+def test_force_records_what_it_wrote(root: Path) -> None:
+    """Otherwise a forced sync leaves no baseline and the next ordinary sync aborts
+    again — which is how a copied file's --force became permanent rather than final."""
+    _commit_source(root)
+    assert not written_state_path(root).is_file()
+
     assert loadout.main(["sync", "--root", str(root), "--force"]) == 0
-    assert "A sentence I will take back." not in (root / "out" / "shared.md").read_text()
+
+    assert written_state_path(root).is_file()
+
+
+def test_check_records_nothing(root: Path) -> None:
+    """`check` is read-only, and a record written by it would assert loadout wrote
+    bytes it never wrote."""
+    _commit_source(root)
+
+    loadout.main(["check", "--root", str(root)])
+
+    assert not written_state_path(root).is_file()
 
 
 def test_no_committed_baseline_skips_the_check(root: Path, capsys) -> None:
@@ -249,3 +330,50 @@ def test_no_committed_baseline_skips_the_check(root: Path, capsys) -> None:
     err = capsys.readouterr().err
     assert "no committed baseline" in err
     assert output.read_text().startswith("<!-- Generated by loadout")
+
+
+def test_editing_a_copied_supporting_file_twice_does_not_block(project: Path) -> None:
+    """The permanent deadlock, now a regression test.
+
+    A skill's supporting file is copied, not rendered, and that branch never consulted
+    the accept set at all — it compared the destination against the *current* source.
+    So the first edit blocked every later sync, and committing did not help, because
+    HEAD was never consulted either. `--force` was the only exit, every time.
+    """
+    _adopt(project)
+    reference = project / "loadout" / "skills" / "probe" / "reference.md"
+    copy = project / ".claude" / "skills" / "probe" / "reference.md"
+
+    reference.write_text("first edit\n", encoding="utf-8")
+    assert loadout.main(["sync", "--root", str(project)]) == 0
+    # The loser: the first edit provably reached the destination before the second.
+    assert copy.read_text() == "first edit\n"
+
+    reference.write_text("second edit\n", encoding="utf-8")
+
+    assert loadout.main(["sync", "--root", str(project)]) == 0
+    assert copy.read_text() == "second edit\n"
+
+
+def test_a_hand_edited_copy_still_blocks(project: Path, capsys) -> None:
+    """The record widens acceptance; it must not open it. Bytes that match neither the
+    source nor anything sync wrote are still someone else's edit."""
+    _adopt(project)
+    copy = project / ".claude" / "skills" / "probe" / "reference.md"
+    copy.write_text("typed straight into the destination\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--root", str(project)]) == 1
+    assert "was modified outside loadout" in capsys.readouterr().err
+
+
+def test_without_a_record_the_copied_edit_blocks_as_before(project: Path, capsys) -> None:
+    _adopt(project)
+    (project / "loadout" / "skills" / "probe" / "reference.md").write_text(
+        "edited\n", encoding="utf-8"
+    )
+    written_state_path(project).unlink()
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--root", str(project)]) == 1
+    assert "was modified outside loadout" in capsys.readouterr().err
