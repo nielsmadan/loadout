@@ -758,6 +758,12 @@ def project_notices(root: Path, environ: Mapping[str, str]) -> tuple[Notice, ...
     )
 
 
+def _owns_its_file(target: PermissionTarget) -> bool:
+    """Whether this renderer writes a whole file rather than one key of a foreign one."""
+    spec = _resolve_renderer(target.renderer, f"permissions.{target.name}")
+    return not isinstance(spec, MergedJsonSpec)
+
+
 def render_global(root: Path, profile: str = "default") -> dict[Path, Output]:
     manifest = load_profile(root, profile)
     declared = _declared_profiles(manifest) | declared_profile_files(root)
@@ -784,7 +790,12 @@ def render_global(root: Path, profile: str = "default") -> dict[Path, Output]:
             # A source offering no mcp.toml contributes no tier, the same as a
             # template offering no permissions.toml — nothing to write,
             # mirroring render_project's identical guard.
-            if target.renderer.endswith("-servers") and not servers:
+            #
+            # A merged slice is the exception and must still write: it owns a key
+            # inside a file it does not own, so rendering nothing leaves the last
+            # server registered forever. Skipping here is how "delete the only
+            # server" silently did nothing.
+            if target.renderer.endswith("-servers") and not servers and _owns_its_file(target):
                 continue
             content = _permission_content(target, servers, manifest)
             residual = settings_document(target, manifest, root)

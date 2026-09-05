@@ -95,15 +95,26 @@ def test_claude_global_writes_claude_json() -> None:
     assert entry.destination == "${CLAUDE_CONFIG_DIR:-~}/.claude.json"
 
 
-def test_no_mcp_toml_means_no_servers_output(tmp_path: Path) -> None:
-    """`mcp` is automatic, but a source offering none contributes no tier —
-    mirroring project scope's identical guard rather than writing an empty
-    document nobody asked for."""
+def test_no_mcp_toml_still_writes_the_merged_key_so_the_last_server_can_go(
+    tmp_path: Path,
+) -> None:
+    """A renderer owning its whole file writes nothing when there are no servers —
+    an empty `.mcp.json` nobody asked for. A **merged** one must still write: it
+    owns a key inside a file it does not own, so rendering nothing would leave the
+    last server registered forever.
+
+    That was live: `sync` deleted one of two servers fine and silently kept the
+    last one, because the empty case skipped the slice entirely.
+    """
     root = build_global(tmp_path, "\n[claude]\n", mcp_toml=None)
 
     rendered = render_global(root)
 
-    assert not any("mcp-servers.generated.json" in str(p) for p in rendered)
+    written = next(p for p in rendered if str(p).endswith(".claude.json"))
+    merged = rendered[written]
+    assert isinstance(merged, Merged)
+    assert merged.owned == frozenset({"mcpServers"})
+    assert json.loads(merged.document) == {"mcpServers": {}}
 
 
 def test_a_global_source_renders_claude_servers_without_being_named(tmp_path: Path) -> None:
