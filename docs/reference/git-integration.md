@@ -18,6 +18,13 @@ generated entries from the index are accepted. Edit and stage the source instead
 output edit, or use `git rm --cached -- <path>` to keep its local copy while retiring its index
 entry. The command reports paths rather than generated content.
 
+Generated ownership records such as `defaults/codex.owned` remain committed source-side
+metadata. Every record requested by an active staged producer must be staged and match that
+producer, including an empty record. Deleting its record alone or editing it by hand cannot
+change deletion ownership; regenerate and stage the record with its source. Legitimate record
+updates and removal of a retired producer's record are accepted rather than treated as edits
+to deployed output files.
+
 Ownership follows the selected profile in both trees. Inactive instruction and permission
 targets do not resolve their destination variables or protect their outputs for that check.
 HEAD supplies output declarations only: old source dependencies are neither resolved nor

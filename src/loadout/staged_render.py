@@ -10,7 +10,7 @@ from typing import Any
 from unittest.mock import patch
 
 from . import artifacts, emit, manifest, templates
-from .artifacts import Copied
+from .artifacts import Copied, Merged
 from .destinations import resolve_destination
 from .errors import LoadoutError
 from .manifest import (
@@ -175,6 +175,16 @@ class Snapshot:
                     if isinstance(output, Copied):
                         output.read_bytes()
                         output.source.stat()
+                    elif isinstance(output, Merged):
+                        for record, expected in output.records:
+                            self.inside(record)
+                            if (
+                                not record.is_file()
+                                or record.read_text(encoding="utf-8") != expected
+                            ):
+                                raise LoadoutError(
+                                    f"staged ownership record differs from its producer: {record}; regenerate and stage the record with its source"
+                                )
         return tuple(
             sorted(
                 str(path.relative_to(self.tree)) for path in owned if path.is_relative_to(self.tree)

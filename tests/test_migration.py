@@ -565,7 +565,7 @@ def test_scaffold_gitkeep_remains_a_retained_dependency(tmp_path: Path) -> None:
 def test_support_json_assets_remain_opaque_and_have_no_unrelated_category_parts(
     tmp_path: Path,
 ) -> None:
-    asset = write(tmp_path, ".claude/hooks/assets/auth.json", b'{ "fixture" : null }\n', 0o640)
+    asset = write(tmp_path, ".claude/hooks/assets/config.json", b'{ "fixture" : null }\n', 0o640)
     keybindings = write(tmp_path, ".claude/keybindings.json", '{"bindings":[]}')
     plan = migration(tmp_path)
     assert generated(plan, asset) == b'{ "fixture" : null }\n'

@@ -112,6 +112,9 @@ explicit category maps an unusual individual artifact; `kind="shared"` retains s
 membership. Source selections identify a destination and its chosen original. Directory
 selections apply to corresponding relative paths. Different copies remain conflicts until
 selected; byte-and-mode identical copies can use one producer.
+An interactive correction replaces the prior selection for that destination. For individual
+JSON/TOML mappings, native document identity follows the destination and harness, so a renamed
+source still receives the destination's category splitting and runtime-field protection.
 
 Unknown files inside confirmed roots, JSONC files, unmaterialized templates, and installer
 activation remain unresolved. A complete plan cannot contain unresolved authored candidates.
@@ -133,6 +136,8 @@ or `cache`, is not a runtime role. Entry preconditions retain link text, parent 
 fingerprints, and inventoried directory listings, including each directory traversed while
 searching for nested instructions. A later transaction must replace link entries
 without writing through them.
+Project instruction discovery also walks ordinary untracked `projects`, `history` and `debug`
+directories; those names identify runtime state only beneath known harness roots.
 
 ## Source and validation
 
@@ -165,6 +170,9 @@ Partial source contains only authored fields: `mcpServers` from Claude's runtime
 Codex configuration excluding `projects`/`trust`, and Pi settings excluding
 `lastChangelogVersion`. The later transaction applies these owned fields into live documents;
 runtime fields are neither source nor checkpoint content.
+Runtime-only mixed documents remain intact. `required_owned_absences` records dormant owned
+keys separately from `required_absences`, which requires an entire output path to be absent.
+Their first authored entries still activate through the declared category routes.
 
 Empty core categories are routed but dormant until their first entry. An originally present
 empty instruction remains present. `categories` reports readiness for each agent: `routed`,
@@ -185,6 +193,9 @@ are optional so another checkout can omit personal source. A transaction must pr
 source directories, especially when a copied file's original executable mode must survive.
 Every used private category namespace (`loadout/<category>/local/`) carries a directory-level
 ignore and a `private_paths` exclusion, so later additions remain private too.
+JSON/TOML supporting files receive structural credential inspection even when deployed as opaque
+copies; privacy classification does not change their bytes or mode. Environment references
+remain references. Known authentication/runtime filenames are excluded at nested paths too.
 
 Auth, sessions, history, caches and trust data are excluded before source and checkpoint
 selection and left at their original paths. `private_paths` includes logical originals, their
@@ -192,9 +203,10 @@ canonical targets and new source; it is an exclusion input for both baseline and
 operations. Existing Git history is outside this planner's ownership.
 
 `MigrationPlan` exposes frozen `source_writes`, `generated_writes`, `expected_outputs`,
-`required_absences`, `obsolete`, `originals`, `ignores`, `private_paths`, `checkpoint_paths`,
-`preconditions`, `starter_dependencies`, and `artifact_routes`. Its JSON-serializable `preview()` contains metadata rather than file
-contents or fingerprints of secret values. `complete` requires a successful isolated validation
+`required_absences`, `required_owned_absences`, `obsolete`, `originals`, `ignores`, `private_paths`,
+`checkpoint_paths`, `preconditions`, `starter_dependencies`, and `artifact_routes`. Its
+JSON-serializable `preview()` contains metadata rather than file contents or fingerprints of
+secret values. `complete` requires a successful isolated validation
 and no issues, or a recognized existing-source no-op. Generated partial content is the authored
 document, not a frozen replacement for runtime fields. Transaction preparation must reread and
 compare preconditions, preserve foreign fields with the existing deployment boundary, capture
@@ -290,6 +302,9 @@ repository also retains ignore content included in its baseline. Generated files
 and are ignored. Root-relative literal pathspecs and escaped ignore patterns preserve filename
 metacharacters; an individual ignore path containing a newline is rejected before mutation.
 There is no final migration commit.
+In an existing repository, this also preserves the unstaged status of pre-existing rules in an
+untracked `.gitignore`: its staged version contains only Loadout's additions, while the working
+copy contains both. Review the staged and unstaged diffs separately before committing.
 
 Git privacy is checked again before checkpointing and final staging, including during resume.
 Sibling original paths share a NUL-delimited Git ignore query from their exact parent directory;

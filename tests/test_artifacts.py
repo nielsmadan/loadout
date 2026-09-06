@@ -393,14 +393,22 @@ def test_sources_and_outputs_cannot_overlap(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "destination", ["loadout/config.toml", "loadout/artifacts.toml", "loadout"]
+    "destination, format_name, source",
+    [
+        ("loadout/config.toml", "copy", "replacement.md"),
+        ("loadout/artifacts.toml", "copy", "replacement.md"),
+        ("loadout", "tree", "skills"),
+    ],
 )
-def test_outputs_cannot_replace_their_configuration(tmp_path: Path, destination: str) -> None:
+def test_outputs_cannot_replace_their_configuration(
+    tmp_path: Path, destination: str, format_name: str, source: str
+) -> None:
     project(
         tmp_path,
-        f'[[artifact]]\nagents = ["claude"]\nformat = "tree"\ncategory = "skills"\nsource = "skills"\noutput = "{destination}"\n',
+        f'[[artifact]]\nagents = ["claude"]\nformat = "{format_name}"\ncategory = "skills"\nsource = "{source}"\noutput = "{destination}"\n',
     )
-    with pytest.raises(LoadoutError):
+    write(tmp_path / "loadout", "skills/SKILL.md" if format_name == "tree" else source, "source")
+    with pytest.raises(LoadoutError, match=r"artifact source .* overlaps destination"):
         render_project(tmp_path)
 
 

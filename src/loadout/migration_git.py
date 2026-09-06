@@ -6,6 +6,7 @@ import stat
 import subprocess
 import tempfile
 from collections.abc import Callable
+from concurrent.futures import Executor, wait
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -325,27 +326,68 @@ def privacy_fingerprint(path: Path) -> str | None:
     return "directory" if path.exists() else None
 
 
-def privacy_policy(root: Path, paths: tuple[Path, ...]) -> tuple[tuple[str, str | None], ...]:
-    values: dict[str, str | None] = {}
-    repositories: dict[Path, Path | None] = {}
-    files: set[Path] = set()
-    configured: set[Path] = set()
-    for path in paths:
-        parent = path.parent
-        while not parent.is_dir():
-            parent = parent.parent
-        if parent not in repositories:
+def _privacy_repository(parent: Path, cache: dict[Path, Path | None]) -> Path | None:
+    parent = parent.resolve()
+    directory = parent
+    traversed = []
+    while directory not in cache:
+        traversed.append(directory)
+        marker = directory / ".git"
+        if marker.exists() or marker.is_symlink() or directory == directory.parent:
             probe = git(parent, "rev-parse", "--show-toplevel", check=False)
             if probe.returncode and b"not a git repository" not in probe.stderr:
                 raise LoadoutError(f"could not inspect Git privacy repository: {parent}")
-            repositories[parent] = (
+            repository = (
                 Path(os.fsdecode(probe.stdout).strip()).resolve() if probe.returncode == 0 else None
             )
-        repository = repositories[parent]
+            break
+        directory = directory.parent
+    else:
+        repository = cache[directory]
+    cache.update((path, repository) for path in traversed)
+    return repository
+
+
+def _privacy_queries(
+    root: Path, *, repository: bool, executor: Executor | None
+) -> tuple[subprocess.CompletedProcess[bytes], ...]:
+    queries = [
+        (("config", "--path", "--get", "core.excludesFile"), False),
+        (("config", "--bool", "--get", "core.ignoreCase"), False),
+    ]
+    if repository:
+        queries.append(
+            (("rev-parse", "--path-format=absolute", "--git-path", "info/exclude"), True)
+        )
+    if executor is None:
+        return tuple(git(root, *args, check=check) for args, check in queries)
+    pending = [executor.submit(git, root, *args, check=check) for args, check in queries]
+    wait(pending)
+    return tuple(result.result() for result in pending)
+
+
+def privacy_policy(
+    root: Path, paths: tuple[Path, ...], *, executor: Executor | None = None
+) -> tuple[tuple[str, str | None], ...]:
+    values: dict[str, str | None] = {}
+    repositories: dict[Path, Path | None] = {}
+    logical_repositories: dict[Path, Path | None] = {}
+    inspected: set[tuple[Path, Path]] = set()
+    files: set[Path] = set()
+    configured: set[Path] = set()
+    for path in paths:
+        logical_parent = path.parent
+        if logical_parent not in logical_repositories:
+            parent = logical_parent
+            while not parent.is_dir():
+                parent = parent.parent
+            logical_repositories[logical_parent] = _privacy_repository(parent, repositories)
+        repository = logical_repositories[logical_parent]
         selected = repository or (root if path.is_relative_to(root) else None)
-        values["repository:" + str(path.parent)] = str(selected) if selected else None
-        if selected is None:
+        values["repository:" + str(logical_parent)] = str(selected) if selected else None
+        if selected is None or (logical_parent, selected) in inspected:
             continue
+        inspected.add((logical_parent, selected))
         for directory in path.parents:
             if not directory.is_relative_to(selected):
                 break
@@ -353,8 +395,8 @@ def privacy_policy(root: Path, paths: tuple[Path, ...]) -> tuple[tuple[str, str 
         if selected in configured:
             continue
         configured.add(selected)
-        excludes = git(selected, "config", "--path", "--get", "core.excludesFile", check=False)
-        ignore_case = git(selected, "config", "--bool", "--get", "core.ignoreCase", check=False)
+        queries = _privacy_queries(selected, repository=repository is not None, executor=executor)
+        excludes, ignore_case = queries[:2]
         if excludes.returncode not in {0, 1} or ignore_case.returncode not in {0, 1}:
             raise LoadoutError(f"could not inspect Git privacy configuration: {selected}")
         exclude_path = (
@@ -367,17 +409,7 @@ def privacy_policy(root: Path, paths: tuple[Path, ...]) -> tuple[tuple[str, str 
         values["excludes:" + str(selected)] = str(exclude_path)
         values["ignorecase:" + str(selected)] = ignore_case.stdout.decode().strip() or None
         files.add(
-            Path(
-                os.fsdecode(
-                    git(
-                        selected,
-                        "rev-parse",
-                        "--path-format=absolute",
-                        "--git-path",
-                        "info/exclude",
-                    ).stdout
-                ).strip()
-            )
+            Path(os.fsdecode(queries[2].stdout).strip())
             if repository is not None
             else selected / ".git/info/exclude"
         )

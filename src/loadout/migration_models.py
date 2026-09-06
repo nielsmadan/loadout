@@ -59,6 +59,10 @@ class Candidate:
     format: str = "copy"
     personal: bool = False
 
+    @property
+    def document_name(self) -> str:
+        return (self.destination or self.path).name
+
 
 @dataclass(frozen=True)
 class Inventory:
@@ -100,6 +104,8 @@ class Inventory:
                     "disposition": c.disposition,
                     "reason": c.reason,
                     "private": c.private,
+                    "format": c.format,
+                    "mode": c.mode,
                 }
                 for c in self.candidates
             ],
@@ -137,6 +143,13 @@ class ExpectedOutput:
 
 
 @dataclass(frozen=True)
+class OwnedAbsence:
+    path: Path
+    format: str
+    keys: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class CategoryReadiness:
     category: str
     agents: tuple[str, ...]
@@ -160,6 +173,7 @@ class MigrationPlan:
     generated_writes: tuple[GeneratedWrite, ...] = ()
     expected_outputs: tuple[ExpectedOutput, ...] = ()
     required_absences: tuple[Path, ...] = ()
+    required_owned_absences: tuple[OwnedAbsence, ...] = ()
     obsolete: tuple[Path, ...] = ()
     originals: tuple[OriginalEntry, ...] = ()
     ignores: tuple[str, ...] = ()
@@ -204,6 +218,10 @@ class MigrationPlan:
             ],
             "expected_outputs": [str(o.path) for o in self.expected_outputs],
             "required_absences": [str(p) for p in self.required_absences],
+            "required_owned_absences": [
+                {"path": str(a.path), "format": a.format, "keys": list(a.keys)}
+                for a in self.required_owned_absences
+            ],
             "obsolete": [str(p) for p in self.obsolete],
             "originals": [
                 {

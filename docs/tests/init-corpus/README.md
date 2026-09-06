@@ -80,6 +80,28 @@ Local median budgets are 100 files within 15 seconds and 1000 within 120 seconds
 cross-machine guarantees. Record all durations and ranges. Staged check snapshots full HEAD/index
 trees; inspect its separate timing and repository size before making large-repository claims.
 
+### Mapped global sources
+
+The project benchmark regenerates in place and has no obsolete source files to retire. Run the
+separate global workload when changing retirement or transaction guards:
+
+```sh
+.venv/bin/python tests/benchmark_global_init.py
+.venv/bin/python tests/benchmark_global_init.py --counts 25
+```
+
+It reuses the same inert skill and fixed 1-KiB support files in a disposable existing repository,
+explicitly mapped to a separate fake-home Claude directory. Each original must be retired only
+after its replacement is generated. The runner asserts retirement count against input count,
+complete output bytes/modes, original index removals, staged global source, unchanged baseline
+HEAD, normal check and staged check. The default is a 25-file warmup followed by three runs at
+25/100/1000; `--counts` selects a bounded comparison and `--repetitions` changes its sample count.
+Keep both constant between compared runs. Each CLI command has the same 180-second cap and
+timeout recovery/evidence preservation as the project benchmark.
+
+Global and project timings are distinct workloads. Do not use the project measurements to infer
+retirement cost, or describe a single diagnostic sample as a controlled speedup.
+
 ## Publish and retain
 
 [init_evidence.py](../../../tests/init_evidence.py) can publish a result JSON with evidence and
@@ -107,3 +129,14 @@ third-party trees or private values.
 - [Independent rerun, 2026-09-06](runs/2026-09-06-root-verification.md), including original-mode
   and exact reconstruction-inventory checks with recorded runner hashes.
 - [Performance comparison, 2026-09-06](runs/2026-09-06-performance-comparison.md).
+- [Mapped-global baseline, 2026-09-06](runs/2026-09-06-global-performance-baseline.md).
+- [Mapped-global first fix, 2026-09-06](runs/2026-09-06-global-performance-first-fix.md), including
+  the 1,000-file timeout, cancelled repetition and supported recovery.
+- [Mapped-global second-fix preflight, 2026-09-06](runs/2026-09-06-global-performance-second-fix.md),
+  a further 1,000-file timeout with verified recovery.
+- [Mapped-global retirement profile, 2026-09-06](runs/2026-09-06-global-profile.md), separating
+  Git-process cost from parsing and fingerprint checks.
+- [Mapped-global final comparison, 2026-09-06](runs/2026-09-06-global-performance-final.md), all
+  samples completed; the 1,000-file median remains above the 120-second target.
+- [Final corpus verification, 2026-09-06](runs/2026-09-06-final-verification.md), with the
+  independent candidate-based output inventory oracle.

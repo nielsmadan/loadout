@@ -202,6 +202,42 @@ class _SourceChange:
     target: SkillTarget
     quarantine: Path
     installed: bool = False
+    parents: tuple[EntryState, ...] = ()
+
+
+def _parent_states(path: Path) -> tuple[EntryState, ...]:
+    _no_symlinks(path.parent)
+    return tuple(entry_state(parent, read=False) for parent in path.parents if parent.is_dir())
+
+
+def _same_parents(path: Path, states: tuple[EntryState, ...]) -> bool:
+    try:
+        _no_symlinks(path.parent)
+        return all(entry_state(state.path, read=False) == state for state in states)
+    except (LoadoutError, OSError):
+        return False
+
+
+def _restore_source(change: _SourceChange) -> bool:
+    location = change.target.location
+    if not _same_parents(location.path, change.parents):
+        return False
+    if change.installed and _entry_exists(location.path):
+        if (
+            location.path.is_symlink()
+            or _target_hash(change.target, location.path) != location.bundle_hash
+            or not _same_parents(location.path, change.parents)
+        ):
+            return False
+        shutil.rmtree(location.path)
+    if change.quarantine.exists():
+        if not _same_parents(location.path, change.parents):
+            return False
+        try:
+            _restore(change.quarantine, location.path)
+        except LoadoutError:
+            return False
+    return True
 
 
 class _Changes:
@@ -209,6 +245,7 @@ class _Changes:
         self.work = work
         self.files: list[tuple[Path, FrozenFile | None, FrozenFile | None]] = []
         self.sources: list[_SourceChange] = []
+        self.parents: dict[Path, tuple[EntryState, ...]] = {}
 
     def save(self) -> None:
         def image(value: FrozenFile | None) -> dict[str, str | int] | None:
@@ -224,6 +261,7 @@ class _Changes:
                     "path": str(c.target.location.path),
                     "quarantine": str(c.quarantine),
                     "installed": c.installed,
+                    "parents": [str(p.path) for p in c.parents],
                 }
                 for c in self.sources
             ],
@@ -231,6 +269,7 @@ class _Changes:
                 {"path": str(p), "before": image(b), "after": image(a)} for p, b, a in self.files
             ],
         }
+        protected(self.work, tracking=False)
         atomic_install(self.work / "recovery.json", FrozenFile(json.dumps(data).encode(), 0o600))
 
     def write(self, path: Path, after: FrozenFile | None) -> None:
@@ -239,11 +278,13 @@ class _Changes:
     def write_checked(
         self, path: Path, before: FrozenFile | None, after: FrozenFile | None
     ) -> None:
+        parents = _parent_states(path)
         if read_file(path) != before:
             raise LoadoutError(f"skill output changed during update: {path}")
         if before == after:
             return
         self.files.append((path, before, after))
+        self.parents[path] = parents
         self.save()
         try:
             if read_file(path) != before:
@@ -255,34 +296,28 @@ class _Changes:
             path.unlink()
         else:
             atomic_install(path, after)
+        if not _same_parents(path, parents):
+            raise LoadoutError(f"skill output parent changed during update: {path}")
+        self.parents[path] = _parent_states(path)
 
     def restore(self) -> tuple[Path, ...]:
         conflicts = []
         for path, before, after in reversed(self.files):
+            if not _same_parents(path, self.parents[path]):
+                conflicts.append(path)
+                continue
             current = read_file(path)
             if current == before:
                 continue
-            if current != after:
+            if current != after or not _same_parents(path, self.parents[path]):
                 conflicts.append(path)
             elif before is None:
                 path.unlink(missing_ok=True)
             else:
                 atomic_install(path, before)
         for change in reversed(self.sources):
-            location = change.target.location
-            if change.installed and _entry_exists(location.path):
-                if (
-                    location.path.is_symlink()
-                    or _target_hash(change.target, location.path) != location.bundle_hash
-                ):
-                    conflicts.append(location.path)
-                    continue
-                shutil.rmtree(location.path)
-            if change.quarantine.exists():
-                try:
-                    _restore(change.quarantine, location.path)
-                except LoadoutError:
-                    conflicts.append(location.path)
+            if not _restore_source(change):
+                conflicts.append(change.target.location.path)
         return tuple(conflicts)
 
 
@@ -290,6 +325,7 @@ def _replace_source(change: _SourceChange, bundle: Path, staged: Path | None) ->
     target, location = change.target, change.target.location
     _no_symlinks(location.path)
     location.path.parent.mkdir(parents=True, exist_ok=True)
+    change.parents = _parent_states(location.path)
     if _entry_exists(location.path):
         before = location.path.lstat()
         _rename_without_replacing(location.path, change.quarantine)

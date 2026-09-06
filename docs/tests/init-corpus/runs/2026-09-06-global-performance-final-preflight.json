@@ -1,0 +1,221 @@
+{
+  "identity": {
+    "date": "2026-09-06T02:18:17.472528+00:00",
+    "head": "b06a06f02dda2fb40bc12247a80e5c55fbc0448c",
+    "source_sha256": {
+      "src/loadout/__init__.py": "4f765ace7bed145d5f732d664e7ec907519c265b756e57fc517535b2bbdda5b0",
+      "src/loadout/__main__.py": "95dfae74c6c31b375d3e259079bff9bceea3536475785beb47a19bd9d74b7fdf",
+      "src/loadout/adapters.py": "c0534d52859cf613d10100f1ee3044eb7694e41a3c0a89ae9812675108912f93",
+      "src/loadout/agents.py": "06aaf32230dab7252c1cec86ca758ad70ce98a45a101e7d98921d4a2abdaedbc",
+      "src/loadout/artifacts.py": "90d29c911c5c134d5b75f1e2836eea91aedad27a941bac10d7171ded47e2aaff",
+      "src/loadout/bundled_skill.py": "52c14c7e01a1a0ca0002cc9e2efa45698593dedbc5d7343f06e205abf936f2e5",
+      "src/loadout/bundled_templates.py": "fbda172f05c993dc63ebcee133da85b0e2115de715444781929b3f7bdc7307dd",
+      "src/loadout/cli.py": "d187442f243108104b4cd37b0ed66191d4fcb1e6630da83c0ab99989bc826463",
+      "src/loadout/commands.py": "e714f824d387b8636c4dc6ce2b4dee9a2cda159912885c3416221348dd45d40d",
+      "src/loadout/composition.py": "30c8f0df86e14fc28160e8be72c056afed2ff5c502fe1a42cd8b3bc54793c818",
+      "src/loadout/deployment.py": "e24228e14c36496d85bc64836fbd5826e9bc397bc5602f3100a568ab3c0daf53",
+      "src/loadout/destinations.py": "89fcd9aaba284eba8fcc7fc9a9533a3d02c6e3e7dbcf8686938854eee8f5f0ed",
+      "src/loadout/discovery.py": "516b6b6154f506f91a41affa2a2bf66dd09577381576b34b2bbb76589608a9f2",
+      "src/loadout/documents.py": "987354d3c2a97914755cd20c4bb117c16f7bfb2b6a0145bd39eaca063bc36840",
+      "src/loadout/emit.py": "78433244eb110984847542327aba10b3321c62e84f4ec6e240fc141e3f33d8df",
+      "src/loadout/errors.py": "5d01fec9f640f130febb1af6f2c5cc59e2f9142fbade0202f09e20cbb4b052b8",
+      "src/loadout/extract.py": "22cc4e4a720de7f116b4d0cb861cfd5c990821d088601686069b24554653f2ae",
+      "src/loadout/git_hook_commands.py": "a258387407a92199c191f527aca41fd2dc85f09d1c53d31914b8f9d699598dbf",
+      "src/loadout/git_hooks.py": "28481658753d8006a48137be6f7f20c1162f71879e7b0fc1e7ff209c1d0934f7",
+      "src/loadout/git_privacy.py": "3bbc143e65fdcdf1626a964330ba09f287f1965213ed6681624b5d0dd1e5693e",
+      "src/loadout/hooks.py": "649173934280d435352bd58cd340b777df42980ce056ec0402c825c72a72199d",
+      "src/loadout/init_options.py": "003fc70b47e6c8d53380fddeedee0a8638f5cb445f4f3c2d0bde220159381620",
+      "src/loadout/init_workflow.py": "f74bceea985eca084ddb205788c3545b7ca1013ff99a24e153a83c8f13c3ae67",
+      "src/loadout/machine.py": "63d74fd5b2d07be5e3aad8a6dd70587b7a179694c997bdab1ff830bfc01d10ee",
+      "src/loadout/manifest.py": "2b81d803f2ead1d737db67e2fa8a5f46f375727ce1250f5e423f9909632c6747",
+      "src/loadout/migration.py": "0cdb613c03554b9c8b2ef7a3d7726e347ea9a2f7dccd74dc2a5a3cd3e21fa12e",
+      "src/loadout/migration_git.py": "9af2a690194426e3282b4c7f137125d910f04bf490118f431c8ec1349242ba46",
+      "src/loadout/migration_journal.py": "7bb8da053824012318c05fde284d517a3d1e7af3ba39b2bdd6f63c9c22151934",
+      "src/loadout/migration_models.py": "7a5547a6b989a5e954f512c36440a01c86ebc9ac5719a2dc49f751dd4ae386e4",
+      "src/loadout/migration_paths.py": "e1dbee83db2b463c455c236b52fa881da59e74c9581dbbfeeb610c2a3c218080",
+      "src/loadout/migration_starters.py": "a7b8727bfd70bc91ce030126d8dfd2f6fc3c4cbe50415224a013577495d5d6f0",
+      "src/loadout/migration_transaction.py": "84b205d11a94fec33f0fba3a11f8a92c4e448017521d4023e4bf648e8c25737c",
+      "src/loadout/migration_validation.py": "34fda495330547a182dc679a8ed726622a22434b060a7cc5e992c555e305c92f",
+      "src/loadout/module_config.py": "06a7b6e5d48f254cbd2d5a156569efe0a51d0cda58720084ae857b7dec4d4ed1",
+      "src/loadout/native_documents.py": "60a6cbaf5a0f67da0d96825899d23db12358a2a66b356d8377952fc10a6c0c86",
+      "src/loadout/native_skill_installation.py": "ee5cf4d731ddc7cdc3313035e8c504c317f7dd07f5c24581b33d984bfd360eb4",
+      "src/loadout/native_templates.py": "396709ca18e89f5ba46596152f403913635f2c0313bc97867baec641a25bc8a0",
+      "src/loadout/notices.py": "eb83d96e5f7262b8c0e3de13c6db690efa3bcb80d62a16298b73ed1612d73b40",
+      "src/loadout/permissions/__init__.py": "fed16201d1a97644ab2409a274a874a95a8dd45e6842321e1a6ccb4e8ac20670",
+      "src/loadout/permissions/merge.py": "f4393013d4fb4987052d21b7644ac45a222a9e37059e1a870ec4489936bfc4bf",
+      "src/loadout/permissions/renderers.py": "2fa1d27b2e9567aa6d7a650fc306b58517bf751057ad21ff7d8ad49a6a30f2d4",
+      "src/loadout/permissions/rules.py": "116d45c6ad8359a9d72f84a931cfda4cf244a46edd0002bf401ba48fdc13a2f3",
+      "src/loadout/plugins.py": "f5557a5300c6c4c940c19213610d577e61b93b0ee0ab58da62a68f4744252199",
+      "src/loadout/project.py": "42da51769c93a23d5ddec3fc4cd5d911778794fd92a03bc7b3d63551cec75635",
+      "src/loadout/record.py": "f65a34c8876d4d18713690b74bbf555e7e925b73e4f4c15064ed9436a7d5a8d5",
+      "src/loadout/resolve.py": "fd57f462f7a4e21a6a248d9154a6bd8ad0cbb3d40515e06713dde762fcd21f27",
+      "src/loadout/scaffold.py": "7f2fd43b78fdb82c38fb6197e0fd0129aa333b1a9ebe759bf0ab7b66659158bc",
+      "src/loadout/servers.py": "04041b7f5a7cd785c1951338a9755375900212ed18c67de7ad3c078ce310c04e",
+      "src/loadout/skill_installation.py": "a12bf0c9884aa210d7c81a72edcf6263d3cf770b253150259d2c2b36a17a5645",
+      "src/loadout/skills.py": "651d87278806a18c3101c5fdac53643e41933fff7a18de3a8a516984cc49af8f",
+      "src/loadout/sources.py": "55347b8ffe37c3733281ce7d1d277b521497d92123aa4193140a9b44e637eb75",
+      "src/loadout/staged.py": "e633968970122e02c69e68ae7749d1970071a432c8902623df73d3316c2a03fd",
+      "src/loadout/staged_render.py": "3fbdbc0ef486bbfab4a7c18a0d0d6c92d37b3e945e734d68607cc241294314c8",
+      "src/loadout/surgery.py": "cafba0012dc2b61602d682da088b658b107bf1f80af990a28499103d9837bd79",
+      "src/loadout/templates.py": "fbb2a44120008535fe69cac15febc880196463fbbb7d8c9ab2f260d30601e697"
+    },
+    "runner_sha256": {
+      "tests/init_evidence.py": "ad0fbe677fb55dd92c9e64f515cb426d8ef215ab03f21aed0b56a3f17ae47493",
+      "tests/run_init_corpus.py": "56c6dd2acffd0e36ae9550448f3268feb35fe9feca2fda0eae92535bcf1607ff",
+      "tests/benchmark_init.py": "1461f8f0c14b5c050f55db72951ad9ca144d42dc3ae1f3d32a1fa38faf52fd9c",
+      "tests/fixtures/init_corpus.json": "dd3ce66f4b851ebb6fdd082036feeca9e6c1dadc56cdc25ef972902a4c04a67c"
+    },
+    "tracked_patch_sha256": "874198b40a9649bb88e273e2afb060454b35891a1821986871a0c1fd9184ac49",
+    "python": "3.13.6 (main, Aug  8 2025, 16:50:55) [Clang 20.1.4 ]",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "hardware": "MacBookPro18,2\n68719476736\nApple M1 Max",
+    "git": "git version 2.50.1 (Apple Git-155)",
+    "loadout": "0.1.0",
+    "cli": [
+      "<checkout>/.venv/bin/python",
+      "-I",
+      "-m",
+      "loadout"
+    ],
+    "cleared_environment": [
+      "CLAUDE_CONFIG_DIR",
+      "CODEX_HOME",
+      "PI_CODING_AGENT_DIR",
+      "XDG_CONFIG_HOME",
+      "OPENCODE_CONFIG",
+      "OPENCODE_CONFIG_DIR",
+      "LOADOUT_TEST_HARNESS_C",
+      "GIT_*"
+    ],
+    "concurrency": 1
+  },
+  "runner_sha256": "4a6e4acddaf50b4498c5a55e1f73622252c042104b47b89c57d10bf295aac463",
+  "warmup": {
+    "exit": 0,
+    "timeout": false,
+    "seconds": 4.220526874996722,
+    "argv": [
+      "<checkout>/.venv/bin/python",
+      "-I",
+      "-m",
+      "loadout",
+      "init",
+      "--global",
+      "--source",
+      "<evidence>/warmup/repo",
+      "--harness",
+      "claude",
+      "--mapping",
+      "{\"source\": \"<evidence>/warmup/repo/.claude\", \"destination\": \"<evidence>/warmup/home/.claude\", \"agents\": [\"claude\"], \"kind\": \"harness\"}",
+      "--yes",
+      "--json"
+    ],
+    "support_files": 25,
+    "input_files": 26,
+    "baseline": "f2b07ffef6c1b000a320092035784b7b1f82a416",
+    "check": {
+      "exit": 0,
+      "timeout": false,
+      "seconds": 0.18058991699945182,
+      "argv": [
+        "<checkout>/.venv/bin/python",
+        "-I",
+        "-m",
+        "loadout",
+        "check",
+        "--root",
+        "<evidence>/warmup/repo/loadout"
+      ]
+    },
+    "staged": {
+      "exit": 0,
+      "timeout": false,
+      "seconds": 0.46579120901878923,
+      "argv": [
+        "<checkout>/.venv/bin/python",
+        "-I",
+        "-m",
+        "loadout",
+        "check",
+        "--staged",
+        "--root",
+        "<evidence>/warmup/repo/loadout"
+      ]
+    },
+    "operations": 149,
+    "retirements": 26,
+    "output_files": 26,
+    "output_bytes": 25687,
+    "correctness": "exact deployed bytes/modes; mapped originals retired and removed from index; global source staged; baseline retained; check and staged check"
+  },
+  "runs": [
+    {
+      "exit": 0,
+      "timeout": false,
+      "seconds": 132.93522220803425,
+      "argv": [
+        "<checkout>/.venv/bin/python",
+        "-I",
+        "-m",
+        "loadout",
+        "init",
+        "--global",
+        "--source",
+        "<evidence>/1000-1/repo",
+        "--harness",
+        "claude",
+        "--mapping",
+        "{\"source\": \"<evidence>/1000-1/repo/.claude\", \"destination\": \"<evidence>/1000-1/home/.claude\", \"agents\": [\"claude\"], \"kind\": \"harness\"}",
+        "--yes",
+        "--json"
+      ],
+      "support_files": 1000,
+      "input_files": 1001,
+      "baseline": "154fe29c978a59f13964134a9cf363bc15807274",
+      "check": {
+        "exit": 0,
+        "timeout": false,
+        "seconds": 2.379497917019762,
+        "argv": [
+          "<checkout>/.venv/bin/python",
+          "-I",
+          "-m",
+          "loadout",
+          "check",
+          "--root",
+          "<evidence>/1000-1/repo/loadout"
+        ]
+      },
+      "staged": {
+        "exit": 0,
+        "timeout": false,
+        "seconds": 1.651905583916232,
+        "argv": [
+          "<checkout>/.venv/bin/python",
+          "-I",
+          "-m",
+          "loadout",
+          "check",
+          "--staged",
+          "--root",
+          "<evidence>/1000-1/repo/loadout"
+        ]
+      },
+      "operations": 3074,
+      "retirements": 1001,
+      "output_files": 1001,
+      "output_bytes": 1024087,
+      "correctness": "exact deployed bytes/modes; mapped originals retired and removed from index; global source staged; baseline retained; check and staged check"
+    }
+  ],
+  "aggregation": {
+    "1000": {
+      "completed": 1,
+      "median_seconds": 132.93522220803425,
+      "range_seconds": [
+        132.93522220803425,
+        132.93522220803425
+      ]
+    }
+  }
+}

@@ -36,6 +36,7 @@ Native bundled-skill lifecycle is covered in `tests/test_native_skill_installati
 | native hashing includes intentional supporting assets and additions | `test_native_hash_preserves_intentional_assets_and_detects_all_additions` |
 | failed deployment rolls back source, outputs and receipts | `test_native_failure_rolls_back_sources_outputs_and_receipts` |
 | rollback failure retains protected recovery outside deployable trees | `test_failed_rollback_retains_private_recovery_outside_native_trees` |
+| replaced rollback parents retain quarantined source and never redirect restoration | `test_source_rollback_retains_quarantine_when_parent_is_replaced`, `test_file_rollback_does_not_follow_replaced_parent` |
 | native/legacy targets work together, no-target state is explicit | `test_native_and_legacy_routes_install_together`, `test_artifact_manifest_without_skills_reports_no_routes` |
 | mixed CLI changes finish normal global sync and reject changed routing | `test_native_cli_finishes_global_sync_for_pending_legacy_outputs`, `test_native_configuration_changes_invalidate_inspection` |
 | mixed update/uninstall checks frozen legacy preimages at each mutation and rolls back native sources, outputs and receipts while preserving concurrent files | `test_legacy_race_preserves_user_output_and_rolls_back_native_changes`, `test_missing_legacy_output_cannot_be_occupied_during_native_deployment` |
@@ -78,6 +79,19 @@ All rows below are exercised in `tests/test_migration.py`; the contract is
 | recognizable unsupported global harness trees block migration | `test_global_unsupported_harness_tree_is_unresolved` |
 | instruction discovery preconditions every traversed directory | `test_instruction_search_records_each_traversed_directory`, `test_instruction_search_preconditions_canonical_root_listing` |
 
+Additional migration review regressions are in `tests/test_init_review_regressions.py`:
+
+| behaviour | pinned by |
+|---|---|
+| runtime-only mixed documents survive apply/recovery/resume and accept their first owned entry | `test_runtime_only_partial_files_apply_and_recover`, `test_runtime_only_partial_resume_then_first_activation` |
+| renamed and extensionless explicit sources use destination document identity | `test_renamed_explicit_documents_keep_destination_ownership` |
+| ordinary untracked project directories do not inherit harness runtime exclusions | `test_untracked_project_runtime_named_directories_keep_instructions` |
+| nested auth/runtime originals remain excluded from both Git phases | `test_nested_runtime_files_remain_original_and_outside_both_git_phases` |
+| opaque JSON/TOML credential detection preserves environment-reference controls | `test_opaque_support_credentials_use_structural_privacy` |
+| corrected interactive source selection replaces the invalid prior selection | `test_interactive_invalid_source_selection_can_be_corrected` |
+| private-path normalization is bounded within filesystem planning | `test_private_paths_are_normalized_once_per_filesystem_plan` |
+| candidate-based corpus inventory detects a joint planner/renderer omission | `test_corpus_oracle_catches_joint_planner_renderer_omission` |
+
 ## Migration transactions
 
 All rows below are exercised in `tests/test_migration_transaction.py`; the contract is
@@ -107,6 +121,18 @@ All rows below are exercised in `tests/test_migration_transaction.py`; the contr
 | ancestor aliases, including nested source directories in enclosing repositories, preserve physical checkpoint paths, terminal link entries, source staging and private directory modes | `test_source_ancestor_alias_preserves_checkpoint_paths_and_link_entries`, `test_nested_source_alias_preserves_enclosing_repository_index_and_privacy`, `test_aliased_source_keeps_private_namespaces_protected` |
 | preimages stay private through hooks; malformed state is refused | `test_untrusted_recovery_state_is_rejected_before_checkpoint`, `test_journal_is_ignored_during_the_real_checkpoint_hook`, `test_loaded_journal_rejects_invalid_shape_before_recovery` |
 
+Retirement optimization is covered in `tests/test_init_review_regressions.py` and
+`tests/test_migration_privacy.py`:
+
+| behaviour | pinned by |
+|---|---|
+| each retirement refreshes privacy while deduplicating same-parent queries | `test_each_retirement_refreshes_privacy_with_deduplicated_parent_queries`, `test_privacy_policy_resolves_each_logical_parent_once` |
+| changes to source, output, parents, privacy or index stop the next retirement | `test_mid_retirement_changes_refuse_before_the_next_original` |
+| exact replacement bytes/modes remain guarded even with unchanged metadata; missing/ambiguous mappings retain full checks | `test_each_retirement_checks_exact_replacement_even_with_unchanged_fingerprint`, `test_retirement_without_replacement_mapping_keeps_full_output_guards` |
+| privacy checks refresh aliases, nested repositories, ignore files and config includes | `test_privacy_policy_refreshes_nested_repositories_and_logical_aliases`, `test_privacy_policy_refreshes_ignore_content_configuration_and_symlinks`, `test_parallel_privacy_keeps_git_include_path_expansion_and_fresh_values` |
+| concurrent guards keep every Git observation for born/unborn/detached refs and wait for all query results | `test_parallel_git_guard_keeps_every_observation_and_ref_check`, `test_parallel_privacy_queries_all_finish_before_success_or_error` |
+| final index bytes are checked after concurrent privacy reads finish | `test_parallel_git_guard_checks_index_after_all_privacy_reads` |
+
 ## Git integration
 
 The contract is [git-integration.md](git-integration.md). These cases run in
@@ -121,6 +147,7 @@ The contract is [git-integration.md](git-integration.md). These cases run in
 | migrating absolute/escaping old sources validates only index dependencies; HEAD and index outputs remain protected | `test_head_source_migration_keeps_head_and_index_output_ownership` |
 | selected profile controls instruction/permission ownership before destination expansion | `test_staged_ownership_selects_profile_before_resolving_destinations` |
 | staged dependency deletion never uses the working replacement | `test_required_source_deletion_does_not_read_unstaged_replacement` |
+| active ownership records must be staged and match their producer, including initially empty records; valid updates and producer retirement remain allowed | `test_staged_ownership_record_matches_its_producer_and_allows_updates`, `test_staged_ownership_record_deletion_requires_producer_retirement`, `test_staged_initial_producer_requires_its_generated_record` |
 | bare bundled and machine template names require staged vendoring | `test_bare_templates_never_fall_back_to_machine_or_bundled_source` |
 | nested global source includes sibling dependencies and isolates global destinations | `test_nested_global_snapshot_contains_sibling_sources_and_isolates_destinations` |
 | external paths, source symlink escapes and submodule dependencies fail | `test_external_and_submodule_dependencies_fail_without_reading_live_sources` |

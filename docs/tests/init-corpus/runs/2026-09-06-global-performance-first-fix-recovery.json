@@ -1,0 +1,22 @@
+{
+  "exit": 0,
+  "timeout": false,
+  "seconds": 3.537747875030618,
+  "argv": [
+    "<checkout>/.venv/bin/python",
+    "-I",
+    "-m",
+    "loadout",
+    "init",
+    "--recover",
+    "<evidence>/repo/.loadout-state/migrations/f0fb134725304f46a693b004475379f2/journal.json",
+    "--yes",
+    "--json"
+  ],
+  "status": "recovered",
+  "conflicts": [],
+  "preserved_journal": "<evidence>/interrupted-journal/journal.json",
+  "restored_files": 1001,
+  "assertions": "all1001originalbytes/modes restored; baseline HEAD retained; clean tracked index/worktree; generated global manifest removed",
+  "initial_run": "cancelled by root during second1000-file repetition; runnerexit130; no timing sample claimed"
+}

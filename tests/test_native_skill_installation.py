@@ -44,6 +44,61 @@ def _change(root: Path, bundle: Path, *, uninstall: bool = False) -> None:
     change_native_targets(root, "default", targets, bundle, uninstall=uninstall)
 
 
+@pytest.mark.parametrize("uninstall", [True, False])
+def test_source_rollback_retains_quarantine_when_parent_is_replaced(
+    tmp_path, monkeypatch, uninstall
+):
+    root = _root(tmp_path, shared=True)
+    bundle = _bundle(tmp_path / "bundle")
+    _change(root, bundle)
+    second = _bundle(tmp_path / "second", "version two")
+    external = tmp_path / "external"
+    external.mkdir()
+    parent = root / "skills/shared"
+    moved = root / "skills/displaced"
+    original = installer.render_global
+    calls = 0
+
+    def replace_parent(*args):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            parent.rename(moved)
+            parent.symlink_to(external, target_is_directory=True)
+        return original(*args)
+
+    monkeypatch.setattr(installer, "render_global", replace_parent)
+    with pytest.raises(LoadoutError) as failure:
+        _change(root, second, uninstall=uninstall)
+    assert list(external.iterdir()) == []
+    assert "recovery originals retained" in str(failure.value)
+    (recovery,) = (root / ".loadout-state").glob("skill-*/recovery.json")
+    data = json.loads(recovery.read_text())
+    assert (Path(data["sources"][0]["quarantine"]) / "SKILL.md").read_bytes() == (
+        bundle / "SKILL.md"
+    ).read_bytes()
+
+
+@pytest.mark.parametrize("symlink", [False, True])
+def test_file_rollback_does_not_follow_replaced_parent(tmp_path, symlink):
+    work = tmp_path / "work"
+    work.mkdir(mode=0o700)
+    parent = tmp_path / "outputs"
+    parent.mkdir()
+    path = parent / "settings"
+    path.write_bytes(b"before")
+    changes = installer._Changes(work)
+    changes.write(path, installer.FrozenFile(b"after", 0o644))
+    parent.rename(tmp_path / "displaced")
+    external = tmp_path / "external" if symlink else parent
+    external.mkdir()
+    (external / "settings").write_bytes(b"after")
+    if symlink:
+        parent.symlink_to(external, target_is_directory=True)
+    assert changes.restore() == (path,)
+    assert (external / "settings").read_bytes() == b"after"
+
+
 @pytest.mark.parametrize("shared", [True, False])
 def test_native_install_update_uninstall_and_receipts(tmp_path, fake_home, shared):
     root = _root(tmp_path, shared=shared)

@@ -66,3 +66,5 @@ directory. Its JSON identifies those paths; that preparation is not a host invoc
   original evidence retained.
 - [2026-09-06 corrected-driver retest](runs/2026-09-06-0136-retest.md): 12 cases passed;
   includes the completed partial-coverage matrix and isolated-host limitation.
+- [2026-09-06 final-source QA](runs/2026-09-06-final.md): current 12-case driver passed,
+  including Git-only project reconstruction; normal host discovery remains unverified.

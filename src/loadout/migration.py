@@ -23,6 +23,7 @@ from .migration_models import (
     Issue,
     MigrationPlan,
     OriginalEntry,
+    OwnedAbsence,
     SourceSelection,
     SourceWrite,
 )
@@ -125,9 +126,9 @@ def _partial(candidate: Candidate) -> bool:
     if candidate.format not in {"json", "toml"}:
         return False
     return (
-        candidate.path.name == ".claude.json"
-        or (candidate.agents[0] == "codex" and candidate.path.name == "config.toml")
-        or (candidate.agents[0] == "pi" and candidate.path.name == "settings.json")
+        (candidate.agents[0] == "claude" and candidate.document_name == ".claude.json")
+        or (candidate.agents[0] == "codex" and candidate.document_name == "config.toml")
+        or (candidate.agents[0] == "pi" and candidate.document_name == "settings.json")
     )
 
 
@@ -137,7 +138,7 @@ def _authored(candidate: Candidate) -> Candidate:
     document = parse_document(candidate.content.decode(), candidate.format)
     authored = (
         {key: value for key, value in document.items() if key == "mcpServers"}
-        if candidate.path.name == ".claude.json"
+        if candidate.document_name == ".claude.json" and candidate.agents[0] == "claude"
         else {
             key: value
             for key, value in document.items()
@@ -342,7 +343,7 @@ class _PlanBuilder:
         document = parse_document(candidate.content.decode(), candidate.format)
         agent = candidate.agents[0]
         special = candidate.category in {"mcp", "hooks", "permissions", "mcp-permissions"}
-        composite = candidate.path.name in {
+        composite = candidate.document_name in {
             "settings.json",
             "settings.local.json",
             "config.toml",
@@ -804,7 +805,22 @@ def _plan_migration(
         required_absences=tuple(
             p
             for p, record in builder.records.items()
-            if p not in builder.expected and record["format"] != "tree"
+            if p not in builder.expected
+            and record["format"] != "tree"
+            and not record.get("partial")
+        ),
+        required_owned_absences=tuple(
+            OwnedAbsence(
+                p,
+                record["format"],
+                tuple(
+                    sorted(
+                        {key for part in record["parts"].values() for key in part.get("keys", ())}
+                    )
+                ),
+            )
+            for p, record in builder.records.items()
+            if p not in builder.expected and record.get("partial")
         ),
         obsolete=obsolete,
         originals=originals,

@@ -85,32 +85,48 @@ def ordered(value):
 def expected_outputs(preview: dict) -> dict:
     generated = {entry["path"]: entry for entry in preview["generated_writes"]}
     result = {}
+    output_free = {entry["path"] for entry in preview.get("required_owned_absences", [])}
     for candidate in preview["candidates"]:
         destination = candidate["destination"]
-        if candidate["disposition"] != "migrated" or destination not in generated:
+        if candidate["disposition"] != "migrated":
             continue
         path = Path(candidate["path"])
-        if not path.is_file():
-            continue
-        spec = generated[destination]
-        if spec["format"] in {"copy", "text", "tree"}:
-            original_mode = stat.S_IMODE(path.stat().st_mode)
-            assert spec["mode"] == original_mode, (destination, spec["mode"], original_mode)
-            spec = {**spec, "mode": original_mode}
-        content = parse(path.read_bytes(), spec["format"])
-        if spec["partial"]:
-            if path.name == ".claude.json":
+        assert destination and path.is_file(), ("missing inventoried original", path)
+        format_name = candidate["format"]
+        name = Path(destination).name
+        agents = candidate["agents"]
+        partial = format_name in {"json", "toml"} and (
+            (name == ".claude.json" and "claude" in agents)
+            or (name == "config.toml" and "codex" in agents)
+            or (name == "settings.json" and "pi" in agents)
+        )
+        mode = (
+            stat.S_IMODE(Path(destination).stat().st_mode)
+            if partial and Path(destination).is_file()
+            else stat.S_IMODE(path.stat().st_mode)
+            if format_name == "copy"
+            else 0o600
+        )
+        spec = {"path": destination, "format": format_name, "partial": partial, "mode": mode}
+        content = parse(path.read_bytes(), format_name)
+        if partial:
+            if name == ".claude.json" and "claude" in agents:
                 content = {"mcpServers": content["mcpServers"]} if "mcpServers" in content else {}
             else:
-                content = {
-                    k: v
-                    for k, v in content.items()
-                    if k not in {"projects", "trust", "lastChangelogVersion"}
-                }
+                runtime = {"projects", "trust"} if "codex" in agents else {"lastChangelogVersion"}
+                content = {k: v for k, v in content.items() if k not in runtime}
+            if not content:
+                output_free.add(destination)
+                continue
         if destination in result:
             assert ordered(result[destination]["content"]) == ordered(content), destination
         result[destination] = {**spec, "content": content}
-    assert set(result) == set(generated), set(generated) - set(result)
+    assert set(result) == set(generated) - output_free, (
+        "output inventory differs from inventoried originals",
+        set(result) ^ (set(generated) - output_free),
+    )
+    for path, spec in result.items():
+        assert all(generated[path][key] == spec[key] for key in ("format", "partial", "mode")), path
     return result
 
 

@@ -359,6 +359,43 @@ def _absolute(value: Any) -> Path:
     return path
 
 
+def _validate_output_guards(journal: Journal, destinations: tuple[Path, ...]) -> None:
+    metadata = journal.metadata
+    for absence in metadata.get("owned_absences", ()):
+        if (
+            not isinstance(absence, dict)
+            or set(absence) != {"path", "format", "keys"}
+            or _absolute(absence["path"]) not in destinations
+            or absence["format"] not in {"json", "toml"}
+            or not isinstance(absence["keys"], list)
+            or not all(isinstance(key, str) for key in absence["keys"])
+        ):
+            raise LoadoutError("invalid journal owned-field absence")
+    if not isinstance(metadata["outputs"], dict):
+        raise LoadoutError("invalid journal output inventory")
+    retirements = {str(o.path) for o in journal.operations if o.phase == "retire"}
+    replacements = metadata.get("retirement_outputs", {})
+    if not isinstance(replacements, dict):
+        raise LoadoutError("invalid journal retirement replacements")
+    for path, outputs in replacements.items():
+        if (
+            path not in retirements
+            or not isinstance(outputs, list)
+            or any(
+                _absolute(output) not in destinations
+                and not any(_absolute(output).is_relative_to(p) for p in destinations)
+                for output in outputs
+            )
+        ):
+            raise LoadoutError("invalid journal retirement replacements")
+    for raw, image in metadata["outputs"].items():
+        path = _absolute(raw)
+        if Image.parse(image).kind != "file" or not any(
+            path.is_relative_to(p) for p in destinations
+        ):
+            raise LoadoutError(f"journal output escapes its declared scope: {path}")
+
+
 def _validate_scope(journal: Journal) -> None:
     metadata = journal.metadata
     root, source = _absolute(metadata["root"]), _absolute(metadata["source_root"])
@@ -366,14 +403,7 @@ def _validate_scope(journal: Journal) -> None:
         raise LoadoutError("journal source escapes its selected root")
     destinations = tuple(_absolute(p) for p in metadata["destinations"])
     registration = tuple(_absolute(p) for p in metadata["registration"])
-    if not isinstance(metadata["outputs"], dict):
-        raise LoadoutError("invalid journal output inventory")
-    for raw, image in metadata["outputs"].items():
-        path = _absolute(raw)
-        if Image.parse(image).kind != "file" or not any(
-            path.is_relative_to(p) for p in destinations
-        ):
-            raise LoadoutError(f"journal output escapes its declared scope: {path}")
+    _validate_output_guards(journal, destinations)
     _validate_hooks(journal)
     for operation in (o for o in journal.operations if o.phase != "git-hook"):
         path = operation.path

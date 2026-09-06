@@ -1,0 +1,155 @@
+{
+  "time": "2026-09-06T02:34:52.744341+00:00",
+  "python": "<checkout>/.venv/bin/python",
+  "version": "0.1.0",
+  "package": "<checkout>/src/loadout/__init__.py",
+  "revision": "b06a06f02dda2fb40bc12247a80e5c55fbc0448c",
+  "source_sha256": "4fb1fc7920be482aff3cd4108442deb6773f3f453c06c2d4a00198c7d1aed084",
+  "driver_sha256": "c61714d1d9001481b3b77ba54d383330eb7dcc678347fd721f080275d351d365",
+  "events": [
+    {
+      "command": [
+        "<checkout>/.venv/bin/python",
+        "-m",
+        "loadout",
+        "init",
+        "--global",
+        "--source",
+        "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source",
+        "--json",
+        "--harness",
+        "claude",
+        "--harness",
+        "codex",
+        "--harness",
+        "opencode",
+        "--harness",
+        "pi",
+        "--yes"
+      ],
+      "cwd": "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source",
+      "exit": 0,
+      "stdout": "{\n  \"status\": \"complete\",\n  \"journal\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/.loadout-state/migrations/ae337a1f44224f60ba13c0c54c6a14df/journal.json\",\n  \"baseline\": \"e3b21645bd1dbb96476aa762c7684545a5990493\",\n  \"written\": [\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/settings/native/pi/settings.json\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/plugins/native/pi/settings.json\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/settings/native/claude/settings.json\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/permissions/native/claude/settings.json\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/hooks/native/claude/settings.json\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/plugins/native/claude/settings.json\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/instructions/native/claude/CLAUDE.md\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/skills/native/claude/skills/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/hooks/native/claude/hooks/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/instructions/native/claude/commands/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/mcp-permissions/native/claude/mcp-permissions.json\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/mcp/native/claude/.claude.json\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/settings/native/codex/config.toml\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/mcp/native/codex/config.toml\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/plugins/native/codex/config.toml\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/instructions/native/codex/AGENTS.md\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/skills/native/codex/skills/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/permissions/native/codex/rules/permissions.rules\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/hooks/native/codex/hooks.json\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/plugins/native/codex/plugins/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/settings/native/opencode/opencode.json\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/permissions/native/opencode/opencode.json\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/mcp/native/opencode/opencode.json\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/plugins/native/opencode/opencode.json\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/instructions/native/opencode/AGENTS.md\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/skills/native/opencode/skills/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/plugins/native/opencode/plugins/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/instructions/native/pi/AGENTS.md\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/skills/native/pi/skills/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/permissions/native/pi/extensions/pi-permission-system/config.json\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/hooks/native/pi/extensions/loadout.ts\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/mcp/native/pi/mcp.json\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/hooks/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/instructions/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/mcp/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/mcp-permissions/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/module-config/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/permissions/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/plugins/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/settings/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/skills/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/support/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/templates/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/module-config/README.md\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/support/README.md\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/templates/README.md\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/loadout.toml\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/artifacts.toml\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/.loadout-state/.gitignore\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/.loadout-state/global.json\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/home2/.config/loadout/config.toml\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/.gitignore\"\n  ],\n  \"staged\": [\n    \"loadout/artifacts.toml\",\n    \"loadout/hooks/.gitkeep\",\n    \"loadout/hooks/native/claude/hooks/.gitkeep\",\n    \"loadout/hooks/native/claude/settings.json\",\n    \"loadout/hooks/native/codex/hooks.json\",\n    \"loadout/hooks/native/pi/extensions/loadout.ts\",\n    \"loadout/instructions/.gitkeep\",\n    \"loadout/instructions/native/claude/CLAUDE.md\",\n    \"loadout/instructions/native/claude/commands/.gitkeep\",\n    \"loadout/instructions/native/codex/AGENTS.md\",\n    \"loadout/instructions/native/opencode/AGENTS.md\",\n    \"loadout/instructions/native/pi/AGENTS.md\",\n    \"loadout/loadout.toml\",\n    \"loadout/mcp-permissions/.gitkeep\",\n    \"loadout/mcp-permissions/native/claude/mcp-permissions.json\",\n    \"loadout/mcp/.gitkeep\",\n    \"loadout/mcp/native/claude/.claude.json\",\n    \"loadout/mcp/native/codex/config.toml\",\n    \"loadout/mcp/native/opencode/opencode.json\",\n    \"loadout/mcp/native/pi/mcp.json\",\n    \"loadout/module-config/.gitkeep\",\n    \"loadout/module-config/README.md\",\n    \"loadout/permissions/.gitkeep\",\n    \"loadout/permissions/native/claude/settings.json\",\n    \"loadout/permissions/native/codex/rules/permissions.rules\",\n    \"loadout/permissions/native/opencode/opencode.json\",\n    \"loadout/permissions/native/pi/extensions/pi-permission-system/config.json\",\n    \"loadout/plugins/.gitkeep\",\n    \"loadout/plugins/native/claude/settings.json\",\n    \"loadout/plugins/native/codex/config.toml\",\n    \"loadout/plugins/native/codex/plugins/.gitkeep\",\n    \"loadout/plugins/native/opencode/opencode.json\",\n    \"loadout/plugins/native/opencode/plugins/.gitkeep\",\n    \"loadout/plugins/native/pi/settings.json\",\n    \"loadout/settings/.gitkeep\",\n    \"loadout/settings/native/claude/settings.json\",\n    \"loadout/settings/native/codex/config.toml\",\n    \"loadout/settings/native/opencode/opencode.json\",\n    \"loadout/settings/native/pi/settings.json\",\n    \"loadout/skills/.gitkeep\",\n    \"loadout/skills/native/claude/skills/.gitkeep\",\n    \"loadout/skills/native/codex/skills/.gitkeep\",\n    \"loadout/skills/native/opencode/skills/.gitkeep\",\n    \"loadout/skills/native/pi/skills/.gitkeep\",\n    \"loadout/support/.gitkeep\",\n    \"loadout/support/README.md\",\n    \"loadout/templates/.gitkeep\",\n    \"loadout/templates/README.md\"\n  ],\n  \"already_initialized\": false\n}\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "<checkout>/.venv/bin/python",
+        "-m",
+        "loadout",
+        "check",
+        "--global"
+      ],
+      "cwd": "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source",
+      "exit": 0,
+      "stdout": "generated files are up to date\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "<checkout>/.venv/bin/python",
+        "-m",
+        "loadout",
+        "sync",
+        "--global"
+      ],
+      "cwd": "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source",
+      "exit": 0,
+      "stdout": "",
+      "stderr": "note: no committed baseline \u2014 skipping the modified-file check\n"
+    },
+    {
+      "command": [
+        "<checkout>/.venv/bin/python",
+        "-m",
+        "loadout",
+        "skill",
+        "install",
+        "--yes"
+      ],
+      "cwd": "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source",
+      "exit": 0,
+      "stdout": "source artifact:skills/native/claude/skills/loadout: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/skills/native/claude/skills/loadout (missing); agents: claude\nsource artifact:skills/native/codex/skills/loadout: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/skills/native/codex/skills/loadout (missing); agents: codex\nsource artifact:skills/native/opencode/skills/loadout: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/skills/native/opencode/skills/loadout (missing); agents: opencode\nsource artifact:skills/native/pi/skills/loadout: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/skills/native/pi/skills/loadout (missing); agents: pi\ninstalled loadout skill across 4 source trees\n",
+      "stderr": "note: no committed baseline \u2014 skipping the modified-file check\n"
+    },
+    {
+      "command": [
+        "<checkout>/.venv/bin/python",
+        "-m",
+        "loadout",
+        "skill",
+        "status"
+      ],
+      "cwd": "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source",
+      "exit": 0,
+      "stdout": "source artifact:skills/native/claude/skills/loadout: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/skills/native/claude/skills/loadout (installed); agents: claude\nsource artifact:skills/native/codex/skills/loadout: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/skills/native/codex/skills/loadout (installed); agents: codex\nsource artifact:skills/native/opencode/skills/loadout: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/skills/native/opencode/skills/loadout (installed); agents: opencode\nsource artifact:skills/native/pi/skills/loadout: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/skills/native/pi/skills/loadout (installed); agents: pi\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "<checkout>/.venv/bin/python",
+        "-m",
+        "loadout",
+        "skill",
+        "install",
+        "--yes"
+      ],
+      "cwd": "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source",
+      "exit": 0,
+      "stdout": "source artifact:skills/native/claude/skills/loadout: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/skills/native/claude/skills/loadout (installed); agents: claude\nsource artifact:skills/native/codex/skills/loadout: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/skills/native/codex/skills/loadout (installed); agents: codex\nsource artifact:skills/native/opencode/skills/loadout: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/skills/native/opencode/skills/loadout (installed); agents: opencode\nsource artifact:skills/native/pi/skills/loadout: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/skills/native/pi/skills/loadout (installed); agents: pi\ninstalled loadout skill across 4 source trees\n",
+      "stderr": "note: no committed baseline \u2014 skipping the modified-file check\n"
+    },
+    {
+      "command": [
+        "<checkout>/.venv/bin/python",
+        "-m",
+        "loadout",
+        "check",
+        "--global"
+      ],
+      "cwd": "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source",
+      "exit": 0,
+      "stdout": "generated files are up to date\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "<checkout>/.venv/bin/python",
+        "-m",
+        "loadout",
+        "skill",
+        "uninstall",
+        "--yes"
+      ],
+      "cwd": "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source",
+      "exit": 0,
+      "stdout": "source artifact:skills/native/claude/skills/loadout: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/skills/native/claude/skills/loadout (installed); agents: claude\nsource artifact:skills/native/codex/skills/loadout: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/skills/native/codex/skills/loadout (installed); agents: codex\nsource artifact:skills/native/opencode/skills/loadout: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/skills/native/opencode/skills/loadout (installed); agents: opencode\nsource artifact:skills/native/pi/skills/loadout: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/skills/native/pi/skills/loadout (installed); agents: pi\nuninstalled loadout skill across 4 source trees\n",
+      "stderr": "note: no committed baseline \u2014 skipping the modified-file check\n"
+    },
+    {
+      "command": [
+        "<checkout>/.venv/bin/python",
+        "-m",
+        "loadout",
+        "check",
+        "--global"
+      ],
+      "cwd": "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source",
+      "exit": 0,
+      "stdout": "generated files are up to date\n",
+      "stderr": ""
+    }
+  ],
+  "result": "Pass",
+  "scenarios": [
+    "Q03",
+    "Q14",
+    "Q20"
+  ],
+  "authored": [
+    "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/skills/native/opencode/skills/loadout/SKILL.md",
+    "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/skills/native/pi/skills/loadout/SKILL.md",
+    "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/skills/native/codex/skills/loadout/SKILL.md",
+    "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-633/test_global_runtime_fields_and0/global source/loadout/skills/native/claude/skills/loadout/SKILL.md"
+  ]
+}

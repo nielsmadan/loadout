@@ -100,11 +100,22 @@ def _reconstruct(plan: MigrationPlan) -> tuple[GeneratedWrite, ...]:
                     raise LoadoutError("Unexpected global migration destination")
                 path = reverse[str(parent)] / temporary.relative_to(parent)
             wanted = expected.get(path)
+            content = base64.b64decode(output["content"], validate=True)
+            if (
+                output["owned"] is not None
+                and not output["emit_empty"]
+                and not parse_document(content.decode(), output["format"])
+                and not any(
+                    state.path == path and state.kind in {"file", "symlink"}
+                    for state in plan.preconditions
+                )
+            ):
+                continue
             mode = wanted.mode if output["owned"] is not None and wanted else None
             generated.append(
                 GeneratedWrite(
                     path,
-                    base64.b64decode(output["content"], validate=True),
+                    content,
                     mode if mode is not None else output["mode"],
                     formats.get(path, output["format"]),
                     tuple(output["owned"]) if output["owned"] is not None else None,
@@ -166,8 +177,6 @@ def _worker() -> None:
                 mode = output.file_mode()
             elif isinstance(output, Merged):
                 content = output.document.encode()
-                if not output.emit_empty and not parse_document(output.document, output.format):
-                    continue
                 owned = sorted(output.owned)
                 format_name = output.format
                 emit_empty = output.emit_empty

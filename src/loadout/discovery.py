@@ -87,6 +87,20 @@ INSTRUCTION_FILES = frozenset(
 WALK_EXCLUSIONS = RUNTIME_DIRECTORIES | frozenset(
     {".venv", "venv", "vendor", "dist", "build", "loadout"}
 )
+PROJECT_WALK_EXCLUSIONS = frozenset(
+    {
+        ".git",
+        ".loadout-state",
+        "node_modules",
+        "__pycache__",
+        ".venv",
+        "venv",
+        "vendor",
+        "dist",
+        "build",
+        "loadout",
+    }
+)
 
 
 def digest(content: bytes) -> str:
@@ -216,8 +230,8 @@ def _excluded(path: Path) -> bool:
         return True
     if path.parts[:2] in {("plugins", "cache"), ("plugins", "marketplaces")}:
         return True
-    return len(path.parts) == 1 and (
-        path.name in RUNTIME_FILES or path.suffix in {".db", ".sqlite", ".sqlite3"}
+    return path.name in RUNTIME_FILES or (
+        len(path.parts) == 1 and path.suffix in {".db", ".sqlite", ".sqlite3"}
     )
 
 
@@ -483,9 +497,10 @@ class _InventoryBuilder:
                 "permissions",
                 "hooks",
             }
-            and path.suffix in {".json", ".toml"}
+            and destination.suffix in {".json", ".toml"}
         )
-        format_name = path.suffix[1:] if document else "copy"
+        format_name = destination.suffix[1:] if document else "copy"
+        privacy_format = destination.suffix[1:] or path.suffix[1:]
         self.issues = [
             issue
             for issue in self.issues
@@ -501,7 +516,7 @@ class _InventoryBuilder:
             "Mapped native artifact.",
             content,
             stat.S_IMODE(path.stat().st_mode),
-            _private(path) or credential_material(content, format_name),
+            _private(path) or credential_material(content, privacy_format),
             format_name,
             _private(path),
         )
@@ -545,7 +560,9 @@ def _instruction_mappings(
         directories[:] = sorted(
             d
             for d in directories
-            if d not in WALK_EXCLUSIONS and d not in PROJECT_ROOTS.values() and d != ".agents"
+            if d not in PROJECT_WALK_EXCLUSIONS
+            and d not in PROJECT_ROOTS.values()
+            and d != ".agents"
         )
         paths.update(Path(directory) / name for name in set(files) & INSTRUCTION_FILES)
     result = subprocess.run(
@@ -785,15 +802,15 @@ def _references(candidate: Candidate) -> tuple[str, ...]:
     if candidate.format in {"json", "toml"}:
         try:
             document = parse_document(candidate.content.decode(), candidate.format)
-            if candidate.path.name == ".claude.json":
+            if candidate.document_name == ".claude.json" and "claude" in candidate.agents:
                 document = {key: value for key, value in document.items() if key == "mcpServers"}
-            elif candidate.path.name == "config.toml" and "codex" in candidate.agents:
+            elif candidate.document_name == "config.toml" and "codex" in candidate.agents:
                 document = {
                     key: value
                     for key, value in document.items()
                     if key not in {"projects", "trust"}
                 }
-            elif candidate.path.name == "settings.json" and "pi" in candidate.agents:
+            elif candidate.document_name == "settings.json" and "pi" in candidate.agents:
                 document = {
                     key: value for key, value in document.items() if key != "lastChangelogVersion"
                 }

@@ -112,7 +112,9 @@ def _resolution(options: InitOptions, answer: str) -> InitOptions:
         raise UsageError("resolution must be a JSON object") from error
     if isinstance(resolution, dict) and "agents" in resolution:
         return replace(options, mappings=(*options.mappings, parse_mapping(answer)))
-    return replace(options, selections=(*options.selections, parse_selection(answer)))
+    selection = parse_selection(answer)
+    previous = tuple(s for s in options.selections if s.destination != selection.destination)
+    return replace(options, selections=(*previous, selection))
 
 
 def _registration(

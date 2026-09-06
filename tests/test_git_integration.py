@@ -11,7 +11,7 @@ import pytest
 
 import loadout
 from loadout.discovery import discover
-from loadout.emit import render_all
+from loadout.emit import check_all, render_all, write_all
 from loadout.errors import LoadoutError
 from loadout.git_hooks import install_hooks, plan_hooks
 from loadout.machine import machine_config_path
@@ -25,6 +25,7 @@ from loadout.migration_transaction import (
     resume_migration,
 )
 from loadout.staged import check_staged
+from test_codex_defaults import build
 
 
 def _git(root, *args, check=True, env=None):
@@ -66,6 +67,58 @@ def _project(root):
 def _commit(repo, *paths):
     _git(repo, "add", "--", *paths)
     return _git(repo, "commit", "-qm", "fixture")
+
+
+def test_staged_ownership_record_matches_its_producer_and_allows_updates(repo):
+    build(repo, {"model": "fixture"})
+    write_all(repo)
+    _commit(repo, "loadout.toml", "permissions.toml", "defaults")
+    record = repo / "defaults/codex.owned"
+    record.write_text(record.read_text() + "sandbox_mode\n")
+    _git(repo, "add", "defaults/codex.owned")
+    with pytest.raises(LoadoutError, match="ownership record"):
+        check_staged(repo)
+    (repo / "defaults/codex.json").write_text('{"model":"fixture","reasoning_effort":"high"}')
+    write_all(repo)
+    _git(repo, "add", "defaults")
+    assert check_staged(repo) == 0
+    _commit(repo, "defaults")
+    (repo / "defaults/codex.json").write_text('{"model":"fixture"}')
+    write_all(repo)
+    _git(repo, "add", "defaults")
+    assert check_staged(repo) == 0
+
+
+def test_staged_ownership_record_deletion_requires_producer_retirement(repo):
+    build(repo, {"model": "fixture"})
+    write_all(repo)
+    _commit(repo, "loadout.toml", "permissions.toml", "defaults")
+    record = repo / "defaults/codex.owned"
+    expected = record.read_text()
+    assert check_staged(repo) == 0
+    _git(repo, "rm", "defaults/codex.owned")
+    assert [path for path, _, _ in check_all(repo)] == [record]
+    record.write_text(expected)
+    with pytest.raises(LoadoutError, match="ownership record"):
+        check_staged(repo)
+    _git(repo, "add", "defaults/codex.owned")
+    assert check_staged(repo) == 0
+    _git(repo, "rm", "defaults/codex.owned")
+    manifest = repo / "loadout.toml"
+    manifest.write_text(manifest.read_text().replace('defaults = "codex"', "defaults = false"))
+    _git(repo, "add", "loadout.toml")
+    assert check_staged(repo) == 0
+
+
+@pytest.mark.parametrize("fragment", [{"model": "fixture"}, {}])
+def test_staged_initial_producer_requires_its_generated_record(repo, fragment):
+    build(repo, fragment)
+    _git(repo, "add", "loadout.toml", "permissions.toml", "defaults")
+    with pytest.raises(LoadoutError, match="ownership record"):
+        check_staged(repo)
+    write_all(repo)
+    _git(repo, "add", "defaults/codex.owned")
+    assert check_staged(repo) == 0
 
 
 def test_real_precommit_validates_partial_index_not_worktree(repo):

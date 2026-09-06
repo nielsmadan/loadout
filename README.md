@@ -516,7 +516,10 @@ Legacy preset harnesses and their outputs (native routes can preserve additional
 | `opencode` | `opencode.json`, `AGENTS.md`, `.opencode/skills/` |
 | `pi` | `.pi/extensions/pi-permission-system/config.json`, `AGENTS.md`, `.pi/skills/` |
 
-### Instructions
+### Legacy project instructions
+
+This recipe requires legacy presets. After native `init`, edit the instruction producers named
+in `loadout/artifacts.toml`; adding `instructions` to the project config is not supported.
 
 `instructions` in `loadout/config.toml` names fragments in `loadout/instructions/`, in reading
 order, and they compose into `CLAUDE.md` and `AGENTS.md`:
@@ -545,7 +548,10 @@ a blank document.
 `.claude/settings.local.json` itself when you choose "don't ask again", and merges both at
 startup. A generator that owned `.local.json` would delete those grants on every sync.
 
-### Skills
+### Legacy project skills
+
+This directory convention applies to legacy presets. Native projects use the skill-tree sources
+declared in `loadout/artifacts.toml`; an unreferenced `loadout/skills/<name>/` does not deploy.
 
 Drop a skill tree into `loadout/skills/<name>/` and it renders to every enabled harness that has
 a project skills directory. No config entry — the directory is the declaration.
@@ -563,11 +569,12 @@ code. See [opencode.md](docs/reference/opencode.md#required-setup-opencode_disab
 A template contributes `skills/` the same way it contributes `instructions.md`: a tier beneath the
 project, so a skill the project defines under the same name replaces the template's.
 
-### MCP servers
+### Legacy project MCP servers
 
-Drop server definitions into `loadout/mcp.toml` and they render to every enabled harness that has
-a destination for them — this is not scaffolded by `init`, since defining a server is opt-in the
-way `permissions.local.toml` is not:
+This automatic filename convention applies to legacy presets. In a native project, edit the
+MCP source named by its artifact route instead.
+
+For legacy presets, `loadout/mcp.toml` declares servers for enabled harnesses with a destination:
 
 ```toml
 # loadout/mcp.toml
@@ -607,6 +614,9 @@ declares outranks it.
     loadout template vendor web    # copy it into loadout/templates/web/ and record its hash
     loadout template sync web      # update that vendored copy from its source
     loadout template list          # every declared template, and how each resolves
+
+This config example uses legacy presets. Native projects declare `templates` too, but bind their
+instruction producers through `artifacts.toml` as described below instead of using `instructions`.
 
 ```toml
 # loadout/config.toml

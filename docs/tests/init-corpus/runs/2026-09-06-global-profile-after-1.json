@@ -1,0 +1,62 @@
+{
+  "exit": 0,
+  "timeout": false,
+  "seconds": 16.162962541915476,
+  "argv": [
+    "<checkout>/.venv/bin/python3",
+    "-I",
+    "-m",
+    "cProfile",
+    "-o",
+    "<evidence>/init.prof",
+    "-m",
+    "loadout",
+    "init",
+    "--global",
+    "--source",
+    "<evidence>/repo",
+    "--harness",
+    "claude",
+    "--mapping",
+    "{\"source\": \"<evidence>/repo/.claude\", \"destination\": \"<evidence>/home/.claude\", \"agents\": [\"claude\"], \"kind\": \"harness\"}",
+    "--yes",
+    "--json"
+  ],
+  "support_files": 100,
+  "input_files": 101,
+  "baseline": "8bb1fa216dc133aa4a246f55992a5a480676bdd6",
+  "check": {
+    "exit": 0,
+    "timeout": false,
+    "seconds": 0.3559909589821473,
+    "argv": [
+      "<checkout>/.venv/bin/python3",
+      "-I",
+      "-m",
+      "loadout",
+      "check",
+      "--root",
+      "<evidence>/repo/loadout"
+    ]
+  },
+  "staged": {
+    "exit": 0,
+    "timeout": false,
+    "seconds": 0.5374818330164999,
+    "argv": [
+      "<checkout>/.venv/bin/python3",
+      "-I",
+      "-m",
+      "loadout",
+      "check",
+      "--staged",
+      "--root",
+      "<evidence>/repo/loadout"
+    ]
+  },
+  "operations": 374,
+  "retirements": 101,
+  "output_files": 101,
+  "output_bytes": 102487,
+  "correctness": "exact deployed bytes/modes; mapped originals retired and removed from index; global source staged; baseline retained; check and staged check"
+}

@@ -3,7 +3,9 @@ from __future__ import annotations
 import base64
 import hashlib
 import os
+import stat
 import uuid
+from concurrent.futures import Executor, ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -29,7 +31,7 @@ from .migration_journal import Image, Journal, Operation, protected, snapshot
 from .migration_models import EntryState, MigrationPlan, SourceWrite
 from .migration_paths import DestinationLayout, entry_path
 from .migration_validation import validate_plan
-from .native_documents import apply_document, key_fingerprints
+from .native_documents import apply_document, key_fingerprints, parse_document
 
 
 class MigrationFailure(LoadoutError):
@@ -206,6 +208,8 @@ def _frozen_outputs(plan: MigrationPlan) -> dict[Path, FrozenFile]:
             ).encode()
             if not content and output.emit_empty:
                 content = b"{}\n" if output.format == "json" else b""
+            if actual.kind == "absent" and not content and not output.emit_empty:
+                continue
             mode = actual.mode if actual.kind == "file" else 0o600
         result[path] = FrozenFile(content, mode)
     return result
@@ -236,6 +240,8 @@ def _deployment(
     changes = []
     for output in plan.generated_writes:
         path = layout.normalize(output.path)
+        if path not in frozen:
+            continue
         builder.parents(path, "topology")
         image = builder.image(path)
         if image.kind not in {"file", "absent"}:
@@ -369,11 +375,11 @@ def _filesystem_plan(
             raise LoadoutError("machine registration must not overlap authored source")
     frozen = _frozen_outputs(plan)
     _topology(builder, plan, tuple(frozen))
+    layout = _layout(plan)
+    private = tuple(layout.normalize(p) for p in plan.private_paths)
     for write in plan.source_writes:
-        path = _layout(plan).normalize(write.path)
-        builder.parents(
-            path, "source", private=tuple(_layout(plan).normalize(p) for p in plan.private_paths)
-        )
+        path = layout.normalize(write.path)
+        builder.parents(path, "source", private=private)
         builder.put(path, Image("file", write.content, write.mode), "source")
     deployment = _deployment(builder, plan, frozen) if not plan.already_initialized else None
     if deployment is not None:
@@ -552,6 +558,15 @@ def _create_journal(prepared: MigrationPreparation) -> Journal:
             "absences": [
                 str(_layout(prepared.plan).normalize(p)) for p in prepared.plan.required_absences
             ],
+            "owned_absences": [
+                {
+                    "path": str(_layout(prepared.plan).normalize(a.path)),
+                    "format": a.format,
+                    "keys": a.keys,
+                }
+                for a in prepared.plan.required_owned_absences
+            ],
+            "retirement_outputs": _retirement_outputs(prepared.plan),
             "outputs": {
                 str(change.path): Image("file", change.after.content, change.after.mode).document()
                 for scope in prepared.deployment.scopes
@@ -689,8 +704,23 @@ def _deploy(journal: Journal, deployment: DeploymentPlan) -> None:
     apply_deployment(deployment, write=write)
 
 
-def _guard_git(journal: Journal) -> None:
-    _guard_privacy(journal)
+def _guard_git(journal: Journal, executor: Executor | None = None) -> None:
+    if executor is None:
+        _guard_privacy(journal)
+        _guard_git_state(journal)
+    else:
+        privacy = executor.submit(_guard_privacy, journal, executor)
+        try:
+            _guard_git_state(journal)
+        finally:
+            privacy.result()
+    if journal.metadata["git"] is not None and migration_git.index_bytes(
+        Path(journal.metadata["index_path"])
+    ) != _decode(journal.metadata["expected_index"]):
+        raise LoadoutError("Git index changed during migration")
+
+
+def _guard_git_state(journal: Journal) -> None:
     _guard_hooks(journal)
     raw = journal.metadata["git"]
     if raw is None:
@@ -699,10 +729,6 @@ def _guard_git(journal: Journal) -> None:
     expected = (journal.metadata["baseline"], journal.metadata["symbolic"])
     if migration_git.identity(root) != expected:
         raise LoadoutError("Git HEAD or symbolic ref changed during migration")
-    if migration_git.index_bytes(Path(journal.metadata["index_path"])) != _decode(
-        journal.metadata["expected_index"]
-    ):
-        raise LoadoutError("Git index changed during migration")
 
 
 def _verify_original_privacy(prepared: migration_git.GitPreparation) -> None:
@@ -714,7 +740,7 @@ def _verify_original_privacy(prepared: migration_git.GitPreparation) -> None:
         raise LoadoutError("Git-derived source privacy changed after migration preview")
 
 
-def _guard_privacy(journal: Journal) -> None:
+def _guard_privacy(journal: Journal, executor: Executor | None = None) -> None:
     raw = journal.metadata["git"]
     if raw is None:
         return
@@ -724,7 +750,10 @@ def _guard_privacy(journal: Journal) -> None:
         key = "file:" + str(operation.path)
         if key in expected and snapshot(operation.path) == operation.after:
             expected[key] = migration_git.privacy_fingerprint(operation.path)
-    if dict(migration_git.privacy_policy(prepared.root, prepared.policy_paths)) != expected:
+    if (
+        dict(migration_git.privacy_policy(prepared.root, prepared.policy_paths, executor=executor))
+        != expected
+    ):
         raise LoadoutError(
             "Git privacy policy changed during migration; rediscover before publishing"
         )
@@ -765,6 +794,16 @@ def _guard_outputs(journal: Journal) -> None:
     for raw in journal.metadata["absences"]:
         if snapshot(Path(raw)).kind != "absent":
             raise LoadoutError(f"dormant output unexpectedly exists: {raw}")
+    for absence in journal.metadata.get("owned_absences", ()):
+        current = snapshot(Path(absence["path"]))
+        if current.kind == "absent":
+            continue
+        if (
+            current.kind != "file"
+            or set(absence["keys"])
+            & parse_document(current.content.decode(), absence["format"]).keys()
+        ):
+            raise LoadoutError(f"dormant owned fields unexpectedly exist: {absence['path']}")
 
 
 def _finish(journal: Journal) -> MigrationResult:
@@ -998,15 +1037,86 @@ def _resume_checkpoint(journal: Journal) -> None:
     journal.save()
 
 
-def _run_remaining(journal: Journal) -> None:
-    while journal.next < len(journal.operations):
-        if journal.operations[journal.next].phase in {"retire", "git-hook"}:
-            _guard_git(journal)
+def _retirement_outputs(plan: MigrationPlan) -> dict[str, list[str]]:
+    layout = _layout(plan)
+    replacements: dict[str, set[str]] = {}
+    for original in plan.originals:
+        if original.action == "retire" and original.destination is not None:
+            replacements.setdefault(str(entry_path(original.path)), set()).add(
+                str(layout.normalize(original.destination))
+            )
+    return {path: sorted(outputs) for path, outputs in replacements.items()}
+
+
+def _entry_fingerprint(path: Path) -> tuple[int, ...] | None:
+    try:
+        entry = path.lstat()
+    except FileNotFoundError:
+        return None
+    identity = (entry.st_dev, entry.st_ino, entry.st_mode)
+    return (
+        identity
+        if stat.S_ISDIR(entry.st_mode)
+        else (*identity, entry.st_size, entry.st_mtime_ns, entry.st_ctime_ns)
+    )
+
+
+class _RetirementGuard:
+    def __init__(self, journal: Journal) -> None:
+        self.journal = journal
+        self.paths = {
+            *(o.path for o in journal.operations[: journal.next]),
+            *(Path(p) for p in journal.metadata["outputs"]),
+            *(Path(p) for p in journal.metadata["parents"]),
+            *(Path(p) for p in journal.metadata["absences"]),
+            *(Path(a["path"]) for a in journal.metadata.get("owned_absences", ())),
+        }
+        self.refresh()
+
+    def refresh(self) -> None:
+        self.fingerprints = {path: _entry_fingerprint(path) for path in self.paths}
+
+    def check(self, operation: Operation) -> None:
+        journal = self.journal
+        replacements = journal.metadata.get("retirement_outputs", {}).get(str(operation.path))
+        if not replacements or any(p not in journal.metadata["outputs"] for p in replacements):
             _guard_completed(journal)
             _guard_outputs(journal)
-        if journal.operations[journal.next].phase == "git-hook":
-            journal.operations[journal.next].path.parent.mkdir(parents=True, exist_ok=True)
-        journal.step()
+        else:
+            if any(
+                _entry_fingerprint(path) != before for path, before in self.fingerprints.items()
+            ):
+                _guard_completed(journal)
+                _guard_outputs(journal)
+                self.refresh()
+            for path in replacements:
+                if snapshot(Path(path)) != Image.parse(journal.metadata["outputs"][path]):
+                    raise LoadoutError(f"migration output changed: {path}")
+
+    def completed(self, operation: Operation) -> None:
+        if snapshot(operation.path) != operation.after:
+            raise LoadoutError(f"completed migration entry changed: {operation.path}")
+        self.paths.add(operation.path)
+        self.fingerprints[operation.path] = _entry_fingerprint(operation.path)
+
+
+def _run_remaining(journal: Journal) -> None:
+    retirement_guard = None
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        while journal.next < len(journal.operations):
+            operation = journal.operations[journal.next]
+            if operation.phase in {"retire", "git-hook"}:
+                _guard_git(journal, executor)
+                if retirement_guard is None or operation.phase == "git-hook":
+                    _guard_completed(journal)
+                    _guard_outputs(journal)
+                    retirement_guard = _RetirementGuard(journal)
+                retirement_guard.check(operation)
+            if operation.phase == "git-hook":
+                operation.path.parent.mkdir(parents=True, exist_ok=True)
+            journal.step()
+            if retirement_guard is not None and operation.phase == "retire":
+                retirement_guard.completed(operation)
 
 
 def _guard_hooks(journal: Journal) -> None:
