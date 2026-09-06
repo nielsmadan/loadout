@@ -1251,7 +1251,7 @@ def write_outputs(
         if path in deployment.managed:
             continue
         if isinstance(content, Copied):
-            frozen[path] = FrozenFile(content.read_bytes(), content.source.stat().st_mode & 0o7777)
+            frozen[path] = FrozenFile(content.read_bytes(), content.file_mode())
         elif isinstance(content, Merged):
             frozen[path] = _applied(path, content)
             frozen.update(content.records)

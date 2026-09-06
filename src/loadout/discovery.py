@@ -12,6 +12,7 @@ from pathlib import Path
 
 from .artifacts import CATEGORIES, ArtifactScope
 from .errors import LoadoutError
+from .git_privacy import ignored_paths
 from .migration_models import Candidate, EntryState, Inventory, Issue, RootMapping
 from .migration_paths import DestinationLayout
 from .native_documents import parse_document
@@ -699,11 +700,14 @@ def discover(
     else:
         _global_sources(builder, root, agents, selected_mappings, live)
     _dependencies(builder, scope, environment)
+    ignored = ignored_paths(
+        c.canonical or c.path for c in builder.candidates.values() if c.disposition == "migrated"
+    )
     candidates = tuple(
         replace(
             c,
-            private=c.private or _git_ignored(c.canonical or c.path),
-            personal=c.personal or _git_ignored(c.canonical or c.path),
+            private=c.private or (c.canonical or c.path) in ignored,
+            personal=c.personal or (c.canonical or c.path) in ignored,
         )
         if c.disposition == "migrated"
         else c
@@ -742,15 +746,6 @@ def _configuration_evidence(mapping: RootMapping) -> bool:
     if not mapping.source.is_dir():
         return False
     return any(not _excluded(Path(child.name)) for child in mapping.source.iterdir())
-
-
-def _git_ignored(path: Path) -> bool:
-    result = subprocess.run(
-        ["git", "-C", str(path.parent), "check-ignore", "-q", "--", path.name],
-        capture_output=True,
-        check=False,
-    )
-    return result.returncode == 0
 
 
 def _dependency_strings(value: object, key: str = "") -> tuple[str, ...]:

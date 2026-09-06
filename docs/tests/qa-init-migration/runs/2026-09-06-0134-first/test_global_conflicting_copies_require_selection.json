@@ -1,0 +1,70 @@
+{
+  "time": "2026-09-05T23:34:27.785828+00:00",
+  "python": "/Users/nielsmadan/wrksp/loadout/dev2/.venv/bin/python",
+  "version": "0.1.0",
+  "package": "/Users/nielsmadan/wrksp/loadout/dev2/src/loadout/__init__.py",
+  "revision": "ff9e7e8b268e456fa127a07da8848bc004e41141",
+  "source_sha256": "38c53e7e5726b7c138eada670307ee4db6acf16ddcdf7218aac353e5209da278",
+  "driver_sha256": "38f0d3960b8d890bf4d5d8e5b5c224cf13907010b751387244a34ec08382d6d6",
+  "events": [
+    {
+      "command": [
+        "/Users/nielsmadan/wrksp/loadout/dev2/.venv/bin/python",
+        "-m",
+        "loadout",
+        "init",
+        "--global",
+        "--source",
+        "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_global_conflicting_copies0/conflicting global",
+        "--harness",
+        "claude",
+        "--json",
+        "--dry-run"
+      ],
+      "cwd": "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_global_conflicting_copies0/conflicting global",
+      "exit": 2,
+      "stdout": "{\n  \"root\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_global_conflicting_copies0/conflicting global\",\n  \"source_root\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_global_conflicting_copies0/conflicting global/loadout\",\n  \"scope\": \"global\",\n  \"agents\": [\n    \"claude\"\n  ],\n  \"initialized\": null,\n  \"mappings\": [\n    {\n      \"source\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/home3/.claude\",\n      \"destination\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/home3/.claude\",\n      \"agents\": [\n        \"claude\"\n      ],\n      \"kind\": \"harness\",\n      \"category\": null\n    },\n    {\n      \"source\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/home3/.claude.json\",\n      \"destination\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/home3/.claude.json\",\n      \"agents\": [\n        \"claude\"\n      ],\n      \"kind\": \"file\",\n      \"category\": \"mcp\"\n    }\n  ],\n  \"candidates\": [\n    {\n      \"path\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/home3/.claude/settings.json\",\n      \"canonical\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/home3/.claude/settings.json\",\n      \"destination\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/home3/.claude/settings.json\",\n      \"agents\": [\n        \"claude\"\n      ],\n      \"category\": \"settings\",\n      \"disposition\": \"migrated\",\n      \"reason\": \"Mapped native artifact.\",\n      \"private\": false\n    },\n    {\n      \"path\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_global_conflicting_copies0/conflicting global/claude/settings.json\",\n      \"canonical\": null,\n      \"destination\": null,\n      \"agents\": [\n        \"claude\"\n      ],\n      \"category\": \"support\",\n      \"disposition\": \"unresolved\",\n      \"reason\": \"Confirm this authored file's category, consumers and deployed destination.\",\n      \"private\": false\n    }\n  ],\n  \"issues\": [\n    {\n      \"code\": \"source-mapping\",\n      \"paths\": [\n        \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_global_conflicting_copies0/conflicting global/claude/settings.json\"\n      ],\n      \"message\": \"Confirm this authored file's category, consumers and deployed destination.\"\n    }\n  ],\n  \"complete\": false,\n  \"validated\": false,\n  \"already_initialized\": false,\n  \"starter\": \"none\",\n  \"starter_dependencies\": [],\n  \"source_writes\": [],\n  \"generated_writes\": [],\n  \"expected_outputs\": [],\n  \"required_absences\": [],\n  \"obsolete\": [],\n  \"originals\": [],\n  \"ignores\": [],\n  \"private_paths\": [],\n  \"checkpoint_paths\": [],\n  \"notes\": [],\n  \"categories\": []\n}\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/Users/nielsmadan/wrksp/loadout/dev2/.venv/bin/python",
+        "-m",
+        "loadout",
+        "init",
+        "--global",
+        "--source",
+        "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_global_conflicting_copies0/conflicting global",
+        "--harness",
+        "claude",
+        "--json",
+        "--yes"
+      ],
+      "cwd": "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_global_conflicting_copies0/conflicting global",
+      "exit": 2,
+      "stdout": "{\n  \"root\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_global_conflicting_copies0/conflicting global\",\n  \"source_root\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_global_conflicting_copies0/conflicting global/loadout\",\n  \"scope\": \"global\",\n  \"agents\": [\n    \"claude\"\n  ],\n  \"initialized\": null,\n  \"mappings\": [\n    {\n      \"source\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/home3/.claude\",\n      \"destination\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/home3/.claude\",\n      \"agents\": [\n        \"claude\"\n      ],\n      \"kind\": \"harness\",\n      \"category\": null\n    },\n    {\n      \"source\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/home3/.claude.json\",\n      \"destination\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/home3/.claude.json\",\n      \"agents\": [\n        \"claude\"\n      ],\n      \"kind\": \"file\",\n      \"category\": \"mcp\"\n    }\n  ],\n  \"candidates\": [\n    {\n      \"path\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/home3/.claude/settings.json\",\n      \"canonical\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/home3/.claude/settings.json\",\n      \"destination\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/home3/.claude/settings.json\",\n      \"agents\": [\n        \"claude\"\n      ],\n      \"category\": \"settings\",\n      \"disposition\": \"migrated\",\n      \"reason\": \"Mapped native artifact.\",\n      \"private\": false\n    },\n    {\n      \"path\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_global_conflicting_copies0/conflicting global/claude/settings.json\",\n      \"canonical\": null,\n      \"destination\": null,\n      \"agents\": [\n        \"claude\"\n      ],\n      \"category\": \"support\",\n      \"disposition\": \"unresolved\",\n      \"reason\": \"Confirm this authored file's category, consumers and deployed destination.\",\n      \"private\": false\n    }\n  ],\n  \"issues\": [\n    {\n      \"code\": \"source-mapping\",\n      \"paths\": [\n        \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_global_conflicting_copies0/conflicting global/claude/settings.json\"\n      ],\n      \"message\": \"Confirm this authored file's category, consumers and deployed destination.\"\n    }\n  ],\n  \"complete\": false,\n  \"validated\": false,\n  \"already_initialized\": false,\n  \"starter\": \"none\",\n  \"starter_dependencies\": [],\n  \"source_writes\": [],\n  \"generated_writes\": [],\n  \"expected_outputs\": [],\n  \"required_absences\": [],\n  \"obsolete\": [],\n  \"originals\": [],\n  \"ignores\": [],\n  \"private_paths\": [],\n  \"checkpoint_paths\": [],\n  \"notes\": [],\n  \"categories\": []\n}\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/Users/nielsmadan/wrksp/loadout/dev2/.venv/bin/python",
+        "-m",
+        "loadout",
+        "init",
+        "--global",
+        "--source",
+        "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_global_conflicting_copies0/conflicting global",
+        "--harness",
+        "claude",
+        "--json",
+        "--select-source",
+        "{\"source\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_global_conflicting_copies0/conflicting global/claude/settings.json\", \"destination\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/home3/.claude/settings.json\"}",
+        "--yes"
+      ],
+      "cwd": "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_global_conflicting_copies0/conflicting global",
+      "exit": 2,
+      "stdout": "{\n  \"root\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_global_conflicting_copies0/conflicting global\",\n  \"source_root\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_global_conflicting_copies0/conflicting global/loadout\",\n  \"scope\": \"global\",\n  \"agents\": [\n    \"claude\"\n  ],\n  \"initialized\": null,\n  \"mappings\": [\n    {\n      \"source\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/home3/.claude\",\n      \"destination\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/home3/.claude\",\n      \"agents\": [\n        \"claude\"\n      ],\n      \"kind\": \"harness\",\n      \"category\": null\n    },\n    {\n      \"source\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/home3/.claude.json\",\n      \"destination\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/home3/.claude.json\",\n      \"agents\": [\n        \"claude\"\n      ],\n      \"kind\": \"file\",\n      \"category\": \"mcp\"\n    }\n  ],\n  \"candidates\": [\n    {\n      \"path\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/home3/.claude/settings.json\",\n      \"canonical\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/home3/.claude/settings.json\",\n      \"destination\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/home3/.claude/settings.json\",\n      \"agents\": [\n        \"claude\"\n      ],\n      \"category\": \"settings\",\n      \"disposition\": \"migrated\",\n      \"reason\": \"Mapped native artifact.\",\n      \"private\": false\n    },\n    {\n      \"path\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_global_conflicting_copies0/conflicting global/claude/settings.json\",\n      \"canonical\": null,\n      \"destination\": null,\n      \"agents\": [\n        \"claude\"\n      ],\n      \"category\": \"support\",\n      \"disposition\": \"unresolved\",\n      \"reason\": \"Confirm this authored file's category, consumers and deployed destination.\",\n      \"private\": false\n    }\n  ],\n  \"issues\": [\n    {\n      \"code\": \"source-mapping\",\n      \"paths\": [\n        \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_global_conflicting_copies0/conflicting global/claude/settings.json\"\n      ],\n      \"message\": \"Confirm this authored file's category, consumers and deployed destination.\"\n    },\n    {\n      \"code\": \"invalid-source-selection\",\n      \"paths\": [\n        \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_global_conflicting_copies0/conflicting global/claude/settings.json\",\n        \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/home3/.claude/settings.json\"\n      ],\n      \"message\": \"The selected source is not a candidate for this destination.\"\n    }\n  ],\n  \"complete\": false,\n  \"validated\": false,\n  \"already_initialized\": false,\n  \"starter\": \"none\",\n  \"starter_dependencies\": [],\n  \"source_writes\": [],\n  \"generated_writes\": [],\n  \"expected_outputs\": [],\n  \"required_absences\": [],\n  \"obsolete\": [],\n  \"originals\": [],\n  \"ignores\": [],\n  \"private_paths\": [],\n  \"checkpoint_paths\": [],\n  \"notes\": [],\n  \"categories\": []\n}\n",
+      "stderr": ""
+    }
+  ]
+}

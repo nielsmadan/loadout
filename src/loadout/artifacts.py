@@ -37,6 +37,7 @@ CATEGORIES = frozenset(
 )
 DOCUMENT_FORMATS = frozenset({"json", "toml"})
 OPAQUE_FORMATS = frozenset({"copy", "tree", "text"})
+MAX_MODE = 0o7777
 
 
 @dataclass(frozen=True)
@@ -51,9 +52,13 @@ class Copied:
 
     source: Path
     prefix: bytes = b""
+    mode: int | None = None
 
     def read_bytes(self) -> bytes:
         return self.prefix + self.source.read_bytes()
+
+    def file_mode(self) -> int:
+        return self.mode if self.mode is not None else stat.S_IMODE(self.source.stat().st_mode)
 
 
 @dataclass(frozen=True)
@@ -108,6 +113,8 @@ class Artifact:
     emit_empty: bool = False
     partial: bool = False
     template_instructions: bool = False
+    mode: int | None = None
+    modes: tuple[tuple[PurePosixPath, int], ...] = ()
 
     @property
     def label(self) -> str:
@@ -209,6 +216,8 @@ def _record(raw: object, label: str, scope: ArtifactScope) -> Artifact:
             "optional",
             "partial",
             "template_instructions",
+            "mode",
+            "modes",
         },
         label,
     )
@@ -250,7 +259,13 @@ def _record(raw: object, label: str, scope: ArtifactScope) -> Artifact:
         template_instructions=_boolean(
             raw.get("template_instructions", False), f"{label}.template_instructions"
         ),
+        mode=_mode(raw["mode"], f"{label}.mode") if "mode" in raw else None,
+        modes=_modes(raw["modes"], f"{label}.modes") if "modes" in raw else (),
     )
+    if "mode" in raw and (format_name != "copy" or parts[0].renderer is not None):
+        raise LoadoutError(f"{label}: mode requires a copy artifact")
+    if "modes" in raw and format_name != "tree":
+        raise LoadoutError(f"{label}: modes requires a tree artifact")
     if record.template_instructions and (
         scope != "project"
         or record.format not in {"copy", "text"}
@@ -264,6 +279,21 @@ def _record(raw: object, label: str, scope: ArtifactScope) -> Artifact:
         )
     _validate_renderers(record)
     return record
+
+
+def _mode(value: object, label: str) -> int:
+    if type(value) is not int or not 0 <= value <= MAX_MODE:
+        raise LoadoutError(f"{label} must be an integer filesystem mode between 0 and 4095")
+    return value
+
+
+def _modes(value: object, label: str) -> tuple[tuple[PurePosixPath, int], ...]:
+    if not isinstance(value, dict):
+        raise LoadoutError(f"{label} must map relative file paths to integer modes")
+    modes = tuple((relative_path(path, label), _mode(mode, label)) for path, mode in value.items())
+    if len({path for path, _ in modes}) != len(modes):
+        raise LoadoutError(f"{label} contains duplicate normalized paths")
+    return modes
 
 
 def _validate_renderers(record: Artifact) -> None:
@@ -545,6 +575,7 @@ def _opaque(
         if not path.is_dir():
             raise LoadoutError(f"artifact tree source must be a directory: {path}")
         outputs: dict[Path, Output] = {}
+        modes = dict(artifact.modes)
         for item in sorted(path.rglob("*")):
             if any(part in {".git", ".loadout-state"} for part in item.relative_to(path).parts):
                 raise LoadoutError(f"artifact tree contains protected metadata: {item}")
@@ -556,7 +587,9 @@ def _opaque(
                 target = destination / item.relative_to(path)
                 _no_symlinks(target)
                 _destination_entry(target)
-                outputs[target] = Copied(item)
+                outputs[target] = Copied(
+                    item, mode=modes.get(PurePosixPath(item.relative_to(path)))
+                )
         return outputs
     _regular_file(path)
     if artifact.format == "text" and part.renderer is not None:
@@ -569,7 +602,7 @@ def _opaque(
     prefix = instruction_prefix if artifact.template_instructions else b""
     if path.stat().st_size == 0 and not artifact.emit_empty and not prefix:
         return {}
-    return {destination: Copied(path, prefix)}
+    return {destination: Copied(path, prefix, artifact.mode)}
 
 
 def render_artifacts(

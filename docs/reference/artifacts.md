@@ -163,6 +163,15 @@ including native `SKILL.md`, scripts, hidden files and binary assets. Only scaff
 files are excluded. Added files are discovered on the next render; per-agent membership and
 nested paths come from the routes. Shared consumers use one record with several agents.
 
+Opaque modes can also be authored explicitly: `mode = 416` on a `copy` record means octal
+`0640`; `modes = { "scripts/run.sh" = 488 }` on a tree means `0750` for that relative file.
+Integers range from 0 through 4095 (`07777`); booleans, escaped/protected paths and normalized
+duplicate keys are rejected. Migration records original copy modes and tree file modes here,
+so reconstruction from Git retains full modes even though Git stores only the executable bit.
+Declared modes take precedence over source `chmod`. Files without a declaration, including new
+tree entries, use their source mode. Rename a mode entry with its file when the override should
+follow it; entries for absent files do not create output or prevent retirement.
+
 ## Template instruction routes
 
 Native projects (`presets = false`) may opt a required copy/text instruction route into their
@@ -184,13 +193,13 @@ configured agent needs an opted-in route when template prose is selected. Fresh 
 marks only its top-level `CLAUDE.md`/`AGENTS.md` routes; nested files and trees stay independent.
 
 Rendering prepends template instruction tiers in declared order and preserves the original body
-bytes and source mode. A prefix activates a dormant empty instruction source. Removing the
+bytes and declared mode, falling back to the source mode. A prefix activates a dormant empty instruction source. Removing the
 prefix restores ordinary empty-source behavior. Other populated template categories are refused
 before source mutation; edit their native category sources through existing routes. See
 [templates](templates.md#bundled-starters-and-native-projects).
 
-`Copied(source, prefix=b"")` retains the existing output type and mode contract; content consumers
-use `Copied.read_bytes()` to include its frozen prefix. The renderer's
+`Copied` retains the existing output type; content consumers use `read_bytes()` to include its
+frozen prefix and `file_mode()` to honor an explicit mode or fall back to the source. The renderer's
 `render_artifacts(..., instruction_prefix=...)` parameter accepts already-resolved template bytes;
 it never resolves templates or reads destinations itself. `render_project` resolves and validates
 the selected tiers before passing this input.
@@ -242,7 +251,8 @@ own `.gitignore` contains `*`. Tracked, symlinked, public or malformed receipt s
 
 Sync accepts a destination matching its previous deployment or the current desired source.
 This allows edits, branch checkouts and profile switches without requiring the source state to
-have been committed. Whole native documents use mode 0600; copies retain all source mode bits.
+have been committed. Whole native documents use mode 0600; copies use their declared mode or
+retain all source mode bits when no override exists.
 Partial documents retain the adopted mode and guard subsequent changes to it.
 
 With no receipt, an absent destination can be created, and a matching existing file can be

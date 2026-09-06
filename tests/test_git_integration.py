@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -640,15 +641,19 @@ def test_hook_journal_rejects_tampered_script_and_recovers_before_git_init(
         apply_migration(prepared)
     path = error.value.journal
     assert not (new / ".git").exists()
-    raw = json.loads(path.read_text())
-    hook = next(o for o in raw["operations"] if o["phase"] == "git-hook")
-    original = hook["after"]["content"]
-    hook["after"]["content"] = "ZXZpbAo="
-    path.write_text(json.dumps(raw))
+    journal = Journal.load(path)
+    original = journal.operations
+    journal.operations = tuple(
+        replace(operation, after=replace(operation.after, content=b"evil\n"))
+        if operation.phase == "git-hook"
+        else operation
+        for operation in original
+    )
+    journal.save()
     with pytest.raises(LoadoutError, match="journal Git hook escapes"):
         Journal.load(path)
-    hook["after"]["content"] = original
-    path.write_text(json.dumps(raw))
+    journal.operations = original
+    journal.save()
     assert recover_migration(path).conflicts == ()
     assert not (new / ".git").exists()
     assert (new / "AGENTS.md").read_text() == "initial\n"

@@ -45,6 +45,12 @@ producer. Never add a portable overlay that hides native edits or a contributor 
 part's keys. A tree owns descendants: add a skill within its existing source tree, never a
 colliding child artifact route. Optional private sources under category `local/` remain private.
 
+For copied files, inspect `mode` or tree `modes` in the artifact record. Migration authors those
+full filesystem modes because Git retains only executable bits. Change a declared mode there;
+source `chmod` only controls outputs without an override. New tree files use source modes until
+given a `modes` entry. Move the corresponding relative mode key when renaming a file whose
+override should follow it.
+
 For personal requests, use an existing declared personal producer only if it can represent the
 change. If none exists, ask before editing committed/shared/global source or changing ownership.
 Do not assume a legacy `permissions.local.toml` participates in a native project. Preserve private

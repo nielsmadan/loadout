@@ -1,0 +1,176 @@
+{
+  "time": "2026-09-06T00:09:30.877029+00:00",
+  "python": "<checkout>/.venv/bin/python",
+  "version": "0.1.0",
+  "package": "<checkout>/src/loadout/__init__.py",
+  "revision": "ff9e7e8b268e456fa127a07da8848bc004e41141",
+  "source_sha256": "38c53e7e5726b7c138eada670307ee4db6acf16ddcdf7218aac353e5209da278",
+  "driver_sha256": "c61714d1d9001481b3b77ba54d383330eb7dcc678347fd721f080275d351d365",
+  "events": [
+    {
+      "command": [
+        "<checkout>/.venv/bin/python",
+        "-m",
+        "loadout",
+        "init",
+        "--project",
+        "--harness",
+        "claude",
+        "--harness",
+        "codex",
+        "--json",
+        "--yes"
+      ],
+      "cwd": "<project>",
+      "exit": 0,
+      "stdout": "{\n  \"status\": \"complete\",\n  \"journal\": \"<project>/.loadout-state/migrations/16353b2329b54de6a16520123e9b21d3/journal.json\",\n  \"baseline\": \"059a1a5f3d77e31a3b35dbc5283f02d414841cba\",\n  \"written\": [\n    \"<project>/loadout/settings/native/claude/.claude/settings.json\",\n    \"<project>/loadout/permissions/native/claude/.claude/settings.json\",\n    \"<project>/loadout/hooks/native/claude/.claude/settings.json\",\n    \"<project>/loadout/plugins/native/claude/.claude/settings.json\",\n    \"<project>/loadout/instructions/native/codex/AGENTS.md\",\n    \"<project>/loadout/instructions/native/claude/CLAUDE.md\",\n    \"<project>/loadout/skills/native/claude/.claude/skills/.gitkeep\",\n    \"<project>/loadout/hooks/native/claude/.claude/hooks/.gitkeep\",\n    \"<project>/loadout/instructions/native/claude/.claude/commands/.gitkeep\",\n    \"<project>/loadout/mcp-permissions/native/claude/.claude/mcp-permissions.json\",\n    \"<project>/loadout/mcp/native/claude/.mcp.json\",\n    \"<project>/loadout/settings/native/codex/.codex/config.toml\",\n    \"<project>/loadout/mcp/native/codex/.codex/config.toml\",\n    \"<project>/loadout/plugins/native/codex/.codex/config.toml\",\n    \"<project>/loadout/permissions/native/codex/.codex/rules/permissions.rules\",\n    \"<project>/loadout/hooks/.gitkeep\",\n    \"<project>/loadout/instructions/.gitkeep\",\n    \"<project>/loadout/mcp/.gitkeep\",\n    \"<project>/loadout/mcp-permissions/.gitkeep\",\n    \"<project>/loadout/module-config/.gitkeep\",\n    \"<project>/loadout/permissions/.gitkeep\",\n    \"<project>/loadout/plugins/.gitkeep\",\n    \"<project>/loadout/settings/.gitkeep\",\n    \"<project>/loadout/skills/.gitkeep\",\n    \"<project>/loadout/support/.gitkeep\",\n    \"<project>/loadout/templates/.gitkeep\",\n    \"<project>/loadout/module-config/README.md\",\n    \"<project>/loadout/support/README.md\",\n    \"<project>/loadout/templates/README.md\",\n    \"<project>/loadout/config.toml\",\n    \"<project>/loadout/artifacts.toml\",\n    \"<project>/loadout/.loadout-state/.gitignore\",\n    \"<project>/loadout/.loadout-state/project.json\",\n    \"<project>/.claude/settings.json\",\n    \"<project>/.gitignore\"\n  ],\n  \"staged\": [\n    \"loadout/artifacts.toml\",\n    \"loadout/config.toml\",\n    \"loadout/hooks/.gitkeep\",\n    \"loadout/hooks/native/claude/.claude/hooks/.gitkeep\",\n    \"loadout/hooks/native/claude/.claude/settings.json\",\n    \"loadout/instructions/.gitkeep\",\n    \"loadout/instructions/native/claude/.claude/commands/.gitkeep\",\n    \"loadout/instructions/native/claude/CLAUDE.md\",\n    \"loadout/instructions/native/codex/AGENTS.md\",\n    \"loadout/mcp-permissions/.gitkeep\",\n    \"loadout/mcp-permissions/native/claude/.claude/mcp-permissions.json\",\n    \"loadout/mcp/.gitkeep\",\n    \"loadout/mcp/native/claude/.mcp.json\",\n    \"loadout/mcp/native/codex/.codex/config.toml\",\n    \"loadout/module-config/.gitkeep\",\n    \"loadout/module-config/README.md\",\n    \"loadout/permissions/.gitkeep\",\n    \"loadout/permissions/native/claude/.claude/settings.json\",\n    \"loadout/permissions/native/codex/.codex/rules/permissions.rules\",\n    \"loadout/plugins/.gitkeep\",\n    \"loadout/plugins/native/claude/.claude/settings.json\",\n    \"loadout/plugins/native/codex/.codex/config.toml\",\n    \"loadout/settings/.gitkeep\",\n    \"loadout/settings/native/claude/.claude/settings.json\",\n    \"loadout/settings/native/codex/.codex/config.toml\",\n    \"loadout/skills/.gitkeep\",\n    \"loadout/skills/native/claude/.claude/skills/.gitkeep\",\n    \"loadout/support/.gitkeep\",\n    \"loadout/support/README.md\",\n    \"loadout/templates/.gitkeep\",\n    \"loadout/templates/README.md\"\n  ],\n  \"already_initialized\": false\n}\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "<checkout>/.venv/bin/python",
+        "-m",
+        "loadout",
+        "check"
+      ],
+      "cwd": "<project>",
+      "exit": 0,
+      "stdout": "generated files are up to date\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "<checkout>/.venv/bin/python",
+        "-m",
+        "loadout",
+        "sync",
+        "--root",
+        "<fixture>/git-source-reconstruction"
+      ],
+      "cwd": "<fixture>/git-source-reconstruction",
+      "exit": 0,
+      "stdout": "wrote .claude/settings.json\nwrote AGENTS.md\nwrote CLAUDE.md\n",
+      "stderr": "note: no committed baseline — skipping the modified-file check\n"
+    },
+    {
+      "command": [
+        "<checkout>/.venv/bin/python",
+        "-m",
+        "loadout",
+        "check",
+        "--root",
+        "<fixture>/git-source-reconstruction"
+      ],
+      "cwd": "<fixture>/git-source-reconstruction",
+      "exit": 0,
+      "stdout": "generated files are up to date\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "<checkout>/.venv/bin/python",
+        "-m",
+        "loadout",
+        "sync"
+      ],
+      "cwd": "<project>",
+      "exit": 0,
+      "stdout": "wrote CLAUDE.md\n",
+      "stderr": "note: no committed baseline — skipping the modified-file check\n"
+    },
+    {
+      "command": [
+        "<checkout>/.venv/bin/python",
+        "-m",
+        "loadout",
+        "sync"
+      ],
+      "cwd": "<project>",
+      "exit": 1,
+      "stdout": "",
+      "stderr": "note: no committed baseline — skipping the modified-file check\nSync aborted: <project>/CLAUDE.md was modified outside loadout or has no accepted deployment baseline\n"
+    },
+    {
+      "command": [
+        "<checkout>/.venv/bin/python",
+        "-m",
+        "loadout",
+        "sync"
+      ],
+      "cwd": "<project>",
+      "exit": 0,
+      "stdout": "",
+      "stderr": "note: no committed baseline — skipping the modified-file check\n"
+    },
+    {
+      "command": [
+        "<checkout>/.venv/bin/python",
+        "-m",
+        "loadout",
+        "check"
+      ],
+      "cwd": "<project>",
+      "exit": 0,
+      "stdout": "generated files are up to date\n",
+      "stderr": ""
+    }
+  ],
+  "example": {
+    "before": {
+      ".claude/settings.json": "{\n  \"permissions\": {\n    \"allow\": [\n      \"Bash(git status)\",\n      \"Read(src/**)\"\n    ]\n  },\n  \"model\": \"qa-model\"\n}\n",
+      "CLAUDE.md": "Existing Claude guidance.\r\n",
+      "AGENTS.md": "Existing Codex guidance.\n"
+    },
+    "source": {
+      "loadout/artifacts.toml": "[[artifact]]\nagents = [\"claude\"]\noutput = \".claude/settings.json\"\nformat = \"json\"\norder = [\"permissions\", \"model\"]\nemit_empty = true\n\n[artifact.parts.settings]\nsource = \"settings/native/claude/.claude/settings.json\"\n\n[artifact.parts.permissions]\nsource = \"permissions/native/claude/.claude/settings.json\"\nkeys = [\"permissions\"]\n\n[artifact.parts.hooks]\nsource = \"hooks/native/claude/.claude/settings.json\"\nkeys = [\"hooks\"]\n\n[artifact.parts.plugins]\nsource = \"plugins/native/claude/.claude/settings.json\"\nkeys = [\"enabledPlugins\", \"extraKnownMarketplaces\"]\n\n[[artifact]]\nagents = [\"codex\"]\noutput = \"AGENTS.md\"\nformat = \"copy\"\ncategory = \"instructions\"\nsource = \"instructions/native/codex/AGENTS.md\"\nmode = 420\nemit_empty = true\ntemplate_instructions = true\n\n[[artifact]]\nagents = [\"claude\"]\noutput = \"CLAUDE.md\"\nformat = \"copy\"\ncategory = \"instructions\"\nsource = \"instructions/native/claude/CLAUDE.md\"\nmode = 420\nemit_empty = true\ntemplate_instructions = true\n\n[[artifact]]\nagents = [\"claude\"]\noutput = \".claude/skills\"\nformat = \"tree\"\ncategory = \"skills\"\nsource = \"skills/native/claude/.claude/skills\"\n\n[artifact.modes]\n\n[[artifact]]\nagents = [\"claude\"]\noutput = \".claude/hooks\"\nformat = \"tree\"\ncategory = \"hooks\"\nsource = \"hooks/native/claude/.claude/hooks\"\n\n[artifact.modes]\n\n[[artifact]]\nagents = [\"claude\"]\noutput = \".claude/commands\"\nformat = \"tree\"\ncategory = \"instructions\"\nsource = \"instructions/native/claude/.claude/commands\"\n\n[artifact.modes]\n\n[[artifact]]\nagents = [\"claude\"]\noutput = \".claude/mcp-permissions.json\"\nformat = \"json\"\norder = []\n\n[artifact.parts.mcp-permissions]\nsource = \"mcp-permissions/native/claude/.claude/mcp-permissions.json\"\nkeys = [\"allow\", \"ask\", \"deny\"]\n\n[[artifact]]\nagents = [\"claude\"]\noutput = \".mcp.json\"\nformat = \"json\"\norder = []\n\n[artifact.parts.mcp]\nsource = \"mcp/native/claude/.mcp.json\"\nkeys = [\"mcpServers\"]\n\n[[artifact]]\nagents = [\"codex\"]\noutput = \".codex/config.toml\"\nformat = \"toml\"\norder = []\npartial = true\nemit_empty = false\n\n[artifact.parts.settings]\nsource = \"settings/native/codex/.codex/config.toml\"\n\n[artifact.parts.mcp]\nsource = \"mcp/native/codex/.codex/config.toml\"\nkeys = [\"mcp_servers\"]\n\n[artifact.parts.plugins]\nsource = \"plugins/native/codex/.codex/config.toml\"\nkeys = [\"plugins\", \"marketplaces\"]\n\n[[artifact]]\nagents = [\"codex\"]\noutput = \".codex/rules/permissions.rules\"\nformat = \"copy\"\ncategory = \"permissions\"\nsource = \"permissions/native/codex/.codex/rules/permissions.rules\"\nmode = 420\n",
+      "loadout/config.toml": "harnesses = [\"claude\", \"codex\"]\npresets = false\nartifacts = \"artifacts.toml\"\n",
+      "loadout/hooks/.gitkeep": "",
+      "loadout/hooks/native/claude/.claude/hooks/.gitkeep": "",
+      "loadout/hooks/native/claude/.claude/settings.json": "{}\n",
+      "loadout/instructions/.gitkeep": "",
+      "loadout/instructions/native/claude/.claude/commands/.gitkeep": "",
+      "loadout/instructions/native/claude/CLAUDE.md": "Existing Claude guidance.\r\n",
+      "loadout/instructions/native/codex/AGENTS.md": "Existing Codex guidance.\n",
+      "loadout/mcp/.gitkeep": "",
+      "loadout/mcp/native/claude/.mcp.json": "{}\n",
+      "loadout/mcp/native/codex/.codex/config.toml": "",
+      "loadout/mcp-permissions/.gitkeep": "",
+      "loadout/mcp-permissions/native/claude/.claude/mcp-permissions.json": "{}\n",
+      "loadout/module-config/.gitkeep": "",
+      "loadout/module-config/README.md": "Add an explicit artifact binding in artifacts.toml for each new destination.\nExisting routes preserve their authored paths. A module chooses its own filename;\ntemplates require an explicit selection before their contents become active.\n",
+      "loadout/permissions/.gitkeep": "",
+      "loadout/permissions/native/claude/.claude/settings.json": "{\n  \"permissions\": {\n    \"allow\": [\n      \"Bash(git status)\",\n      \"Read(src/**)\"\n    ]\n  }\n}\n",
+      "loadout/permissions/native/codex/.codex/rules/permissions.rules": "",
+      "loadout/plugins/.gitkeep": "",
+      "loadout/plugins/native/claude/.claude/settings.json": "{}\n",
+      "loadout/plugins/native/codex/.codex/config.toml": "",
+      "loadout/settings/.gitkeep": "",
+      "loadout/settings/native/claude/.claude/settings.json": "{\n  \"model\": \"qa-model\"\n}\n",
+      "loadout/settings/native/codex/.codex/config.toml": "",
+      "loadout/skills/.gitkeep": "",
+      "loadout/skills/native/claude/.claude/skills/.gitkeep": "",
+      "loadout/support/.gitkeep": "",
+      "loadout/support/README.md": "Add an explicit artifact binding in artifacts.toml for each new destination.\nExisting routes preserve their authored paths. A module chooses its own filename;\ntemplates require an explicit selection before their contents become active.\n",
+      "loadout/templates/.gitkeep": "",
+      "loadout/templates/README.md": "Add an explicit artifact binding in artifacts.toml for each new destination.\nExisting routes preserve their authored paths. A module chooses its own filename;\ntemplates require an explicit selection before their contents become active.\n"
+    },
+    "after": {
+      ".claude/settings.json": "{\n  \"permissions\": {\n    \"allow\": [\n      \"Bash(git status)\",\n      \"Read(src/**)\"\n    ]\n  },\n  \"model\": \"qa-model\"\n}\n",
+      "CLAUDE.md": "Existing Claude guidance.\r\n",
+      "AGENTS.md": "Existing Codex guidance.\n"
+    },
+    "reconstructed": {
+      ".claude/settings.json": "{\n  \"permissions\": {\n    \"allow\": [\n      \"Bash(git status)\",\n      \"Read(src/**)\"\n    ]\n  },\n  \"model\": \"qa-model\"\n}\n",
+      "CLAUDE.md": "Existing Claude guidance.\r\n",
+      "AGENTS.md": "Existing Codex guidance.\n"
+    }
+  },
+  "reconstruction_source": "Git index, authored Loadout files only",
+  "result": "Pass",
+  "scenarios": [
+    "Q02",
+    "Q05",
+    "Q14"
+  ],
+  "source": "<project>/loadout/instructions/native/claude/CLAUDE.md"
+}

@@ -3,7 +3,6 @@ from __future__ import annotations
 import base64
 import json
 import os
-import stat
 import subprocess
 import sys
 import tempfile
@@ -164,7 +163,7 @@ def _worker() -> None:
             mode = 0o600
             if isinstance(output, Copied):
                 content = output.read_bytes()
-                mode = stat.S_IMODE(output.source.stat().st_mode)
+                mode = output.file_mode()
             elif isinstance(output, Merged):
                 content = output.document.encode()
                 if not output.emit_empty and not parse_document(output.document, output.format):

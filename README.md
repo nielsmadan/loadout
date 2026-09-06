@@ -494,6 +494,13 @@ check/sync after editing its declared producers. Edit the fragment named by its 
 not an output or an unreferenced legacy filename. The bundled skill asks before widening personal
 changes when no personal producer exists.
 
+Opaque artifact modes are stored explicitly during migration, so full filesystem modes survive
+reconstruction from Git. Edit `mode` or tree `modes` in the artifact binding when changing those
+permissions; new undeclared tree files use their source mode. Optional private source is absent
+from a public clone and must be supplied separately to recreate private outputs. The
+[repeatable corpus and performance records](docs/tests/init-corpus/README.md) distinguish completed
+adoption from unresolved installer, template and ownership refusals.
+
 Legacy project configs retain their preset behavior: `loadout/permissions.toml` is shared,
 `permissions.local.toml` is personal, and `config.toml` selects instructions and templates.
 `loadout harness add pi` adds legacy preset routes. Native projects receive an actionable refusal

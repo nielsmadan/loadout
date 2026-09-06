@@ -630,14 +630,20 @@ def test_loaded_journal_rejects_invalid_shape_before_recovery(tmp_path: Path, ta
     write(tmp_path, ".claude/settings.json", '{"model":"before"}')
     result = apply_migration(prepare_migration(plan(tmp_path)))
     assert result.journal is not None
-    raw = json.loads(result.journal.read_bytes())
     if tamper == "cursor":
+        raw = json.loads(result.journal.read_bytes())
         raw["next"] = True
-    elif tamper == "phase":
-        raw["operations"][0]["phase"] = "execute"
+        result.journal.write_text(json.dumps(raw))
     else:
-        raw["operations"][0]["path"] = str(tmp_path.parent / "outside")
-    result.journal.write_text(json.dumps(raw))
+        journal = migration_journal.Journal.load(result.journal)
+        operation = journal.operations[0]
+        operation = (
+            replace(operation, phase="execute")
+            if tamper == "phase"
+            else replace(operation, path=tmp_path.parent / "outside")
+        )
+        journal.operations = (operation, *journal.operations[1:])
+        journal.save()
     with pytest.raises(LoadoutError, match="journal"):
         recover_migration(result.journal)
     assert (tmp_path / "loadout/config.toml").is_file()

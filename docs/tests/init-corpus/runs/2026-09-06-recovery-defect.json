@@ -1,0 +1,57 @@
+{
+  "evidence": "<evidence>",
+  "support_files": 25,
+  "operations": 97,
+  "initial": {
+    "exit": 0,
+    "timeout": false,
+    "seconds": 3.2594219589955173,
+    "argv": [
+      "<checkout>/.venv/bin/python",
+      "-I",
+      "-m",
+      "loadout",
+      "init",
+      "--project",
+      "--root",
+      "<evidence>/repo",
+      "--harness",
+      "claude",
+      "--yes",
+      "--json"
+    ]
+  },
+  "before": {
+    "payload_count": 5,
+    "payload_bytes": 1336570,
+    "payload_range": [
+      260464,
+      277725
+    ]
+  },
+  "recover": {
+    "exit": 0,
+    "timeout": false,
+    "seconds": 0.5806481249746867,
+    "argv": [
+      "<checkout>/.venv/bin/python",
+      "-I",
+      "-m",
+      "loadout",
+      "init",
+      "--recover",
+      "<evidence>/repo/.loadout-state/migrations/d48520cb65bb4b31908722669b3375cf/journal.json",
+      "--yes",
+      "--json"
+    ]
+  },
+  "after": {
+    "payload_count": 102,
+    "payload_bytes": 28297374,
+    "payload_range": [
+      260464,
+      278129
+    ]
+  },
+  "recovery_assertions": "conflicts empty; all original bytes and 0644 modes restored; authored migration config removed; HEAD preserved; original Git index and worktree contents restored"
+}

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+import copy
+import hashlib
 import json
 import os
 import stat
@@ -13,6 +15,9 @@ from .deployment import MAX_MODE, FrozenFile, atomic_install
 from .errors import LoadoutError
 from .git_hooks import EVENTS, HOOK_MODE, hook_content, hooks_directory, local_directory
 from .migration_git import git
+
+JOURNAL_VERSION = 2
+SHA256_LENGTH = 64
 
 
 @dataclass(frozen=True)
@@ -144,18 +149,43 @@ class Journal:
     next: int = 0
     pending: bool = False
     status: str = "checkpoint"
+    recovered_operations: set[int] = field(default_factory=set)
+    _saved_metadata: dict[str, Any] | None = field(default=None, init=False, repr=False)
+    _saved_operations: tuple[Operation, ...] | None = field(default=None, init=False, repr=False)
+    _payload: str | None = field(default=None, init=False, repr=False)
 
     def save(self) -> None:
         protected(self.path.parent, tracking=False)
+        if self.metadata != self._saved_metadata or self.operations != self._saved_operations:
+            payload = (
+                json.dumps(
+                    {
+                        "operations": [operation.document() for operation in self.operations],
+                        "metadata": self.metadata,
+                    }
+                )
+                + "\n"
+            ).encode()
+            identifier = hashlib.sha256(payload).hexdigest()
+            atomic_install(
+                self.path.parent / f"payload-{identifier}.json", FrozenFile(payload, 0o600)
+            )
+            self._payload = identifier
+            self._saved_metadata = copy.deepcopy(self.metadata)
+            self._saved_operations = self.operations
+            self._sync_directory()
         document = {
-            "version": 1,
-            "operations": [operation.document() for operation in self.operations],
-            "metadata": self.metadata,
+            "version": JOURNAL_VERSION,
+            "payload": self._payload,
             "next": self.next,
             "pending": self.pending,
             "status": self.status,
+            "recovered_operations": sorted(self.recovered_operations),
         }
         atomic_install(self.path, FrozenFile((json.dumps(document) + "\n").encode(), 0o600))
+        self._sync_directory()
+
+    def _sync_directory(self) -> None:
         descriptor = os.open(self.path.parent, os.O_RDONLY)
         try:
             os.fsync(descriptor)
@@ -191,7 +221,7 @@ class Journal:
     def recover(self) -> tuple[Path, ...]:
         limit = self.next + int(self.pending)
         conflicts: list[Path] = []
-        recovered = set(self.metadata.get("recovered_operations", []))
+        recovered = self.recovered_operations
         for index in reversed(range(limit)):
             operation = self.operations[index]
             if index in recovered:
@@ -202,17 +232,14 @@ class Journal:
             try:
                 _no_symlinks(operation.path.parent)
                 actual = snapshot(operation.path)
-                if actual == operation.before:
-                    recovered.add(index)
-                    continue
-                if actual != operation.after:
+                if actual not in (operation.before, operation.after):
                     conflicts.append(operation.path)
                     continue
-                install(operation.path, operation.before)
+                if actual != operation.before:
+                    install(operation.path, operation.before)
                 recovered.add(index)
             except (OSError, LoadoutError):
                 conflicts.append(operation.path)
-            self.metadata["recovered_operations"] = sorted(recovered)
             self.save()
         self.status = "recovery-conflicts" if conflicts else "recovered"
         self.save()
@@ -225,6 +252,10 @@ class Journal:
             protected(parent)
         try:
             raw = json.loads(path.read_bytes())
+            cursor = None
+            if isinstance(raw, dict) and raw.get("version") == JOURNAL_VERSION:
+                cursor = raw
+                raw = _read_payload(path, raw)
             if (
                 not isinstance(raw, dict)
                 or set(raw) != {"version", "operations", "metadata", "next", "pending", "status"}
@@ -245,6 +276,7 @@ class Journal:
                 "apply",
                 "stage-index",
                 "complete",
+                "recovering",
                 "recovered",
                 "recovery-conflicts",
             }:
@@ -261,6 +293,17 @@ class Journal:
                 result.pending and result.next == len(result.operations)
             ):
                 raise LoadoutError("invalid migration journal cursor")
+            limit = result.next + int(result.pending)
+            result.recovered_operations = _recovery_cursor(
+                result.metadata.get("recovered_operations", []), limit
+            )
+            if cursor is not None:
+                result.recovered_operations.update(
+                    _recovery_cursor(cursor.get("recovered_operations", []), limit)
+                )
+                result._payload = cursor["payload"]
+                result._saved_metadata = copy.deepcopy(result.metadata)
+                result._saved_operations = result.operations
             root = Path(result.metadata["root"])
             if path.parent.parent != root / ".loadout-state/migrations":
                 raise LoadoutError("migration journal moved outside its recorded root")
@@ -268,6 +311,43 @@ class Journal:
             return result
         except (ValueError, KeyError, TypeError) as error:
             raise LoadoutError(f"invalid migration journal: {path}") from error
+
+
+def _read_payload(path: Path, raw: dict[str, Any]) -> dict[str, Any]:
+    fields = {"version", "payload", "next", "pending", "status"}
+    if set(raw) not in (fields, fields | {"recovered_operations"}):
+        raise LoadoutError("invalid migration journal fields")
+    identifier = raw["payload"]
+    if (
+        not isinstance(identifier, str)
+        or len(identifier) != SHA256_LENGTH
+        or any(c not in "0123456789abcdef" for c in identifier)
+    ):
+        raise LoadoutError("invalid migration journal payload reference")
+    payload_path = path.parent / f"payload-{identifier}.json"
+    protected(payload_path)
+    try:
+        content = payload_path.read_bytes()
+    except OSError as error:
+        raise LoadoutError(
+            f"missing or unreadable migration journal payload: {payload_path}"
+        ) from error
+    if hashlib.sha256(content).hexdigest() != identifier:
+        raise LoadoutError(f"migration journal payload checksum mismatch: {payload_path}")
+    payload = json.loads(content)
+    if not isinstance(payload, dict) or set(payload) != {"operations", "metadata"}:
+        raise LoadoutError("invalid migration journal payload")
+    return {"version": 1, **payload, **{key: raw[key] for key in ("next", "pending", "status")}}
+
+
+def _recovery_cursor(value: Any, limit: int) -> set[int]:
+    if (
+        not isinstance(value, list)
+        or any(type(index) is not int or not 0 <= index < limit for index in value)
+        or len(set(value)) != len(value)
+    ):
+        raise LoadoutError("invalid migration journal recovery cursor")
+    return set(value)
 
 
 def _absolute(value: Any) -> Path:

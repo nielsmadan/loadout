@@ -1,0 +1,33 @@
+{
+  "time": "2026-09-05T23:36:31.655050+00:00",
+  "python": "/Users/nielsmadan/wrksp/loadout/dev2/.venv/bin/python",
+  "version": "0.1.0",
+  "package": "/Users/nielsmadan/wrksp/loadout/dev2/src/loadout/__init__.py",
+  "revision": "ff9e7e8b268e456fa127a07da8848bc004e41141",
+  "source_sha256": "38c53e7e5726b7c138eada670307ee4db6acf16ddcdf7218aac353e5209da278",
+  "driver_sha256": "bf76397a50545808ef193a5a464c180c58ad07348af91bbdfa78db3ee1f346fe",
+  "events": [
+    {
+      "command": [
+        "/Users/nielsmadan/wrksp/loadout/dev2/.venv/bin/python",
+        "-m",
+        "loadout",
+        "init",
+        "--project",
+        "--harness",
+        "codex",
+        "--starter",
+        "none"
+      ],
+      "cwd": "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_interactive_confirmation_1/interrupt",
+      "exit": 0,
+      "pty": "Scope: project; agents: codex\r\nSource: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_interactive_confirmation_1/interrupt/loadout\r\nStarter: none\r\nNative documents may be reformatted; ordered keys, literal values and opaque bytes/modes are validated.\r\nCredential detection is conservative but cannot establish that authored content is secret-free; review checkpoint paths before approval.\r\nGit repository: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_interactive_confirmation_1/interrupt (existing)\r\nBaseline checkpoint paths (review for private information):\r\nCheckpoint detection cannot prove arbitrary content secret-free. Existing Git hooks may run.\r\nMigration source and ignore changes will be staged; the final migration is not committed.\r\nWrite source: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_interactive_confirmation_1/interrupt/loadout/settings/native/codex/.codex/config.toml\r\nWrite source: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_interactive_confirmation_1/interrupt/loadout/mcp/native/codex/.codex/config.toml\r\nWrite source: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_interactive_confirmation_1/interrupt/loadout/plugins/native/codex/.codex/config.toml\r\nWrite source: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_interactive_confirmation_1/interrupt/loadout/instructions/native/codex/AGENTS.md\r\nWrite source: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_interactive_confirmation_1/interrupt/loadout/permissions/native/codex/.codex/rules/permissions.rules\r\nWrite source: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_interactive_confirmation_1/interrupt/loadout/hooks/.gitkeep\r\nWrite source: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_interactive_confirmation_1/interrupt/loadout/instructions/.gitkeep\r\nWrite source: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_interactive_confirmation_1/interrupt/loadout/mcp/.gitkeep\r\nWrite source: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_interactive_confirmation_1/interrupt/loadout/mcp-permissions/.gitkeep\r\nWrite source: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_interactive_confirmation_1/interrupt/loadout/module-config/.gitkeep\r\nWrite source: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_interactive_confirmation_1/interrupt/loadout/permissions/.gitkeep\r\nWrite source: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_interactive_confirmation_1/interrupt/loadout/plugins/.gitkeep\r\nWrite source: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_interactive_confirmation_1/interrupt/loadout/settings/.gitkeep\r\nWrite source: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_interactive_confirmation_1/interrupt/loadout/skills/.gitkeep\r\nWrite source: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_interactive_confirmation_1/interrupt/loadout/support/.gitkeep\r\nWrite source: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_interactive_confirmation_1/interrupt/loadout/templates/.gitkeep\r\nWrite source: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_interactive_confirmation_1/interrupt/loadout/module-config/README.md\r\nWrite source: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_interactive_confirmation_1/interrupt/loadout/support/README.md\r\nWrite source: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_interactive_confirmation_1/interrupt/loadout/templates/README.md\r\nWrite source: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_interactive_confirmation_1/interrupt/loadout/config.toml\r\nWrite source: /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_interactive_confirmation_1/interrupt/loadout/artifacts.toml\r\nApply this migration, including its Git checkpoint and final staging? [y/N] cancelled; no changes made\r\n"
+    }
+  ],
+  "result": "Pass",
+  "scenarios": [
+    "Q04"
+  ],
+  "pending_observed": true,
+  "action": "interrupt"
+}

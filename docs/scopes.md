@@ -25,6 +25,16 @@ content can travel as *source* rather than as output.
 
 ## Two scopes
 
+`init` migrates supported existing configuration into explicit native artifact routes in either
+scope. A project uses `loadout/config.toml`; a new global source uses
+`<selected-directory>/loadout/loadout.toml`, and machine registration points at that manifest's
+directory. Native routes preserve per-harness documents, nested paths, literal order and opaque
+files; the preset descriptions below apply to legacy sources. Full opaque modes are authored in
+artifact bindings so they survive Git. Private source stays local and is intentionally absent
+from a public clone. Neither an unresolved preview nor a scaffold is a completed migration;
+installer/template dependencies and ambiguous consumers still require explicit choices. See
+[migration](reference/migration.md) and the [executed corpus](tests/init-corpus/README.md).
+
 ### Global scope — shipped
 
 Machine-wide configuration: the rules and instructions that apply to every project. The source
@@ -75,7 +85,7 @@ removing one entry from a rule list reads as one line changed in the source, and
 rules going from bypassable to enforced in the output. A `loadout diff` reporting that before
 writing would serve it better than a shadow tree.
 
-### Project scope — built (permissions, instructions, skills and mcp)
+### Project scope — legacy presets and native routes
 
 Per-repo configuration, layered on top of global. Two sources per artifact type:
 

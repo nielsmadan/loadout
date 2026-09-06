@@ -30,6 +30,10 @@ staged deletions are independent of the working tree. This currently reads all r
 large unrelated assets therefore increase validation time and temporary disk/memory use.
 Renderers run in a fresh process with isolated global destinations and a read boundary around
 the snapshot. Repository scripts and skill programs are read as data and never executed.
+The [2026-09-06 corpus run](../tests/init-corpus/runs/2026-09-06-migration.md) measured a
+11.796-second staged check on Sentry's 20,842 tracked input paths; this is a local observation,
+not a size-independent latency guarantee. The [many-file comparison](../tests/init-corpus/runs/2026-09-06-performance-comparison.md)
+records a separate controlled fixture and all staged-check timings.
 
 All required source/config/support files for the staged render must be staged. Global `[[source]]`
 entries can point to relative sibling directories within the same repository. Absolute/external sources, escaping

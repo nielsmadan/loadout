@@ -1,0 +1,683 @@
+{
+  "identity": {
+    "date": "2026-09-05T23:01:37.522180+00:00",
+    "head": "ff9e7e8b268e456fa127a07da8848bc004e41141",
+    "source_sha256": {
+      "src/loadout/__init__.py": "4f765ace7bed145d5f732d664e7ec907519c265b756e57fc517535b2bbdda5b0",
+      "src/loadout/__main__.py": "95dfae74c6c31b375d3e259079bff9bceea3536475785beb47a19bd9d74b7fdf",
+      "src/loadout/adapters.py": "c0534d52859cf613d10100f1ee3044eb7694e41a3c0a89ae9812675108912f93",
+      "src/loadout/agents.py": "06aaf32230dab7252c1cec86ca758ad70ce98a45a101e7d98921d4a2abdaedbc",
+      "src/loadout/artifacts.py": "569cd2da78937c426cb3beb5469e2137c45fa70a434d20e0f5a2793f9098c66d",
+      "src/loadout/bundled_skill.py": "52c14c7e01a1a0ca0002cc9e2efa45698593dedbc5d7343f06e205abf936f2e5",
+      "src/loadout/bundled_templates.py": "fbda172f05c993dc63ebcee133da85b0e2115de715444781929b3f7bdc7307dd",
+      "src/loadout/cli.py": "d187442f243108104b4cd37b0ed66191d4fcb1e6630da83c0ab99989bc826463",
+      "src/loadout/commands.py": "e714f824d387b8636c4dc6ce2b4dee9a2cda159912885c3416221348dd45d40d",
+      "src/loadout/composition.py": "30c8f0df86e14fc28160e8be72c056afed2ff5c502fe1a42cd8b3bc54793c818",
+      "src/loadout/deployment.py": "8dadb059013226c4622f132c3dc93e80f2c95c71011892e2afb425300de58541",
+      "src/loadout/destinations.py": "89fcd9aaba284eba8fcc7fc9a9533a3d02c6e3e7dbcf8686938854eee8f5f0ed",
+      "src/loadout/discovery.py": "0fb4c788f1a539272aadddf5d708fe6ec4c228fea7515fe89aea25787ceb4067",
+      "src/loadout/documents.py": "987354d3c2a97914755cd20c4bb117c16f7bfb2b6a0145bd39eaca063bc36840",
+      "src/loadout/emit.py": "a6cae243d4465e93c0039f4cdf3d442e34078cc505fe3b1f9372920897c750a6",
+      "src/loadout/errors.py": "5d01fec9f640f130febb1af6f2c5cc59e2f9142fbade0202f09e20cbb4b052b8",
+      "src/loadout/extract.py": "22cc4e4a720de7f116b4d0cb861cfd5c990821d088601686069b24554653f2ae",
+      "src/loadout/git_hook_commands.py": "a258387407a92199c191f527aca41fd2dc85f09d1c53d31914b8f9d699598dbf",
+      "src/loadout/git_hooks.py": "28481658753d8006a48137be6f7f20c1162f71879e7b0fc1e7ff209c1d0934f7",
+      "src/loadout/hooks.py": "649173934280d435352bd58cd340b777df42980ce056ec0402c825c72a72199d",
+      "src/loadout/init_options.py": "003fc70b47e6c8d53380fddeedee0a8638f5cb445f4f3c2d0bde220159381620",
+      "src/loadout/init_workflow.py": "8ef0f6b870b780839094121f09228e1f2831f3cd6099a079e1a2fb5d9b6d326a",
+      "src/loadout/machine.py": "63d74fd5b2d07be5e3aad8a6dd70587b7a179694c997bdab1ff830bfc01d10ee",
+      "src/loadout/manifest.py": "2b81d803f2ead1d737db67e2fa8a5f46f375727ce1250f5e423f9909632c6747",
+      "src/loadout/migration.py": "a29289833e23728a6b710ec06c3f6222f6eb82119c9c89537f692b7f8282deb8",
+      "src/loadout/migration_git.py": "fbd6c55c13ceb014cf3dfc6370de91f532bed36e42619154b436100d678b7c8b",
+      "src/loadout/migration_journal.py": "a03c814d58a41643c87573d97696b6e6e5ccc5dcf4ad9300f784c645869e3f46",
+      "src/loadout/migration_models.py": "c316f341d22410d99727fbf066733118aaf89a0f580d9ea215525602b331f077",
+      "src/loadout/migration_paths.py": "e1dbee83db2b463c455c236b52fa881da59e74c9581dbbfeeb610c2a3c218080",
+      "src/loadout/migration_starters.py": "a7b8727bfd70bc91ce030126d8dfd2f6fc3c4cbe50415224a013577495d5d6f0",
+      "src/loadout/migration_transaction.py": "09d787d2a35cc6e3de7809c8889b86a4b36e87bc229846f26bdc04204f3e771e",
+      "src/loadout/migration_validation.py": "a09a2c08377d58025aafa583f1fed83c97f059b5e182778ac50a8acfc940b2fc",
+      "src/loadout/module_config.py": "06a7b6e5d48f254cbd2d5a156569efe0a51d0cda58720084ae857b7dec4d4ed1",
+      "src/loadout/native_documents.py": "60a6cbaf5a0f67da0d96825899d23db12358a2a66b356d8377952fc10a6c0c86",
+      "src/loadout/native_skill_installation.py": "5a36b181b773de87c9766cf7cccdf4b0c91b8d95d37c589aae416c016717f4da",
+      "src/loadout/native_templates.py": "396709ca18e89f5ba46596152f403913635f2c0313bc97867baec641a25bc8a0",
+      "src/loadout/notices.py": "eb83d96e5f7262b8c0e3de13c6db690efa3bcb80d62a16298b73ed1612d73b40",
+      "src/loadout/permissions/__init__.py": "fed16201d1a97644ab2409a274a874a95a8dd45e6842321e1a6ccb4e8ac20670",
+      "src/loadout/permissions/merge.py": "f4393013d4fb4987052d21b7644ac45a222a9e37059e1a870ec4489936bfc4bf",
+      "src/loadout/permissions/renderers.py": "2fa1d27b2e9567aa6d7a650fc306b58517bf751057ad21ff7d8ad49a6a30f2d4",
+      "src/loadout/permissions/rules.py": "116d45c6ad8359a9d72f84a931cfda4cf244a46edd0002bf401ba48fdc13a2f3",
+      "src/loadout/plugins.py": "f5557a5300c6c4c940c19213610d577e61b93b0ee0ab58da62a68f4744252199",
+      "src/loadout/project.py": "42da51769c93a23d5ddec3fc4cd5d911778794fd92a03bc7b3d63551cec75635",
+      "src/loadout/record.py": "f65a34c8876d4d18713690b74bbf555e7e925b73e4f4c15064ed9436a7d5a8d5",
+      "src/loadout/resolve.py": "fd57f462f7a4e21a6a248d9154a6bd8ad0cbb3d40515e06713dde762fcd21f27",
+      "src/loadout/scaffold.py": "7f2fd43b78fdb82c38fb6197e0fd0129aa333b1a9ebe759bf0ab7b66659158bc",
+      "src/loadout/servers.py": "04041b7f5a7cd785c1951338a9755375900212ed18c67de7ad3c078ce310c04e",
+      "src/loadout/skill_installation.py": "8dfe4ce97ee6791209c9e8d35e4fcf6de10dddba6724b0c3d020d9b328704e53",
+      "src/loadout/skills.py": "651d87278806a18c3101c5fdac53643e41933fff7a18de3a8a516984cc49af8f",
+      "src/loadout/sources.py": "55347b8ffe37c3733281ce7d1d277b521497d92123aa4193140a9b44e637eb75",
+      "src/loadout/staged.py": "e633968970122e02c69e68ae7749d1970071a432c8902623df73d3316c2a03fd",
+      "src/loadout/staged_render.py": "89e1561c71c3bd6e49d908e35408cb2e05e86cd5c37a7217d309bb7ca0bcfe33",
+      "src/loadout/surgery.py": "cafba0012dc2b61602d682da088b658b107bf1f80af990a28499103d9837bd79",
+      "src/loadout/templates.py": "fbb2a44120008535fe69cac15febc880196463fbbb7d8c9ab2f260d30601e697"
+    },
+    "tracked_patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "python": "3.13.6 (main, Aug  8 2025, 16:50:55) [Clang 20.1.4 ]",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "hardware": "MacBookPro18,2\n68719476736\nApple M1 Max",
+    "git": "git version 2.50.1 (Apple Git-155)",
+    "loadout": "0.1.0",
+    "cli": [
+      "<checkout>/.venv/bin/python",
+      "-I",
+      "-m",
+      "loadout"
+    ],
+    "cleared_environment": [
+      "CLAUDE_CONFIG_DIR",
+      "CODEX_HOME",
+      "PI_CODING_AGENT_DIR",
+      "XDG_CONFIG_HOME",
+      "OPENCODE_CONFIG",
+      "OPENCODE_CONFIG_DIR",
+      "LOADOUT_TEST_HARNESS_C",
+      "GIT_*"
+    ],
+    "concurrency": 1
+  },
+  "warmup": {
+    "exit": 0,
+    "timeout": false,
+    "seconds": 6.575028500054032,
+    "argv": [
+      "<checkout>/.venv/bin/python",
+      "-I",
+      "-m",
+      "loadout",
+      "init",
+      "--project",
+      "--root",
+      "<evidence>/warmup/repo",
+      "--harness",
+      "claude",
+      "--yes",
+      "--json"
+    ],
+    "support_files": 25,
+    "input_files": 26,
+    "input_bytes": 25687,
+    "operations": 97,
+    "journal_bytes": 308383,
+    "check": {
+      "exit": 0,
+      "timeout": false,
+      "seconds": 0.20481787499738857,
+      "argv": [
+        "<checkout>/.venv/bin/python",
+        "-I",
+        "-m",
+        "loadout",
+        "check",
+        "--root",
+        "<evidence>/warmup/repo"
+      ]
+    },
+    "staged": {
+      "exit": 0,
+      "timeout": false,
+      "seconds": 0.5447155000292696,
+      "argv": [
+        "<checkout>/.venv/bin/python",
+        "-I",
+        "-m",
+        "loadout",
+        "check",
+        "--staged",
+        "--root",
+        "<evidence>/warmup/repo"
+      ]
+    },
+    "correctness": "complete bytes, filesystem mode 0644, generated index removals/ignores, source staged, check and staged check",
+    "output_files": 26,
+    "output_bytes": 25687,
+    "payload_sha256": "785b0751fc2c53dc14a4ce3d800e69ef9ce1009eb327ccf458afe09c242c26c9"
+  },
+  "runs": [
+    {
+      "exit": 0,
+      "timeout": false,
+      "seconds": 5.816658666008152,
+      "argv": [
+        "<checkout>/.venv/bin/python",
+        "-I",
+        "-m",
+        "loadout",
+        "init",
+        "--project",
+        "--root",
+        "<evidence>/25-1/repo",
+        "--harness",
+        "claude",
+        "--yes",
+        "--json"
+      ],
+      "support_files": 25,
+      "input_files": 26,
+      "input_bytes": 25687,
+      "operations": 97,
+      "journal_bytes": 306523,
+      "check": {
+        "exit": 0,
+        "timeout": false,
+        "seconds": 0.1879281669971533,
+        "argv": [
+          "<checkout>/.venv/bin/python",
+          "-I",
+          "-m",
+          "loadout",
+          "check",
+          "--root",
+          "<evidence>/25-1/repo"
+        ]
+      },
+      "staged": {
+        "exit": 0,
+        "timeout": false,
+        "seconds": 0.4979986660182476,
+        "argv": [
+          "<checkout>/.venv/bin/python",
+          "-I",
+          "-m",
+          "loadout",
+          "check",
+          "--staged",
+          "--root",
+          "<evidence>/25-1/repo"
+        ]
+      },
+      "correctness": "complete bytes, filesystem mode 0644, generated index removals/ignores, source staged, check and staged check",
+      "output_files": 26,
+      "output_bytes": 25687,
+      "payload_sha256": "785b0751fc2c53dc14a4ce3d800e69ef9ce1009eb327ccf458afe09c242c26c9"
+    },
+    {
+      "exit": 0,
+      "timeout": false,
+      "seconds": 5.395921250048559,
+      "argv": [
+        "<checkout>/.venv/bin/python",
+        "-I",
+        "-m",
+        "loadout",
+        "init",
+        "--project",
+        "--root",
+        "<evidence>/25-2/repo",
+        "--harness",
+        "claude",
+        "--yes",
+        "--json"
+      ],
+      "support_files": 25,
+      "input_files": 26,
+      "input_bytes": 25687,
+      "operations": 97,
+      "journal_bytes": 306523,
+      "check": {
+        "exit": 0,
+        "timeout": false,
+        "seconds": 0.18450837495038286,
+        "argv": [
+          "<checkout>/.venv/bin/python",
+          "-I",
+          "-m",
+          "loadout",
+          "check",
+          "--root",
+          "<evidence>/25-2/repo"
+        ]
+      },
+      "staged": {
+        "exit": 0,
+        "timeout": false,
+        "seconds": 0.48308108298806474,
+        "argv": [
+          "<checkout>/.venv/bin/python",
+          "-I",
+          "-m",
+          "loadout",
+          "check",
+          "--staged",
+          "--root",
+          "<evidence>/25-2/repo"
+        ]
+      },
+      "correctness": "complete bytes, filesystem mode 0644, generated index removals/ignores, source staged, check and staged check",
+      "output_files": 26,
+      "output_bytes": 25687,
+      "payload_sha256": "785b0751fc2c53dc14a4ce3d800e69ef9ce1009eb327ccf458afe09c242c26c9"
+    },
+    {
+      "exit": 0,
+      "timeout": false,
+      "seconds": 5.4101349580450915,
+      "argv": [
+        "<checkout>/.venv/bin/python",
+        "-I",
+        "-m",
+        "loadout",
+        "init",
+        "--project",
+        "--root",
+        "<evidence>/25-3/repo",
+        "--harness",
+        "claude",
+        "--yes",
+        "--json"
+      ],
+      "support_files": 25,
+      "input_files": 26,
+      "input_bytes": 25687,
+      "operations": 97,
+      "journal_bytes": 306523,
+      "check": {
+        "exit": 0,
+        "timeout": false,
+        "seconds": 0.18571941601112485,
+        "argv": [
+          "<checkout>/.venv/bin/python",
+          "-I",
+          "-m",
+          "loadout",
+          "check",
+          "--root",
+          "<evidence>/25-3/repo"
+        ]
+      },
+      "staged": {
+        "exit": 0,
+        "timeout": false,
+        "seconds": 0.5083942920318805,
+        "argv": [
+          "<checkout>/.venv/bin/python",
+          "-I",
+          "-m",
+          "loadout",
+          "check",
+          "--staged",
+          "--root",
+          "<evidence>/25-3/repo"
+        ]
+      },
+      "correctness": "complete bytes, filesystem mode 0644, generated index removals/ignores, source staged, check and staged check",
+      "output_files": 26,
+      "output_bytes": 25687,
+      "payload_sha256": "785b0751fc2c53dc14a4ce3d800e69ef9ce1009eb327ccf458afe09c242c26c9"
+    },
+    {
+      "exit": 0,
+      "timeout": false,
+      "seconds": 13.876192583004013,
+      "argv": [
+        "<checkout>/.venv/bin/python",
+        "-I",
+        "-m",
+        "loadout",
+        "init",
+        "--project",
+        "--root",
+        "<evidence>/100-1/repo",
+        "--harness",
+        "claude",
+        "--yes",
+        "--json"
+      ],
+      "support_files": 100,
+      "input_files": 101,
+      "input_bytes": 102487,
+      "operations": 172,
+      "journal_bytes": 886695,
+      "check": {
+        "exit": 0,
+        "timeout": false,
+        "seconds": 0.3333506250055507,
+        "argv": [
+          "<checkout>/.venv/bin/python",
+          "-I",
+          "-m",
+          "loadout",
+          "check",
+          "--root",
+          "<evidence>/100-1/repo"
+        ]
+      },
+      "staged": {
+        "exit": 0,
+        "timeout": false,
+        "seconds": 0.8096435000188649,
+        "argv": [
+          "<checkout>/.venv/bin/python",
+          "-I",
+          "-m",
+          "loadout",
+          "check",
+          "--staged",
+          "--root",
+          "<evidence>/100-1/repo"
+        ]
+      },
+      "correctness": "complete bytes, filesystem mode 0644, generated index removals/ignores, source staged, check and staged check",
+      "output_files": 101,
+      "output_bytes": 102487,
+      "payload_sha256": "785b0751fc2c53dc14a4ce3d800e69ef9ce1009eb327ccf458afe09c242c26c9"
+    },
+    {
+      "exit": 0,
+      "timeout": false,
+      "seconds": 13.886121208022814,
+      "argv": [
+        "<checkout>/.venv/bin/python",
+        "-I",
+        "-m",
+        "loadout",
+        "init",
+        "--project",
+        "--root",
+        "<evidence>/100-2/repo",
+        "--harness",
+        "claude",
+        "--yes",
+        "--json"
+      ],
+      "support_files": 100,
+      "input_files": 101,
+      "input_bytes": 102487,
+      "operations": 172,
+      "journal_bytes": 886695,
+      "check": {
+        "exit": 0,
+        "timeout": false,
+        "seconds": 0.35446591704385355,
+        "argv": [
+          "<checkout>/.venv/bin/python",
+          "-I",
+          "-m",
+          "loadout",
+          "check",
+          "--root",
+          "<evidence>/100-2/repo"
+        ]
+      },
+      "staged": {
+        "exit": 0,
+        "timeout": false,
+        "seconds": 0.8972053750185296,
+        "argv": [
+          "<checkout>/.venv/bin/python",
+          "-I",
+          "-m",
+          "loadout",
+          "check",
+          "--staged",
+          "--root",
+          "<evidence>/100-2/repo"
+        ]
+      },
+      "correctness": "complete bytes, filesystem mode 0644, generated index removals/ignores, source staged, check and staged check",
+      "output_files": 101,
+      "output_bytes": 102487,
+      "payload_sha256": "785b0751fc2c53dc14a4ce3d800e69ef9ce1009eb327ccf458afe09c242c26c9"
+    },
+    {
+      "exit": 0,
+      "timeout": false,
+      "seconds": 15.534704833000433,
+      "argv": [
+        "<checkout>/.venv/bin/python",
+        "-I",
+        "-m",
+        "loadout",
+        "init",
+        "--project",
+        "--root",
+        "<evidence>/100-3/repo",
+        "--harness",
+        "claude",
+        "--yes",
+        "--json"
+      ],
+      "support_files": 100,
+      "input_files": 101,
+      "input_bytes": 102487,
+      "operations": 172,
+      "journal_bytes": 886695,
+      "check": {
+        "exit": 0,
+        "timeout": false,
+        "seconds": 0.36207437503617257,
+        "argv": [
+          "<checkout>/.venv/bin/python",
+          "-I",
+          "-m",
+          "loadout",
+          "check",
+          "--root",
+          "<evidence>/100-3/repo"
+        ]
+      },
+      "staged": {
+        "exit": 0,
+        "timeout": false,
+        "seconds": 0.8388936660485342,
+        "argv": [
+          "<checkout>/.venv/bin/python",
+          "-I",
+          "-m",
+          "loadout",
+          "check",
+          "--staged",
+          "--root",
+          "<evidence>/100-3/repo"
+        ]
+      },
+      "correctness": "complete bytes, filesystem mode 0644, generated index removals/ignores, source staged, check and staged check",
+      "output_files": 101,
+      "output_bytes": 102487,
+      "payload_sha256": "785b0751fc2c53dc14a4ce3d800e69ef9ce1009eb327ccf458afe09c242c26c9"
+    },
+    {
+      "exit": 0,
+      "timeout": false,
+      "seconds": 176.38463687495096,
+      "argv": [
+        "<checkout>/.venv/bin/python",
+        "-I",
+        "-m",
+        "loadout",
+        "init",
+        "--project",
+        "--root",
+        "<evidence>/1000-1/repo",
+        "--harness",
+        "claude",
+        "--yes",
+        "--json"
+      ],
+      "support_files": 1000,
+      "input_files": 1001,
+      "input_bytes": 1024087,
+      "operations": 1072,
+      "journal_bytes": 7854917,
+      "check": {
+        "exit": 0,
+        "timeout": false,
+        "seconds": 2.22746820905013,
+        "argv": [
+          "<checkout>/.venv/bin/python",
+          "-I",
+          "-m",
+          "loadout",
+          "check",
+          "--root",
+          "<evidence>/1000-1/repo"
+        ]
+      },
+      "staged": {
+        "exit": 0,
+        "timeout": false,
+        "seconds": 22.65919183398364,
+        "argv": [
+          "<checkout>/.venv/bin/python",
+          "-I",
+          "-m",
+          "loadout",
+          "check",
+          "--staged",
+          "--root",
+          "<evidence>/1000-1/repo"
+        ]
+      },
+      "correctness": "complete bytes, filesystem mode 0644, generated index removals/ignores, source staged, check and staged check",
+      "output_files": 1001,
+      "output_bytes": 1024087,
+      "payload_sha256": "785b0751fc2c53dc14a4ce3d800e69ef9ce1009eb327ccf458afe09c242c26c9"
+    },
+    {
+      "exit": 0,
+      "timeout": false,
+      "seconds": 158.45363587501924,
+      "argv": [
+        "<checkout>/.venv/bin/python",
+        "-I",
+        "-m",
+        "loadout",
+        "init",
+        "--project",
+        "--root",
+        "<evidence>/1000-2/repo",
+        "--harness",
+        "claude",
+        "--yes",
+        "--json"
+      ],
+      "support_files": 1000,
+      "input_files": 1001,
+      "input_bytes": 1024087,
+      "operations": 1072,
+      "journal_bytes": 7854917,
+      "check": {
+        "exit": 0,
+        "timeout": false,
+        "seconds": 2.2193855829536915,
+        "argv": [
+          "<checkout>/.venv/bin/python",
+          "-I",
+          "-m",
+          "loadout",
+          "check",
+          "--root",
+          "<evidence>/1000-2/repo"
+        ]
+      },
+      "staged": {
+        "exit": 0,
+        "timeout": false,
+        "seconds": 22.83385262498632,
+        "argv": [
+          "<checkout>/.venv/bin/python",
+          "-I",
+          "-m",
+          "loadout",
+          "check",
+          "--staged",
+          "--root",
+          "<evidence>/1000-2/repo"
+        ]
+      },
+      "correctness": "complete bytes, filesystem mode 0644, generated index removals/ignores, source staged, check and staged check",
+      "output_files": 1001,
+      "output_bytes": 1024087,
+      "payload_sha256": "785b0751fc2c53dc14a4ce3d800e69ef9ce1009eb327ccf458afe09c242c26c9"
+    },
+    {
+      "exit": 0,
+      "timeout": false,
+      "seconds": 157.42327341699274,
+      "argv": [
+        "<checkout>/.venv/bin/python",
+        "-I",
+        "-m",
+        "loadout",
+        "init",
+        "--project",
+        "--root",
+        "<evidence>/1000-3/repo",
+        "--harness",
+        "claude",
+        "--yes",
+        "--json"
+      ],
+      "support_files": 1000,
+      "input_files": 1001,
+      "input_bytes": 1024087,
+      "operations": 1072,
+      "journal_bytes": 7854917,
+      "check": {
+        "exit": 0,
+        "timeout": false,
+        "seconds": 2.2437244579778053,
+        "argv": [
+          "<checkout>/.venv/bin/python",
+          "-I",
+          "-m",
+          "loadout",
+          "check",
+          "--root",
+          "<evidence>/1000-3/repo"
+        ]
+      },
+      "staged": {
+        "exit": 0,
+        "timeout": false,
+        "seconds": 22.587293415970635,
+        "argv": [
+          "<checkout>/.venv/bin/python",
+          "-I",
+          "-m",
+          "loadout",
+          "check",
+          "--staged",
+          "--root",
+          "<evidence>/1000-3/repo"
+        ]
+      },
+      "correctness": "complete bytes, filesystem mode 0644, generated index removals/ignores, source staged, check and staged check",
+      "output_files": 1001,
+      "output_bytes": 1024087,
+      "payload_sha256": "785b0751fc2c53dc14a4ce3d800e69ef9ce1009eb327ccf458afe09c242c26c9"
+    }
+  ],
+  "aggregation": {
+    "25": {
+      "completed": 3,
+      "median_seconds": 5.4101349580450915,
+      "range_seconds": [
+        5.395921250048559,
+        5.816658666008152
+      ]
+    },
+    "100": {
+      "completed": 3,
+      "median_seconds": 13.886121208022814,
+      "range_seconds": [
+        13.876192583004013,
+        15.534704833000433
+      ]
+    },
+    "1000": {
+      "completed": 3,
+      "median_seconds": 158.45363587501924,
+      "range_seconds": [
+        157.42327341699274,
+        176.38463687495096
+      ]
+    }
+  }
+}

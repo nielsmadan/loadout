@@ -1,0 +1,47 @@
+{
+  "time": "2026-09-05T23:34:50.220117+00:00",
+  "python": "/Users/nielsmadan/wrksp/loadout/dev2/.venv/bin/python",
+  "version": "0.1.0",
+  "package": "/Users/nielsmadan/wrksp/loadout/dev2/src/loadout/__init__.py",
+  "revision": "ff9e7e8b268e456fa127a07da8848bc004e41141",
+  "source_sha256": "38c53e7e5726b7c138eada670307ee4db6acf16ddcdf7218aac353e5209da278",
+  "driver_sha256": "38f0d3960b8d890bf4d5d8e5b5c224cf13907010b751387244a34ec08382d6d6",
+  "events": [
+    {
+      "command": [
+        "/Users/nielsmadan/wrksp/loadout/dev2/.venv/bin/python",
+        "-m",
+        "loadout",
+        "init",
+        "--project",
+        "--harness",
+        "claude",
+        "--yes",
+        "--json"
+      ],
+      "cwd": "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture",
+      "exit": 0,
+      "stdout": "{\n  \"status\": \"complete\",\n  \"journal\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/.loadout-state/migrations/e2359db0c0e04948bffe61d1344233ca/journal.json\",\n  \"baseline\": \"4d92ffdd7ef0a516f495fd50cbc59ff39755e70c\",\n  \"written\": [\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/loadout/settings/native/claude/.claude/settings.json\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/loadout/permissions/native/claude/.claude/settings.json\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/loadout/hooks/native/claude/.claude/settings.json\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/loadout/plugins/native/claude/.claude/settings.json\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/loadout/instructions/native/claude/CLAUDE.md\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/loadout/skills/native/claude/.claude/skills/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/loadout/hooks/native/claude/.claude/hooks/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/loadout/instructions/native/claude/.claude/commands/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/loadout/mcp-permissions/native/claude/.claude/mcp-permissions.json\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/loadout/mcp/native/claude/.mcp.json\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/loadout/hooks/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/loadout/instructions/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/loadout/mcp/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/loadout/mcp-permissions/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/loadout/module-config/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/loadout/permissions/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/loadout/plugins/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/loadout/settings/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/loadout/skills/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/loadout/support/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/loadout/templates/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/loadout/module-config/README.md\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/loadout/support/README.md\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/loadout/templates/README.md\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/loadout/config.toml\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/loadout/artifacts.toml\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/loadout/.loadout-state/.gitignore\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/loadout/.loadout-state/project.json\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/.gitignore\"\n  ],\n  \"staged\": [\n    \"loadout/artifacts.toml\",\n    \"loadout/config.toml\",\n    \"loadout/hooks/.gitkeep\",\n    \"loadout/hooks/native/claude/.claude/hooks/.gitkeep\",\n    \"loadout/hooks/native/claude/.claude/settings.json\",\n    \"loadout/instructions/.gitkeep\",\n    \"loadout/instructions/native/claude/.claude/commands/.gitkeep\",\n    \"loadout/instructions/native/claude/CLAUDE.md\",\n    \"loadout/mcp-permissions/.gitkeep\",\n    \"loadout/mcp-permissions/native/claude/.claude/mcp-permissions.json\",\n    \"loadout/mcp/.gitkeep\",\n    \"loadout/mcp/native/claude/.mcp.json\",\n    \"loadout/module-config/.gitkeep\",\n    \"loadout/module-config/README.md\",\n    \"loadout/permissions/.gitkeep\",\n    \"loadout/permissions/native/claude/.claude/settings.json\",\n    \"loadout/plugins/.gitkeep\",\n    \"loadout/plugins/native/claude/.claude/settings.json\",\n    \"loadout/settings/.gitkeep\",\n    \"loadout/settings/native/claude/.claude/settings.json\",\n    \"loadout/skills/.gitkeep\",\n    \"loadout/skills/native/claude/.claude/skills/.gitkeep\",\n    \"loadout/support/.gitkeep\",\n    \"loadout/support/README.md\",\n    \"loadout/templates/.gitkeep\",\n    \"loadout/templates/README.md\"\n  ],\n  \"already_initialized\": false\n}\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/Users/nielsmadan/wrksp/loadout/dev2/.venv/bin/python",
+        "-m",
+        "loadout",
+        "sync"
+      ],
+      "cwd": "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture",
+      "exit": 0,
+      "stdout": "wrote .claude/skills/loadout/SKILL.md\nwrote .claude/skills/loadout/references/configuration.md\nwrote .claude/skills/loadout/references/onboarding.md\n",
+      "stderr": "note: no committed baseline \u2014 skipping the modified-file check\n"
+    }
+  ],
+  "host_fixture": {
+    "cwd": "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture",
+    "config_directory": "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/home11/.claude",
+    "installed_skill": "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_prepare_source_managed_ho0/host fixture/.claude/skills/loadout/SKILL.md",
+    "skill_sha256": "66aa01fbd5a9c958a4c50bb9409d630bb441fdf1ebaa2fc0dcc460c6e36e2a59",
+    "host_execution": "not run"
+  }
+}

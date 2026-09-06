@@ -706,10 +706,8 @@ def _guard_git(journal: Journal) -> None:
 
 
 def _verify_original_privacy(prepared: migration_git.GitPreparation) -> None:
-    if any(
-        migration_git.ignored_original(path) != ignored
-        for path, ignored in prepared.authored_privacy
-    ) or (
+    migration_git.verify_authored_privacy(prepared)
+    if (
         prepared.existing
         and migration_git._ignored(prepared.root, prepared.privacy_paths) != prepared.ignored
     ):
@@ -859,7 +857,7 @@ def resume_migration(path: Path) -> MigrationResult:
     journal = Journal.load(path)
     if journal.status == "complete":
         return _result(journal)
-    if journal.status in {"recovered", "recovery-conflicts"}:
+    if journal.status in {"recovering", "recovered", "recovery-conflicts"}:
         raise LoadoutError(f"a recovered migration must be planned again: {path}")
     try:
         _guard_privacy(journal)
@@ -913,6 +911,8 @@ def recover_migration(path: Path) -> RecoveryResult:
     guard = _recovery_git_conflicts(journal)
     if guard:
         return RecoveryResult(path, guard, journal.metadata["baseline"])
+    journal.status = "recovering"
+    journal.save()
     raw = journal.metadata["git"]
     if raw is not None and journal.metadata.get("final_index") is not None:
         index = Path(journal.metadata["index_path"])
@@ -949,6 +949,8 @@ def _recovery_git_conflicts(journal: Journal) -> tuple[Path, ...]:
     accepted = {_decode(journal.metadata["expected_index"])}
     if "final_index" in journal.metadata:
         accepted.add(_decode(journal.metadata["final_index"]))
+        if journal.status in {"recovering", "recovery-conflicts"}:
+            accepted.add(_decode(journal.metadata.get("refreshed_index")))
     return () if migration_git.index_bytes(index) in accepted else (index,)
 
 

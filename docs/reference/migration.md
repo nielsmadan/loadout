@@ -144,7 +144,9 @@ support subtrees. Tree routes discover first additions, edits, renames and remov
 
 Native composite documents split settings, permissions, hooks, plugins and MCP into separately
 owned fragments. JSON null/false/empty values and ordered nested keys survive literally. Native
-supporting assets remain byte-and-mode exact. Portable permissions are used only after the
+supporting assets remain byte-and-mode exact. Copy `mode` and tree `modes` bindings record full
+filesystem modes in source; Git itself retains only executable bits. See [artifacts](artifacts.md#files-and-trees)
+for changing an explicit mode or adding a tree file without one. Portable permissions are used only after the
 proposed TOML is serialized, parsed by `parse_rules`, and rendered with the normal renderer;
 complete ordered content must match. Text conversion must also retain the normal deployment
 mode. Silent extractor losses fall back to native content, including compact Codex rules,
@@ -209,6 +211,19 @@ like future generated outputs. Workspace ancestor aliases still identify the sam
 The transaction preserves retained private/runtime entries when replacing a shared ancestor.
 
 ## Applying a resolved plan
+
+Recovery journals use a small version-2 cursor and protected `payload-<sha256>.json` files in
+the same transaction directory. Each content-bearing payload is durably installed before a
+cursor can reference it. Metadata transitions publish a new payload; ordinary operation and
+recovery steps persist only the cursor, with the same before/after preimages and fsync boundaries.
+Recovery progress is a list of unique operation numbers in the cursor, bounded by the applied
+operations (including a pending operation). Boolean, non-integer, duplicate and out-of-range
+entries are rejected. Resume and recovery verify payload ownership, permissions and checksum,
+and still read version-1 journals and earlier version-2 cursors. Existing
+`metadata.recovered_operations` progress is imported and its payload remains intact; subsequent
+progress goes into the cursor. Recovery retains the protected preimages without adding a full
+payload for each restored entry.
+Keep the complete transaction directory when preserving recovery evidence, not just `journal.json`.
 
 ```python
 from loadout.migration_transaction import (
@@ -277,6 +292,8 @@ metacharacters; an individual ignore path containing a newline is rejected befor
 There is no final migration commit.
 
 Git privacy is checked again before checkpointing and final staging, including during resume.
+Sibling original paths share a NUL-delimited Git ignore query from their exact parent directory;
+nested repositories retain their own interpretation. No result is cached across transaction phases.
 The journal preserves the original decisions and fingerprints the applicable `.gitignore` files,
 repository excludes, global excludes and effective ignore settings for original, canonical and
 new source paths and selected starter dependencies, including the targets of global exclude-file
@@ -305,6 +322,12 @@ retry after final index replacement. `recover_migration(path)` restores only unc
 postimages and returns `RecoveryResult.conflicts`; concurrent edits and their preserved
 preimages remain available for explicit reconciliation. An intervening Git ref/index change
 blocks rollback of the affected transaction. Successful baseline commits are never rolled back.
+Recovery durably enters `recovering` before restoring the Git index. An interrupted recovery or
+conflict retry accepts that recorded restored index as well as the transaction's final index;
+other index changes still block it. Restored operation numbers are saved after each durable
+restore, including an entry already matching its preimage, so retry can unwind multiple writes
+to the same path. A transaction in `recovering` must be recovered, then planned again; it cannot
+resume forward application.
 
 Filesystem writes, Git refs and the index are separate guarded operations, not one atomic unit.
 Power loss or concurrent edits can therefore require explicit recovery. An initialized repository

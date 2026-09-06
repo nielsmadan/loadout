@@ -441,6 +441,8 @@ class _PlanBuilder:
             record.update(format="text", renderer=renderer)
         self.write(source, content, mode=candidate.mode, private=candidate.private)
         record.update(category=candidate.category, source=source.as_posix())
+        if record["format"] == "copy":
+            record["mode"] = candidate.mode
         if candidate.private:
             record["optional"] = True
         if existing:
@@ -469,6 +471,11 @@ class _PlanBuilder:
             self.expect(candidate)
         record = self.record(destination, agents, "tree")
         record.update(category=category, source=source.as_posix())
+        record["modes"] = {
+            c.destination.relative_to(destination).as_posix(): c.mode
+            for c in candidates
+            if c.destination is not None
+        }
         if private:
             record["optional"] = True
         self.records[destination] = record

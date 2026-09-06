@@ -1,0 +1,29 @@
+{
+  "time": "2026-09-05T23:34:45.984579+00:00",
+  "python": "/Users/nielsmadan/wrksp/loadout/dev2/.venv/bin/python",
+  "version": "0.1.0",
+  "package": "/Users/nielsmadan/wrksp/loadout/dev2/src/loadout/__init__.py",
+  "revision": "ff9e7e8b268e456fa127a07da8848bc004e41141",
+  "source_sha256": "38c53e7e5726b7c138eada670307ee4db6acf16ddcdf7218aac353e5209da278",
+  "driver_sha256": "38f0d3960b8d890bf4d5d8e5b5c224cf13907010b751387244a34ec08382d6d6",
+  "events": [
+    {
+      "command": [
+        "/Users/nielsmadan/wrksp/loadout/dev2/.venv/bin/python",
+        "-m",
+        "loadout",
+        "init",
+        "--project",
+        "--harness",
+        "codex",
+        "--yes",
+        "--json"
+      ],
+      "cwd": "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_pending_checkpoint_failur0/checkpoint failure",
+      "exit": 1,
+      "stdout": "{\"status\": \"interrupted\", \"journal\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_pending_checkpoint_failur0/checkpoint failure/.loadout-state/migrations/24d6974b901e40818f35efdf910fd219/journal.json\"}\n",
+      "stderr": "loadout: Git commit -m failed in /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_pending_checkpoint_failur0/checkpoint failure: ; resume or recover migration journal /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_pending_checkpoint_failur0/checkpoint failure/.loadout-state/migrations/24d6974b901e40818f35efdf910fd219/journal.json\nResume: loadout init --resume '/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_pending_checkpoint_failur0/checkpoint failure/.loadout-state/migrations/24d6974b901e40818f35efdf910fd219/journal.json' --yes\nRecover: loadout init --recover '/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-588/test_pending_checkpoint_failur0/checkpoint failure/.loadout-state/migrations/24d6974b901e40818f35efdf910fd219/journal.json' --yes\n"
+    }
+  ],
+  "pending_observed": true
+}

@@ -1,0 +1,79 @@
+{
+  "time": "2026-09-05T23:36:32.799978+00:00",
+  "python": "/Users/nielsmadan/wrksp/loadout/dev2/.venv/bin/python",
+  "version": "0.1.0",
+  "package": "/Users/nielsmadan/wrksp/loadout/dev2/src/loadout/__init__.py",
+  "revision": "ff9e7e8b268e456fa127a07da8848bc004e41141",
+  "source_sha256": "38c53e7e5726b7c138eada670307ee4db6acf16ddcdf7218aac353e5209da278",
+  "driver_sha256": "bf76397a50545808ef193a5a464c180c58ad07348af91bbdfa78db3ee1f346fe",
+  "events": [
+    {
+      "command": [
+        "/Users/nielsmadan/wrksp/loadout/dev2/.venv/bin/python",
+        "-m",
+        "loadout",
+        "init",
+        "--project",
+        "--harness",
+        "codex",
+        "--yes",
+        "--json"
+      ],
+      "cwd": "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure",
+      "exit": 1,
+      "stdout": "{\"status\": \"interrupted\", \"journal\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/.loadout-state/migrations/cfa790d0668942e0ba496bbe45ff6325/journal.json\"}\n",
+      "stderr": "loadout: Git commit -m failed in /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure: ; resume or recover migration journal /private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/.loadout-state/migrations/cfa790d0668942e0ba496bbe45ff6325/journal.json\nResume: loadout init --resume '/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/.loadout-state/migrations/cfa790d0668942e0ba496bbe45ff6325/journal.json' --yes\nRecover: loadout init --recover '/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/.loadout-state/migrations/cfa790d0668942e0ba496bbe45ff6325/journal.json' --yes\n"
+    },
+    {
+      "command": [
+        "/Users/nielsmadan/wrksp/loadout/dev2/.venv/bin/python",
+        "-m",
+        "loadout",
+        "init",
+        "--recover",
+        "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/.loadout-state/migrations/cfa790d0668942e0ba496bbe45ff6325/journal.json",
+        "--yes",
+        "--json"
+      ],
+      "cwd": "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure",
+      "exit": 0,
+      "stdout": "{\n  \"status\": \"recovered\",\n  \"journal\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/.loadout-state/migrations/cfa790d0668942e0ba496bbe45ff6325/journal.json\",\n  \"conflicts\": [],\n  \"baseline\": \"b8e5d4826f849127d1047d5f5c8f693e35ff4834\"\n}\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/Users/nielsmadan/wrksp/loadout/dev2/.venv/bin/python",
+        "-m",
+        "loadout",
+        "init",
+        "--project",
+        "--harness",
+        "codex",
+        "--yes",
+        "--json"
+      ],
+      "cwd": "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure",
+      "exit": 0,
+      "stdout": "{\n  \"status\": \"complete\",\n  \"journal\": \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/.loadout-state/migrations/f1a78e5e07a64252a9e5cd07fcbaa2df/journal.json\",\n  \"baseline\": \"4c712894d9c7380b4c8c0f3940ebb4ef0793ce8e\",\n  \"written\": [\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/loadout/instructions/native/codex/AGENTS.md\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/loadout/settings/native/codex/.codex/config.toml\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/loadout/mcp/native/codex/.codex/config.toml\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/loadout/plugins/native/codex/.codex/config.toml\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/loadout/permissions/native/codex/.codex/rules/permissions.rules\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/loadout/hooks/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/loadout/instructions/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/loadout/mcp/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/loadout/mcp-permissions/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/loadout/module-config/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/loadout/permissions/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/loadout/plugins/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/loadout/settings/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/loadout/skills/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/loadout/support/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/loadout/templates/.gitkeep\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/loadout/module-config/README.md\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/loadout/support/README.md\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/loadout/templates/README.md\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/loadout/config.toml\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/loadout/artifacts.toml\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/loadout/.loadout-state/.gitignore\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/loadout/.loadout-state/project.json\",\n    \"/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/.gitignore\"\n  ],\n  \"staged\": [\n    \"loadout/artifacts.toml\",\n    \"loadout/config.toml\",\n    \"loadout/hooks/.gitkeep\",\n    \"loadout/instructions/.gitkeep\",\n    \"loadout/instructions/native/codex/AGENTS.md\",\n    \"loadout/mcp-permissions/.gitkeep\",\n    \"loadout/mcp/.gitkeep\",\n    \"loadout/mcp/native/codex/.codex/config.toml\",\n    \"loadout/module-config/.gitkeep\",\n    \"loadout/module-config/README.md\",\n    \"loadout/permissions/.gitkeep\",\n    \"loadout/permissions/native/codex/.codex/rules/permissions.rules\",\n    \"loadout/plugins/.gitkeep\",\n    \"loadout/plugins/native/codex/.codex/config.toml\",\n    \"loadout/settings/.gitkeep\",\n    \"loadout/settings/native/codex/.codex/config.toml\",\n    \"loadout/skills/.gitkeep\",\n    \"loadout/support/.gitkeep\",\n    \"loadout/support/README.md\",\n    \"loadout/templates/.gitkeep\",\n    \"loadout/templates/README.md\"\n  ],\n  \"already_initialized\": false\n}\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/Users/nielsmadan/wrksp/loadout/dev2/.venv/bin/python",
+        "-m",
+        "loadout",
+        "check"
+      ],
+      "cwd": "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure",
+      "exit": 0,
+      "stdout": "generated files are up to date\n",
+      "stderr": ""
+    }
+  ],
+  "pending_observed": true,
+  "result": "Pass",
+  "scenarios": [
+    "Q12"
+  ],
+  "recovered_journal": "/private/var/folders/v_/dg_p8zcs2nlcg2xq_v834dlh0000gn/T/pytest-of-nielsmadan/pytest-589/test_pending_checkpoint_failur0/checkpoint failure/.loadout-state/migrations/cfa790d0668942e0ba496bbe45ff6325/journal.json"
+}

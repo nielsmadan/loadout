@@ -13,6 +13,7 @@ from typing import Any
 from .deployment import FrozenFile, atomic_install
 from .discovery import RUNTIME_FILES
 from .errors import LoadoutError
+from .git_privacy import ignored_paths
 from .migration_models import MigrationPlan
 from .migration_paths import entry_path
 
@@ -386,18 +387,28 @@ def privacy_policy(root: Path, paths: tuple[Path, ...]) -> tuple[tuple[str, str 
 
 def _authored_privacy(plan: MigrationPlan) -> tuple[tuple[Path, bool], ...]:
     result = []
+    ignored = ignored_paths(
+        (
+            *(
+                c.canonical or c.path
+                for c in plan.inventory.candidates
+                if c.disposition == "migrated"
+            ),
+            *plan.starter_dependencies,
+        )
+    )
     for candidate in plan.inventory.candidates:
         if candidate.disposition != "migrated":
             continue
         path = candidate.canonical or candidate.path
-        ignored = ignored_original(path)
-        if ignored and not candidate.private:
+        private = path in ignored
+        if private and not candidate.private:
             raise LoadoutError(
                 f"Git-derived source privacy changed since discovery: {candidate.path}"
             )
-        result.append((path, ignored))
+        result.append((path, private))
     for path in plan.starter_dependencies:
-        if ignored_original(path):
+        if path in ignored:
             raise LoadoutError(
                 f"Git-derived starter privacy changed after migration preview: {path}"
             )
@@ -406,17 +417,17 @@ def _authored_privacy(plan: MigrationPlan) -> tuple[tuple[Path, bool], ...]:
 
 
 def ignored_original(path: Path) -> bool:
-    result = git(path.parent, "check-ignore", "-q", "--", path.name, check=False)
-    if result.returncode in {0, 1}:
-        return result.returncode == 0
-    if b"not a git repository" in result.stderr:
-        return False
-    raise LoadoutError(f"could not verify original source privacy: {path}")
+    return path in ignored_paths((path,))
+
+
+def verify_authored_privacy(prepared: GitPreparation) -> None:
+    ignored = ignored_paths(path for path, _ in prepared.authored_privacy)
+    if any((path in ignored) != private for path, private in prepared.authored_privacy):
+        raise LoadoutError("Git-derived source privacy changed after migration preview")
 
 
 def verify_git(prepared: GitPreparation) -> None:
-    if any(ignored_original(path) != ignored for path, ignored in prepared.authored_privacy):
-        raise LoadoutError("Git-derived source privacy changed after migration preview")
+    verify_authored_privacy(prepared)
     if prepared.existing:
         if identity(prepared.root) != (prepared.head, prepared.symbolic):
             raise LoadoutError("Git HEAD or symbolic ref changed after migration preview")
