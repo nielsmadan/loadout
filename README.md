@@ -252,8 +252,9 @@ Pi's plugin declaration shares `settings.json` with `lastChangelogVersion`, a cu
 after upgrades. The built-in Pi preset preserves that live key automatically; it does not belong
 in a settings fragment and loadout refuses a fragment that tries to manage it.
 
-`module-config` carries a module's *own* configuration — Pi's `pi-statusline.json` and the like.
-Files under `<source>/module-config/<agent>/` are copied verbatim to the same relative path
+`module-config` carries a module's *own* content — Pi's `pi-statusline.json`, a Claude hook
+script the `hooks` slice names by path, an OpenCode plugin's `.ts` file. Files under
+`<source>/module-config/<agent>/` are copied verbatim to the same relative path
 beneath that harness's config directory, keeping the module's formatting and any executable bit.
 The path is authored rather than derived because it has to be: `pi-subagents` reads
 `extensions/subagent/config.json`. See

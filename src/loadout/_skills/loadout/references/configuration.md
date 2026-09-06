@@ -32,7 +32,7 @@ are outside this workflow.
 | `defaults` | unsupported | unsupported | Codex top-level settings via `defaults/<name>.json` fragments |
 | `hooks` | unsupported | unsupported | `hooks/<name>.json` fragments selected by agents offering hooks |
 | `plugins` | unsupported | unsupported | `plugins/<name>.json` fragments selected by agents offering plugins |
-| `module-config` | unsupported | unsupported | Pi module files under `module-config/pi/<relative path>` |
+| `module-config` | unsupported | unsupported | supported for `claude`, `opencode`, `pi` via `module-config/<agent>/<relative path>`; Codex unsupported |
 | `templates` | unsupported | declarations and vendored copies under `loadout/templates/` | definitions under `templates/<name>/` in declared sources |
 | `harnesses` | unsupported | `harnesses` in `loadout/config.toml` | declared agent blocks or legacy targets |
 | `profiles` | unsupported | unsupported | `loadout.toml` plus `<profile>.toml` files |
@@ -91,9 +91,10 @@ request and a tool-approval request therefore change different source files even
 the same server.
 
 Global module configuration is copied byte-for-byte from
-`module-config/<agent>/<relative path>` to that agent's configuration directory. Pi is the only
-configured agent with this slice today. The relative path is authored by the module and must not
-be derived from its package name.
+`module-config/<agent>/<relative path>` to that agent's configuration directory. Claude, OpenCode
+and Pi offer this slice; Codex does not. The relative path is authored by the module and must not
+be derived from its package name. An OpenCode plugin's `.ts` file belongs here rather than under
+`plugins`, which renders enablement OpenCode has no list for.
 
 Project instructions are named in `loadout/config.toml` and stored in
 `loadout/instructions/<name>.md`. Project skills are whole trees under

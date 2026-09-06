@@ -82,14 +82,24 @@ surfaces the difference.
 
 ## Other harnesses
 
-Claude and Pi both have a `module-config` entry, and they exercise the mechanism differently
-— which is the point of it being harness-neutral rather than a Pi special case.
+Claude, OpenCode and Pi all have a `module-config` entry, and each exercises the mechanism
+differently — which is the point of it being harness-neutral rather than a Pi special case.
 
 **Claude's case is hook scripts.** The hooks slice registers a command *by path*
 (`~/.claude/hooks/enforce-fix-failures.sh`); module-config puts the file at that path. Two
 slices, one for the declaration and one for the file it names, and the exec bit that makes
 the second runnable is preserved by the copy.
 
-**OpenCode has nothing to carry.** There a plugin's `.ts` file *is* its enablement, so the
-file belongs to the plugins slice rather than this one — see [plugins.md](plugins.md). Codex
-has no module-config entry because no candidate has appeared.
+**OpenCode's case is whole plugins.** A plugin is on there because a `.ts` file exists in
+`~/.config/opencode/plugins/`, so there is no enablement list and the plugins slice has
+nothing to render — see [plugins.md](plugins.md#what-each-harness-gets). That leaves the file
+itself, which is content, so `module-config/opencode/plugins/<name>.ts` is what carries it.
+
+The worked case is a plugin some other tool generates. `hooklinesinker` writes its OpenCode
+integration as one `.ts` file carrying an absolute path to its own binary, exactly as it
+writes hook JSON for Claude and Codex; `module-config` vendors the bytes the same way a
+`hooks` fragment vendors that JSON. The machine-specific path stays in the source, because
+`Copied` is verbatim and has no `substitute` — the same authorial gate as
+[machine state](#what-this-slice-does-not-do).
+
+Codex has no module-config entry because no candidate has appeared.

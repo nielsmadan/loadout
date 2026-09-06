@@ -150,6 +150,11 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
     },
     "opencode": {
         "skills": SliceOutput(destination="${XDG_CONFIG_HOME:-~/.config}/opencode/skills"),
+        # A root, as for claude and pi. Here it carries plugin `.ts` files: a
+        # plugin is on because its file is in `plugins/`, so there is no
+        # enablement list and the plugins slice has nothing to render — the file
+        # itself is the content, and content is this slice's job.
+        "module-config": SliceOutput(destination="${XDG_CONFIG_HOME:-~/.config}/opencode"),
         # A document at a path, exactly like the other three — *not* the
         # `instructions` key in opencode.json, which is a separate feature for
         # including rule files someone else already wrote (globs and remote URLs

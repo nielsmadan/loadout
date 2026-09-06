@@ -1,8 +1,11 @@
-"""The module-config slice: a module's own config, carried verbatim.
+"""The module-config slice: a module's own content, carried verbatim.
 
 Both shapes Pi actually uses are pinned here — a flat `<pkg>.json` at the agent
 root, and `extensions/<dir>/config.json` one level down — because the second is
 the reason the relative path is authored rather than derived from a module name.
+
+OpenCode's entry is pinned for a different reason: there a plugin's `.ts` file is
+its own enablement, so nothing renders it and only this slice can place it.
 """
 
 from __future__ import annotations
@@ -29,6 +32,8 @@ allow = ["alpha"]
 # and a verbatim copy is what preserves that. Rendering would make it 2-space.
 STATUSLINE = '{\n\t"density": "compact",\n\t"segments": ["model", "cwd"]\n}\n'
 SUBAGENT = '{\n  "maxConcurrent": 3\n}\n'
+# OpenCode's case is not config at all: the plugin file is the whole module.
+PLUGIN = "export const Tracker = async () => ({})\n"
 
 
 def build(tmp_path: Path, body: str, files: dict[str, str] | None = None) -> Path:
@@ -158,15 +163,19 @@ def test_an_executable_file_keeps_its_mode(tmp_path: Path, monkeypatch: pytest.M
 
 
 def test_the_slice_is_not_pi_specific(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Two harnesses, each reading only its own subtree. Claude's case is a hook
-    script: the hooks slice registers a command by path, this puts a file there."""
+    """Three harnesses, each reading only its own subtree, each carrying a
+    different kind of file. Claude's is a hook script the hooks slice registers by
+    path; OpenCode's is a whole plugin, where the file *is* the enablement and the
+    plugins slice therefore has nothing to render."""
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     monkeypatch.setenv("PI_CODING_AGENT_DIR", str(tmp_path / "pi"))
     root = build(
         tmp_path / "src",
-        '[claude]\ninstructions = ["intro"]\n\n[pi]\n',
+        '[claude]\ninstructions = ["intro"]\n\n[opencode]\n\n[pi]\n',
         {
             "claude/hooks/notify.sh": "#!/bin/sh\necho claude\n",
+            "opencode/plugins/tracker.ts": PLUGIN,
             "pi/pi-statusline.json": STATUSLINE,
         },
     )
@@ -174,8 +183,40 @@ def test_the_slice_is_not_pi_specific(tmp_path: Path, monkeypatch: pytest.Monkey
     (root / "instructions" / "intro.md").write_text("intro\n", encoding="utf-8")
 
     write_all(root)
+    opencode = tmp_path / "xdg" / "opencode"
     assert (tmp_path / "claude" / "hooks" / "notify.sh").is_file()
+    assert (opencode / "plugins" / "tracker.ts").read_text(encoding="utf-8") == PLUGIN
     assert (tmp_path / "pi" / "pi-statusline.json").is_file()
-    # Neither harness receives the other's tree.
+    # No harness receives another's tree.
     assert not (tmp_path / "claude" / "pi-statusline.json").exists()
     assert not (tmp_path / "pi" / "hooks").exists()
+    assert not (opencode / "hooks").exists()
+
+
+def test_an_opencode_plugin_lands_beside_the_generated_hooks_plugin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two slices write into `plugins/`, and only a same-path clash is a clash.
+
+    The hooks slice owns `loadout-hooks.js` there, which is why the collision
+    guard has to admit this: a vendored plugin is a *sibling* of a generated one,
+    not a competitor for its path. Both files are asserted present, so the test
+    still fails if the guard widens into refusing the directory.
+    """
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    root = build(
+        tmp_path / "src",
+        '[opencode]\nhooks = ["notify"]\n',
+        {"opencode/plugins/tracker.ts": PLUGIN},
+    )
+    (root / "hooks").mkdir(exist_ok=True)
+    (root / "hooks" / "notify.json").write_text(
+        '{"PreToolUse": [{"matcher": "Bash", "hooks": '
+        '[{"type": "command", "command": "notify.sh"}]}]}',
+        encoding="utf-8",
+    )
+
+    write_all(root)
+    plugins = tmp_path / "xdg" / "opencode" / "plugins"
+    assert (plugins / "tracker.ts").read_text(encoding="utf-8") == PLUGIN
+    assert (plugins / "loadout-hooks.js").is_file()

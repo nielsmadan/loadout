@@ -136,7 +136,8 @@ def test_capability_matrix_pins_every_scope_mapping() -> None:
         "module-config": (
             "unsupported",
             "unsupported",
-            "Pi module files under `module-config/pi/<relative path>`",
+            "supported for `claude`, `opencode`, `pi` via "
+            "`module-config/<agent>/<relative path>`; Codex unsupported",
         ),
         "templates": (
             "unsupported",

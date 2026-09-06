@@ -41,6 +41,8 @@ test is a gap.
 | `module-config-verbatim` | bytes are copied, not reserialised, and the exec bit survives | [module-config](module-config.md#what-loadout-does) | `test_the_bytes_are_copied_rather_than_reserialised`, `test_an_executable_file_keeps_its_mode` |
 | `module-config-automatic` | the directory is the declaration; `module-config = false` opts out | [module-config](module-config.md#what-loadout-does) | `test_the_directory_is_the_declaration`, `test_module_config_false_switches_it_off` |
 | `module-config-collision` | two sources offering one path, or a path on a rendered destination, are refused | [module-config](module-config.md#what-loadout-does) | `test_a_path_offered_by_two_sources_is_refused`, `test_a_path_colliding_with_a_rendered_destination_is_refused` |
+| `module-config-harnesses` | three harnesses carry three kinds of file, each reading only its own subtree | [module-config](module-config.md#other-harnesses) | `test_the_slice_is_not_pi_specific` |
+| `module-config-opencode-plugin` | a vendored OpenCode plugin lands in `plugins/` beside the generated `loadout-hooks.js` | [module-config](module-config.md#other-harnesses) | `test_an_opencode_plugin_lands_beside_the_generated_hooks_plugin` |
 
 | `json-surgery-identity` | applying loadout's keys to an already-applied file is a no-op, so `check` reports no drift | [servers](servers.md#claudes-global-entry-writes-claudejson) | `test_applying_what_is_already_there_is_identity` |
 | `json-surgery-in-place` | an owned key is replaced where it sits, never moved to the end | [servers](servers.md#claudes-global-entry-writes-claudejson) | `test_an_owned_key_is_replaced_where_it_sits` |

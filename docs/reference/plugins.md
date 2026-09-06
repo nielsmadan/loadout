@@ -50,7 +50,7 @@ schema, so the harness decides. (Validation invented from one machine's files is
 | Claude | `~/.claude/settings.json` → `enabledPlugins` | `"<name>@<marketplace>": true` |
 | Codex | `~/.codex/config.toml` → `plugins`, `marketplaces` | `[plugins."<name>@<marketplace>"]`, `[marketplaces.<name>]` |
 | Pi | `~/.pi/agent/settings.json` → `packages` | the source, or an object carrying its filters |
-| OpenCode | — | nothing; see below |
+| OpenCode | — | nothing; the file goes through module-config, see below |
 
 **Claude's is the fourth slice landing in `settings.json`**, after settings, permissions and
 hooks. It owns one key and nothing else in the file.
@@ -80,7 +80,13 @@ turning the cursor into versioned source.
 there because a `.ts` file exists in `~/.config/opencode/plugins/`, and its dependencies live in
 an npm manifest `npm`/`bun` owns. There is no enablement list to render, so `plugins` under
 `[opencode]` is an error listing what that agent does offer. Placing those files is *content*,
-not enablement.
+not enablement — so the file goes through
+[module-config](module-config.md#other-harnesses) instead.
+
+**Out of this slice is not unsupported**, and stating only the first is what left
+`~/.config/opencode/plugins/` owned by neither slice: this page called the file content and
+stopped, while module-config's page called it enablement and pointed back here. Two locally
+true sentences, one unreachable destination.
 
 ## On and off
 
