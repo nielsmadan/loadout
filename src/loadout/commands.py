@@ -226,13 +226,6 @@ def _display(path: Path, root: Path) -> str:
         return str(path)
 
 
-# Case-insensitive because the banner has been both `GENERATED` and `Generated`;
-# a normaliser that only knows the current spelling fails exactly when it is
-# needed, which is the sync that changes the spelling.
-# `//` is here for the generated hook adapters, which are JavaScript and
-# TypeScript. Every other generated file comments with `#` or `<!--`, so a
-# comment marker this did not know would leave the banner in the compared text
-# and reintroduce the whole-tree false positive for exactly those two files.
 def _render_variants(
     source_root: Path, profiles: Iterable[str], rebase_to: Path
 ) -> dict[Path, set[str]]:
@@ -388,7 +381,9 @@ def cmd_sync(root: Path, profile: str = "default", force: bool = False) -> int:
             return 1
 
     try:
-        written = write_outputs(outputs, scopes=artifact_deployment_scopes(root, profile), force=force)
+        written = write_outputs(
+            outputs, scopes=artifact_deployment_scopes(root, profile), force=force
+        )
     except DeploymentConflict as error:
         print(f"Sync aborted: {error}", file=sys.stderr)
         return 1
@@ -404,7 +399,7 @@ def _entries_for(outputs: Mapping[Path, Output]) -> dict[Path, WrittenEntry]:
     entries: dict[Path, WrittenEntry] = {}
     for path, content in outputs.items():
         if isinstance(content, Copied):
-            entries[path] = copied_entry(content.source, content.prefix)
+            entries[path] = copied_entry(content.source, content.prefix, mode=content.file_mode())
         elif isinstance(content, Merged):
             entries[path] = merged_entry(content.owned)
         else:

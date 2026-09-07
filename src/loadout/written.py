@@ -202,11 +202,10 @@ def text_entry(path: Path, content: str) -> WrittenEntry:
     )
 
 
-def copied_entry(source: Path, prefix: bytes = b"") -> WrittenEntry:
+def copied_entry(source: Path, prefix: bytes = b"", *, mode: int | None = None) -> WrittenEntry:
     data = prefix + source.read_bytes()
-    return WrittenEntry(
-        kind="copied", sha256=_digest(data), executable=bool(source.stat().st_mode & 0o111)
-    )
+    actual_mode = source.stat().st_mode if mode is None else mode
+    return WrittenEntry(kind="copied", sha256=_digest(data), executable=bool(actual_mode & 0o111))
 
 
 def merged_entry(owned: Iterable[str]) -> WrittenEntry:

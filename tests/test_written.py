@@ -7,10 +7,12 @@ the behaviour that existed before it.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
 from loadout import commands
+from loadout.artifacts import Copied
 from loadout.written import (
     WrittenEntry,
     accepts_bytes,
@@ -105,3 +107,14 @@ def test_a_record_that_cannot_be_written_is_not_an_error(tmp_path: Path, monkeyp
 
     assert record_written(tmp_path, "default", {Path("/dest/out.md"): entry()}) is None
     assert read_written(tmp_path) == {}
+
+
+def test_copied_output_record_matches_the_emitted_prefix_and_mode(tmp_path: Path) -> None:
+    source = tmp_path / "source.md"
+    source.write_bytes(b"instructions\n")
+    source.chmod(0o644)
+    output = tmp_path / "output.md"
+    copied = Copied(source, prefix=b"generated\n", mode=0o755)
+    entries = commands._entries_for({output: copied})
+    assert entries[output].sha256 == hashlib.sha256(b"generated\ninstructions\n").hexdigest()
+    assert entries[output].executable is True
