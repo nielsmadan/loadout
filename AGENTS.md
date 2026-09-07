@@ -8,7 +8,9 @@ Codex, OpenCode and Pi. Antigravity (`agy`) was dropped — see
 
     just setup        # install dependencies and verify tools
     just doctor       # verify tools
-    just install      # install as an editable tool on PATH
+    just install      # install or replace the current-source snapshot on PATH
+    just install-editable  # link the installed command to this checkout
+    just uninstall    # remove the installed CLI, preserving configuration
     just check        # ruff check + ruff format --check + mypy --strict + pytest — run before every commit
     just test         # pytest only
 

@@ -23,9 +23,14 @@ doctor:
     [ "$fail" -eq 0 ] && printf 'Everything in place.\n'
     exit $fail
 
-# Install `loadout` onto PATH as an editable tool, so ~/ac can call it.
 install:
-    @uv tool install --editable . --force
+    @uv tool install --reinstall --force .
+
+install-editable:
+    @uv tool install --reinstall --force --editable .
+
+uninstall:
+    @uv tool uninstall loadout
 
 test:
     @uv run pytest -q

@@ -6,6 +6,11 @@ One source of truth for AI coding-agent configuration, rendered out to every har
 
     just install
 
+This installs a snapshot of the current checkout onto `PATH`. Run it again after changes
+to replace the installed code, even when the package version is unchanged.
+Use `just install-editable` to have source edits take effect without reinstalling.
+`just uninstall` removes the CLI installation and preserves configuration and generated files.
+
 ## Use
 
     loadout sync                  # regenerate generated files under the current repo
