@@ -121,7 +121,7 @@ def test_capability_matrix_pins_every_scope_mapping() -> None:
         "defaults": (
             "unsupported",
             "unsupported",
-            "Codex top-level settings via `defaults/<name>.json` fragments",
+            "Codex top-level and nested settings via `defaults/<name>.json` fragments",
         ),
         "hooks": (
             "unsupported",

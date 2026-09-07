@@ -22,7 +22,7 @@ from ..servers import (
     render_opencode_servers,
     render_pi_servers,
 )
-from ..surgery import reject_nested
+from ..toml_paths import key_name, key_path, leaf_values, overlapping_keys
 from .rules import MCP_SEED, Rules, is_glob, mcp_native, mcp_parts
 
 JsonRenderer = Callable[[Rules, dict[str, Any]], dict[str, Any]]
@@ -121,7 +121,7 @@ class MergedJsonSpec:
 
 @dataclass(frozen=True)
 class MergedTomlSpec:
-    """A renderer contributing top-level keys to a file loadout does not own.
+    """A renderer contributing owned TOML key paths to a file loadout does not own.
 
     Unlike `DocumentTextSpec` this **composes**: several slices write into
     `~/.codex/config.toml`, and applying each on its own would mean the second
@@ -323,13 +323,15 @@ def _removed(content: dict[str, Any], label: str) -> tuple[str, ...]:
     raw = content.get(REMOVE_KEY, [])
     if not isinstance(raw, list) or not all(isinstance(name, str) and name for name in raw):
         raise LoadoutError(f"{label}: {REMOVE_KEY} must be a list of key names")
-    both = sorted(set(raw) & set(content))
+    removed = frozenset(key_name(key_path(name)) for name in raw)
+    present = frozenset(key_name(path) for path, _ in leaf_values(content))
+    both = sorted(overlapping_keys(removed, present))
     if both:
         raise LoadoutError(
             f"{label}: {', '.join(both)} is both given a value and listed in "
             f"{REMOVE_KEY}; a key is either managed or evicted, not both"
         )
-    return tuple(raw)
+    return tuple(sorted(removed))
 
 
 def _fragment_keys(content: dict[str, Any]) -> frozenset[str]:
@@ -338,20 +340,20 @@ def _fragment_keys(content: dict[str, Any]) -> frozenset[str]:
     fragment never mentions again*, so the caller unions this with the recorded set
     (ADR 0017, `_attach_records`); `$remove` covers the other case, a key that must
     stay owned because something else keeps writing it back."""
-    keys = frozenset(content) - {REMOVE_KEY}
+    keys = frozenset(key_name(path) for path, _ in leaf_values(content) if path[0] != REMOVE_KEY)
     return keys | frozenset(_removed(content, "codex.defaults"))
 
 
 def render_codex_settings(rules: Rules, content: dict[str, Any]) -> str:
-    """Top-level Codex settings, as scalars.
-
-    No banner: `apply_toml` keeps only assignment lines from a rendered document,
-    so a comment here would be dropped anyway, and emitting one would suggest
-    config.toml carries a generated header when it does not.
-    """
     _removed(content, "codex.defaults")
-    managed = {key: value for key, value in content.items() if key != REMOVE_KEY}
-    reject_nested(managed, "codex.defaults")
+    managed: dict[str, Any] = {}
+    for path, value in leaf_values(content):
+        if path[0] == REMOVE_KEY:
+            continue
+        table = managed
+        for key in path[:-1]:
+            table = table.setdefault(key, {})
+        table[path[-1]] = value
     document = tomlkit.document()
     for key in sorted(managed):
         document[key] = managed[key]

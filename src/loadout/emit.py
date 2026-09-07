@@ -74,6 +74,7 @@ from .skills import SKILL_DOCUMENT, Skill, discover_skills, render_skill
 from .sources import Source
 from .surgery import apply_json, apply_toml, concat_documents
 from .templates import VENDORED, resolve_template
+from .toml_paths import overlapping_keys
 
 PERMISSIONS_SOURCE = ("permissions.toml",)
 PROJECT_SOURCE = "permissions.toml"
@@ -309,7 +310,7 @@ def _compose_merged(
     for (target, _, content), spec in zip(contributors, specs, strict=True):
         assert isinstance(spec, MergedTomlSpec)
         declared = spec.owns(content) if callable(spec.owns) else spec.owns
-        clash = owned & declared
+        clash = overlapping_keys(frozenset(owned), declared)
         if clash:
             raise LoadoutError(
                 f"permissions.{target.name}: {sorted(clash)} is already owned by another "
@@ -355,7 +356,11 @@ def _attach_records(
         # fragment's raw keys. `$remove` is vocabulary rather than a destination key,
         # and recording it would have loadout stripping a key named `$remove`.
         present = spec.owns(content)
-        owned |= read_record(path) | present
+        recorded = read_record(path)
+        clash = overlapping_keys(recorded, owned - present)
+        if clash:
+            raise LoadoutError(f"{path}: {sorted(clash)} is already owned by another slice")
+        owned |= recorded | present
         records.append((path, render_record(present)))
     if not records:
         return document
@@ -1178,7 +1183,7 @@ def atomic_write(path: Path, content: str) -> None:
     target = path.resolve() if path.is_symlink() else path
     fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=".loadout-")
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
             handle.write(content)
         os.replace(tmp, target)
     except BaseException:
@@ -1286,7 +1291,7 @@ def check_all(root: Path, profile: str = "default") -> list[tuple[Path, str, str
                     (path, describe_file(path), describe_file(expected.source, expected.prefix))
                 )
             continue
-        actual = path.read_text(encoding="utf-8") if path.is_file() else ""
+        actual = path.read_text(encoding="utf-8", newline="") if path.is_file() else ""
         # Applying is identity on everything loadout does not own, so this compares
         # owned keys alone: the harness writing its own project table cannot read
         # as drift.
@@ -1317,7 +1322,7 @@ def _atomic_frozen_copy(path: Path, content: bytes, mode: int) -> None:
 def _applied(path: Path, merged: Merged) -> str:
     """The destination with loadout's keys written in. The caller reads the file;
     the renderer that produced `merged` never did (ADR 0001)."""
-    existing = path.read_text(encoding="utf-8") if path.is_file() else ""
+    existing = path.read_text(encoding="utf-8", newline="") if path.is_file() else ""
     if merged.native:
         return apply_document(existing, merged.owned, merged.document, merged.format)
     apply = apply_json if merged.format == "json" else apply_toml

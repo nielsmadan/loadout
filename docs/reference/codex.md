@@ -84,7 +84,7 @@ values back. Everything else is passed through untouched. See
 |---|---|---|
 | `mcp` | `mcp_servers` | `permissions.toml` (approval policy) + `mcp.toml` (definitions) |
 | `plugins` | `plugins`, `marketplaces` | the `plugins` slice |
-| `defaults` | whatever the fragment names | `loadout/defaults/<name>.json` |
+| `defaults` | leaf paths in the fragment, plus `$remove` paths | `loadout/defaults/<name>.json` |
 
 `mcp` renders both halves from **one** renderer. Codex keys a server's definition and its
 approval policy off the same `[mcp_servers.<name>]` table, so two slices writing it would
@@ -96,3 +96,40 @@ could enumerate, so ownership there is *derived* and cannot express a removal on
 therefore keeps an owned-key record beside its fragment (`loadout/defaults/<name>.owned`); the
 union of that record and the fragment's current keys is what gets stripped, which is what makes
 deleting a key remove it from `config.toml` rather than stranding it there forever.
+
+### Nested defaults
+
+A defaults fragment can contain nested JSON objects:
+
+```json
+{"skills": {"max_context_tokens": 10000}}
+```
+
+This owns `skills.max_context_tokens`, recorded with that exact path in `codex.owned`, and
+renders a `max_context_tokens` assignment under `[skills]`. Other settings in that table,
+including `[[skills.config]]` per-skill overrides, remain untouched. Removing the leaf from
+the fragment removes its assignment on the next sync; the parent table and foreign fields
+remain. An empty object declares no ownership. Arrays, including arrays of tables, own one
+whole field; individual array elements cannot be managed independently.
+
+Codex documents this budget as applying to the initial available-skills catalog. Its default
+is 2% of the model context window, and explicit overrides are capped at 10,000 tokens.
+See the [official configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
+
+Ownership records and `$remove` entries use TOML key-path syntax. Dots separate nested keys;
+quote a component containing a literal dot. In the JSON fragment itself, use nested objects:
+`{"skills.max_context_tokens": 10000}` would instead manage a literal top-level key named
+`skills.max_context_tokens`. New records carry `# loadout-owned-format: 2`; unversioned
+records are read as literal top-level names and rewritten in the new format on sync. An old
+record naming `skills.config` therefore cannot delete foreign `[[skills.config]]` overrides.
+Unknown or invalid format markers are refused before destination writes. Fields reserved by
+another slice cannot also be managed through defaults.
+
+Surgery scans complete assignments once and recognizes only physical TOML line endings;
+Unicode separators inside comments remain comment text. Quoted/dotted keys, multiline strings
+and arrays are recognized without reserializing foreign content. File-backed sync and check
+preserve foreign CRLF bytes. New array tables use the same spacing as later replacements, so
+the first sync is immediately clean under check. If the existing parent is an inline table or scalar, leaf
+editing is refused: expand that parent into a regular TOML table before retrying. Managing
+a child inside an array-table element is likewise refused. Invalid TOML is rejected before
+writing anything.

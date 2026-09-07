@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .errors import LoadoutError
+from .toml_paths import key_name, key_path
+
 BANNER = "# Keys loadout manages in this destination. Generated; edit the fragment instead."
+FORMAT_PREFIX = "# loadout-owned-format:"
+FORMAT = f"{FORMAT_PREFIX} 2"
 
 
 def read_record(path: Path) -> frozenset[str]:
@@ -13,11 +18,12 @@ def read_record(path: Path) -> frozenset[str]:
     """
     if not path.is_file():
         return frozenset()
-    return frozenset(
-        line.strip()
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip() and not line.lstrip().startswith("#")
-    )
+    lines = path.read_text(encoding="utf-8").split("\n")
+    formats = [line.strip() for line in lines if line.strip().startswith(FORMAT_PREFIX)]
+    if formats and formats != [FORMAT]:
+        raise LoadoutError(f"{path}: unsupported ownership record format")
+    names = (line.strip() for line in lines if line.strip() and not line.lstrip().startswith("#"))
+    return frozenset(key_name(key_path(name) if formats else (name,)) for name in names)
 
 
 def render_record(keys: frozenset[str]) -> str:
@@ -26,9 +32,7 @@ def render_record(keys: frozenset[str]) -> str:
     Two machines syncing both rewrite this file, so it is line-oriented and
     ordered to keep the inevitable merge conflict trivial to resolve.
     """
-    if not keys:
-        return f"{BANNER}\n"
-    return "\n".join([BANNER, *sorted(keys)]) + "\n"
+    return "\n".join([BANNER, FORMAT, *sorted(keys)]) + "\n"
 
 
 def owned_now(recorded: frozenset[str], present: frozenset[str]) -> frozenset[str]:

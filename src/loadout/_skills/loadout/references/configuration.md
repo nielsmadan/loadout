@@ -79,7 +79,7 @@ Legacy preset routes only; check declared native producers first.
 | `instructions` | unsupported | `loadout/config.toml` and `loadout/instructions/*.md` | manifest selection and `instructions/*.md` fragments |
 | `skills` | unsupported | supported for `claude`, `opencode`, `pi` via `loadout/skills/<name>/`; Codex unsupported | `skills/<name>/` trees from selected sources |
 | `settings` | unsupported | unsupported | supported for `claude`, `opencode` via `settings/<name>.json` fragments; Codex uses `defaults`; Pi unsupported |
-| `defaults` | unsupported | unsupported | Codex top-level settings via `defaults/<name>.json` fragments |
+| `defaults` | unsupported | unsupported | Codex top-level and nested settings via `defaults/<name>.json` fragments |
 | `hooks` | unsupported | unsupported | `hooks/<name>.json` fragments selected by agents offering hooks |
 | `plugins` | unsupported | unsupported | `plugins/<name>.json` fragments selected by agents offering plugins |
 | `module-config` | unsupported | unsupported | supported for `claude`, `opencode`, `pi` via `module-config/<agent>/<relative path>`; Codex unsupported |
@@ -117,8 +117,13 @@ apply the supported mappings and report each exclusion; it is a question only wh
 mappings have materially different effects.
 
 For legacy presets, global settings fragments reach Claude and OpenCode because their document renderers preserve the
-settings residual. Codex top-level settings use the separate `defaults` slice and
-`defaults/<name>.json` fragments; map requests for a Codex model or other top-level default there.
+settings residual. Codex settings use the separate `defaults` slice and
+`defaults/<name>.json` fragments, including nested settings. For the available-skills catalog
+budget, use `{"skills": {"max_context_tokens": 10000}}`, not a dotted JSON key. Loadout owns
+only the named leaf, preserving other `skills` fields and `[[skills.config]]` overrides.
+Empty objects own nothing; arrays are managed as whole fields. If surgery refuses an inline
+parent table or a child inside an array-table element, report the conflict rather than widening
+ownership. `$remove` entries use TOML key paths, such as `"skills.max_context_tokens"`.
 Pi's permission document does not preserve a settings residual, so report Pi as unsupported instead
 of editing its harness-owned settings file.
 

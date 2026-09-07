@@ -6,7 +6,7 @@ import tomllib
 import pytest
 
 from loadout.errors import LoadoutError
-from loadout.surgery import apply_json, apply_toml, reject_nested
+from loadout.surgery import apply_json, apply_toml
 
 OWNED = frozenset({"model", "mcp_servers"})
 
@@ -102,13 +102,6 @@ def test_a_destination_that_does_not_exist_yet_renders_from_empty() -> None:
 
     assert 'model = "gpt-5.6-sol"' in result
     assert "[mcp_servers.context7]" in result
-
-
-def test_a_table_valued_key_is_refused_by_name() -> None:
-    """Flattening one would move it under whichever table precedes it, changing
-    what it configures rather than failing."""
-    with pytest.raises(LoadoutError, match="'nested' is a table"):
-        reject_nested({"model": "x", "nested": {"a": 1}}, "codex.settings")
 
 
 def test_removing_every_server_removes_the_whole_table_tree() -> None:

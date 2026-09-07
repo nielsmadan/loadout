@@ -296,16 +296,32 @@ The path is authored rather than derived because it has to be: `pi-subagents` re
 `extensions/subagent/config.json`. See
 [docs/reference/module-config.md](docs/reference/module-config.md).
 
-`defaults` (Codex only) must be named for a stronger reason: it manages **top-level keys of
+`defaults` (Codex only) must be named for a stronger reason: it manages **selected keys of
 `~/.codex/config.toml`**, a file loadout does not own, and it strips every key it manages. A
 machine that never asked for it must never have its hand-maintained Codex settings touched, so
 absence means *loadout manages none of them*. It takes fragment names resolved as
-`<source>/defaults/<name>.json`, whose keys and values become top-level TOML:
+`<source>/defaults/<name>.json`, whose objects become TOML tables:
 
 ```toml
 [codex]
 defaults = "codex"        # loadout/defaults/codex.json → model, model_reasoning_effort, …
 ```
+
+Nested objects own their leaf fields, not the entire parent table. For example, this fragment
+sets the available-skills catalog budget without managing other `skills` settings:
+
+```json
+{
+  "skills": {
+    "max_context_tokens": 10000
+  }
+}
+```
+
+It renders `max_context_tokens = 10000` under `[skills]` and preserves `[[skills.config]]` overrides.
+An empty object owns nothing. Arrays are owned as a whole field, not element by element.
+Use nested JSON objects, not a literal `"skills.max_context_tokens"` JSON key: the latter is
+a distinct, quoted TOML key. See [nested Codex defaults](docs/reference/codex.md#nested-defaults).
 
 Because the key names are yours rather than a set loadout could enumerate, that slice keeps an
 owned-key record beside its fragment — `loadout/defaults/<name>.owned`, generated and committed.
@@ -313,6 +329,10 @@ It is what lets *removing* a key from the fragment remove it from `config.toml`,
 stranding it there with nothing able to say it was ever managed. Edit the fragment, never the
 record; `loadout check` reports a record that disagrees with it. See
 [0017](docs/decisions/0017-ownership-may-be-declared-instead-of-derived.md).
+
+New records identify their TOML-path format with `# loadout-owned-format: 2`. Unversioned
+records are migrated as literal top-level names, so an old dotted name cannot claim a nested
+setting. Unknown record versions are refused before destinations are written.
 
 The record covers a key you *stop* managing. A key something else keeps writing back needs the
 opposite — stay owned forever, and never carry a value. `$remove` says that:
@@ -328,7 +348,8 @@ Every sync strips those keys from the destination, body and all if the value spa
 is no value that could mean this: `null` is already taken, and `merge_documents` reads it as
 *drop from the fragment*, which un-owns the key rather than evicting it. A key that is both
 given a value and listed in `$remove` is an error — one says write this, the other says write
-nothing.
+nothing. Entries use TOML key paths, so `"skills.max_context_tokens"` removes only that field.
+Parent/child ownership conflicts, including conflicts with another slice, are refused.
 
 An unknown agent name, or a slice an agent does not offer, is an error listing what is available.
 
