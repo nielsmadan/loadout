@@ -6,6 +6,8 @@ Codex, OpenCode and Pi. Antigravity (`agy`) was dropped — see
 
 ## Commands
 
+    just setup        # install dependencies and verify tools
+    just doctor       # verify tools
     just install      # install as an editable tool on PATH
     just check        # ruff check + ruff format --check + mypy --strict + pytest — run before every commit
     just test         # pytest only
