@@ -113,7 +113,7 @@ class Snapshot:
             for name in config.templates:
                 path = templates.vendored_path(self.root, name)
                 self.dependency(path)
-                if not path.is_dir():
+                if not path.exists():
                     self.upstream(name)
         return {self.root / path for path in project_outputs(config)}
 

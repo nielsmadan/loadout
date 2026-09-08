@@ -11,12 +11,12 @@ from pathlib import Path
 from typing import Any
 
 from . import migration_git
+from .artifacts import FrozenFile
 from .deployment import (
     DeploymentEntry,
     DeploymentPlan,
     DeploymentScope,
     FileChange,
-    FrozenFile,
     Receipt,
     ScopePlan,
     _receipt_bytes,

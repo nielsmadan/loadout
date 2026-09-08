@@ -171,6 +171,9 @@ so reconstruction from Git retains full modes even though Git stores only the ex
 Declared modes take precedence over source `chmod`. Files without a declaration, including new
 tree entries, use their source mode. Rename a mode entry with its file when the override should
 follow it; entries for absent files do not create output or prevent retirement.
+Template skill contributions honor the same collection-relative `modes` entries, including
+`skill-name/SKILL.md`. Without an override, supporting files retain source modes and rendered
+template skill documents use the generated-document mode, `0600`.
 
 ## Template instruction routes
 
@@ -194,8 +197,10 @@ marks only its top-level `CLAUDE.md`/`AGENTS.md` routes; nested files and trees 
 
 Rendering prepends template instruction tiers in declared order and preserves the original body
 bytes and declared mode, falling back to the source mode. A prefix activates a dormant empty instruction source. Removing the
-prefix restores ordinary empty-source behavior. Other populated template categories are refused
-before source mutation; edit their native category sources through existing routes. See
+prefix restores ordinary empty-source behavior. Catalog manifests also contribute skills, MCP
+and permissions through compatible routes; `template_parts = false` opts a route out of those
+contributions without affecting its instruction-prefix flag. Legacy directory templates retain
+their instruction-only native behavior. See
 [templates](templates.md#bundled-starters-and-native-projects).
 
 `Copied` retains the existing output type; content consumers use `read_bytes()` to include its
@@ -230,11 +235,14 @@ resolved templates with the configuration that locates them.
 destinations, and a tree containing either is rejected before copying its files.
 
 Artifact rendering never reads destination content. It feeds the same `str`/`Copied` writer
-boundary as existing outputs; partial documents use the existing `Merged` output with an
+boundary as existing outputs; rendered template skill documents with declared modes use
+`FrozenFile` to keep their bytes and mode together. Partial documents use `Merged` with an
 explicit format and native-syntax policy. `project_outputs` includes explicit routes for ignore generation;
 the parsed artifact model exposes source paths, destination roots, category and agent membership.
 `load_artifacts` and `render_artifacts` are reusable for reconstruction in a fresh source and
 destination root; `compose_document` accepts already-loaded literal objects.
+Template composition loads each document part once, merges its contributions, then renders
+the artifact through that same document boundary.
 
 `tests/test_artifacts.py` covers literal values and ordering, dormant activation, renderer
 fidelity, per-agent trees and mode preservation, membership, source roots and collision/symlink

@@ -583,9 +583,9 @@ Drop a skill tree into `loadout/skills/<name>/` and it renders to every enabled 
 a project skills directory. No config entry — the directory is the declaration.
 
 Each harness gets **its own** directory, because a skill's content varies by harness: `::: opencode`
-sections are kept or dropped and `:concept[…]` expands per harness. Codex gets none — it has no
-project skills directory (verified against its binary; see
-[config.md](docs/reference/config.md#skills)).
+sections are kept or dropped and `:concept[…]` expands per harness. The legacy Codex preset
+does not emit project skills. Fresh native projects use `.agents/skills`; see
+[config.md](docs/reference/config.md#skills).
 
 **OpenCode needs `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1` in your shell**, or it also scans
 `.claude/skills/` and picks between the two copies of each skill at random. `loadout check` says
@@ -660,13 +660,28 @@ then to the `templates/` directory of a source the machine's global manifest dec
 to the packaged `frontend` or `backend` catalog when no declared source matches.
 Two sources offering one name is an error, not a silent preference.
 
-Native projects compose template instructions only into copy/text instruction routes marked
-`template_instructions = true`. Fresh migrations mark the top-level `CLAUDE.md` and `AGENTS.md`
-routes, preserving each original body and mode beneath the template text. Other populated template
-categories require explicit native source edits and are refused before template commands mutate
-the project. Edit the category sources named in `artifacts.toml` for their first entries.
+For shared parts, use manifests such as `loadout/templates/nextjs.toml`:
 
-`template sync` is **refuse-and-diff**: it updates an unmodified copy, and on a copy you have
+```toml
+skills = ["review-typescript"]
+instructions = ["typescript", "nextjs"]
+mcp = ["github"]
+permissions = ["node"]
+```
+
+Parts live under `templates/skills/`, `templates/instructions/`, `templates/mcp/` and
+`templates/permissions/`, separate from active global folders. Another manifest can reference
+the same parts. Vendoring keeps one shared copy; updating a shared part lists all affected
+templates and asks for confirmation. Locally modified copies block the update.
+
+Native projects compose template instructions into copy/text instruction routes marked
+`template_instructions = true`. Fresh migrations mark the top-level `CLAUDE.md` and `AGENTS.md`
+routes, preserving each original body and mode beneath the template text. Catalog manifests
+also contribute skills, MCP and permissions through compatible native routes. Directory templates
+retain their instruction-only native behavior. Unsupported routes are refused before source
+mutation; see the [catalog and route rules](docs/reference/templates.md#shared-catalog-parts).
+
+For directory templates, `template sync` is **refuse-and-diff**: it updates an unmodified copy, and on a copy you have
 edited it prints the diff and exits 1 without changing anything. `loadout check` reports such a
 copy but does not fail — a vendored template is source, not generated output
 ([0014](docs/decisions/0014-a-vendored-template-is-source-not-output.md)).

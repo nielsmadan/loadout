@@ -541,7 +541,7 @@ def test_shared_agents_tree_keeps_its_actual_consumers(tmp_path: Path) -> None:
     plan = migration(tmp_path, ("claude", "codex", "opencode", "pi"))
     assert generated(plan, path) == b"shared skill\n"
     record = next(r for r in index(plan)["artifact"] if r["output"] == ".agents/skills")
-    assert record["agents"] == ["opencode", "pi"]
+    assert record["agents"] == ["codex", "opencode", "pi"]
 
 
 def test_directory_precondition_detects_a_new_authored_input(tmp_path: Path) -> None:

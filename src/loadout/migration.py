@@ -567,8 +567,14 @@ class _PlanBuilder:
                 else (agent,)
             )
             self.dormant(instruction, consumers, "instructions")
-            if not (project and agent == "codex"):
-                self.dormant(root / "skills", (agent,), "skills", "tree")
+            shared_skills = project and "codex" in self.inventory.agents and agent != "claude"
+            skills = self.inventory.root / ".agents/skills" if shared_skills else root / "skills"
+            skill_agents = (
+                tuple(a for a in self.inventory.agents if a != "claude")
+                if shared_skills
+                else (agent,)
+            )
+            self.dormant(skills, skill_agents, "skills", "tree")
             if agent == "claude":
                 self.dormant(root / "hooks", (agent,), "hooks", "tree")
                 self.dormant(root / "commands", (agent,), "instructions", "tree")

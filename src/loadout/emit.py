@@ -8,13 +8,20 @@ from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from .artifacts import Artifacts, Copied, Merged, Output, render_artifacts, validate_artifact_paths
+from .artifacts import (
+    Artifacts,
+    Copied,
+    FrozenFile,
+    Merged,
+    Output,
+    render_artifacts,
+    validate_artifact_paths,
+)
 from .bundled_templates import BUNDLED
 from .composition import HEADER, load_fragment, render
 from .deployment import (
     DeploymentConflict,
     DeploymentScope,
-    FrozenFile,
     apply_deployment,
     prepare_deployment,
 )
@@ -36,7 +43,7 @@ from .manifest import (
 )
 from .module_config import MODULE_CONFIG_SUBDIR, discover_module_config
 from .native_documents import apply_document
-from .native_templates import native_template_prefix
+from .native_templates import render_native_templates
 from .notices import (
     OPENCODE_SKILL_FLAGS,
     Notice,
@@ -61,7 +68,6 @@ from .plugins import marketplaces
 from .project import (
     PROJECT_CONFIG_NAME,
     PROJECT_DIR,
-    TEMPLATE_INSTRUCTIONS,
     ProjectConfig,
     load_project_config,
     project_config_path,
@@ -73,6 +79,7 @@ from .servers import SERVERS_SOURCE, Server, parse_servers
 from .skills import SKILL_DOCUMENT, Skill, discover_skills, render_skill
 from .sources import Source
 from .surgery import apply_json, apply_toml, concat_documents
+from .template_catalog import Catalog, contribution_paths, load_catalogs
 from .templates import VENDORED, resolve_template
 from .toml_paths import overlapping_keys
 
@@ -986,7 +993,9 @@ def _global_source_inputs(root: Path, manifest: Manifest) -> tuple[Path, ...]:
 def _project_source_inputs(root: Path, config: ProjectConfig) -> tuple[Path, ...]:
     inputs = [root / PROJECT_DIR]
     templates = [resolve_template(name, root) for name in config.templates]
-    inputs.extend(template.path for template in templates)
+    inputs.extend(
+        template.path.parent if template.path.is_file() else template.path for template in templates
+    )
     if any(template.source not in {VENDORED, BUNDLED} for template in templates):
         path = machine_config_path()
         machine = load_machine_config(path)
@@ -1000,16 +1009,8 @@ def render_project(root: Path) -> dict[Path, Output]:
     if config.presets:
         return _render_project_presets(root, config)
     templates = tuple(resolve_template(name, root) for name in config.templates)
-    prefix = native_template_prefix(config, templates)
-    return (
-        render_artifacts(
-            config.artifacts,
-            project_root=root,
-            source_inputs=_project_source_inputs(root, config),
-            instruction_prefix=prefix,
-        )
-        if config.artifacts is not None
-        else {}
+    return render_native_templates(
+        root, config, templates, source_inputs=_project_source_inputs(root, config)
     )
 
 
@@ -1021,10 +1022,10 @@ def _render_project_presets(root: Path, config: ProjectConfig) -> dict[Path, Out
     # offering no permissions contributes no tier rather than failing — its `use`
     # already says which slices it offers, and one slice is a legitimate template.
     tiers: list[Rules] = []
-    for name in config.templates:
-        contributed = resolve_template(name, root).path / PROJECT_SOURCE
-        if contributed.is_file():
-            tiers.append(parse_rules(contributed))
+    templates = tuple(resolve_template(name, root).path for name in config.templates)
+    catalogs = load_catalogs(templates)
+    for contributed in contribution_paths(templates, "permissions", catalogs=catalogs):
+        tiers.append(parse_rules(contributed))
 
     tiers.append(parse_rules(project_dir / PROJECT_SOURCE))
     local_path = project_dir / PROJECT_LOCAL_SOURCE
@@ -1032,9 +1033,9 @@ def _render_project_presets(root: Path, config: ProjectConfig) -> dict[Path, Out
         tiers.append(parse_rules(local_path))
     rules = merge_rules(*tiers)
 
-    instructions = project_instructions(root, config)
-    trees = project_skill_trees(root, config)
-    servers = project_servers(root, config)
+    instructions = project_instructions(root, config, catalogs=catalogs)
+    trees = project_skill_trees(root, config, catalogs=catalogs)
+    servers = project_servers(root, config, catalogs=catalogs)
 
     outputs: dict[Path, Output] = {}
     # Project scope claims its paths for the same reason global scope does, and
@@ -1104,7 +1105,9 @@ def _render_project_presets(root: Path, config: ProjectConfig) -> dict[Path, Out
     )
 
 
-def project_skill_trees(root: Path, config: ProjectConfig) -> tuple[Skill, ...]:
+def project_skill_trees(
+    root: Path, config: ProjectConfig, *, catalogs: Mapping[Path, Catalog] | None = None
+) -> tuple[Skill, ...]:
     """Every skill this project offers, templates first and the project last.
 
     Same tier order as permissions and instructions, and the same resolution: a
@@ -1115,16 +1118,24 @@ def project_skill_trees(root: Path, config: ProjectConfig) -> tuple[Skill, ...]:
     than an ambiguity.
     """
     collected: dict[str, Skill] = {}
-    for name in config.templates:
-        tree = resolve_template(name, root).path / SKILLS_SUBDIR
-        for skill in discover_skills(tree):
+    templates = tuple(resolve_template(name, root).path for name in config.templates)
+    loaded = load_catalogs(templates) if catalogs is None else catalogs
+    for template in templates:
+        skills = (
+            loaded[template].skills()
+            if template in loaded
+            else discover_skills(template / SKILLS_SUBDIR)
+        )
+        for skill in skills:
             collected[skill.name] = skill
     for skill in discover_skills(root / PROJECT_DIR / SKILLS_SUBDIR):
         collected[skill.name] = skill
     return tuple(sorted(collected.values(), key=lambda s: s.name))
 
 
-def project_servers(root: Path, config: ProjectConfig) -> dict[str, Server]:
+def project_servers(
+    root: Path, config: ProjectConfig, *, catalogs: Mapping[Path, Catalog] | None = None
+) -> dict[str, Server]:
     """Every server this project defines, templates first and the project last.
 
     Same tier rule as permissions, instructions and skills: a template is
@@ -1132,8 +1143,8 @@ def project_servers(root: Path, config: ProjectConfig) -> dict[str, Server]:
     replaces the template's rather than merging with it.
     """
     collected: dict[str, Server] = {}
-    for name in config.templates:
-        contributed = resolve_template(name, root).path / SERVERS_SOURCE
+    templates = tuple(resolve_template(name, root).path for name in config.templates)
+    for contributed in contribution_paths(templates, "mcp", catalogs=catalogs):
         for server_name, server in parse_servers(contributed).items():
             collected[server_name] = server
     for server_name, server in parse_servers(root / PROJECT_DIR / SERVERS_SOURCE).items():
@@ -1151,20 +1162,20 @@ def _expand_project_skills(
             outputs[directory / relative] = Copied(source=skill.document.parent / relative)
 
 
-def project_instructions(root: Path, config: ProjectConfig) -> str | None:
+def project_instructions(
+    root: Path, config: ProjectConfig, *, catalogs: Mapping[Path, Catalog] | None = None
+) -> str | None:
     """The project's instruction document, or None when it declares none.
 
     Templates concatenate first and the project's own fragments after, matching
     the permission tiers: a template describes a kind of work and anything the
     project itself says outranks it — which for prose means it comes last and is
-    read last. A template contributes one unnamed block, so adopting `web` brings
-    its instructions without the project restating them.
+    read last. Selecting a template includes its instruction parts automatically.
     """
     blocks: list[str] = []
-    for name in config.templates:
-        contributed = resolve_template(name, root).path / TEMPLATE_INSTRUCTIONS
-        if contributed.is_file():
-            blocks.append(load_fragment(contributed))
+    templates = tuple(resolve_template(name, root).path for name in config.templates)
+    for contributed in contribution_paths(templates, "instructions", catalogs=catalogs):
+        blocks.append(load_fragment(contributed))
 
     source = Source(name=PROJECT_DIR, path=root / PROJECT_DIR, use=frozenset({INSTRUCTIONS.use}))
     blocks.extend(
@@ -1255,7 +1266,9 @@ def write_outputs(
     for path, content in outputs.items():
         if path in deployment.managed:
             continue
-        if isinstance(content, Copied):
+        if isinstance(content, FrozenFile):
+            frozen[path] = content
+        elif isinstance(content, Copied):
             frozen[path] = FrozenFile(content.read_bytes(), content.file_mode())
         elif isinstance(content, Merged):
             frozen[path] = _applied(path, content)
@@ -1284,6 +1297,20 @@ def check_all(root: Path, profile: str = "default") -> list[tuple[Path, str, str
         print(f"note: detached deployment retained for explicit cleanup: {path}")
     for path, expected in outputs.items():
         if path in deployment.managed:
+            continue
+        if isinstance(expected, FrozenFile):
+            if (
+                not path.is_file()
+                or path.read_bytes() != expected.content
+                or path.stat().st_mode & 0o7777 != expected.mode
+            ):
+                drift.append(
+                    (
+                        path,
+                        describe_file(path),
+                        f"{len(expected.content)} bytes, mode {expected.mode:o}\n",
+                    )
+                )
             continue
         if isinstance(expected, Copied):
             if _copy_drifted(path, expected.source, expected.prefix):

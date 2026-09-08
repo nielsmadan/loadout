@@ -13,18 +13,22 @@ it answers the one question `sync` has to ask before it overwrites anything.
 from __future__ import annotations
 
 import hashlib
-import re
+import json
 import shutil
 from pathlib import Path
+
+import tomlkit
 
 from .bundled_templates import BUNDLED, bundled_template
 from .errors import LoadoutError
 from .machine import load_machine_config, machine_config_path
 from .manifest import load_manifest, manifest_path
 from .project import PROJECT_DIR, load_project_config, project_config_path
-from .resolve import ResolvedItem, Slice, resolve_item
+from .resolve import ResolvedItem, Slice
 from .skills import EXCLUDED_DIRECTORIES, EXCLUDED_NAMES, EXCLUDED_SUFFIXES
 from .sources import Source
+from .template_catalog import load_catalog, template_name
+from .toml_paths import apply_paths, key_name
 
 HASH_PREFIX = "sha256:"
 
@@ -44,7 +48,12 @@ def vendored_root(root: Path) -> Path:
 
 
 def vendored_path(root: Path, name: str) -> Path:
-    return vendored_root(root) / name
+    template_name(name)
+    directory = vendored_root(root) / name
+    manifest = directory.with_name(directory.name + ".toml")
+    if manifest.exists() and directory.exists():
+        raise LoadoutError(f"ambiguous template {name!r}: both {directory} and {manifest} exist")
+    return manifest if manifest.exists() else directory
 
 
 def declared_sources(config_path: Path | None = None) -> tuple[Source, ...]:
@@ -63,7 +72,10 @@ def declared_sources(config_path: Path | None = None) -> tuple[Source, ...]:
             f"resolve from; run `loadout init --global`, or vendor the template"
         )
     manifest = load_manifest(manifest_path(machine.source))
-    return tuple(s for s in manifest.sources if TEMPLATES.use in s.use)
+    sources = tuple(s for s in manifest.sources if TEMPLATES.use in s.use)
+    if not manifest.sources and manifest.artifacts is not None:
+        return (Source(machine.source.name, machine.source / "loadout", frozenset({"templates"})),)
+    return sources
 
 
 def resolve_template(name: str, root: Path, config_path: Path | None = None) -> ResolvedItem:
@@ -75,7 +87,7 @@ def resolve_template(name: str, root: Path, config_path: Path | None = None) -> 
     a different place it resolves from.
     """
     local = vendored_path(root, name)
-    if local.is_dir():
+    if local.exists():
         return ResolvedItem(name=name, source=VENDORED, path=local)
 
     try:
@@ -85,23 +97,46 @@ def resolve_template(name: str, root: Path, config_path: Path | None = None) -> 
 
 
 def resolve_upstream_template(name: str, config_path: Path | None = None) -> ResolvedItem:
+    template_name(name)
     path = machine_config_path() if config_path is None else config_path
     bundled = bundled_template(name)
     if bundled is not None and not path.exists():
         return _bundled_template(name, bundled)
     sources = declared_sources(config_path)
-    try:
-        return resolve_item(sources, name, TEMPLATES)
-    except LoadoutError as error:
-        if bundled is not None and not any(
-            (s.path / TEMPLATES_SUBDIR / name).exists()
-            or (s.path / TEMPLATES_SUBDIR / name).is_symlink()
-            for s in sources
-        ):
-            return _bundled_template(name, bundled)
-        searched = ", ".join(str(s.path / TEMPLATES_SUBDIR / name) for s in sources)
-        where = searched or "(no source offers templates)"
-        raise LoadoutError(f"{error} Searched {where}.") from error
+    bare = name
+    if "/" in name:
+        qualifier, bare = name.split("/")
+        sources = tuple(s for s in sources if s.name == qualifier)
+        if not sources:
+            raise LoadoutError(f"unknown source {qualifier!r} in {name!r}")
+    hits: list[ResolvedItem] = []
+    searched: list[str] = []
+    for source in sources:
+        for suffix in ("", ".toml"):
+            candidate = source.path / TEMPLATES_SUBDIR / (bare + suffix)
+            searched.append(str(candidate))
+            if candidate.exists() or candidate.is_symlink():
+                if not candidate.resolve().is_relative_to(
+                    (source.path / TEMPLATES_SUBDIR).resolve()
+                ):
+                    raise LoadoutError(f"template name escapes its source: {name!r}")
+                if suffix and not candidate.is_file():
+                    raise LoadoutError(f"template manifest is not a file: {candidate}")
+                if not suffix and not candidate.is_dir():
+                    raise LoadoutError(f"template is not a directory: {candidate}")
+                hits.append(ResolvedItem(bare, source.name, candidate))
+    if len(hits) > 1:
+        raise LoadoutError(
+            f"{name!r} is ambiguous across sources or formats: "
+            + ", ".join(str(h.path) for h in hits)
+        )
+    if hits:
+        return hits[0]
+    if bundled is not None:
+        return _bundled_template(name, bundled)
+    raise LoadoutError(
+        f"templates not found: {name!r}. Searched {', '.join(searched) or '(no source offers templates)'}."
+    )
 
 
 def _bundled_template(name: str, path: Path) -> ResolvedItem:
@@ -110,56 +145,51 @@ def _bundled_template(name: str, path: Path) -> ResolvedItem:
     return ResolvedItem(name=name, source=BUNDLED, path=path)
 
 
-# `[^\S\n]*` and not `\s*`: `\s` matches the newline, so a greedy trailing `\s*$`
-# swallows it whenever the key is the file's last line, and the rewrite silently
-# drops the final newline.
-_TEMPLATES_KEY = re.compile(r"^templates[^\S\n]*=[^\S\n]*\[[^\]]*\][^\S\n]*$", re.MULTILINE)
-
-
 def declare(root: Path, name: str) -> bool:
-    """Add a name to `templates` in the project config. False if already there.
-
-    Rewritten line-wise rather than re-serialised: the file is hand-maintained
-    source, and round-tripping it through a writer would reformat the comments and
-    key order its author chose.
-    """
+    """Add a name to the project config, preserving its TOML syntax tree."""
     path = project_config_path(root)
     config = load_project_config(path)
     if name in config.templates:
         return False
-    rendered = "templates = [" + ", ".join(f'"{n}"' for n in [*config.templates, name]) + "]"
-    text = path.read_text(encoding="utf-8")
-    if _TEMPLATES_KEY.search(text):
-        text = _TEMPLATES_KEY.sub(rendered, text, count=1)
-    else:
-        # Ahead of the first table header, so it stays a top-level key rather than
-        # landing inside whichever table happens to come last.
-        head, marker, tail = text.partition("\n[")
-        text = head.rstrip("\n") + "\n" + rendered + "\n" + marker + tail
-    path.write_text(text, encoding="utf-8")
+    template_name(name)
+    document = tomlkit.parse(path.read_text(encoding="utf-8"))
+    document["templates"] = [*config.templates, name]
+    path.write_text(tomlkit.dumps(document), encoding="utf-8")
     return True
 
 
 def record_hash(root: Path, name: str, digest: str) -> None:
     """Record the content hash of a vendored copy, replacing any earlier one."""
     path = project_config_path(root)
-    block = re.compile(rf"^\[template\.{re.escape(name)}\]\n(?:(?!\[).*\n?)*", re.MULTILINE)
-    text = block.sub("", path.read_text(encoding="utf-8"))
+    key = key_name(("template", name, "vendored"))
+    document = f"[{key_name(('template', name))}]\nvendored = {json.dumps(digest)}\n"
     path.write_text(
-        text.rstrip("\n") + f'\n\n[template.{name}]\nvendored = "{digest}"\n', encoding="utf-8"
+        apply_paths(path.read_text(encoding="utf-8"), frozenset({key}), document), encoding="utf-8"
     )
 
 
 def copy_tree(source: Path, destination: Path) -> None:
-    """Replace `destination` with `source`, byte for byte, mode included.
-
-    Replace rather than overlay: a file the upstream dropped has to disappear from
-    the copy too, or the recorded hash would describe a tree that is neither the
-    upstream nor anything anyone wrote.
-
-    Mode is copied for the reason `Copied` names a source path rather than decoded
-    text — a skill's `scripts/` files are executable, and a template carries skills.
-    """
+    """Copy bytes and modes; replace directories, but refuse conflicting catalog files."""
+    if source.is_file():
+        files = load_catalog(source).files()
+        for path in files:
+            target = (
+                destination
+                if path == source
+                else destination.parent / path.relative_to(source.parent)
+            )
+            if target.exists() and target.read_bytes() != path.read_bytes():
+                raise LoadoutError(f"catalog copy would replace existing content: {target}")
+        for path in files:
+            target = (
+                destination
+                if path == source
+                else destination.parent / path.relative_to(source.parent)
+            )
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(path, target)
+            shutil.copymode(path, target)
+        return
     if destination.exists():
         shutil.rmtree(destination)
     destination.mkdir(parents=True)
@@ -184,7 +214,7 @@ def template_divergence(root: Path) -> list[str]:
     for name in config.templates:
         recorded = config.vendored_hash(name)
         local = vendored_path(root, name)
-        if recorded is not None and local.is_dir() and tree_hash(local) != recorded:
+        if recorded is not None and local.exists() and tree_hash(local) != recorded:
             diverged.append(name)
     return diverged
 
@@ -207,7 +237,7 @@ def unverifiable_templates(root: Path) -> list[str]:
     return [
         name
         for name in config.templates
-        if config.vendored_hash(name) is None and vendored_path(root, name).is_dir()
+        if config.vendored_hash(name) is None and vendored_path(root, name).exists()
     ]
 
 
@@ -218,12 +248,9 @@ def _excluded(relative: Path) -> bool:
 
 
 def template_files(tree: Path) -> tuple[Path, ...]:
-    """Every content file in a template, relative to its root, sorted.
-
-    Build output is skipped for the reason a skill skips it: a template that once
-    had a `__pycache__` in it would otherwise never compare equal to the same
-    template checked out fresh.
-    """
+    """Sorted content paths relative to the directory or manifest parent, excluding build output."""
+    if tree.is_file():
+        return tuple(p.relative_to(tree.parent) for p in load_catalog(tree).files())
     if not tree.is_dir():
         return ()
     return tuple(
@@ -247,7 +274,7 @@ def tree_hash(tree: Path) -> str:
     """
     digest = hashlib.sha256()
     for relative in template_files(tree):
-        path = tree / relative
+        path = (tree.parent if tree.is_file() else tree) / relative
         payload = path.read_bytes()
         digest.update(relative.as_posix().encode("utf-8"))
         digest.update(b"\0")

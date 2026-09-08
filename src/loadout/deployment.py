@@ -14,6 +14,7 @@ from typing import Any
 from .artifacts import (
     Artifacts,
     Copied,
+    FrozenFile,
     Merged,
     Output,
     _json_constant,
@@ -36,12 +37,6 @@ GIT_FATAL = 128
 
 class DeploymentConflict(LoadoutError):
     pass
-
-
-@dataclass(frozen=True)
-class FrozenFile:
-    content: bytes
-    mode: int
 
 
 @dataclass(frozen=True)
@@ -155,6 +150,8 @@ def read_file(path: Path) -> FrozenFile | None:
 
 
 def freeze_output(path: Path, output: Output) -> FrozenFile:
+    if isinstance(output, FrozenFile):
+        return output
     if isinstance(output, Copied):
         frozen = read_file(output.source)
         if frozen is None:

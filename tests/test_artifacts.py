@@ -244,6 +244,19 @@ def test_permission_text_adapters_match_existing_renderers(tmp_path: Path, rende
     }
 
 
+def test_portable_artifact_without_templates_preserves_single_source(tmp_path: Path) -> None:
+    project(
+        tmp_path,
+        document_record('permissions = {source = "policy.toml", renderer = "claude"}\n'),
+    )
+    write(tmp_path, "loadout/policy.toml", '[shell]\nallow=["npm test"]\ndeny=["npm test"]\n')
+    output = render_project(tmp_path)[tmp_path / ".claude/settings.json"]
+    assert isinstance(output, str)
+    assert json.loads(output) == {
+        "permissions": {"allow": ["Bash(npm test:*)"], "deny": ["Bash(npm test:*)"], "ask": []}
+    }
+
+
 def test_empty_renderer_reserves_its_keys_without_creating_an_output(tmp_path: Path) -> None:
     project(
         tmp_path,

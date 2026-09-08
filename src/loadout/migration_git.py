@@ -11,7 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .deployment import FrozenFile, atomic_install
+from .artifacts import FrozenFile
+from .deployment import atomic_install
 from .discovery import RUNTIME_FILES
 from .errors import LoadoutError
 from .git_privacy import ignored_paths

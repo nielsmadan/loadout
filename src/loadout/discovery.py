@@ -340,7 +340,7 @@ def _agents_for(relative: Path, mapping: RootMapping) -> tuple[str, ...]:
     if mapping.kind != "shared":
         return mapping.agents
     supported = {
-        "skills": {"opencode", "pi"},
+        "skills": {"codex", "opencode", "pi"},
         "plugins": {"codex"},
         "mcp.json": {"pi"},
         "mcp": {"pi"},

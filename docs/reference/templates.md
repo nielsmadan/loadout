@@ -3,6 +3,73 @@
 Shared configuration for a *kind of project* — `web`, `flutter`, `react-native`, `railway` — that
 a repo opts into by name.
 
+## Shared catalog parts
+
+Keep reusable template content under a source's `templates/` directory, separate from its
+active global slices:
+
+```text
+loadout/
+  skills/                         # active global skills
+  templates/
+    nextjs.toml
+    react-native.toml
+    skills/review-typescript/SKILL.md
+    instructions/typescript.md
+    instructions/nextjs.md
+    mcp/github.toml
+    permissions/node.toml
+```
+
+For example, `templates/nextjs.toml` selects:
+
+```toml
+skills = ["review-typescript"]
+instructions = ["typescript", "nextjs"]
+mcp = ["github"]
+permissions = ["node"]
+```
+
+`react-native.toml` can select the same `review-typescript`, `typescript`, `github` and `node`
+parts. Lists are optional and ordered; an empty manifest is valid. Names resolve strictly
+within the corresponding catalog folder, without extensions. Paths, symlinks, duplicate
+references, missing parts and unknown categories are errors. Skills require `SKILL.md` and
+carry their supporting files. MCP and permission fragments use the existing portable TOML
+formats. Settings, hooks and plugins remain explicit per-agent artifact sources.
+
+Catalog presence never activates global output. A project must select the manifest:
+
+```sh
+loadout template vendor nextjs
+loadout template vendor react-native
+loadout sync
+```
+
+Use `template add` instead of `vendor` to resolve from the machine source on each render.
+Shared parts are stored once. Instructions concatenate in first-reference order. Skills and
+MCP server names are replaced by later templates, then by the project's own entries;
+permissions use the existing deny-wins merge, with last-tier precedence for `opencode.extra`.
+A part referenced again by a later template participates at that later position, so sharing
+does not change precedence. Catalog validation is reused within one render, never across runs.
+
+Vendoring copies the manifest and only its referenced parts into `loadout/templates/`, with
+one shared copy per part. A qualified name such as `company/nextjs` uses
+`loadout/templates/company/nextjs.toml` and parts beneath that same `company/` directory.
+Use consistent qualification for templates sharing parts. A conflicting existing shared
+part is refused, not overwritten by adopting another template.
+
+`template sync nextjs` previews changed files. If a changed shared part also belongs to
+another selected vendored template, it lists **all affected templates** and requires a yes
+before writing. A no, EOF or noninteractive input leaves everything unchanged. All affected
+copies must match their recorded hashes; one local edit blocks the whole update. Accepted
+updates refresh every affected hash. Removing a reference keeps a part still used elsewhere;
+removing a file inside an updated shared skill removes that file for every consumer. An
+undeclared sibling manifest using the changed part must be declared first.
+
+The update renders a prospective copy before writing, rechecks local bytes, modes and
+referenced file membership after confirmation, and rolls back applied files on a caught
+write failure. It does not merge local edits. Normal `loadout sync` remains a separate step.
+
 ## What a template is
 
 A named bundle of the portable slices, and nothing more exotic than that: **a template is a
@@ -33,11 +100,11 @@ them is not a migration.
 **Declared** — the template lives outside the project, in a source you already have. A fix to the
 template reaches every project at once.
 
-**Vendored** — the template is copied into `loadout/templates/<name>/` and committed, so the repo
+**Vendored** — the template is copied into `loadout/templates/` and committed, so the repo
 stands alone. This is what an open-source project whose contributors do not install loadout needs.
 
-A vendored template gets its own directory and is **never merged into the project's own
-fragments**. If a template's content were mixed into yours, nothing could later distinguish
+Vendored template content stays under `loadout/templates/` and is **never merged into the
+project's own fragments**. If a template's content were mixed into yours, nothing could later distinguish
 template-owned content from content you wrote, and sync would be impossible — which is the
 cookiecutter failure mode, where every generated project is a fork on day one.
 
@@ -60,7 +127,7 @@ nothing else, so a path cannot be written there either.
 
 The same algorithm `resolve_fragment` uses, one level up:
 
-1. If `loadout/templates/<name>/` exists in this project, it is **vendored**, and resolution
+1. If `loadout/templates/<name>/` or `<name>.toml` exists in this project, it is **vendored**, and resolution
    stops. No machine config is read and no external source is consulted — which is precisely what
    lets a clone build without the template repo.
 2. Otherwise, search the `templates/` directory of every source the **machine's global manifest**
@@ -68,6 +135,9 @@ The same algorithm `resolve_fragment` uses, one level up:
    and must not, per the rule above; the machine config
    ([0010](../decisions/0010-a-machine-config-locates-the-global-source.md)) is where this
    machine's paths already live.
+   Artifacts-only global manifests without a source list offer their own `loadout/templates/`
+   catalog automatically, without enabling any global slice. Directory and manifest forms
+   with the same name are ambiguous and refused.
 3. With no declared-source match, `frontend` and `backend` resolve from the installed package's
    offline catalog. These names also work without machine configuration. A malformed configured
    machine source remains an error. Qualifying a source name never selects the package fallback.
@@ -106,7 +176,7 @@ ones. Every configured agent must have an opted-in route when template prose is 
 An existing manually authored native config gets an actionable route error if one is missing;
 legacy `instructions = [...]` remains unsupported in this mode.
 
-Native templates currently compose instruction text only. Empty `permissions.toml`, `mcp.toml`
+Legacy directory templates in native projects compose instruction text only. Empty `permissions.toml`, `mcp.toml`
 and `.gitkeep` scaffolds are accepted. A populated permission, MCP, skill or other contribution
 is refused with its category/path and a remedy: place that content in an explicitly routed
 project source, then remove it from the template. `template add`, `vendor` and `sync` preflight
@@ -114,6 +184,34 @@ these limits before changing configuration, copies or provenance. Source symlink
 Native `template sync` validates both vendored and upstream trees before reading template
 contents for hashes or refusal diffs.
 This prevents template data from being silently ignored or overlaying native producers.
+
+Catalog manifests additionally compose skills, MCP and portable permissions through existing
+native routes. Fresh init supplies these routes for all four agents. With Codex configured,
+fresh projects use one `.agents/skills` collection shared by configured Codex, OpenCode and Pi
+consumers. A shared route refuses a skill whose rendered variants differ between its agents.
+Existing routes retain their authored destinations and ownership receipts.
+
+A catalog needs one compatible consumer route per agent and category. Set `template_parts =
+false` on routes that should not receive catalog skills, MCP or permissions; this is useful
+for separate personal or auxiliary routes. Instruction participation still uses the independent
+`template_instructions` flag. Skill routes must point at a collection, not an individual skill.
+Project skills replace the whole same-named template skill, including supporting files.
+Tree `modes` overrides apply to template skill documents and supporting files too.
+MCP project entries replace whole servers, preserving native sub-settings. Codex combines MCP
+definitions and approval policy in its MCP route, including policy-only servers. Native policy
+restrictions participate in the permission merge, and unrelated server/tool settings survive.
+Codex's shell rule route alone cannot consume MCP policy.
+
+Native JSON permissions must round-trip through their portable adapter without loss, including
+key order; otherwise selection refuses and asks for an explicit portable source. An explicit
+native catch-all `ask` remains a restriction during merging, whereas an unstated portable
+default contributes no vote. Nonempty Codex rule text needs an explicit portable text renderer.
+An absent optional permission source contributes no native rules; required sources remain
+required. Unsupported or ambiguous routes fail before add/vendor/sync changes source.
+
+Catalog overrides of `frontend` and `backend` also work with `init --starter`, including all
+referenced files in privacy checks, approval preconditions, expected outputs and staging.
+Other manifest names are selected with `template add` or `template vendor` after init.
 
 Init includes the selected template in preview metadata, source writes, output expectations,
 fresh-source validation, staging and recovery. Private/Git-ignored or credential-bearing template
@@ -173,6 +271,8 @@ and the digest is rendered as `sha256:<64 hex digits>`. Notes on each part:
   of silent.
 
 The hash lives in `loadout/config.toml`, which is **source**, not generated output.
+For a catalog manifest, the hashed files are the manifest itself and its referenced closure,
+with paths relative to the catalog directory. Unselected catalog parts are excluded.
 [0008](../decisions/0008-generated-files-carry-no-machine-state.md)'s prohibition on stamping a
 hash governs generated files, and exists so generated content stays a pure function of the
 source; a hash recorded in the source *is* the source. It carries no machine state — the digest
@@ -180,15 +280,17 @@ covers relative paths only.
 
 ## `template sync` is refuse-and-diff
 
+This section describes directory templates. Catalog manifests use the shared-update flow
+above: provenance and ownership errors exit 3; declining the shared update exits 1.
+
     loadout template add web       # declare it; it resolves from a source on every render
     loadout template vendor web    # copy it in, record the hash
     loadout template sync web      # update the vendored copy from its source
     loadout template list          # what this project uses, and how each resolves
 
-**Two templates offering one skill name resolve last-declared-wins, silently**, the same way
-their permission tiers do — `templates = ["a", "b"]` gives `b`'s copy. Consistent rather than
-chosen: nobody weighed reporting it, and if it should report, that is a question for the notices
-surface rather than a property of resolution. A skill the project itself defines beats both.
+Two templates offering one skill name resolve last-declared-wins: `templates = ["a", "b"]`
+gives `b`'s copy. A skill the project itself defines beats both. Permission decisions use
+deny-wins rather than this replacement rule.
 
 `sync` resolves the upstream past the vendored copy, compares, and:
 

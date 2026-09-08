@@ -16,8 +16,9 @@ from tomlkit.items import Item
 from .agents import known_agents
 from .destinations import resolve_destination
 from .errors import LoadoutError
+from .permissions.merge import merge_rules
 from .permissions.renderers import RENDERERS, JsonSpec, TextSpec
-from .permissions.rules import EMPTY_RULES, parse_rules
+from .permissions.rules import EMPTY_RULES, Rules, parse_rules
 
 ArtifactScope = Literal["project", "global"]
 CATEGORIES = frozenset(
@@ -90,7 +91,13 @@ class Merged:
     emit_empty: bool = False
 
 
-Output = str | Copied | Merged
+@dataclass(frozen=True)
+class FrozenFile:
+    content: bytes
+    mode: int
+
+
+Output = str | Copied | Merged | FrozenFile
 
 
 @dataclass(frozen=True)
@@ -113,6 +120,7 @@ class Artifact:
     emit_empty: bool = False
     partial: bool = False
     template_instructions: bool = False
+    template_parts: bool = True
     mode: int | None = None
     modes: tuple[tuple[PurePosixPath, int], ...] = ()
 
@@ -216,6 +224,7 @@ def _record(raw: object, label: str, scope: ArtifactScope) -> Artifact:
             "optional",
             "partial",
             "template_instructions",
+            "template_parts",
             "mode",
             "modes",
         },
@@ -259,6 +268,7 @@ def _record(raw: object, label: str, scope: ArtifactScope) -> Artifact:
         template_instructions=_boolean(
             raw.get("template_instructions", False), f"{label}.template_instructions"
         ),
+        template_parts=_boolean(raw.get("template_parts", True), f"{label}.template_parts"),
         mode=_mode(raw["mode"], f"{label}.mode") if "mode" in raw else None,
         modes=_modes(raw["modes"], f"{label}.modes") if "modes" in raw else (),
     )
@@ -542,21 +552,24 @@ def _owned_keys(part: ArtifactPart, document: Mapping[str, Any]) -> tuple[str, .
 
 
 def _documents(artifacts: Artifacts, artifact: Artifact) -> tuple[dict[str, Any], ...]:
-    documents: list[dict[str, Any]] = []
-    for part in artifact.parts:
-        path = _source(artifacts.source_root, part.source, optional=part.optional)
-        if path is None:
-            documents.append({})
-            continue
+    return tuple(part_document(artifacts, artifact, part) for part in artifact.parts)
+
+
+def part_document(
+    artifacts: Artifacts, artifact: Artifact, part: ArtifactPart, *, rules: Rules = EMPTY_RULES
+) -> dict[str, Any]:
+    path = _source(artifacts.source_root, part.source, optional=part.optional)
+    if path is not None:
         _regular_file(path)
-        if part.renderer is None:
-            documents.append(_literal(path, artifact.format))
-            continue
-        spec = RENDERERS[part.renderer]
-        assert isinstance(spec, JsonSpec)
-        rules = parse_rules(path)
-        documents.append(spec.fn(rules, {}) if rules != EMPTY_RULES or artifact.emit_empty else {})
-    return tuple(documents)
+    if part.renderer is None:
+        return _literal(path, artifact.format) if path is not None else {}
+    if path is None and rules == EMPTY_RULES:
+        return {}
+    spec = RENDERERS[part.renderer]
+    assert isinstance(spec, JsonSpec)
+    native = parse_rules(path) if path is not None else EMPTY_RULES
+    combined = merge_rules(rules, native) if rules != EMPTY_RULES else native
+    return spec.fn(combined, {}) if combined != EMPTY_RULES or artifact.emit_empty else {}
 
 
 def _regular_file(path: Path) -> None:
@@ -618,24 +631,35 @@ def render_artifacts(
     )
     outputs: dict[Path, Output] = {}
     for artifact, destination in zip(artifacts.records, destinations, strict=True):
-        if artifact.format in DOCUMENT_FORMATS:
-            documents = _documents(artifacts, artifact)
-            document = compose_document(artifact, documents)
-            if artifact.partial:
-                owned = frozenset(
-                    key
-                    for part, values in zip(artifact.parts, documents, strict=True)
-                    for key in _owned_keys(part, values)
-                )
-                outputs[destination] = Merged(
-                    owned,
-                    document or "",
-                    format=artifact.format,
-                    native=True,
-                    emit_empty=artifact.emit_empty,
-                )
-            elif document is not None:
-                outputs[destination] = document
-        else:
-            outputs.update(_opaque(artifacts, artifact, destination, instruction_prefix))
+        outputs.update(render_artifact(artifacts, artifact, destination, instruction_prefix))
     return outputs
+
+
+def render_artifact(
+    artifacts: Artifacts, artifact: Artifact, destination: Path, instruction_prefix: bytes = b""
+) -> dict[Path, Output]:
+    if artifact.format in DOCUMENT_FORMATS:
+        return render_document(artifact, destination, _documents(artifacts, artifact))
+    return _opaque(artifacts, artifact, destination, instruction_prefix)
+
+
+def render_document(
+    artifact: Artifact, destination: Path, documents: tuple[dict[str, Any], ...]
+) -> dict[Path, Output]:
+    document = compose_document(artifact, documents)
+    if artifact.partial:
+        owned = frozenset(
+            key
+            for part, values in zip(artifact.parts, documents, strict=True)
+            for key in _owned_keys(part, values)
+        )
+        return {
+            destination: Merged(
+                owned,
+                document or "",
+                format=artifact.format,
+                native=True,
+                emit_empty=artifact.emit_empty,
+            )
+        }
+    return {destination: document} if document is not None else {}

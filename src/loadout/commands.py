@@ -10,6 +10,7 @@ import tempfile
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
+from .artifacts import FrozenFile
 from .bundled_skill import bundled_skill_path
 from .deployment import DeploymentConflict, managed_paths
 from .emit import (
@@ -46,6 +47,7 @@ from .skill_installation import (
     install_skill_source,
     uninstall_skill_source,
 )
+from .template_vendor import vendor_catalog
 from .templates import (
     VENDORED,
     copy_tree,
@@ -64,6 +66,7 @@ from .written import (
     accepts_bytes,
     accepts_text,
     copied_entry,
+    frozen_entry,
     merged_entry,
     normalise,
     read_written,
@@ -236,6 +239,8 @@ def _render_variants(
         except LoadoutError:
             continue
         for path, content in rendered.items():
+            if isinstance(content, FrozenFile):
+                continue
             if isinstance(content, Copied):
                 continue  # verbatim by definition, so it has no per-profile form to vary
             if isinstance(content, Merged):
@@ -291,6 +296,14 @@ def _modified_outside_loadout(
     artifacts = managed_paths(artifact_deployment_scopes(root, profile), outputs)
     for path, expected in outputs.items():
         if path in artifacts:
+            continue
+        if isinstance(expected, FrozenFile):
+            if (
+                path.is_file()
+                and path.read_bytes() != expected.content
+                and not accepts_bytes(written.get(path), path.read_bytes())
+            ):
+                modified.append((path, describe_file(path), f"{len(expected.content)} bytes\n"))
             continue
         if isinstance(expected, Copied):
             # A copied file has no per-profile form, so it is compared against its
@@ -398,7 +411,9 @@ def cmd_sync(root: Path, profile: str = "default", force: bool = False) -> int:
 def _entries_for(outputs: Mapping[Path, Output]) -> dict[Path, WrittenEntry]:
     entries: dict[Path, WrittenEntry] = {}
     for path, content in outputs.items():
-        if isinstance(content, Copied):
+        if isinstance(content, FrozenFile):
+            entries[path] = frozen_entry(content.content, content.mode)
+        elif isinstance(content, Copied):
             entries[path] = copied_entry(content.source, content.prefix, mode=content.file_mode())
         elif isinstance(content, Merged):
             entries[path] = merged_entry(content.owned)
@@ -532,6 +547,8 @@ def cmd_template_vendor(root: Path, name: str) -> int:
             f"`loadout template sync {name}` to update it"
         )
     found = resolve_template(name, root)
+    if found.path.is_file():
+        return vendor_catalog(root, name, found)
     validate_template_change(root, name, found)
     copy_tree(found.path, local)
     declare(root, name)
@@ -577,6 +594,8 @@ def cmd_template_sync(root: Path, name: str) -> int:
     """
     config = load_project_config(project_config_path(root))
     local = vendored_path(root, name)
+    if local.is_file():
+        return vendor_catalog(root, name, resolve_upstream_template(name), update=True)
     if not local.is_dir():
         raise LoadoutError(
             f"{name} is not vendored, so there is nothing to sync — it resolves from a "
@@ -588,6 +607,8 @@ def cmd_template_sync(root: Path, name: str) -> int:
     # reached past it deliberately.
     found = resolve_upstream_template(name)
     upstream = found.path
+    if upstream.is_file():
+        raise LoadoutError("template sync cannot change between a directory and a catalog manifest")
     if not config.presets:
         validate_template_tree(local)
         validate_template_tree(upstream)

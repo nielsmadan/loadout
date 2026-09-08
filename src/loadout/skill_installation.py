@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from .artifacts import FrozenFile
 from .bundled_skill import SKILL_NAME
 from .emit import Copied, Merged, declared_profiles, render_global
 from .errors import LoadoutError
@@ -267,7 +268,9 @@ def _skill_outputs(root: Path, profile: str) -> dict[Path, _ExpectedOutput]:
     selected: dict[Path, _ExpectedOutput] = {}
     for path, output in outputs.items():
         if any(path.is_relative_to(directory) for directory in directories):
-            if isinstance(output, Copied):
+            if isinstance(output, FrozenFile):
+                selected[path] = _ExpectedOutput(output.content, bool(output.mode & 0o111))
+            elif isinstance(output, Copied):
                 selected[path] = _ExpectedOutput(
                     output.read_bytes(), bool(output.file_mode() & 0o111)
                 )

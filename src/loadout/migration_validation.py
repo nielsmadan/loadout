@@ -13,7 +13,7 @@ from typing import Any
 from unittest.mock import patch
 
 from . import artifacts
-from .artifacts import Copied, Merged
+from .artifacts import Copied, FrozenFile, Merged
 from .destinations import resolve_destination
 from .discovery import digest
 from .emit import render_all
@@ -172,7 +172,9 @@ def _worker() -> None:
             format_name = "copy"
             emit_empty = False
             mode = 0o600
-            if isinstance(output, Copied):
+            if isinstance(output, FrozenFile):
+                content, mode = output.content, output.mode
+            elif isinstance(output, Copied):
                 content = output.read_bytes()
                 mode = output.file_mode()
             elif isinstance(output, Merged):

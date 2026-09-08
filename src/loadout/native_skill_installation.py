@@ -11,9 +11,9 @@ from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
-from .artifacts import Copied, Output, _no_symlinks, artifact_destination
+from .artifacts import Copied, FrozenFile, Output, _no_symlinks, artifact_destination
 from .bundled_skill import SKILL_NAME, bundled_skill_path
-from .deployment import FrozenFile, apply_deployment, atomic_install, prepare_deployment, read_file
+from .deployment import apply_deployment, atomic_install, prepare_deployment, read_file
 from .discovery import entry_state
 from .emit import artifact_deployment_scopes, render_global
 from .errors import LoadoutError, UsageError

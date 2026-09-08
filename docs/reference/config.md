@@ -398,22 +398,18 @@ What loadout renders from one portable reference, and what it reports instead of
 | harness | global | project |
 |---|---|---|
 | Claude | `~/.claude/skills/<name>/` | `.claude/skills/<name>/` |
-| Codex | `~/.codex/skills/<name>/` | **none** |
+| Codex | `~/.agents/skills/<name>/`, legacy `~/.codex/skills/<name>/` | `.agents/skills/<name>/` |
 | OpenCode | `~/.config/opencode/skills/<name>/`, `~/.claude/skills/`, `~/.agents/skills/` | `.opencode/skills/`, `.claude/skills/`, `.agents/skills/` |
 | Pi | `~/.pi/agent/skills/`, `~/.agents/skills/` | `.pi/skills/`, `.agents/skills/` |
 | Antigravity | **none** | `.agents/skills/`, `.agents/skills.json` |
 
-**Codex has no project skills directory** — verified negative, 2026-08-17 against the 0.147.0
-binary. All three `.codex/skills` occurrences are preceded by `~/`, inside the bundled
-`skill-creator` / `skill-installer` prose describing the global directory; a shape query for a
-project-relative `<dot-dir>/skills` under *any* directory name returns zero
-(`grep -oE '(^|[^a-zA-Z0-9_/$}~-])\.[a-zA-Z0-9_-]+/skills[a-zA-Z0-9_./*-]*'`); and its only
-`.agents/` paths are `plugins/marketplace.json` and `plugins/api_marketplace.json`. It does have
-a config-driven
-mechanism — `SkillConfig{name, path, enabled}` and the app-server method `skills/extraRoots/set`
-— which can point a root into a repo, but that is a setting in `.codex/config.toml`, a file
-loadout does not own, rather than a convention directory. Reproduced from a differently-shaped
-query by a second reader.
+Codex scans `.agents/skills` from the current directory through the repository root and also
+reads the user-scoped `~/.agents/skills`. Verified against the
+[official skills reference](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills),
+2026-09-08. This supersedes the earlier binary-based claim that no project convention exists.
+The legacy global destination remains installed on this machine. Fresh loadout project init
+uses a shared `.agents/skills` route and records configured Codex, OpenCode and Pi consumers;
+the legacy Codex project preset remains unchanged.
 
 **The OpenCode row was previously two blanks and both were wrong.** Its project cell was empty
 and its global cell omitted `~/.claude/skills/`. Source: upstream `https://opencode.ai/docs/skills/`,
