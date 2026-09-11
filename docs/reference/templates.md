@@ -202,6 +202,13 @@ definitions and approval policy in its MCP route, including policy-only servers.
 restrictions participate in the permission merge, and unrelated server/tool settings survive.
 Codex's shell rule route alone cannot consume MCP policy.
 
+Native routes may compose [ordered inputs](artifacts.md#ordered-inputs-within-a-part) before
+receiving template contributions. Document layers remain one category owner, portable rule
+layers retain permission strictness, and composed instruction bodies receive the template prefix
+once. Catalog parts are selected lists rather than inherited manifests: verified against
+`template_catalog.py:_load_catalog`, which accepts only the four category lists and rejects
+`extends`.
+
 Native JSON permissions must round-trip through their portable adapter without loss, including
 key order; otherwise selection refuses and asks for an explicit portable source. An explicit
 native catch-all `ask` remains a restriction during merging, whereas an unstated portable

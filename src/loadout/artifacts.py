@@ -15,6 +15,7 @@ from tomlkit.items import Item
 
 from .agents import known_agents
 from .destinations import resolve_destination
+from .documents import merge_documents
 from .errors import LoadoutError
 from .permissions.merge import merge_rules
 from .permissions.renderers import RENDERERS, JsonSpec, TextSpec
@@ -101,12 +102,39 @@ Output = str | Copied | Merged | FrozenFile
 
 
 @dataclass(frozen=True)
+class ArtifactInput:
+    source: PurePosixPath
+    optional: bool = False
+
+
+@dataclass(frozen=True)
 class ArtifactPart:
     category: str
-    source: PurePosixPath
+    inputs: tuple[ArtifactInput, ...]
     keys: tuple[str, ...] | None = None
     renderer: str | None = None
-    optional: bool = False
+    merge: str | None = None
+    layered: bool = False
+
+    @property
+    def single_input(self) -> ArtifactInput:
+        if self.layered or len(self.inputs) != 1:
+            raise LoadoutError(f"{self.label}: requires a single source")
+        return self.inputs[0]
+
+    @property
+    def source(self) -> PurePosixPath:
+        return self.single_input.source
+
+    @property
+    def label(self) -> str:
+        return f"{self.category} ({', '.join(str(i.source) for i in self.inputs)})"
+
+
+@dataclass(frozen=True)
+class PartDocument:
+    values: dict[str, Any]
+    owned: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -136,6 +164,16 @@ class Artifacts:
     scope: ArtifactScope
     records: tuple[Artifact, ...]
     config_path: Path | None = None
+
+    def input_paths(self) -> tuple[Path, ...]:
+        return tuple(
+            dict.fromkeys(
+                self.source_root / item.source
+                for record in self.records
+                for part in record.parts
+                for item in part.inputs
+            )
+        )
 
     def agents(self, category: str | None = None) -> tuple[str, ...]:
         return tuple(
@@ -192,17 +230,42 @@ def _part(category: str, raw: object, label: str) -> ArtifactPart:
         raise LoadoutError(f"{label}: unknown category {category!r}")
     if not isinstance(raw, dict):
         raise LoadoutError(f"{label}: contributor must be a table")
-    _unknown(raw, {"source", "keys", "renderer", "optional"}, label)
+    _unknown(raw, {"source", "sources", "merge", "keys", "renderer", "optional"}, label)
     renderer = _string(raw["renderer"], f"{label}.renderer") if "renderer" in raw else None
     if renderer is not None and not isinstance(RENDERERS.get(renderer), JsonSpec | TextSpec):
         raise LoadoutError(f"{label}: {renderer!r} is not a permission rules renderer")
     return ArtifactPart(
         category=category,
-        source=relative_path(raw.get("source"), f"{label}.source"),
+        inputs=_inputs(raw, label),
         keys=_strings(raw["keys"], f"{label}.keys") if "keys" in raw else None,
         renderer=renderer,
-        optional=_boolean(raw.get("optional", False), f"{label}.optional"),
+        merge=_string(raw["merge"], f"{label}.merge") if "merge" in raw else None,
+        layered="sources" in raw,
     )
+
+
+def _input(raw: object, label: str) -> ArtifactInput:
+    if not isinstance(raw, dict):
+        raise LoadoutError(f"{label}: input must be a table")
+    _unknown(raw, {"source", "optional"}, label)
+    return ArtifactInput(
+        relative_path(raw.get("source"), f"{label}.source"),
+        _boolean(raw.get("optional", False), f"{label}.optional"),
+    )
+
+
+def _inputs(raw: dict[str, Any], label: str) -> tuple[ArtifactInput, ...]:
+    if "sources" not in raw:
+        return (_input({k: raw[k] for k in ("source", "optional") if k in raw}, label),)
+    if "source" in raw or "optional" in raw:
+        raise LoadoutError(f"{label}: sources cannot accompany source or part-level optional")
+    values = raw["sources"]
+    if not isinstance(values, list) or not values:
+        raise LoadoutError(f"{label}.sources must be a non-empty list of input tables")
+    inputs = tuple(_input(value, f"{label}.sources[{i}]") for i, value in enumerate(values))
+    if len({item.source for item in inputs}) != len(inputs):
+        raise LoadoutError(f"{label}.sources contains duplicate normalized paths")
+    return inputs
 
 
 def _record(raw: object, label: str, scope: ArtifactScope) -> Artifact:
@@ -220,6 +283,8 @@ def _record(raw: object, label: str, scope: ArtifactScope) -> Artifact:
             "emit_empty",
             "category",
             "source",
+            "sources",
+            "merge",
             "renderer",
             "optional",
             "partial",
@@ -244,7 +309,9 @@ def _record(raw: object, label: str, scope: ArtifactScope) -> Artifact:
     output = relative_path(raw["output"], f"{label}.output") if scope == "project" else None
     destination = _string(raw["destination"], f"{label}.destination") if scope == "global" else None
     if format_name in DOCUMENT_FORMATS:
-        if any(k in raw for k in ("category", "source", "renderer", "optional")):
+        if any(
+            k in raw for k in ("category", "source", "sources", "merge", "renderer", "optional")
+        ):
             raise LoadoutError(f"{label}: document contributors belong in parts")
         raw_parts = raw.get("parts")
         if not isinstance(raw_parts, dict) or not raw_parts:
@@ -254,7 +321,9 @@ def _record(raw: object, label: str, scope: ArtifactScope) -> Artifact:
         if "parts" in raw or "order" in raw or "partial" in raw:
             raise LoadoutError(f"{label}: {format_name} records cannot declare parts or order")
         category = _string(raw.get("category"), f"{label}.category")
-        part_data = {k: raw[k] for k in ("source", "renderer", "optional") if k in raw}
+        part_data = {
+            k: raw[k] for k in ("source", "sources", "merge", "renderer", "optional") if k in raw
+        }
         parts = (_part(category, part_data, label),)
     record = Artifact(
         agents=agents,
@@ -272,8 +341,11 @@ def _record(raw: object, label: str, scope: ArtifactScope) -> Artifact:
         mode=_mode(raw["mode"], f"{label}.mode") if "mode" in raw else None,
         modes=_modes(raw["modes"], f"{label}.modes") if "modes" in raw else (),
     )
-    if "mode" in raw and (format_name != "copy" or parts[0].renderer is not None):
-        raise LoadoutError(f"{label}: mode requires a copy artifact")
+    if "mode" in raw and not (
+        (format_name == "copy" and parts[0].renderer is None)
+        or (format_name == "text" and parts[0].merge == "concat")
+    ):
+        raise LoadoutError(f"{label}: mode requires a copy artifact or composed text instructions")
     if "modes" in raw and format_name != "tree":
         raise LoadoutError(f"{label}: modes requires a tree artifact")
     if record.template_instructions and (
@@ -282,13 +354,36 @@ def _record(raw: object, label: str, scope: ArtifactScope) -> Artifact:
         or len(record.parts) != 1
         or record.parts[0].category != "instructions"
         or record.parts[0].renderer is not None
-        or record.parts[0].optional
+        or all(item.optional for item in record.parts[0].inputs)
     ):
         raise LoadoutError(
             f"{label}: template_instructions requires a required project copy/text instruction source"
         )
     _validate_renderers(record)
+    _validate_composition(record)
     return record
+
+
+def _validate_composition(record: Artifact) -> None:
+    for part in record.parts:
+        if not part.layered:
+            if part.merge is not None:
+                raise LoadoutError(f"{part.label}: merge requires sources")
+            continue
+        if record.format in {"copy", "tree"}:
+            raise LoadoutError(f"{record.label}: {record.format} requires a single source")
+        if part.renderer is not None:
+            if part.merge is not None:
+                raise LoadoutError(f"{part.label}: permission renderer selects the rule merge")
+        elif part.category in {"permissions", "mcp-permissions"}:
+            raise LoadoutError(f"{part.label}: layered permissions require a portable renderer")
+        elif record.format in DOCUMENT_FORMATS:
+            if part.merge != "deep":
+                raise LoadoutError(f"{part.label}: document sources require merge = 'deep'")
+        elif part.category != "instructions" or part.merge != "concat":
+            raise LoadoutError(
+                f"{part.label}: text sources require instructions and merge = 'concat'"
+            )
 
 
 def _mode(value: object, label: str) -> int:
@@ -433,7 +528,7 @@ def validate_artifact_paths(
     inputs = [
         artifacts.path,
         artifacts.source_root / ".loadout-state",
-        *(artifacts.source_root / p.source for r in artifacts.records for p in r.parts),
+        *artifacts.input_paths(),
     ]
     if artifacts.config_path is not None:
         inputs.append(artifacts.config_path)
@@ -499,44 +594,49 @@ def _toml_item(value: Any) -> Item:
     return result
 
 
-def compose_document(artifact: Artifact, documents: Iterable[Mapping[str, Any]]) -> str | None:
+def compose_document(
+    artifact: Artifact, documents: Iterable[Mapping[str, Any] | PartDocument]
+) -> str | None:
     merged: dict[str, Any] = {}
     owners: dict[str, ArtifactPart] = {}
-    contributors = tuple(zip(artifact.parts, documents, strict=True))
+    contributors = tuple(
+        (part, value if isinstance(value, PartDocument) else prepare_document(part, dict(value)))
+        for part, value in zip(artifact.parts, documents, strict=True)
+    )
     for part, document in contributors:
-        keys = _owned_keys(part, document)
+        keys = document.owned
         for key in keys:
             if key in owners:
                 previous = owners[key]
                 raise LoadoutError(
                     f"{artifact.label}: key {key!r} is claimed by both "
-                    f"{previous.category} ({previous.source}) and {part.category} ({part.source})"
+                    f"{previous.label} and {part.label}"
                 )
             owners[key] = part
     for part, document in contributors:
-        keys = _owned_keys(part, document)
-        undeclared = set(document) - set(keys)
+        keys = document.owned
+        undeclared = set(document.values) - set(keys)
         if undeclared:
             for key in sorted(undeclared):
                 if key in owners:
                     previous = owners[key]
                     raise LoadoutError(
-                        f"{artifact.label}: key {key!r} from {part.source} is owned by "
-                        f"{previous.category} ({previous.source})"
+                        f"{artifact.label}: key {key!r} from {part.label} is owned by "
+                        f"{previous.label}"
                     )
             raise LoadoutError(
-                f"{artifact.label}: {part.source} contains keys outside its ownership: "
+                f"{artifact.label}: {part.label} contains keys outside its ownership: "
                 f"{', '.join(sorted(undeclared))}"
             )
-        merged.update(copy.deepcopy(document))
+        merged.update(copy.deepcopy(document.values))
     if not merged and not artifact.emit_empty:
         return None
     ordered = dict.fromkeys((*artifact.order, *merged))
-    document = {key: merged[key] for key in ordered if key in merged}
+    output = {key: merged[key] for key in ordered if key in merged}
     if artifact.format == "json":
-        return json.dumps(document, indent=2, ensure_ascii=False, allow_nan=False) + "\n"
+        return json.dumps(output, indent=2, ensure_ascii=False, allow_nan=False) + "\n"
     result = tomlkit.document()
-    for key, value in document.items():
+    for key, value in output.items():
         result.add(key, _toml_item(value))
     return tomlkit.dumps(result)
 
@@ -551,25 +651,84 @@ def _owned_keys(part: ArtifactPart, document: Mapping[str, Any]) -> tuple[str, .
     return tuple(document)
 
 
-def _documents(artifacts: Artifacts, artifact: Artifact) -> tuple[dict[str, Any], ...]:
+def prepare_document(
+    part: ArtifactPart, values: dict[str, Any], reserved: tuple[str, ...] = ()
+) -> PartDocument:
+    owned = _owned_keys(part, values)
+    if part.keys is None and part.renderer is None:
+        owned = tuple(dict.fromkeys((*reserved, *owned)))
+    return PartDocument(values, owned)
+
+
+def _documents(artifacts: Artifacts, artifact: Artifact) -> tuple[PartDocument, ...]:
     return tuple(part_document(artifacts, artifact, part) for part in artifact.parts)
 
 
 def part_document(
     artifacts: Artifacts, artifact: Artifact, part: ArtifactPart, *, rules: Rules = EMPTY_RULES
-) -> dict[str, Any]:
-    path = _source(artifacts.source_root, part.source, optional=part.optional)
-    if path is not None:
-        _regular_file(path)
-    if part.renderer is None:
-        return _literal(path, artifact.format) if path is not None else {}
-    if path is None and rules == EMPTY_RULES:
+) -> PartDocument:
+    if part.renderer is not None:
+        spec = RENDERERS[part.renderer]
+        assert isinstance(spec, JsonSpec)
+        native, present = part_rules(artifacts, part)
+        combined = merge_rules(rules, native) if rules != EMPTY_RULES else native
+        values = (
+            spec.fn(combined, {})
+            if (present or rules != EMPTY_RULES)
+            and (combined != EMPTY_RULES or artifact.emit_empty)
+            else {}
+        )
+        return prepare_document(part, values)
+    documents = []
+    for path in input_files(artifacts, part):
+        value = _literal(path, artifact.format)
+        if part.layered and part.keys is not None and (extra := set(value) - set(part.keys)):
+            raise LoadoutError(
+                f"{part.label}: input {path} contains keys outside its ownership: "
+                f"{', '.join(sorted(extra))}"
+            )
+        documents.append(value)
+    values = merge_documents(*documents) if part.layered else next(iter(documents), {})
+    reserved = tuple(dict.fromkeys(key for document in documents for key in document))
+    return prepare_document(part, values, reserved)
+
+
+def input_files(artifacts: Artifacts, part: ArtifactPart) -> tuple[Path, ...]:
+    paths = []
+    for item in part.inputs:
+        path = _source(artifacts.source_root, item.source, optional=item.optional)
+        if path is not None:
+            _regular_file(path)
+            paths.append(path)
+    return tuple(paths)
+
+
+def part_rules(artifacts: Artifacts, part: ArtifactPart) -> tuple[Rules, bool]:
+    paths = input_files(artifacts, part)
+    tiers = tuple(parse_rules(path) for path in paths)
+    rules = merge_rules(*tiers) if part.layered else next(iter(tiers), EMPTY_RULES)
+    return rules, bool(paths)
+
+
+def _composed_instructions(
+    artifacts: Artifacts, artifact: Artifact, destination: Path, prefix: bytes
+) -> dict[Path, Output]:
+    blocks = []
+    for path in input_files(artifacts, artifact.parts[0]):
+        try:
+            body = path.read_text(encoding="utf-8").strip()
+        except UnicodeError as error:
+            raise LoadoutError(f"instruction input must be UTF-8: {path}") from error
+        if body:
+            blocks.append(body)
+    body_bytes = ("\n\n".join(blocks) + "\n").encode() if blocks else b""
+    content = (prefix if artifact.template_instructions else b"") + body_bytes
+    if not content and not artifact.emit_empty:
         return {}
-    spec = RENDERERS[part.renderer]
-    assert isinstance(spec, JsonSpec)
-    native = parse_rules(path) if path is not None else EMPTY_RULES
-    combined = merge_rules(rules, native) if rules != EMPTY_RULES else native
-    return spec.fn(combined, {}) if combined != EMPTY_RULES or artifact.emit_empty else {}
+    output = (
+        FrozenFile(content, artifact.mode) if artifact.mode is not None else content.decode("utf-8")
+    )
+    return {destination: output}
 
 
 def _regular_file(path: Path) -> None:
@@ -581,7 +740,15 @@ def _opaque(
     artifacts: Artifacts, artifact: Artifact, destination: Path, instruction_prefix: bytes
 ) -> dict[Path, Output]:
     part = artifact.parts[0]
-    path = _source(artifacts.source_root, part.source, optional=part.optional)
+    if artifact.format == "text" and part.renderer is not None:
+        spec = RENDERERS[part.renderer]
+        assert isinstance(spec, TextSpec)
+        rules, present = part_rules(artifacts, part)
+        if not present or (rules == EMPTY_RULES and not artifact.emit_empty):
+            return {}
+        return {destination: spec.fn(rules)}
+    authored = part.single_input
+    path = _source(artifacts.source_root, authored.source, optional=authored.optional)
     if path is None:
         return {}
     if artifact.format == "tree":
@@ -605,13 +772,6 @@ def _opaque(
                 )
         return outputs
     _regular_file(path)
-    if artifact.format == "text" and part.renderer is not None:
-        spec = RENDERERS[part.renderer]
-        assert isinstance(spec, TextSpec)
-        rules = parse_rules(path)
-        if rules == EMPTY_RULES and not artifact.emit_empty:
-            return {}
-        return {destination: spec.fn(rules)}
     prefix = instruction_prefix if artifact.template_instructions else b""
     if path.stat().st_size == 0 and not artifact.emit_empty and not prefix:
         return {}
@@ -640,19 +800,17 @@ def render_artifact(
 ) -> dict[Path, Output]:
     if artifact.format in DOCUMENT_FORMATS:
         return render_document(artifact, destination, _documents(artifacts, artifact))
+    if artifact.parts[0].merge == "concat":
+        return _composed_instructions(artifacts, artifact, destination, instruction_prefix)
     return _opaque(artifacts, artifact, destination, instruction_prefix)
 
 
 def render_document(
-    artifact: Artifact, destination: Path, documents: tuple[dict[str, Any], ...]
+    artifact: Artifact, destination: Path, documents: tuple[PartDocument, ...]
 ) -> dict[Path, Output]:
     document = compose_document(artifact, documents)
     if artifact.partial:
-        owned = frozenset(
-            key
-            for part, values in zip(artifact.parts, documents, strict=True)
-            for key in _owned_keys(part, values)
-        )
+        owned = frozenset(key for prepared in documents for key in prepared.owned)
         return {
             destination: Merged(
                 owned,

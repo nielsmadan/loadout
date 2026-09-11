@@ -57,8 +57,8 @@ Declared ownership includes keys absent from an empty part. Two parts claiming o
 and the error names both sources. A part with explicit keys also fails if it introduces a key
 outside that list. There is no priority between native and portable contributors.
 
-Values are literal. JSON `null`, `false`, empty objects, empty arrays, and array order survive;
-`null` does not delete a key. Nested object insertion order is preserved. Duplicate JSON keys
+With `source`, values are literal. JSON `null`, `false`, empty objects, empty arrays, and array
+order survive; `null` does not delete a key. Nested object insertion order is preserved. Duplicate JSON keys
 and non-JSON constants such as `NaN` are rejected. TOML nested tables, arrays, and scalar values
 survive parsing and composition. Composed TOML maps use inline tables and lists use inline
 arrays, including arrays of maps, so a requested top-level order remains representable when
@@ -68,6 +68,86 @@ either comes before a scalar.
 insertion order; absent names do not create keys. JSON uses two-space indentation and a final
 newline. TOML uses tomlkit. Native formatting and comments are not retained by document
 composition; use a copy route when exact source bytes are required.
+
+## Ordered inputs within a part
+
+A part can combine shared and personal inputs while remaining one owner:
+
+```toml
+[artifact.parts.settings]
+sources = [
+  {source = "settings/shared/claude.json"},
+  {source = "settings/local/claude.json", optional = true},
+]
+merge = "deep"
+```
+
+`source` and `sources` are mutually exclusive. `sources` is a nonempty ordered list of tables,
+each with a relative `source` and optional `optional = true`. Optionality belongs to each input;
+part-level `optional` is rejected with `sources`. Duplicate normalized paths are errors. Every
+required input must exist; missing optional inputs contribute nothing.
+
+JSON/TOML parts require `merge = "deep"`. It uses the same operator as settings/hooks/plugin
+fragments: maps merge recursively, arrays concatenate without deduplication, scalar/type changes
+use the later value, and JSON `null` deletes. Key positions come from first appearance; removing
+and reintroducing a key appends it. An empty array appends nothing; it does not clear an earlier
+array. The [composition matrix](composition.md) compares these rules with profile inheritance.
+
+Each input is checked against explicit `keys` before merging. Without `keys`, the part reserves
+the union of all input top-level keys, including those later deleted. Deletion therefore cannot
+hide another part's ownership or an input field outside its declared keys. Partial documents use
+that same ownership to remove deleted deployed fields. Optional paths remain protected inputs
+even when absent, including during retirement.
+
+Layered `permissions` and `mcp-permissions` parts require a portable renderer:
+
+```toml
+[artifact.parts.permissions]
+sources = [
+  {source = "permissions/shared.toml"},
+  {source = "permissions/local.toml", optional = true},
+]
+renderer = "claude-project"
+keys = ["permissions"]
+```
+
+Renderer inputs merge as portable rules before rendering: deny > ask > allow, strictest stated
+catch-all, stable emission order. A `merge` key is rejected because the renderer selects the
+operator. Text permission-renderer routes accept the same `sources` list. Native template rules
+remain the lower tiers, combined through that operator before rendering.
+
+An artifact-index reference is still a complete selection. Global profiles may select different
+indexes whose parts reuse the same shared inputs and name different final overlays; route metadata
+can repeat without copying content. Project and global use identical input composition.
+
+## Composed instruction text
+
+```toml
+[[artifact]]
+agents = ["claude"]
+output = "CLAUDE.md"
+format = "text"
+category = "instructions"
+sources = [
+  {source = "instructions/shared.md"},
+  {source = "instructions/claude.md"},
+  {source = "instructions/local/personal.md", optional = true},
+]
+merge = "concat"
+template_instructions = true
+mode = 420
+```
+
+Composed text decodes UTF-8, strips fragment boundaries, omits empty fragments, joins with one
+blank line, and ends a nonempty body with one newline. Invalid UTF-8 names the failing input.
+The template prefix, when enabled, is prepended once. An opted-in template instruction route
+requires at least one required input. A prefix can activate empty bodies; without content,
+`emit_empty` controls whether an empty file is emitted.
+
+Generated instruction text defaults to mode `0600`. An explicit `mode` sets the complete mode;
+`420` means `0644`. Existing single-source copy/text routes retain their original bytes and modes.
+`copy` and `tree` require singular sources. A text route without a permission renderer accepts
+multiple inputs only for instructions with `merge = "concat"`.
 
 ## Partial runtime documents
 
@@ -190,13 +270,14 @@ source = "instructions/native/claude/CLAUDE.md"
 template_instructions = true
 ```
 
-The flag defaults to false. It requires project scope, a required `instructions` source, and
+The flag defaults to false. It requires project scope, at least one required `instructions` input, and
 `copy` or `text` without a renderer. It cannot be used with legacy project presets. Every
 configured agent needs an opted-in route when template prose is selected. Fresh project init
 marks only its top-level `CLAUDE.md`/`AGENTS.md` routes; nested files and trees stay independent.
 
-Rendering prepends template instruction tiers in declared order and preserves the original body
-bytes and declared mode, falling back to the source mode. A prefix activates a dormant empty instruction source. Removing the
+Rendering prepends template instruction tiers in declared order. Singular routes preserve original
+body bytes and declared mode, falling back to source mode; composed routes use the text rules above.
+A prefix activates a dormant empty instruction source. Removing the
 prefix restores ordinary empty-source behavior. Catalog manifests also contribute skills, MCP
 and permissions through compatible routes; `template_parts = false` opts a route out of those
 contributions without affecting its instruction-prefix flag. Legacy directory templates retain
@@ -229,7 +310,10 @@ Global destinations also reject symlinked ancestors. Duplicate routes, ancestor 
 and source/output overlap fail before writing, even for dormant routes. The index and owning
 config cannot be overwritten by an artifact output. Legacy source and config dependencies are
 protected within and across scopes, including inherited profile files, base documents, and
-resolved templates with the configuration that locates them.
+resolved templates with the configuration that locates them. Declared templates protect the
+machine manifest's complete inheritance chain. Retirement keeps dependencies from both present
+scopes even when one has no artifact routes or deployment receipt. Optional inputs remain
+protected whether present or absent, including every later input in a layered contributor.
 
 `.git` and `.loadout-state` are protected metadata. Routes cannot name them as sources or
 destinations, and a tree containing either is rejected before copying its files.

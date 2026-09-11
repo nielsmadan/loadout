@@ -12,6 +12,41 @@ fixture. What the whole-document comparison uniquely covers is **wiring**, not s
 Keep this file current: a new behaviour in `docs/reference/` needs a row, and a row without a
 test is a gap.
 
+## Composition and inheritance
+
+The operator map is [composition.md](composition.md). Profile tests are in
+`tests/test_profile_inheritance.py`; source selection tests are in
+`tests/test_source_overrides.py`.
+
+| behaviour | pinned by |
+|---|---|
+| legacy targets inherit individual fields and instruction substitution reaches output | `test_legacy_target_inherits_fields_and_applies_substitution`, `test_permission_target_inherits_renderer_and_replaces_lists`, `test_explicit_manifest_path_remains_the_start_of_inheritance` |
+| profiles name sibling files; symlink aliases stay within the source root and use canonical identities for cycles and protection | `test_parent_must_name_a_sibling_profile`, `test_symlinked_parent_must_remain_in_the_source_directory`, `test_symlinked_parent_cycle_uses_canonical_identity`, `test_symlinked_parent_dependency_is_protected_at_its_real_path` |
+| removals precede child fields across a chain, including quoted paths and whole-target replacement | `test_removals_apply_before_child_fields_in_a_chain`, `test_removing_a_target_allows_wholesale_replacement` |
+| removing agent fields exposes shared defaults; supplied maps replace completely | `test_agent_field_removal_exposes_all_and_maps_replace` |
+| missing/overlapping removal paths, list traversal and parentless removal fail | `test_invalid_removals_are_refused`, `test_removal_without_parent_is_refused` |
+| declared skill replacements select the whole tree while other lower-tier skills survive | `test_skill_override_replaces_the_entire_tree` |
+| declared module replacements preserve the winner's bytes and mode while other lower-tier files survive | `test_module_override_keeps_the_winners_bytes_and_mode` |
+| overrides require both contenders, safe exact names and a participating category | `test_override_must_name_both_contenders`, `test_invalid_override_declarations_are_refused`, `test_override_requires_the_category_in_use` |
+| native profile indexes reuse shared inputs across profile switches | `test_profile_indexes_reuse_shared_inputs_through_sync` |
+| parsed skill/module overrides reach deployed bytes, modes and clean checks | `test_declared_overrides_reach_sync_and_check` |
+
+Native ordered inputs are covered in `tests/test_artifact_composition.py`:
+
+| behaviour | pinned by |
+|---|---|
+| JSON/TOML deep merging preserves key order, appends arrays and replaces scalars | `test_document_layers_preserve_order_and_use_deep_merge` |
+| deleted input keys retain partial ownership and cannot hide another part's claim | `test_deleted_layer_keys_retain_partial_ownership`, `test_deleted_layer_key_cannot_hide_another_parts_ownership` |
+| explicit ownership constrains each input before deletion | `test_every_layer_is_checked_against_explicit_keys` |
+| global/project optional input activation, edits, removals and retirement preserve foreign fields and mode | `test_optional_overlay_lifecycle_preserves_foreign_fields` |
+| authored layer order reaches output and external output changes are refused | `test_layered_output_drift_is_refused_and_authored_order_is_applied` |
+| every input remains protected, including absent optional paths and retirement targets | `test_every_input_path_is_protected_even_when_optional`, `test_retirement_cannot_delete_a_new_layer_input` |
+| portable JSON/text layers retain stricter rules and surviving contributions from each source | `test_portable_layers_keep_stricter_rules_and_contributions_from_both_sources`, `test_text_permission_layers_merge_before_rendering`, `test_layered_rule_defaults_keep_the_strictest_stated_value` |
+| composed instruction bytes, modes, optional inputs and empty-to-active lifecycle | `test_composed_instruction_bytes_modes_and_optional_input`, `test_composed_instruction_empty_activation_and_retirement` |
+| invalid UTF-8, layer syntax, symlinks and incompatible operators fail | `test_composed_instructions_refuse_invalid_utf8`, `test_invalid_document_composition_is_rejected`, `test_layered_input_symlink_is_refused`, `test_layered_permissions_require_a_rule_renderer`, `test_opaque_routes_retain_a_single_source` |
+| catalog templates prefix composed instructions once and merge document/rule contributions | `test_catalog_contributions_reach_layered_instructions_and_documents`, `test_text_permission_layers_merge_before_rendering` |
+| staged reconstruction reads staged layers and omits an untracked optional personal input | `test_layered_documents_use_staged_inputs_and_omit_untracked_personal_layer` in `tests/test_git_integration.py` |
+
 ## Migration planning
 
 CLI integration is covered in `tests/test_init_workflow.py` and `tests/test_cli.py`:
@@ -192,7 +227,7 @@ The contract is [git-integration.md](git-integration.md). These cases run in
 | `module-config-shapes` | both Pi shapes land at their authored relative paths | [module-config](module-config.md#why-the-path-is-authored-never-derived) | `test_both_shapes_land_at_their_authored_relative_paths` |
 | `module-config-verbatim` | bytes are copied, not reserialised, and the exec bit survives | [module-config](module-config.md#what-loadout-does) | `test_the_bytes_are_copied_rather_than_reserialised`, `test_an_executable_file_keeps_its_mode` |
 | `module-config-automatic` | the directory is the declaration; `module-config = false` opts out | [module-config](module-config.md#what-loadout-does) | `test_the_directory_is_the_declaration`, `test_module_config_false_switches_it_off` |
-| `module-config-collision` | two sources offering one path, or a path on a rendered destination, are refused | [module-config](module-config.md#what-loadout-does) | `test_a_path_offered_by_two_sources_is_refused`, `test_a_path_colliding_with_a_rendered_destination_is_refused` |
+| `module-config-collision` | undeclared source collisions and collisions with rendered destinations are refused | [module-config](module-config.md#what-loadout-does) | `test_a_path_offered_by_two_sources_is_refused`, `test_a_path_colliding_with_a_rendered_destination_is_refused` |
 | `module-config-harnesses` | three harnesses carry three kinds of file, each reading only its own subtree | [module-config](module-config.md#other-harnesses) | `test_the_slice_is_not_pi_specific` |
 | `module-config-opencode-plugin` | a vendored OpenCode plugin lands in `plugins/` beside the generated `loadout-hooks.js` | [module-config](module-config.md#other-harnesses) | `test_an_opencode_plugin_lands_beside_the_generated_hooks_plugin` |
 
@@ -347,6 +382,7 @@ in `tests/test_artifacts.py` and `tests/test_deployment.py`; legacy whole-docume
 | `a-coexistence` | explicit and legacy routes cannot overwrite each other or authored inputs | `test_legacy_preset_and_artifact_cannot_claim_the_same_path`, `test_global_artifacts_collide_with_legacy_destinations`, `test_global_artifacts_cannot_overwrite_legacy_inputs`, `test_project_artifacts_cannot_overwrite_legacy_permission_sources`, `test_empty_global_and_project_routes_cannot_overlap` |
 | `a-routing` | explicit project mode rejects ignored declarations; agents and source roots are validated | `test_explicit_project_mode_refuses_ignored_legacy_inputs`, `test_project_config_validates_direct_presets_and_agent_membership`, `test_global_artifacts_follow_destination_templates_and_expose_skill_agents`, `test_artifact_reference_is_relative_to_owning_config_even_when_nested` |
 | `a-dependencies` | cross-scope outputs protect source/config dependencies, inherited profiles and resolved templates | `test_project_artifacts_protect_global_source_dependencies`, `test_global_artifacts_protect_project_source_dependencies`, `test_artifacts_protect_declared_template_dependencies` |
+| `a-inherited-catalog` | every inherited machine manifest stays protected from adoption and retirement, including dependencies from scopes without artifact receipts | `test_inherited_template_manifest_cannot_be_adopted_as_an_output`, `test_retirement_preserves_a_newly_inherited_template_manifest` in `test_manifest_protection.py` |
 | `a-source-only` | composition ignores live output and supports a fresh source root | `test_standalone_composition_is_pure`, `test_rendering_never_uses_destination_content`, `test_artifact_configuration_can_be_reconstructed_under_a_fresh_root` |
 | `a-receipt-guard` | previous/current bytes and full modes permit source changes while manual edits block | `test_source_changes_sync_against_receipt_and_current_desired_bytes`, `test_manual_output_edits_block_then_force_explicit_target`, `test_committed_baseline_does_not_override_artifact_receipt`, `test_relative_root_uses_artifact_receipts` |
 | `a-adoption` | missing receipts never authorize overwriting occupied conflicting output | `test_new_occupied_path_requires_adoption_without_git_baseline`, `test_matching_existing_output_can_be_adopted_and_missing_receipt_is_conservative` |
@@ -382,6 +418,8 @@ composition untouched, and that a file's *mode* survives a copy.
 | `s-bundle-wheel` | the wheel carries the canonical loadout skill and its reference | `test_built_wheel_contains_the_complete_skill_tree` |
 | `s-bundle-resource` | source checkouts and built wheels use the same package resource tree | `test_package_resource_is_used`, `test_source_checkout_uses_the_package_resource_tree` |
 | `s-install-source` | install vendors into the active profile's sole skills-capable global source, or requires `--source` rather than choosing among several | `test_one_skills_source_is_selected_by_default`, `test_multiple_skills_sources_require_an_explicit_source`, `test_profile_selects_its_own_source`, `test_unknown_profile_is_refused_before_selecting_a_source`, `test_skill_install_requires_source_when_the_manifest_has_several` |
+| `s-install-override` | status/update/uninstall use the declared skill winner in legacy and mixed routes; uninstall removes its inherited or local declaration and restores the earlier skill while preserving other entries, comments and mode | `test_skill_commands_manage_the_active_override`, `test_explicit_source_cannot_manage_a_shadowed_skill` in `test_skill_overrides.py` |
+| `s-override-protection` | overrides retain ownership guards; a failed manifest write restores source, config and deployed output | `test_skill_override_preserves_source_ownership_guards`, `test_override_uninstall_rolls_back_a_failed_manifest_write` in `test_skill_overrides.py` |
 | `s-install-owned` | an ownership hash distinguishes installed, updateable, modified and conflicting source copies; refresh never overwrites user edits | `test_an_existing_unowned_skill_is_a_conflict`, `test_install_vendors_the_bundle_as_a_normal_source_skill`, `test_install_refreshes_an_unmodified_older_bundle`, `test_install_preserves_a_modified_installed_copy`, `test_skill_install_conflict_is_reported_without_overwriting_or_syncing` |
 | `s-install-rendered` | the marker stays source-only and ordinary sync deploys the skill to exactly the configured agents; no configured skill targets means install changes nothing | `test_normal_sync_deploys_the_installed_source_to_configured_agents`, `test_skill_install_vendors_into_the_global_source_and_syncs`, `test_skill_status_reports_the_source_copy_and_configured_agents`, `test_skill_install_with_no_configured_agents_does_not_choose_or_change_a_source` |
 | `s-install-confirm` | mutating commands show the source destination, require confirmation or `--yes`, and a decline changes nothing | `test_skill_install_asks_before_writing_the_named_source`, `test_skill_install_requires_yes_without_interactive_input` |

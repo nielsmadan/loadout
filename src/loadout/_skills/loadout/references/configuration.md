@@ -33,17 +33,27 @@ change does not itself authorize migration and its Git checkpoint; report the mi
 
 Read the config's `artifacts` file, resolved relative to that config. For each requested category,
 find records whose `agents` include the configured consumer, then follow `parts.<category>.source`
-or the opaque record's `category` and `source`. Sources are relative to the owning config's
+or its ordered `sources` entries, or the opaque record's category and inputs. Sources are relative to the owning config's
 directory, even when its artifacts index is nested. Project `presets = false` means these routes
 are the complete producer set: legacy
 filenames and unsupported entries in the matrix below do not describe these native capabilities.
 
-Native JSON/TOML contributors preserve literal null, false, arrays and ordered objects. A part's
-explicit `keys` reserve its fields even when empty; without `keys`, its present top-level keys are
-owned. A `renderer` part uses the named portable permission format instead. Each field has one
+Singular native JSON/TOML inputs preserve literal null, false, arrays and ordered objects.
+Ordered `sources = [{source = "shared.json"}, {source = "local/private.json", optional = true}]`
+require `merge = "deep"`: maps merge recursively, arrays append, later scalar/type changes win,
+and null deletes. An empty array does not clear an earlier array. A part's explicit `keys`
+constrain every input and reserve its fields even when empty; without `keys`, the union of input
+top-level keys is owned, including deleted fields. A `renderer` part uses portable permission
+rules instead: ordered inputs merge with deny > ask > allow before rendering, without a `merge`
+key. Never use document deep merging for layered permission policy. Each field has one
 producer. Never add a portable overlay that hides native edits or a contributor claiming another
 part's keys. A tree owns descendants: add a skill within its existing source tree, never a
 colliding child artifact route. Optional private sources under category `local/` remain private.
+
+Instruction text accepts ordered `sources` with `merge = "concat"`. It strips UTF-8 fragment
+boundaries, skips empty bodies, joins with blank lines, and adds a final newline. Generated text
+defaults to mode `0600`; an explicit `mode` overrides it. Copy/tree routes stay singular. Keep
+personal layers optional and ignored; optionality belongs to each input in the list.
 
 For copied files, inspect `mode` or tree `modes` in the artifact record. Migration authors those
 full filesystem modes because Git retains only executable bits. Change a declared mode there;
@@ -61,11 +71,13 @@ the mixed runtime registration. Follow those explicit producers instead of apply
 limitations below. Partial ownership preserves runtime/auth fields; never promote the whole live
 document into committed source. Categories without routes need an explicit binding decision.
 
-Native project instruction routes with `template_instructions = true` prepend the selected
-templates' `instructions.md` before the route's own source body. Edit that body for project rules;
-edit `loadout/templates/<name>/instructions.md` only when changing the template tier. Template
-copies keep hash provenance, and `template sync` refuses modified copies. Other populated template
-categories cannot overlay native producers: edit their declared artifact sources instead.
+Native project instruction routes with `template_instructions = true` prepend selected template
+instructions once before the route's composed body. Edit its inputs for project rules; edit the
+selected template parts only when changing the template tier. Template copies keep hash
+provenance, and `template sync` refuses modified copies. Catalog templates also contribute
+permission rules, skills and MCP definitions through compatible category producers. Directory
+templates retain their instructions-only native bridge; populated non-instruction categories
+require a catalog before they can contribute.
 
 ## Capability matrix
 
@@ -165,6 +177,18 @@ already narrow enough. Otherwise create a clearly named fragment under the selec
 that name to the appropriate agent block. `[all]` is appropriate only when the representation and
 value are genuinely shared by every declared consumer.
 
+Global skill and module collisions require an explicit declaration on the replacing source:
+`[source.overrides]` with `skills = ["review"]` or
+`module-config = ["pi/extensions/status/config.json"]`. Each item must exist in that source and
+an earlier source when consumed, and the category must be included in `use`. A skill replaces
+the whole tree; a module file replaces complete bytes and mode. Do not merge supporting files
+from both skill contenders. Undeclared duplicates remain errors.
+
+`loadout skill status`, `install` and `uninstall` select the declared winning `loadout` skill;
+an explicit `--source` must name that winner. Uninstall removes its override entry with the owned
+copy, then sync deploys the earlier source's skill. The entry is changed in the manifest that
+declares the source list, including an inherited parent shared by several profiles.
+
 Before changing a fragment, find every manifest or project-config entry that consumes it. An
 agent-specific request must not alter a shared fragment for other agents; split the source or ask
 which effect the user wants.
@@ -173,7 +197,17 @@ which effect the user wants.
 
 `loadout.toml` is the `default` profile. A non-default `<profile>.toml` declares
 `extends = "default"` and overrides only its deltas. The machine config may select the active
-profile.
+profile. Parent names identify sibling files, not paths; profile symlinks must stay within the
+source directory. Internal aliases use canonical identities for cycles and dependency protection.
+
+Agent blocks and each legacy instruction/permission target inherit per field. A supplied list or
+map replaces the entire field. Top-level `remove = ["instructions.claude.output"]` deletes an
+inherited TOML key path before child fields apply; remove a whole target before redeclaring it
+for wholesale replacement. Missing/overlapping paths and traversal through lists are errors.
+Removing an agent field exposes applicable `[all]` defaults. Legacy instruction targets also
+accept `substitute`. Native profiles select complete artifact indexes; reuse shared inputs in
+those indexes and vary only the final overlays. Project configs and template catalogs have no
+`extends`; catalogs compose selected parts.
 
 When a non-default profile is active and the request names no profile, ask whether the change is:
 

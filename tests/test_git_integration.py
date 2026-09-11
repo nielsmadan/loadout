@@ -69,6 +69,29 @@ def _commit(repo, *paths):
     return _git(repo, "commit", "-qm", "fixture")
 
 
+def test_layered_documents_use_staged_inputs_and_omit_untracked_personal_layer(repo: Path) -> None:
+    source = _project(repo)
+    (source / "artifacts.toml").write_text(
+        '[[artifact]]\nagents=["codex"]\nformat="json"\noutput="settings.json"\n'
+        '[artifact.parts.settings]\nmerge="deep"\n'
+        'sources=[{source="shared.json"},{source="overlay.json"},'
+        '{source="private.json",optional=true}]\n'
+    )
+    shared = source / "shared.json"
+    overlay = source / "overlay.json"
+    shared.write_text('{"model":"base","retained":1}')
+    overlay.write_text('{"model":"variant"}')
+    _git(repo, "add", "loadout")
+    shared.write_text("invalid worktree JSON")
+    (source / "private.json").write_text("invalid untracked JSON")
+    assert check_staged(repo) == 0
+    overlay.write_text("invalid staged JSON")
+    _git(repo, "add", "loadout/overlay.json")
+    overlay.write_text('{"model":"valid worktree"}')
+    with pytest.raises(LoadoutError, match=r"snapshot is incomplete or invalid.*overlay.json"):
+        check_staged(repo)
+
+
 def test_staged_ownership_record_matches_its_producer_and_allows_updates(repo):
     build(repo, {"model": "fixture"})
     write_all(repo)

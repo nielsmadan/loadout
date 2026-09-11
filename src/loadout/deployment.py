@@ -388,11 +388,7 @@ def _protected(path: Path, scopes: tuple[DeploymentScope, ...]) -> None:
         if scope.artifacts:
             inputs += [
                 scope.artifacts.path,
-                *(
-                    scope.artifacts.source_root / part.source
-                    for record in scope.artifacts.records
-                    for part in record.parts
-                ),
+                *scope.artifacts.input_paths(),
             ]
         for source in inputs:
             if path.is_relative_to(source) or source.is_relative_to(path):

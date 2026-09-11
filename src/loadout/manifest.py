@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -9,6 +10,7 @@ from .artifacts import Artifacts, artifact_reference
 from .destinations import resolve_destination
 from .errors import LoadoutError
 from .sources import Source, parse_sources
+from .toml_paths import contains, key_path
 
 MANIFEST_NAME = "loadout.toml"
 __all__ = ["resolve_destination"]
@@ -26,6 +28,8 @@ def profile_path(root: Path, profile: str) -> Path:
     Every other profile is a sibling beside it, so a source with one profile has
     one file and root detection is unchanged.
     """
+    if not profile or profile in {".", ".."} or "/" in profile or "\\" in profile:
+        raise LoadoutError(f"profile name must name a sibling file: {profile!r}")
     if profile == DEFAULT_PROFILE:
         return manifest_path(root)
     return root / f"{profile}.toml"
@@ -199,6 +203,7 @@ def _parse_instructions(
                 destinations=destinations,
                 name=agent,
                 profile=profile,
+                substitute=_parse_substitute(block.get("substitute"), label),
             )
         )
     return tuple(targets)
@@ -312,7 +317,36 @@ def _read_toml(path: Path) -> dict[str, object]:
     return data
 
 
-def _resolve_extends(root: Path, profile: str) -> tuple[dict[str, object], tuple[Path, ...]]:
+def _remove_inherited(merged: dict[str, object], data: dict[str, object]) -> None:
+    if "remove" not in data:
+        return
+    if "extends" not in data:
+        raise LoadoutError("profile remove requires extends")
+    names = _str_list(data["remove"], "profile", "remove")
+    paths = [key_path(name) for name in names]
+    for index, path in enumerate(paths):
+        if any(contains(other, path) or contains(path, other) for other in paths[:index]):
+            raise LoadoutError(f"profile remove paths overlap: {names[index]!r}")
+        parent = merged
+        for key in path[:-1]:
+            if key not in parent:
+                raise LoadoutError(f"profile remove path does not exist: {names[index]!r}")
+            child = parent[key]
+            if not isinstance(child, dict):
+                raise LoadoutError(f"profile remove path must traverse tables: {names[index]!r}")
+            parent = child
+        if path[-1] not in parent:
+            raise LoadoutError(f"profile remove path does not exist: {names[index]!r}")
+        del parent[path[-1]]
+
+
+def _inherit_fields(existing: object, value: object) -> object:
+    if isinstance(existing, dict) and isinstance(value, dict):
+        return {**existing, **copy.deepcopy(value)}
+    return copy.deepcopy(value)
+
+
+def _resolve_extends(path: Path) -> tuple[dict[str, object], tuple[Path, ...]]:
     """Flatten a profile onto the one it extends, so it states only deltas.
 
     Blocks merge **per key**, so a profile naming one key inherits the rest —
@@ -320,34 +354,43 @@ def _resolve_extends(root: Path, profile: str) -> tuple[dict[str, object], tuple
     it exists to avoid restating. Absent means inherit; an explicit `[]` means
     empty, which is the convention `permissions = []` already set.
     """
-    seen: list[str] = []
+    seen: list[Path] = []
     chain: list[dict[str, object]] = []
-    current = profile
+    root = path.parent.resolve()
+    current = path.resolve()
     while True:
+        if current.parent != root:
+            raise LoadoutError(f"profile manifest escapes source root {root}: {current}")
         if current in seen:
-            cycle = " -> ".join([*seen, current])
+            cycle = " -> ".join(
+                DEFAULT_PROFILE if p.name == MANIFEST_NAME else p.stem for p in [*seen, current]
+            )
             raise LoadoutError(f"profile extends cycle: {cycle}")
         seen.append(current)
-        data = _read_toml(profile_path(root, current))
+        data = _read_toml(current)
         chain.append(data)
         parent = data.get("extends")
         if parent is None:
             break
         if not isinstance(parent, str):
-            raise LoadoutError(f"{profile_path(root, current)}: extends must be a string")
-        current = parent
+            raise LoadoutError(f"{current}: extends must be a string")
+        current = profile_path(root, parent).resolve()
 
     merged: dict[str, object] = {}
     for data in reversed(chain):
+        _remove_inherited(merged, data)
         for key, value in data.items():
-            if key == "extends":
+            if key in {"extends", "remove"}:
                 continue
             existing = merged.get(key)
-            if isinstance(existing, dict) and isinstance(value, dict):
-                merged[key] = {**existing, **value}
+            if key in {"instructions", "permissions"} and isinstance(value, dict):
+                targets = dict(existing) if isinstance(existing, dict) else {}
+                for name, fields in value.items():
+                    targets[name] = _inherit_fields(targets.get(name), fields)
+                merged[key] = targets
             else:
-                merged[key] = value
-    return merged, tuple(profile_path(root, name) for name in seen)
+                merged[key] = _inherit_fields(existing, value)
+    return merged, tuple(seen)
 
 
 def load_profile(root: Path, profile: str = DEFAULT_PROFILE) -> Manifest:
@@ -361,19 +404,19 @@ def load_profile(root: Path, profile: str = DEFAULT_PROFILE) -> Manifest:
     """
     path = profile_path(root, profile)
     if not path.is_file():
-        return load_manifest(manifest_path(root))
-    data, config_paths = _resolve_extends(root, profile)
-    return _build_manifest(data, path, config_paths=config_paths)
+        path = manifest_path(root)
+    return load_manifest(path)
 
 
 def load_manifest(path: Path) -> Manifest:
-    return _build_manifest(_read_toml(path), path)
+    data, config_paths = _resolve_extends(path)
+    return _build_manifest(data, path, config_paths=config_paths)
 
 
 COMMON_BLOCK = "all"
 
 RESERVED_KEYS = frozenset(
-    {"source", "instructions", "permissions", "extends", "artifacts", COMMON_BLOCK}
+    {"source", "instructions", "permissions", "extends", "remove", "artifacts", COMMON_BLOCK}
 )
 
 # permissions, mcp-permissions, skills and module-config render with no authoring

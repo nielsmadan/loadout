@@ -10,6 +10,7 @@ import pytest
 
 from loadout.artifacts import (
     Artifact,
+    ArtifactInput,
     ArtifactPart,
     artifact_destination,
     compose_document,
@@ -122,7 +123,7 @@ def test_toml_arrays_of_maps_preserve_key_order(providers: list[object]) -> None
     artifact = Artifact(
         agents=("codex",),
         format="toml",
-        parts=(ArtifactPart("settings", PurePosixPath("settings.toml")),),
+        parts=(ArtifactPart("settings", (ArtifactInput(PurePosixPath("settings.toml")),)),),
         order=("providers", "enabled"),
     )
     expected = {"enabled": False, "providers": providers, "model": "chosen"}
@@ -469,7 +470,7 @@ def test_standalone_composition_is_pure() -> None:
         agents=("claude",),
         format="json",
         output=PurePosixPath("settings.json"),
-        parts=(ArtifactPart("settings", PurePosixPath("settings.json")),),
+        parts=(ArtifactPart("settings", (ArtifactInput(PurePosixPath("settings.json")),)),),
     )
     original = {"settings": {"one": [None, False, {}]}}
     assert compose_document(record, (original,)) == json.dumps(original, indent=2) + "\n"

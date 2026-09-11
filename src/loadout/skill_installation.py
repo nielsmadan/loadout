@@ -13,11 +13,16 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+import tomlkit
+
 from .artifacts import FrozenFile
 from .bundled_skill import SKILL_NAME
+from .deployment import atomic_install, read_file
 from .emit import Copied, Merged, declared_profiles, render_global
 from .errors import LoadoutError
 from .manifest import Manifest, load_profile, resolve_destination
+from .skills import discover_skills
+from .sources import select_overrides
 from .templates import copy_tree, tree_hash
 
 OWNER_MARKER = ".loadout-bundle.toml"
@@ -48,6 +53,13 @@ class SkillSourceLocation:
 class _ExpectedOutput:
     content: bytes
     executable: bool | None
+
+
+@dataclass(frozen=True)
+class SkillOverrideRemoval:
+    path: Path
+    before: FrozenFile
+    after: FrozenFile
 
 
 def _load_skill_profile(root: Path, profile: str) -> Manifest:
@@ -100,6 +112,13 @@ def inspect_skill_source(
 ) -> SkillSourceLocation:
     manifest = _load_skill_profile(root, profile)
     candidates = tuple(source for source in manifest.sources if "skills" in source.use)
+    offerings = []
+    for source in candidates:
+        names = {skill.name for skill in discover_skills(source.path / "skills")}
+        if _entry_exists(source.path / "skills" / SKILL_NAME):
+            names.add(SKILL_NAME)
+        offerings.append((source, names))
+    winner = select_overrides("skills", offerings).get(SKILL_NAME)
     if source_name is not None:
         named = tuple(source for source in candidates if source.name == source_name)
         if not named:
@@ -108,36 +127,61 @@ def inspect_skill_source(
                 f"source {source_name!r} does not offer skills (available: {available})"
             )
         selected = named[0]
-    else:
-        existing = tuple(
-            source for source in candidates if _entry_exists(source.path / "skills" / SKILL_NAME)
-        )
-        if len(existing) > 1:
-            names = ", ".join(source.name for source in existing)
-            raise LoadoutError(f"multiple sources contain skill {SKILL_NAME!r}: {names}")
-        if existing:
-            selected = existing[0]
-        elif len(candidates) == 1:
-            selected = candidates[0]
-        else:
-            names = ", ".join(source.name for source in candidates) or "none"
+        if winner is not None and selected != winner:
             raise LoadoutError(
-                f"multiple global sources can hold skills ({names}); choose one with --source"
-                if candidates
-                else "no global source offers skills"
+                f"skill {SKILL_NAME!r} is selected from source {winner.name!r}; "
+                f"--source {source_name} does not select the active skill"
             )
+    elif winner is not None:
+        selected = winner
+    elif len(candidates) == 1:
+        selected = candidates[0]
+    else:
+        available = ", ".join(source.name for source in candidates) or "none"
+        raise LoadoutError(
+            f"multiple global sources can hold skills ({available}); choose one with --source"
+            if candidates
+            else "no global source offers skills"
+        )
 
     path = selected.path / "skills" / SKILL_NAME
-    other = tuple(
-        source.name
-        for source in candidates
-        if source.name != selected.name and _entry_exists(source.path / "skills" / SKILL_NAME)
-    )
-    if other:
-        raise LoadoutError(f"skill {SKILL_NAME!r} already exists in source(s) {', '.join(other)}")
     bundle_hash = tree_hash(bundle)
     state, recorded = _classify(path, bundle_hash)
     return SkillSourceLocation(selected.name, path, state, recorded, bundle_hash)
+
+
+def skill_override_removals(
+    root: Path, profile: str, locations: tuple[SkillSourceLocation, ...]
+) -> tuple[SkillOverrideRemoval, ...]:
+    manifest = _load_skill_profile(root, profile)
+    names = {
+        source.name
+        for source in manifest.sources
+        if SKILL_NAME in source.override_names("skills")
+        and any(
+            location.source == source.name and location.path == source.path / "skills" / SKILL_NAME
+            for location in locations
+        )
+    }
+    if not names:
+        return ()
+    for path in manifest.config_paths:
+        before = read_file(path)
+        if before is None:
+            raise LoadoutError(f"skill configuration disappeared: {path}")
+        document = tomlkit.parse(before.content.decode("utf-8"))
+        entries = document.get("source")
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if entry["name"] in names:
+                entry["overrides"]["skills"].remove(SKILL_NAME)
+        return (
+            SkillOverrideRemoval(
+                path, before, FrozenFile(document.as_string().encode(), before.mode)
+            ),
+        )
+    raise LoadoutError("cannot locate the skill override declaration")
 
 
 def configured_skill_agents(root: Path, profile: str) -> tuple[str, ...]:
@@ -326,10 +370,24 @@ def _remove_empty_parents(paths: tuple[Path, ...]) -> None:
                 parent.rmdir()
 
 
+def _restore_overrides(changes: list[SkillOverrideRemoval], recovery: Path) -> None:
+    for change in reversed(changes):
+        current = read_file(change.path)
+        if current == change.before:
+            continue
+        if current != change.after:
+            raise LoadoutError(
+                f"skill configuration changed during uninstall: {change.path}; "
+                f"source retained for recovery at {recovery}"
+            )
+        atomic_install(change.path, change.before)
+
+
 def _remove_source_and_outputs(
     location: SkillSourceLocation,
     state: SourceSkillState,
     outputs: dict[Path, _ExpectedOutput],
+    overrides: tuple[SkillOverrideRemoval, ...],
 ) -> tuple[Path, ...]:
     source_before = location.path.lstat()
     source_container = Path(
@@ -337,6 +395,7 @@ def _remove_source_and_outputs(
     )
     quarantined_source = source_container / SKILL_NAME
     moved_outputs: list[tuple[Path, Path, Path]] = []
+    changed_overrides: list[SkillOverrideRemoval] = []
     try:
         location.path.rename(quarantined_source)
         moved_state, _ = _classify(quarantined_source, location.bundle_hash)
@@ -355,12 +414,14 @@ def _remove_source_and_outputs(
             quarantined, container = _quarantine_file(path)
             moved_outputs.append((path, quarantined, container))
 
-        for _, quarantined, container in moved_outputs:
-            quarantined.unlink()
-            container.rmdir()
-        shutil.rmtree(quarantined_source)
-        source_container.rmdir()
+        for override in overrides:
+            if read_file(override.path) != override.before:
+                raise LoadoutError(f"skill configuration changed during uninstall: {override.path}")
+            changed_overrides.append(override)
+            atomic_install(override.path, override.after)
+
     except BaseException:
+        _restore_overrides(changed_overrides, quarantined_source)
         for path, quarantined, container in reversed(moved_outputs):
             if quarantined.exists():
                 _restore(quarantined, path)
@@ -372,6 +433,11 @@ def _remove_source_and_outputs(
             source_container.rmdir()
         raise
 
+    for _, quarantined, container in moved_outputs:
+        quarantined.unlink()
+        container.rmdir()
+    shutil.rmtree(quarantined_source)
+    source_container.rmdir()
     removed = tuple(outputs)
     _remove_empty_parents(removed)
     return removed
@@ -393,4 +459,5 @@ def uninstall_skill_source(
 
     outputs = _skill_outputs(root, profile)
     _validate_outputs(outputs)
-    return _remove_source_and_outputs(location, state, outputs)
+    overrides = skill_override_removals(root, profile, (location,))
+    return _remove_source_and_outputs(location, state, outputs, overrides)

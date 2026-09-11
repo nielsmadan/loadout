@@ -49,10 +49,18 @@ rewrite every line of a file loadout has no schema for, every sync. `Copied` als
 preserves the executable bit, so module config that is a script rather than a document
 survives.
 
-Two collisions are refused rather than resolved: two sources offering the same relative
-path (ambiguous in the same way two sources offering one skill name is), and a
-module-config path landing on a destination another slice renders — `pi/settings.json`
-would otherwise race the plugins slice.
+Two sources offering the same relative path require an explicit override on the later source:
+
+```toml
+[source.overrides]
+module-config = ["pi/extensions/status/config.json"]
+```
+
+The path includes the harness. The replacing file and an earlier contender must exist when
+that harness's module collection is rendered, and the source must offer `module-config` in
+`use`. The winner supplies the complete bytes and mode. An undeclared collision is an error.
+A module-config path landing on a destination another slice renders is always refused —
+`pi/settings.json` would otherwise race the plugins slice.
 
 ## What this slice does not do
 
@@ -67,8 +75,8 @@ holds `mcp-cache.json`, `run-history.jsonl`, `trust.json`, `auth.json` and
 `mcp-onboarding.json` — module and harness state, none of it trackable without breaking
 [0008](../decisions/0008-generated-files-carry-no-machine-state.md).
 
-**Orphan removal.** Deleting a source file leaves the destination in place, the problem
-0008 defers for every slice. Removal is manual until the sidecar lands.
+**Orphan removal.** Legacy module-config sync leaves a destination in place when its source file
+is removed. Cleanup remains manual; native artifact routes have their own receipt-based retirement.
 
 ## The module writes the same file
 

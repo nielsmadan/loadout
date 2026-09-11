@@ -32,7 +32,9 @@ Install the version-matched `loadout` skill into the configured global Loadout s
     loadout skill uninstall        # remove the owned source copy and generated outputs
 
 The command reads the machine config and active profile. Legacy manifests vendor a normal
-`skills/loadout/` source; if several declared sources offer skills, choose one with `--source NAME`.
+`skills/loadout/` source. An existing copy is selected using the same declared overrides as
+rendering; `--source NAME` must identify that active source. When no copy exists and several
+declared sources offer skills, choose the installation source with `--source NAME`.
 Native manifests install into every active skill-directory tree route, deduplicating shared source
 paths and reporting each route's consumers. `--profile NAME` overrides the active profile.
 
@@ -43,6 +45,10 @@ gitignored `.loadout-state/`. Reinstalling refreshes an unchanged older copy. A 
 skill with the same name, or a generated output edited outside Loadout is reported and left alone.
 Uninstall removes only the owned source and unchanged files rendered from it; unrelated files in
 the destination directory survive.
+When uninstalling an overriding copy, the command also removes its `loadout` override entry from
+the manifest that declares it, preserving other entries, comments and file mode. The earlier
+source's skill becomes active again and the command's sync deploys it. An inherited declaration
+is updated in its declaring parent, affecting every profile that inherits those sources.
 Native changes preflight all selected destinations, roll back failed changes while their postimages
 still match, and update normal deployment receipts. A rollback conflict retains originals and
 `recovery.json` in the reported private work directory for explicit reconciliation.
@@ -172,8 +178,10 @@ target that doesn't share its destination with anyone else doesn't need one.)
 
 ### Several sources
 
-`[[source]]` is a list, and its **order is the tier order, lowest priority first**. A source that
-provides a `permissions.toml` contributes a tier; every contributing source is merged.
+`[[source]]` is an ordered list. Permissions merge every contributing `permissions.toml`;
+MCP definitions use the last source for each server name. Named fragments require an unambiguous
+name or a `source/name` qualifier. Skills and module files require an explicit declaration to
+override an earlier source:
 
 ```toml
 [[source]]
@@ -183,7 +191,16 @@ path = "~/src/acme-loadout"
 [[source]]
 name = "me"
 path = "."
+
+[source.overrides]
+skills = ["review"]
+module-config = ["pi/extensions/status/config.json"]
 ```
+
+Each override selects the replacing source's complete skill tree or module file. It must name
+an item that this source offers and an earlier source also offers when the collection is rendered;
+undeclared collisions remain errors. Module paths include the harness name. An override category
+must participate in that source's `use`. See [composition rules](docs/reference/composition.md).
 
 Merging is union with **deny wins**: a deny in any source beats an allow in any other, whichever
 order they appear in. Order still matters for *emission* — OpenCode and Pi resolve last-match-wins
@@ -380,11 +397,29 @@ extends = "default"
 order = ["intro-claude", "web-fetching", "git-policy.autonomous"]
 ```
 
-`extends` names the profile to start from, and the file states only what differs. Blocks merge
-**per key**: a block naming one key inherits the rest, so a profile can add a `substitute`
-without restating the instruction order it is substituting into. Absent means inherit; an
-explicit `[]` means empty, the convention `permissions = []` already set. A cycle in `extends`
-is an error naming the cycle.
+`extends` names a sibling profile to start from, and the file states only what differs. Profile
+names cannot contain paths; profile symlinks must resolve within the same source directory.
+Internal aliases use their canonical paths for cycle detection and source protection. Agent blocks,
+`[all]`, and each legacy instruction/permission target merge **per field**. Omitted fields inherit,
+including `output`, `destinations` and the renderer. A supplied field replaces its complete value:
+lists do not append, and maps such as `substitute` replace as a unit. `[]` means empty. A cycle in
+`extends` is an error naming the cycle.
+
+Top-level `remove` deletes inherited keys before applying the child profile's fields:
+
+```toml
+extends = "default"
+remove = ["instructions.claude.output"]
+
+[instructions.claude]
+destinations = ["~/.claude/CLAUDE.md"]
+```
+
+Paths use TOML key syntax, including quoted names. Missing paths, overlapping removals and paths
+through lists are errors. `remove` requires `extends`. To replace a target wholesale, remove
+`instructions.claude` and then declare its complete replacement. Older child targets that relied
+on omission to discard parent fields should use this spelling. Removing an agent field exposes
+any applicable `[all]` default; existing slice `false` values disable automatic slices.
 
 **`[all]` supplies defaults to the agents you declared**, so shared configuration is written
 once:
@@ -410,6 +445,8 @@ substitute = { git-policy = "git-policy.autonomous" }
 
 Nothing is inferred from a filename — `git-policy.autonomous.md` is just a name, and the swap is
 declared where it applies.
+
+`substitute` also works in `[instructions.<name>]` targets.
 
 The older spelling below still parses, so both work during the transition.
 

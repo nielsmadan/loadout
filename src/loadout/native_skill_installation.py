@@ -33,6 +33,7 @@ from .skill_installation import (
     _skill_outputs,
     _write_marker,
     inspect_skill_source,
+    skill_override_removals,
 )
 from .templates import copy_tree, tree_hash
 
@@ -350,6 +351,11 @@ def change_native_targets(
     root: Path, profile: str, targets: tuple[SkillTarget, ...], bundle: Path, *, uninstall: bool
 ) -> None:
     _validate(targets)
+    overrides = (
+        skill_override_removals(root, profile, tuple(target.location for target in targets))
+        if uninstall
+        else ()
+    )
     scopes = artifact_deployment_scopes(root, profile)
     outputs = render_global(root, profile)
     before = prepare_deployment(scopes, _proposed(outputs, targets, bundle, uninstall=uninstall))
@@ -371,6 +377,8 @@ def change_native_targets(
     try:
         _change_sources(targets, bundle, changes, work, uninstall=uninstall)
         _validate_configuration(targets)
+        for override in overrides:
+            changes.write_checked(override.path, override.before, override.after)
         deployment = prepare_deployment(scopes, render_global(root, profile))
         legacy_after = _skill_outputs(root, profile)
         _validate_legacy_preimages(legacy_preimages, legacy_after)

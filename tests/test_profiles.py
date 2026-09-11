@@ -160,7 +160,7 @@ def _with_profile_file(tmp_path: Path, profile: str, body: str) -> Path:
 
 
 def test_a_profile_file_overrides_only_the_target_it_names(tmp_path: Path) -> None:
-    """`shared` is inherited untouched; `claude` is replaced wholesale."""
+    """The named target changes while the shared target remains inherited."""
     root = _with_profile_file(tmp_path, "autonomous", AUTONOMOUS_PROFILE)
     rendered = render_global(root, profile="autonomous")
     by_path = {str(p.relative_to(root)): text for p, text in rendered.items()}

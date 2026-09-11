@@ -17,6 +17,9 @@ guessed at.
 [migration.md](migration.md) describes read-only inventory, explicit source mapping and verified
 migration plans, including private source and the boundary consumed by a later transaction.
 
+[composition.md](composition.md) maps profile inheritance, fragment composition, native input
+layers and named-item overrides to their operators, ownership and scope boundaries.
+
 One file per harness. Each records **what was verified** (with the date and version it
 was verified against) separately from **what upstream documents**. When a harness
 changes, re-check the verified claims first — they are the ones this project's output

@@ -14,10 +14,12 @@ from .artifacts import (
     Copied,
     FrozenFile,
     Output,
+    PartDocument,
     _no_symlinks,
-    _regular_file,
-    _source,
+    input_files,
     part_document,
+    part_rules,
+    prepare_document,
     render_artifact,
     render_artifacts,
     render_document,
@@ -250,13 +252,14 @@ def _document_parts(
     rules: Rules,
     servers: dict[str, Server],
     consumed: dict[str, set[str]],
-) -> tuple[dict[str, Any], ...]:
+) -> tuple[PartDocument, ...]:
     merged = []
     for part in artifact.parts:
         permissions = part.category in {"permissions", "mcp-permissions"} and rules != EMPTY_RULES
-        document = part_document(
+        prepared = part_document(
             artifacts, artifact, part, rules=rules if permissions and part.renderer else EMPTY_RULES
         )
+        document = prepared.values
         if part.category == "mcp" and servers:
             defaults = _servers_document(artifact.agents, servers)
             for key, entries in defaults.items():
@@ -293,7 +296,7 @@ def _document_parts(
             if part.category == "permissions":
                 _consume(consumed, "permissions", artifact)
             consumed["mcp-permissions"].update(artifact.agents)
-        merged.append(document)
+        merged.append(prepare_document(part, document, prepared.owned))
     return tuple(merged)
 
 
@@ -345,7 +348,7 @@ def _skill_outputs(
     return outputs
 
 
-def _text_permissions(artifact: Artifact, source: Path | None, rules: Rules) -> str:
+def _text_permissions(artifacts: Artifacts, artifact: Artifact, rules: Rules) -> str:
     part = artifact.parts[0]
     renderer = part.renderer or "codex-project"
     spec = RENDERERS[renderer]
@@ -353,16 +356,15 @@ def _text_permissions(artifact: Artifact, source: Path | None, rules: Rules) -> 
         raise LoadoutError(
             f"{artifact.label}: template permissions require a portable text renderer"
         )
-    if source is None:
-        native = EMPTY_RULES
-    elif part.renderer:
-        native = parse_rules(source)
-    elif not source.read_bytes().strip():
-        native = EMPTY_RULES
+    if part.renderer:
+        native, _ = part_rules(artifacts, part)
     else:
-        raise LoadoutError(
-            f"{artifact.label}: convert native permission text to a portable renderer before adding template rules"
-        )
+        paths = input_files(artifacts, part)
+        if any(path.read_bytes().strip() for path in paths):
+            raise LoadoutError(
+                f"{artifact.label}: convert native permission text to a portable renderer before adding template rules"
+            )
+        native = EMPTY_RULES
     return spec.fn(merge_rules(rules, native))
 
 
@@ -415,11 +417,7 @@ def render_native_templates(
             outputs.update(_skill_outputs(artifact, source, destination, skills))
             _consume(consumed, "skills", artifact)
         elif artifact.parts[0].category == "permissions" and rules != EMPTY_RULES:
-            part = artifact.parts[0]
-            permission_source = _source(artifacts.source_root, part.source, optional=part.optional)
-            if permission_source is not None:
-                _regular_file(permission_source)
-            outputs[destination] = _text_permissions(artifact, permission_source, rules)
+            outputs[destination] = _text_permissions(artifacts, artifact, rules)
             _consume(consumed, "permissions", artifact)
         else:
             outputs.update(render_artifact(artifacts, artifact, destination, prefix))

@@ -5,6 +5,7 @@ import os
 import shutil
 import tempfile
 from collections.abc import Callable, Iterable, Mapping
+from dataclasses import replace
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -77,7 +78,7 @@ from .record import read_record, render_record
 from .resolve import INSTRUCTIONS, SETTINGS, json_slice, resolve_item
 from .servers import SERVERS_SOURCE, Server, parse_servers
 from .skills import SKILL_DOCUMENT, Skill, discover_skills, render_skill
-from .sources import Source
+from .sources import Source, select_overrides
 from .surgery import apply_json, apply_toml, concat_documents
 from .template_catalog import Catalog, contribution_paths, load_catalogs
 from .templates import VENDORED, resolve_template
@@ -675,13 +676,7 @@ def _unpermitted_servers(manifest: Manifest) -> tuple[Notice, ...]:
 
 
 def collect_notices(root: Path, profile: str = "default") -> tuple[Notice, ...]:
-    """Advisory findings about a source that rendered while doing less than it says.
-
-    Global scope only: every reporter reads a slice fragment, and no project
-    slice has one yet — project instructions compose from prose and project
-    permissions from rules. A project-only repo has no manifest to load, so
-    asking would raise rather than report nothing.
-    """
+    """Advisory findings about project setup and global slice fragments."""
     found: list[Notice] = list(project_notices(root, os.environ))
     if not manifest_path(root).is_file():
         return tuple(found)
@@ -811,27 +806,25 @@ SKILLS_SUBDIR = "skills"
 
 
 def skill_trees(manifest: Manifest) -> tuple[Skill, ...]:
-    """Every skill offered by every source, by name, rejecting collisions.
-
-    Two sources offering the same skill is ambiguous in the same way two sources
-    offering one fragment name is, and is refused for the same reason: silently
-    preferring one would make the winner depend on manifest order rather than on
-    anything the author wrote.
-    """
-    seen: dict[str, str] = {}
-    collected: list[Skill] = []
-    for source in manifest.sources:
-        if SKILLS_SUBDIR not in source.use:
-            continue
-        for skill in discover_skills(source.path / SKILLS_SUBDIR):
-            if skill.name in seen:
-                raise LoadoutError(
-                    f"skill {skill.name!r} is offered by both {seen[skill.name]!r} and "
-                    f"{source.name!r}; rename one, or drop it from a source's `use`"
-                )
-            seen[skill.name] = source.name
-            collected.append(skill)
-    return tuple(sorted(collected, key=lambda s: s.name))
+    offerings = [
+        (source, discover_skills(source.path / SKILLS_SUBDIR))
+        for source in manifest.sources
+        if SKILLS_SUBDIR in source.use
+    ]
+    selected = select_overrides(
+        SKILLS_SUBDIR, ((source, {skill.name for skill in skills}) for source, skills in offerings)
+    )
+    return tuple(
+        sorted(
+            (
+                skill
+                for source, skills in offerings
+                for skill in skills
+                if selected[skill.name] == source
+            ),
+            key=lambda skill: skill.name,
+        )
+    )
 
 
 def _expand_skills(
@@ -857,28 +850,37 @@ def _expand_skills(
 
 
 def module_config_files(manifest: Manifest, agent: str) -> tuple[tuple[PurePosixPath, Path], ...]:
-    """Every module-config file offered for one agent, as (relative, source).
-
-    Two sources offering one relative path is ambiguous exactly as two offering
-    one skill name is, and is refused for the same reason: the winner would
-    depend on manifest order rather than on anything the author wrote.
-    """
     seen: dict[PurePosixPath, str] = {}
-    collected: list[tuple[PurePosixPath, Path]] = []
+    collected: dict[PurePosixPath, Path] = {}
     for source in manifest.sources:
         if MODULE_CONFIG_SUBDIR not in source.use:
             continue
         agent_root = source.path / MODULE_CONFIG_SUBDIR / agent
-        for relative in discover_module_config(agent_root):
-            if relative in seen:
+        offered = discover_module_config(agent_root)
+        overrides = {
+            PurePosixPath(name).relative_to(agent)
+            for name in source.override_names(MODULE_CONFIG_SUBDIR)
+            if PurePosixPath(name).parts[0] == agent
+        }
+        for relative in sorted(overrides):
+            if relative not in offered:
+                raise LoadoutError(
+                    f"source {source.name!r}: override {agent}/{relative} has no replacing item"
+                )
+            if relative not in seen:
+                raise LoadoutError(
+                    f"source {source.name!r}: override {agent}/{relative} has no earlier contender"
+                )
+        for relative in offered:
+            if relative in seen and relative not in overrides:
                 raise LoadoutError(
                     f"module config {str(relative)!r} for {agent} is offered by both "
-                    f"{seen[relative]!r} and {source.name!r}; rename one, or drop it "
-                    f"from a source's `use`"
+                    f"{seen[relative]!r} and {source.name!r}; declare "
+                    "source.overrides.module-config, rename one, or drop it from a source's `use`"
                 )
             seen[relative] = source.name
-            collected.append((relative, agent_root / Path(str(relative))))
-    return tuple(sorted(collected, key=lambda item: str(item[0])))
+            collected[relative] = agent_root / Path(str(relative))
+    return tuple(sorted(collected.items(), key=lambda item: str(item[0])))
 
 
 def _expand_module_config(
@@ -1000,7 +1002,8 @@ def _project_source_inputs(root: Path, config: ProjectConfig) -> tuple[Path, ...
         path = machine_config_path()
         machine = load_machine_config(path)
         assert machine is not None
-        inputs.extend((path, manifest_path(machine.source)))
+        manifest = load_manifest(manifest_path(machine.source))
+        inputs.extend((path, *manifest.config_paths))
     return tuple(inputs)
 
 
@@ -1108,15 +1111,7 @@ def _render_project_presets(root: Path, config: ProjectConfig) -> dict[Path, Out
 def project_skill_trees(
     root: Path, config: ProjectConfig, *, catalogs: Mapping[Path, Catalog] | None = None
 ) -> tuple[Skill, ...]:
-    """Every skill this project offers, templates first and the project last.
-
-    Same tier order as permissions and instructions, and the same resolution: a
-    later tier wins the name outright. Unlike `skill_trees`, a collision is not
-    an error here — global sources are peers, so preferring one would make the
-    winner depend on manifest order, while a template is *declared* to sit
-    beneath the project, so overriding one of its skills is the point rather
-    than an ambiguity.
-    """
+    """Collect skill trees in template order, then replace matching names from the project."""
     collected: dict[str, Skill] = {}
     templates = tuple(resolve_template(name, root).path for name in config.templates)
     loaded = load_catalogs(templates) if catalogs is None else catalogs
@@ -1238,8 +1233,9 @@ def artifact_deployment_scopes(root: Path, profile: str = "default") -> tuple[De
                 _project_source_inputs(root, config),
             )
         )
+    protected = tuple(dict.fromkeys(path for scope in scopes for path in scope.protected))
     return tuple(
-        scope
+        replace(scope, protected=protected)
         for scope in scopes
         if scope.artifacts is not None
         or scope.receipt_path.exists()
