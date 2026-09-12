@@ -11,6 +11,7 @@ configuration from one source.
 · [Templates](https://loadoutai.dev/guides/templates/)
 
 To preview, build, or publish the site, see [Publishing the documentation](docs/publishing.md).
+For versioned packages and Homebrew distribution, see [Releasing Loadout](docs/releasing.md).
 
 ## Install
 

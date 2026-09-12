@@ -21,7 +21,7 @@ loadout --help
 Loadout requires Python 3.13 or newer. uv can provision Python for the tool environment.
 If the shell cannot find `loadout`, run `uv tool update-shell` and open a new terminal.
 
-For an editable development installation, clone the repository and run `just install` there.
+For an editable development installation, clone the repository and run `just install-editable` there.
 
 ## Create a project configuration
 

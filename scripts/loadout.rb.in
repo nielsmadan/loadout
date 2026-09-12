@@ -1,0 +1,30 @@
+class Loadout < Formula
+  include Language::Python::Virtualenv
+
+  desc "Share coding-agent configuration across projects and agents"
+  homepage "https://loadoutai.dev"
+  url "https://github.com/nielsmadan/loadout/archive/refs/tags/v@VERSION@.tar.gz"
+  sha256 "@SHA256@"
+  license "MIT"
+  head "https://github.com/nielsmadan/loadout.git", branch: "main"
+
+  depends_on "python@3.13"
+  uses_from_macos "git"
+
+@RESOURCES@
+  def install
+    virtualenv_install_with_resources
+  end
+
+  test do
+    assert_match "loadout", shell_output("#{bin}/loadout --help")
+    ENV["XDG_CONFIG_HOME"] = (testpath/"config").to_s
+    system bin/"loadout", "init", "--project", "--harness", "claude",
+           "--harness", "codex", "--starter", "backend", "--yes"
+    system bin/"loadout", "sync"
+    system bin/"loadout", "check"
+    instructions = (testpath/"loadout/templates/backend/instructions.md").read.strip
+    assert_match instructions, (testpath/"CLAUDE.md").read
+    assert_match instructions, (testpath/"AGENTS.md").read
+  end
+end

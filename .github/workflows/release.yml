@@ -1,0 +1,128 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: loadout-release
+  cancel-in-progress: false
+
+jobs:
+  check:
+    uses: ./.github/workflows/ci.yml
+
+  package:
+    needs: check
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: "0.8.10"
+          python-version: "3.13"
+      - name: Check tap configuration
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -z "$HOMEBREW_TAP_TOKEN" ]; then
+            echo "Set HOMEBREW_TAP_TOKEN in this repository's Actions secrets before releasing."
+            exit 1
+          fi
+      - name: Verify release version and lockfile
+        run: |
+          python3 scripts/prepare_release.py "${RELEASE_TAG#v}" --check
+          uv lock --check
+      - name: Build source archive and wheel
+        run: uv build
+      - name: Exercise the installed wheel
+        env:
+          UV_TOOL_DIR: ${{ runner.temp }}/loadout-tool/tools
+          UV_TOOL_BIN_DIR: ${{ runner.temp }}/loadout-tool/bin
+        run: |
+          uv tool install --python 3.13 dist/*.whl
+          "$UV_TOOL_DIR/loadout/bin/python" tests/manual/verify_installation.py \
+            "$RUNNER_TEMP/loadout-tool" "$RUNNER_TEMP/loadout-install-check"
+      - name: Prepare Homebrew formula
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/loadout-source.tar.gz" \
+            "https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${RELEASE_TAG}.tar.gz"
+          source_sha=$(shasum -a 256 "$RUNNER_TEMP/loadout-source.tar.gz" | cut -d' ' -f1)
+          python3 scripts/homebrew.py "${RELEASE_TAG#v}" "$source_sha" loadout.rb
+      - name: Install and test through Homebrew
+        run: |
+          brew tap-new --no-git nielsmadan/loadout-release-test
+          cp loadout.rb "$(brew --repository nielsmadan/loadout-release-test)/Formula/loadout.rb"
+          brew install --build-from-source nielsmadan/loadout-release-test/loadout
+          brew test nielsmadan/loadout-release-test/loadout
+      - name: Generate release notes
+        run: |
+          uvx git-cliff@2.13.1 --current --strip all --output "$RUNNER_TEMP/release-notes.md"
+          sed '/^## \[/d' "$RUNNER_TEMP/release-notes.md" > release-notes.md
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: release-package
+          if-no-files-found: error
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+            loadout.rb
+            release-notes.md
+
+  publish:
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          name: release-package
+          path: release-assets
+      - name: Publish GitHub release
+        run: |
+          gh release create "$RELEASE_TAG" release-assets/dist/* \
+            --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "Loadout ${RELEASE_TAG#v}" --notes-file release-assets/release-notes.md
+
+  homebrew:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          name: release-package
+          path: release-assets
+      - uses: actions/checkout@v7.0.1
+        with:
+          repository: nielsmadan/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+      - name: Publish Homebrew formula
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          mkdir -p homebrew-tap/Formula
+          cp release-assets/loadout.rb homebrew-tap/Formula/loadout.rb
+          cd homebrew-tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/loadout.rb
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "chore: update loadout to ${RELEASE_TAG#v}"
+          git push origin HEAD:main

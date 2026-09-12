@@ -2,6 +2,8 @@
 default:
     @just --list
 
+git_cliff := "git-cliff@2.13.1"
+
 # Prepare this checkout for work: dependencies, hooks, then verify.
 setup:
     @uv sync
@@ -49,6 +51,16 @@ docs:
 
 docs-build:
     @uv run --group docs zensical build -f mkdocs.yml --strict
+
+build:
+    @uv build
+
+changelog:
+    @uvx {{git_cliff}} -o CHANGELOG.md
+
+[positional-arguments]
+release *args:
+    python3 scripts/release.py "$@"
 
 # Everything CI runs.
 check:
