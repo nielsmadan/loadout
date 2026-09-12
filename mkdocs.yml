@@ -1,0 +1,64 @@
+site_name: loadout
+site_url: https://loadoutai.dev/
+site_description: Switch agents. Keep your setup. Share configuration across Claude Code, Codex, OpenCode, and Pi with reusable templates and composable sources.
+repo_url: https://github.com/nielsmadan/loadout
+repo_name: nielsmadan/loadout
+copyright: '<a href="/legal/">Legal notice</a> · <a href="/privacy/">Privacy</a>'
+docs_dir: docs/user
+theme:
+  name: material
+  custom_dir: docs/overrides
+  language: en
+  font: false
+  logo: assets/logo.svg
+  favicon: assets/favicon.svg
+  palette:
+    - scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+    - scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.instant
+    - content.code.copy
+    - search.suggest
+    - search.highlight
+extra:
+  generator: false
+extra_css:
+  - assets/extra.css
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Guides:
+      - Global setup: guides/global.md
+      - Project setup: guides/projects.md
+      - Templates: guides/templates.md
+      - Composition and inheritance: guides/composition.md
+      - Configuring your agents: guides/configuration.md
+  - Reference:
+      - CLI: reference/cli.md
+      - Configuration files: reference/configuration.md
+      - Harness support: reference/harnesses.md
+  - Troubleshooting: troubleshooting.md
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.details
+  - pymdownx.inlinehilite

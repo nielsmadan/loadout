@@ -1,6 +1,16 @@
+<p align="center"><img src="docs/assets/logo.svg" alt="Loadout backpack" width="140"></p>
+
 # loadout
 
 One source of truth for AI coding-agent configuration, rendered out to every harness.
+
+**Switch agents. Keep your setup.** Reuse project templates and compose shared and personal
+configuration from one source.
+
+[Documentation](https://loadoutai.dev/) · [Getting started](https://loadoutai.dev/getting-started/)
+· [Templates](https://loadoutai.dev/guides/templates/)
+
+To preview, build, or publish the site, see [Publishing the documentation](docs/publishing.md).
 
 ## Install
 

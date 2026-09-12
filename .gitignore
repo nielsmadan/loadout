@@ -7,6 +7,9 @@ __pycache__/
 dist/
 .coverage
 htmlcov/
+/site/
+/.cache/
+/.superpowers/
 
 # Expected output mirrors harness paths, some of which a global gitignore
 # excludes (.claude/, .codex/, .pi/, .aiconf/). Without this, `git add` skips

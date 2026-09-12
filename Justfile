@@ -44,6 +44,12 @@ format:
 typecheck:
     @uv run mypy
 
+docs:
+    @uv run --group docs zensical serve -f mkdocs.yml
+
+docs-build:
+    @uv run --group docs zensical build -f mkdocs.yml --strict
+
 # Everything CI runs.
 check:
     @uv run ruff check
