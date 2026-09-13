@@ -8,7 +8,7 @@ Pages setup. The source repository is [nielsmadan/loadout](https://github.com/ni
 From this checkout:
 
 ```sh
-just docs
+just serve-docs
 ```
 
 Zensical prints the local address, normally http://127.0.0.1:8000. It rebuilds when pages change.
@@ -16,7 +16,7 @@ Zensical prints the local address, normally http://127.0.0.1:8000. It rebuilds w
 For a strict production build:
 
 ```sh
-just docs-build
+just build-docs
 ```
 
 The generated output is `site/`. Only `docs/user/` is published. This guide, implementation
@@ -129,7 +129,7 @@ setting for its domain binding. Changing `site_url` alone does not bind a domain
 
 ## Maintaining the site
 
-Update the relevant public guide when behavior changes, then run `just docs-build` and
+Update the relevant public guide when behavior changes, then run `just build-docs` and
 `just check`. The README links to the public site, while the existing `docs/reference/`
 research stays in the repository.
 

@@ -46,10 +46,10 @@ format:
 typecheck:
     @uv run mypy
 
-docs:
+serve-docs:
     @uv run --group docs zensical serve -f mkdocs.yml
 
-docs-build:
+build-docs:
     @uv run --group docs zensical build -f mkdocs.yml --strict
 
 build:
