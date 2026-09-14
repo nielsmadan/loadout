@@ -55,8 +55,6 @@ def test_an_unmarked_skill_is_reproduced_exactly_but_for_the_banner(tmp_path: Pa
 
 
 def test_the_banner_sits_below_the_frontmatter(tmp_path: Path) -> None:
-    """Above the opening ---, the frontmatter goes unparsed and the skill shows
-    the banner as its description. Already hit once in ~/ac/skills/sync.py."""
     _write(tmp_path, "doc", PLAIN)
     (skill,) = discover_skills(tmp_path)
 

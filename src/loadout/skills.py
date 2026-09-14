@@ -232,7 +232,5 @@ def render_skill(skill: Skill, harness: str) -> str:
         # No frontmatter to sit under, so the banner leads.
         return f"{banner}\n{resolved}"
     merged = apply_frontmatter(frontmatter, harness)
-    # Below the closing ---, never above it: a banner on line 1 leaves the
-    # frontmatter unparsed and the skill then shows the banner as its
-    # description. Already hit once in ~/ac/skills/sync.py.
+    # Keep the banner below the frontmatter so the harness parses the description.
     return "---\n" + "\n".join(merged) + "\n---\n\n" + banner + "\n" + resolved

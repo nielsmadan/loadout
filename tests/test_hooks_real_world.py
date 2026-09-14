@@ -1,10 +1,4 @@
-"""The hooks slice against hook documents people actually wrote.
-
-Shapes are taken from `~/ac/loadout/settings/claude.json` (11 events, 15
-commands) and the `superpowers` plugin's `hooks/hooks.json`. Commands are
-rewritten to placeholders — what is under test is the *shape* a real document
-has, not one machine's paths.
-"""
+"""Real hook document shapes with commands rewritten to placeholders."""
 
 from __future__ import annotations
 

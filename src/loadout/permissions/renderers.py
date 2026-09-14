@@ -508,13 +508,6 @@ def render_opencode(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
     return config
 
 
-# --------------------------------------------------------------------------
-# Project-scope variants. These reproduce ~/ac/permissions/manage.py exactly,
-# including defects fixed in later, separately-reviewed commits (ADR 0003):
-# Codex does not skip globs (still open); Pi's missing bare command form was
-# fixed deliberately in Task 8.
-# --------------------------------------------------------------------------
-
 PROJECT_CATEGORIES = ("allow", "ask", "deny")
 
 CODEX_PROJECT_DECISION = {"allow": "allow", "ask": "prompt", "deny": "forbidden"}
