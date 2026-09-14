@@ -149,7 +149,9 @@ The [migration reference](docs/reference/migration.md#cli-workflow) documents th
 Unresolved previews exit 2 without mutation. Supported configurations get a read-only preview of
 checkpoint paths, source/output writes, private exclusions and removals before approval. Applying
 checkpoints eligible originals through Git, migrates and syncs, then stages the final source and
-ignore changes. The final migration is not automatically committed. Choose a dedicated directory;
+ignore changes. Successful init and conflict-free recovery remove temporary journals and backups;
+interrupted transactions retain them for resume or recovery. Deployment receipts remain for sync.
+The final migration is not automatically committed. Choose a dedicated directory;
 new repositories at HOME or the filesystem root are refused.
 
 A missing machine config is **not** an error — it means this machine has no global scope,
@@ -551,9 +553,12 @@ See [Git integration](docs/reference/git-integration.md) for dependencies, alter
 worktrees, profiles and post-hook failure behavior.
 
 `init` adopts existing configuration, retaining native behavior and private scope. Harness roots
-can establish membership; explicit `--harness` selections resolve shared-file ambiguity. Every
-category receives source slots and supported core categories receive active, initially dormant
-routes. Existing empty outputs retain their presence. A typical migrated source contains:
+can establish membership; explicit `--harness` selections resolve shared-file ambiguity. Project
+init creates sources and routes only for existing configuration and the categories needed by an
+explicitly selected starter. An empty project starts with just `loadout/config.toml` and an empty
+`loadout/artifacts.toml`, plus managed-state and recovery entries in `.gitignore`. Global init keeps the full
+category scaffold and dormant core routes. Existing empty outputs retain their presence. A
+typical migrated source contains:
 
 ```text
 loadout/config.toml               harnesses, presets = false, artifacts reference
@@ -567,6 +572,10 @@ remain available to the harness. Existing source is never reinterpreted on repea
 check/sync after editing its declared producers. Edit the fragment named by its artifact route,
 not an output or an unreferenced legacy filename. The bundled skill asks before widening personal
 changes when no personal producer exists.
+
+To add a category later, create its source and declare its destination in `loadout/artifacts.toml`.
+Template instructions need an instruction route with `template_instructions = true` for each
+selected harness; see [native artifact routes](docs/reference/artifacts.md).
 
 Opaque artifact modes are stored explicitly during migration, so full filesystem modes survive
 reconstruction from Git. Edit `mode` or tree `modes` in the artifact binding when changing those

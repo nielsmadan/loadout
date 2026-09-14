@@ -236,6 +236,28 @@ def test_explicit_routes_leave_nested_instructions_and_commands_intact(tmp_path:
     assert outputs[tmp_path / "AGENTS.md"].startswith(b"# Backend work")
 
 
+@pytest.mark.parametrize("starter", STARTERS)
+def test_empty_project_starter_creates_only_instruction_routes(
+    tmp_path: Path, starter: str
+) -> None:
+    plan = plan_migration(
+        discover(tmp_path, scope="project", agents=("claude", "codex", "opencode", "pi")),
+        starter=starter,
+    )
+    assert plan.complete, plan.issues
+    assert {
+        w.path.relative_to(plan.inventory.source_root).parts[0] for w in plan.source_writes
+    } == {"config.toml", "artifacts.toml", "instructions", "templates"}
+    assert {path.relative_to(tmp_path).as_posix() for _, path in plan.artifact_routes} == {
+        "CLAUDE.md",
+        "AGENTS.md",
+    }
+    assert {w.path.relative_to(tmp_path).as_posix(): w.content for w in plan.generated_writes} == {
+        name: (bundled_template(starter) / "instructions.md").read_bytes().strip() + b"\n\n"
+        for name in ("CLAUDE.md", "AGENTS.md")
+    }
+
+
 @pytest.mark.parametrize("operation", ("add", "vendor"))
 def test_native_template_commands_refuse_missing_route_before_mutation(
     tmp_path: Path, operation: str
@@ -606,6 +628,9 @@ def test_cli_starter_is_staged_reconstructs_and_allows_first_source_edits(
 ) -> None:
     _repo(tmp_path)
     (tmp_path / "CLAUDE.md").write_text("Original project advice\n")
+    settings = tmp_path / ".claude/settings.json"
+    settings.parent.mkdir()
+    settings.write_text('{"permissions":{},"model":"original","hooks":{}}')
     assert main([*_init(tmp_path, starter), "--dry-run", "--json"]) == 0
     preview = json.loads(capsys.readouterr().out)
     assert preview["starter"] == starter
@@ -647,6 +672,7 @@ def test_repeat_init_reports_usable_template_command_and_safe_sync(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _repo(tmp_path)
+    (tmp_path / "CLAUDE.md").write_text("")
     assert main([*_init(tmp_path), "--yes"]) == 0
     config = project_config_path(tmp_path)
     before = config.read_bytes()
@@ -726,8 +752,9 @@ def test_interactive_starter_then_cancel_never_writes(
     assert list(tmp_path.iterdir()) == []
 
 
+@pytest.mark.parametrize("action", ["resume", "recover"])
 def test_starter_source_and_output_participate_in_resume_and_recovery(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], action: str
 ) -> None:
     _repo(tmp_path)
     original = tmp_path / "CLAUDE.md"
@@ -735,17 +762,32 @@ def test_starter_source_and_output_participate_in_resume_and_recovery(
     original.chmod(0o640)
 
     def fail(*args, **kwargs):
-        raise LoadoutError("checkpoint interrupted")
+        raise LoadoutError("fixture interruption")
 
     with monkeypatch.context() as patch:
         patch.setattr(migration_git, "checkpoint", fail)
         assert main([*_init(tmp_path, "frontend"), "--yes", "--json"]) == 1
     result = json.loads(capsys.readouterr().out)
     assert result["status"] == "interrupted"
-    assert main(["init", "--resume", result["journal"], "--yes", "--json"]) == 0
+    with monkeypatch.context() as patch:
+        if action == "recover":
+            patch.setattr(migration_transaction, "_finish", fail)
+        assert main(["init", "--resume", result["journal"], "--yes", "--json"]) == (
+            1 if action == "recover" else 0
+        )
+    resumed = json.loads(capsys.readouterr().out)
     assert original.read_text().startswith("# Frontend work\n")
     assert stat.S_IMODE(original.stat().st_mode) == 0o640
+    if action == "resume":
+        assert resumed["journal"] is None
+        assert not Path(result["journal"]).parent.exists()
+        assert (vendored_path(tmp_path, "frontend") / "instructions.md").is_file()
+        return
+    assert resumed["journal"] == result["journal"]
     assert main(["init", "--recover", result["journal"], "--yes", "--json"]) == 0
+    recovered = json.loads(capsys.readouterr().out)
+    assert recovered["journal"] is None
+    assert not Path(result["journal"]).parent.exists()
     assert original.read_bytes() == b"Original body\n"
     assert stat.S_IMODE(original.stat().st_mode) == 0o640
     assert not (vendored_path(tmp_path, "frontend") / "instructions.md").exists()

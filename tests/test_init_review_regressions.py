@@ -20,7 +20,7 @@ from loadout.migration_transaction import apply_migration, prepare_migration, re
 from loadout.native_documents import parse_document
 from run_init_corpus import expected_outputs
 from test_migration import generated, index, migration, write
-from test_migration_transaction import git, repository
+from test_migration_transaction import git, interrupted_completion, repository
 
 
 @pytest.mark.parametrize(
@@ -40,13 +40,11 @@ def test_runtime_only_partial_files_apply_and_recover(tmp_path, fake_home, agent
     destination = write(fake_home, name, content, 0o640)
     plan = plan_migration(discover(tmp_path, scope="global", agents=(agent,)))
     assert plan.complete, plan.preview()
-    result = apply_migration(prepare_migration(plan))
+    journal = interrupted_completion(prepare_migration(plan))
     assert destination.read_bytes() == content.encode()
     assert destination.stat().st_mode & 0o777 == 0o640
     assert cmd_check(tmp_path / "loadout") == 0
-    assert result.journal is not None
-    assert migration_transaction.resume_migration(result.journal).baseline == result.baseline
-    assert recover_migration(result.journal).conflicts == ()
+    assert recover_migration(journal).conflicts == ()
     assert destination.read_bytes() == content.encode()
 
 
@@ -179,14 +177,13 @@ def test_nested_runtime_files_remain_original_and_outside_both_git_phases(tmp_pa
     candidate = next(c for c in plan.inventory.candidates if c.path == runtime)
     assert candidate.disposition == "runtime-private exclusion"
     prepared = prepare_migration(plan)
-    result = apply_migration(prepared)
+    journal = interrupted_completion(prepared)
     assert runtime.read_bytes() == b'{"fixture":"runtime"}\n'
     assert all(w.content != runtime.read_bytes() for w in plan.source_writes)
     assert prepared.git is not None
     assert runtime.relative_to(tmp_path).as_posix() not in prepared.git.baseline
     assert git(tmp_path, "ls-files", "--", str(runtime)) == b""
-    assert result.journal is not None
-    assert recover_migration(result.journal).conflicts == ()
+    assert recover_migration(journal).conflicts == ()
     assert runtime.read_bytes() == b'{"fixture":"runtime"}\n'
 
 

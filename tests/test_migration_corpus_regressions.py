@@ -14,6 +14,7 @@ from loadout.errors import LoadoutError
 from loadout.git_privacy import ignored_paths
 from loadout.migration import plan_migration
 from loadout.migration_transaction import apply_migration, prepare_migration, recover_migration
+from test_migration_transaction import interrupted_completion
 
 
 def git(root: Path, *args: str) -> bytes:
@@ -91,8 +92,8 @@ def migrated_journal(root: Path):
     repository(root)
     (root / "CLAUDE.md").write_bytes(b"original instructions\n")
     plan = plan_migration(discover(root, scope="project", agents=("claude",)))
-    result = apply_migration(prepare_migration(plan))
-    return migration_journal.Journal.load(result.journal)
+    path = interrupted_completion(prepare_migration(plan))
+    return migration_journal.Journal.load(path)
 
 
 def test_cursor_saves_keep_payload_and_metadata_changes_replace_it(
@@ -116,6 +117,7 @@ def test_cursor_saves_keep_payload_and_metadata_changes_replace_it(
     assert writes[-2].startswith("payload-")
     assert writes[-1] == "journal.json"
     assert migration_journal.Journal.load(journal.path).metadata["recovered_operations"] == []
+    assert [path.name for path in journal.path.parent.glob("payload-*.json")] == [writes[-2]]
 
 
 @pytest.mark.parametrize("corruption", ["missing", "content", "public", "symlink"])

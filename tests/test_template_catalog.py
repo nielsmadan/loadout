@@ -16,7 +16,7 @@ from loadout.discovery import discover
 from loadout.emit import Copied, check_all, render_global, render_project, write_all
 from loadout.errors import LoadoutError
 from loadout.machine import machine_config_path
-from loadout.migration import plan_migration
+from loadout.migration import _PlanBuilder, plan_migration
 from loadout.migration_transaction import apply_migration, prepare_migration
 from loadout.project import load_project_config, project_config_path
 from loadout.staged import check_staged
@@ -59,10 +59,21 @@ def catalog(fake_home: Path) -> Path:
 
 
 def _native(root: Path, agents: tuple[str, ...] = ("claude",)) -> None:
-    plan = plan_migration(discover(root, scope="project", agents=agents))
-    assert plan.issues == ()
-    for write in plan.source_writes:
-        target = root / "loadout" / write.path.relative_to(plan.inventory.source_root)
+    builder = _PlanBuilder(
+        discover(root, scope="project", agents=agents), frozenset(artifacts.CATEGORIES)
+    )
+    builder.starters()
+    builder.write(
+        Path("config.toml"),
+        tomlkit.dumps(
+            {"harnesses": list(agents), "presets": False, "artifacts": "artifacts.toml"}
+        ).encode(),
+    )
+    builder.write(
+        Path("artifacts.toml"), tomlkit.dumps({"artifact": list(builder.records.values())}).encode()
+    )
+    for write in builder.writes.values():
+        target = write.path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(write.content)
         target.chmod(write.mode)
@@ -344,6 +355,27 @@ def test_catalog_starter_import_freezes_all_referenced_parts(tmp_path: Path, cat
     assert (tmp_path / ".agents/skills/review-typescript/SKILL.md").is_file()
     machine_config_path().unlink()
     assert check_staged(tmp_path) == 0
+
+
+def test_permissions_only_starter_creates_codex_mcp_policy_route(
+    tmp_path: Path, catalog: Path
+) -> None:
+    _write(catalog / "frontend.toml", 'permissions = ["policy"]\n')
+    _write(
+        catalog / "permissions/policy.toml",
+        '[mcp]\ndeny = ["github/write"]\nallow = ["github/read"]\n',
+    )
+    plan = plan_migration(
+        discover(tmp_path, scope="project", agents=("codex",)), starter="frontend"
+    )
+    assert plan.complete, plan.preview()
+    output = next(w for w in plan.generated_writes if w.path == tmp_path / ".codex/config.toml")
+    assert tomllib.loads(output.content.decode())["mcp_servers"] == {
+        "github": {
+            "disabled_tools": ["write"],
+            "tools": {"read": {"approval_mode": "approve"}},
+        }
+    }
 
 
 def test_staged_catalog_renders_without_machine_source(tmp_path: Path, catalog: Path) -> None:

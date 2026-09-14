@@ -28,7 +28,7 @@ from .migration_models import (
     SourceWrite,
 )
 from .migration_paths import DestinationLayout, entry_path
-from .migration_starters import select_starter
+from .migration_starters import select_starter, starter_categories
 from .migration_validation import validate_plan
 from .native_documents import key_fingerprints, parse_document
 from .permissions.renderers import RENDERERS, JsonSpec, TextSpec
@@ -230,8 +230,10 @@ def _destination_template(inventory: Inventory, destination: Path) -> str:
 
 
 class _PlanBuilder:
-    def __init__(self, inventory: Inventory) -> None:
+    def __init__(self, inventory: Inventory, categories: frozenset[str]) -> None:
         self.inventory = inventory
+        self.categories = categories
+        self.available_categories: set[tuple[str, str]] = set()
         self.records: dict[Path, dict[str, Any]] = {}
         self.writes: dict[Path, SourceWrite] = {}
         self.expected: dict[Path, ExpectedOutput] = {}
@@ -373,6 +375,18 @@ class _PlanBuilder:
         residual = {key: value for key, value in document.items() if key not in claimed}
         if not special or residual:
             values = {"settings": residual, **values}
+        self.available_categories.update(
+            (agent, category) for agent in candidate.agents for category in values
+        )
+        if self.inventory.scope == "project":
+            populated = {
+                category: value
+                for category, value in values.items()
+                if value or category in self.categories
+            }
+            values = populated or ({next(iter(values)): {}} if existing else {})
+            if not values:
+                return
         for category, value in values.items():
             content = serialize_document(value, candidate.format)
             private = candidate.private or credential_material(content, candidate.format)
@@ -509,8 +523,15 @@ class _PlanBuilder:
     def dormant(
         self, destination: Path, agents: tuple[str, ...], category: str, format_name: str = "copy"
     ) -> None:
+        self.available_categories.update((agent, category) for agent in agents)
         if any(
             destination.is_relative_to(p) or p.is_relative_to(destination) for p in self.records
+        ):
+            return
+        if (
+            self.inventory.scope == "project"
+            and format_name not in {"json", "toml"}
+            and category not in self.categories
         ):
             return
         candidate = Candidate(
@@ -577,7 +598,8 @@ class _PlanBuilder:
             self.dormant(skills, skill_agents, "skills", "tree")
             if agent == "claude":
                 self.dormant(root / "hooks", (agent,), "hooks", "tree")
-                self.dormant(root / "commands", (agent,), "instructions", "tree")
+                if not project:
+                    self.dormant(root / "commands", (agent,), "instructions", "tree")
                 self.dormant(root / "mcp-permissions.json", (agent,), "mcp-permissions", "json")
                 mcp = (
                     self.inventory.root / ".mcp.json"
@@ -602,6 +624,7 @@ class _PlanBuilder:
                     self.dormant(root / "hooks.json", (agent,), "hooks", "json")
                     self.dormant(root / "plugins", (agent,), "plugins", "tree")
             elif agent == "opencode":
+                self.available_categories.add((agent, "hooks"))
                 self.dormant(root / "plugins", (agent,), "plugins", "tree")
             elif agent == "pi":
                 self.dormant(
@@ -617,8 +640,6 @@ class _PlanBuilder:
                     "mcp",
                     "json",
                 )
-        for category in sorted(CATEGORIES):
-            self.write(Path(category) / ".gitkeep", b"")
         if project:
             for destination, record in self.records.items():
                 if (
@@ -628,6 +649,9 @@ class _PlanBuilder:
                     and not record.get("optional")
                 ):
                     record["template_instructions"] = True
+            return
+        for category in sorted(CATEGORIES):
+            self.write(Path(category) / ".gitkeep", b"")
         for category in ("module-config", "support", "templates"):
             self.write(
                 Path(category) / "README.md",
@@ -709,11 +733,13 @@ def plan_migration(
     selections: tuple[SourceSelection, ...] = (),
     starter: str | None = None,
 ) -> MigrationPlan:
-    return select_starter(_plan_migration(inventory, selections=selections), starter)
+    return select_starter(
+        _plan_migration(inventory, selections=selections, starter=starter), starter
+    )
 
 
 def _plan_migration(
-    inventory: Inventory, *, selections: tuple[SourceSelection, ...]
+    inventory: Inventory, *, selections: tuple[SourceSelection, ...], starter: str | None
 ) -> MigrationPlan:
     if inventory.initialized is not None:
         return _initialized(inventory)
@@ -721,7 +747,14 @@ def _plan_migration(
     issues = (*inventory.issues, *conflicts)
     if issues:
         return MigrationPlan(inventory, preconditions=inventory.preconditions, issues=issues)
-    builder = _PlanBuilder(inventory)
+    try:
+        selected_categories = starter_categories(inventory, starter)
+    except (LoadoutError, OSError, ValueError) as error:
+        return MigrationPlan(
+            inventory,
+            issues=(Issue("starter-selection", (inventory.source_root,), str(error)),),
+        )
+    builder = _PlanBuilder(inventory, selected_categories)
     try:
         builder.originals(candidates)
         builder.starters()
@@ -919,6 +952,39 @@ def _readiness(builder: _PlanBuilder) -> tuple[CategoryReadiness, ...]:
             )
             if paths:
                 result.append(CategoryReadiness(category, (agent,), paths, "routed"))
+            elif (
+                category == "hooks"
+                and agent == "opencode"
+                and (
+                    plugin_paths := tuple(
+                        path
+                        for path, record in builder.records.items()
+                        if agent in record["agents"] and record.get("category") == "plugins"
+                    )
+                )
+            ):
+                result.append(
+                    CategoryReadiness(
+                        category,
+                        (agent,),
+                        plugin_paths,
+                        "routed",
+                        "OpenCode hooks are plugin code.",
+                    )
+                )
+            elif (
+                builder.inventory.scope == "project"
+                and (agent, category) in builder.available_categories
+            ):
+                result.append(
+                    CategoryReadiness(
+                        category,
+                        (agent,),
+                        (),
+                        "explicit-binding",
+                        "Add a source and an artifact binding when this category is needed.",
+                    )
+                )
             elif category in {"support", "module-config", "templates"}:
                 result.append(
                     CategoryReadiness(
@@ -927,21 +993,6 @@ def _readiness(builder: _PlanBuilder) -> tuple[CategoryReadiness, ...]:
                         (),
                         "explicit-binding",
                         "The module or selected template supplies its destination; add an artifact binding.",
-                    )
-                )
-            elif category == "hooks" and agent == "opencode":
-                plugin_paths = tuple(
-                    path
-                    for path, record in builder.records.items()
-                    if agent in record["agents"] and record.get("category") == "plugins"
-                )
-                result.append(
-                    CategoryReadiness(
-                        category,
-                        (agent,),
-                        plugin_paths,
-                        "routed",
-                        "OpenCode hooks are plugin code.",
                     )
                 )
             else:

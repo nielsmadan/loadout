@@ -7,18 +7,18 @@ from pathlib import Path
 
 import pytest
 
-from loadout import migration_journal
+from loadout import migration_journal, migration_transaction
 from loadout.discovery import discover
 from loadout.errors import LoadoutError
 from loadout.migration import plan_migration
 from loadout.migration_journal import Image, Journal, Operation
 from loadout.migration_transaction import (
-    apply_migration,
     prepare_migration,
     recover_migration,
     resume_migration,
 )
 from test_migration_corpus_regressions import git, migrated_journal, repository
+from test_migration_transaction import interrupted_completion
 
 
 def payloads(journal: Journal) -> dict[str, bytes]:
@@ -72,9 +72,8 @@ def migrated_support_journal(root: Path) -> tuple[Journal, dict[Path, Image]]:
         migration_journal.install(path, image)
     plan = plan_migration(discover(root, scope="project", agents=("claude",)))
     assert plan.complete, plan.preview()
-    result = apply_migration(prepare_migration(plan))
-    assert result.journal is not None
-    return Journal.load(result.journal), originals
+    path = interrupted_completion(prepare_migration(plan))
+    return Journal.load(path), originals
 
 
 def test_recovery_payloads_stay_bounded_through_interruption_and_conflict_retry(
@@ -120,11 +119,11 @@ def test_recovery_payloads_stay_bounded_through_interruption_and_conflict_retry(
     assert conflict.path.read_bytes() == b"concurrent source edit\n"
     assert Journal.load(journal.path).status == "recovery-conflicts"
     install(conflict.path, conflict.after)
-    assert recover_migration(journal.path).conflicts == ()
-    assert recover_migration(journal.path).conflicts == ()
+    result = recover_migration(journal.path)
+    assert result.conflicts == ()
+    assert result.journal is None
     assert set(measurements) == {expected_size}
-    assert payloads(journal) == retained
-    assert Journal.load(journal.path).recovered_operations == set(range(journal.next))
+    assert not journal.path.parent.exists()
     for path, image in originals.items():
         assert migration_journal.snapshot(path) == image
     assert not (tmp_path / "loadout/config.toml").exists()
@@ -170,10 +169,9 @@ def test_legacy_recovery_progress_survives_reload(
     reloaded = Journal.load(journal.path)
     assert reloaded.recovered_operations == {1, 2}
     assert reloaded.metadata["recovered_operations"] == [2]
-    retained = payloads(reloaded)
     assert recover_migration(journal.path).conflicts == ()
     assert migration_journal.snapshot(operation.path) == Image()
-    assert payloads(reloaded) == retained
+    assert not journal.path.parent.exists()
 
 
 @pytest.mark.parametrize("location", ["cursor", "legacy"])
@@ -242,6 +240,9 @@ def test_interrupted_recovery_accepts_only_its_restored_index(
 
 def test_complete_journal_refuses_restored_index_without_recovery_intent(tmp_path: Path) -> None:
     journal = migrated_journal(tmp_path)
+    journal.metadata["expected_index"] = journal.metadata["final_index"]
+    journal.status = "complete"
+    journal.save()
     index = tmp_path / ".git/index"
     source = (tmp_path / "loadout/config.toml").read_bytes()
     index.write_bytes(base64.b64decode(journal.metadata["refreshed_index"]))
@@ -270,3 +271,27 @@ def test_recovery_saves_already_restored_step_before_preceding_write(
     assert migration_journal.snapshot(operation.path) == journal.operations[1].before
     assert recover_migration(journal.path).conflicts == ()
     assert migration_journal.snapshot(operation.path) == Image()
+
+
+def test_index_change_during_recovery_retains_the_journal_before_restoring_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    journal = migrated_journal(tmp_path)
+    guard = migration_transaction._recovery_git_conflicts
+    source = tmp_path / "loadout/config.toml"
+    before = source.read_bytes()
+
+    def change_index(current: Journal) -> tuple[Path, ...]:
+        conflicts = guard(current)
+        assert conflicts == ()
+        (tmp_path / "concurrent.txt").write_bytes(b"user staging\n")
+        git(tmp_path, "add", "concurrent.txt")
+        return conflicts
+
+    monkeypatch.setattr(migration_transaction, "_recovery_git_conflicts", change_index)
+    result = recover_migration(journal.path)
+    assert result.conflicts == (tmp_path / ".git/index",)
+    assert result.journal == journal.path
+    assert Journal.load(journal.path).status == "recovery-conflicts"
+    assert source.read_bytes() == before
+    assert git(tmp_path, "show", ":concurrent.txt") == b"user staging\n"

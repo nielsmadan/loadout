@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -432,7 +433,16 @@ def test_init_sync_check_round_trips_for_a_project_only_repo(tmp_path: Path, cap
     capsys.readouterr()
 
     assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
-    assert (tmp_path / "loadout" / "artifacts.toml").is_file()
+    assert {p.name for p in (tmp_path / "loadout").iterdir()} == {
+        "config.toml",
+        "artifacts.toml",
+        ".loadout-state",
+    }
+    assert tomllib.loads((tmp_path / "loadout/artifacts.toml").read_text()) == {"artifact": []}
+    assert (tmp_path / ".gitignore").read_text().splitlines() == [
+        "/.loadout-state/",
+        "/loadout/.loadout-state/",
+    ]
     assert not (tmp_path / ".claude" / "settings.json").exists()
     assert not (tmp_path / "opencode.json").exists()
 
@@ -491,6 +501,8 @@ def test_explain_in_a_project_only_repo_names_both_manifests(tmp_path: Path, cap
 
 def test_check_returns_1_when_a_project_output_has_drifted(tmp_path: Path, capsys) -> None:
     _init_repo(tmp_path)
+    (tmp_path / ".claude").mkdir()
+    (tmp_path / ".claude/settings.json").write_text('{"model":"original"}\n')
     loadout.main(["init", "--project", "--yes", "--harness", "claude", "--root", str(tmp_path)])
     settings = next((tmp_path / "loadout/settings").rglob("*.json"))
     settings.write_text('{"model":"authored"}\n', encoding="utf-8")

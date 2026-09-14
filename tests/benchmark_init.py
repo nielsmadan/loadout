@@ -80,6 +80,8 @@ def run_case(directory: Path, count: int) -> dict:
             )
         return result
     assert_exit(result)
+    assert journals == []
+    result.update(journal_bytes=0, payload_bytes=0)
     for name, content in expected.items():
         assert (root / name).read_bytes() == content
         assert (root / name).stat().st_mode & 0o777 == 0o644

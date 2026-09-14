@@ -184,6 +184,48 @@ class Journal:
         }
         atomic_install(self.path, FrozenFile((json.dumps(document) + "\n").encode(), 0o600))
         self._sync_directory()
+        for path in self.path.parent.glob("payload-*.json"):
+            if path.name != f"payload-{self._payload}.json":
+                path.unlink()
+
+    def discard(self) -> None:
+        if self.status not in {"complete", "recovered"}:
+            raise LoadoutError("unfinished migration journal must be retained")
+        directory = self.path.parent
+        if (
+            self.path.name != "journal.json"
+            or directory.parent != Path(self.metadata["root"]) / ".loadout-state/migrations"
+        ):
+            raise LoadoutError("migration cleanup escapes its recorded root")
+        protected(directory)
+        paths = tuple(directory.iterdir())
+        for path in paths:
+            _no_symlinks(path)
+            if not path.is_file():
+                raise LoadoutError(f"unexpected migration cleanup entry: {path}")
+        # Keep a self-contained terminal journal until every payload is removed.
+        document = {
+            "version": 1,
+            "operations": [operation.document() for operation in self.operations],
+            "metadata": self.metadata,
+            "next": self.next,
+            "pending": self.pending,
+            "status": self.status,
+        }
+        terminal = FrozenFile((json.dumps(document) + "\n").encode(), 0o600)
+        atomic_install(self.path, terminal)
+        self._sync_directory()
+        for path in paths:
+            if path != self.path:
+                path.unlink()
+        self._sync_directory()
+        try:
+            self.path.unlink()
+            directory.rmdir()
+        except (OSError, KeyboardInterrupt):
+            if directory.is_dir():
+                atomic_install(self.path, terminal)
+            raise
 
     def _sync_directory(self) -> None:
         descriptor = os.open(self.path.parent, os.O_RDONLY)
@@ -311,6 +353,8 @@ class Journal:
             return result
         except (ValueError, KeyError, TypeError) as error:
             raise LoadoutError(f"invalid migration journal: {path}") from error
+        except OSError as error:
+            raise LoadoutError(f"missing or unreadable migration journal: {path}") from error
 
 
 def _read_payload(path: Path, raw: dict[str, Any]) -> dict[str, Any]:

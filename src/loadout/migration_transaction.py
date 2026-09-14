@@ -79,7 +79,7 @@ class MigrationResult:
 
 @dataclass(frozen=True)
 class RecoveryResult:
-    journal: Path
+    journal: Path | None
     conflicts: tuple[Path, ...]
     baseline: str | None
 
@@ -841,9 +841,17 @@ def _finish(journal: Journal) -> MigrationResult:
     return _result(journal)
 
 
+def _discard(journal: Journal) -> None:
+    try:
+        journal.discard()
+    except (OSError, LoadoutError, KeyboardInterrupt) as error:
+        raise MigrationFailure(str(error), journal.path) from error
+
+
 def _result(journal: Journal) -> MigrationResult:
+    _discard(journal)
     return MigrationResult(
-        journal.path,
+        None,
         journal.metadata["baseline"],
         tuple(dict.fromkeys(o.path for o in journal.operations if o.after.kind == "file")),
         tuple(journal.metadata["additions"]),
@@ -888,6 +896,8 @@ def apply_migration(prepared: MigrationPreparation) -> MigrationResult:
             _deploy(journal, prepared.deployment)
         _run_remaining(journal)
         return _finish(journal)
+    except MigrationFailure:
+        raise
     except (Exception, KeyboardInterrupt) as error:
         raise MigrationFailure(str(error), journal.path) from error
 
@@ -929,6 +939,8 @@ def resume_migration(path: Path) -> MigrationResult:
             _guard_completed(journal)
         _run_remaining(journal)
         return _finish(journal)
+    except MigrationFailure:
+        raise
     except (Exception, KeyboardInterrupt) as error:
         raise MigrationFailure(str(error), journal.path) from error
 
@@ -936,7 +948,8 @@ def resume_migration(path: Path) -> MigrationResult:
 def recover_migration(path: Path) -> RecoveryResult:
     journal = Journal.load(path)
     if journal.status == "recovered":
-        return RecoveryResult(path, (), journal.metadata["baseline"])
+        _discard(journal)
+        return RecoveryResult(None, (), journal.metadata["baseline"])
     conflicts: list[Path] = []
     try:
         _resume_checkpoint(journal)
@@ -966,7 +979,14 @@ def recover_migration(path: Path) -> RecoveryResult:
             migration_git.replace_index(index, current, baseline)
         elif current != baseline:
             conflicts.append(index)
-    conflicts.extend(journal.recover())
+    if conflicts:
+        journal.status = "recovery-conflicts"
+        journal.save()
+        return RecoveryResult(path, tuple(conflicts), journal.metadata["baseline"])
+    conflicts = list(journal.recover())
+    if not conflicts:
+        _discard(journal)
+        return RecoveryResult(None, (), journal.metadata["baseline"])
     return RecoveryResult(path, tuple(conflicts), journal.metadata["baseline"])
 
 

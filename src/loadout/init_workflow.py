@@ -207,9 +207,7 @@ def _result(result: MigrationResult, *, as_json: bool) -> None:
             "Existing source adopted; no migration needed. Use loadout check/sync for managed outputs."
         )
     else:
-        print(
-            f"Migration complete; {len(result.staged)} source paths staged. Recovery journal: {result.journal}"
-        )
+        print(f"Migration complete; {len(result.staged)} source paths staged.")
 
 
 def run_init(options: InitOptions) -> int:
@@ -312,14 +310,12 @@ def run_recovery(path: Path, *, recover: bool, yes: bool, as_json: bool) -> int:
         return report_failure(error, as_json=as_json)
     data = {
         "status": "recovery-conflicts" if result.conflicts else "recovered",
-        "journal": str(result.journal),
+        "journal": str(result.journal) if result.journal else None,
         "conflicts": [str(p) for p in result.conflicts],
         "baseline": result.baseline,
     }
     print(
-        json.dumps(data, indent=2)
-        if as_json
-        else f"{data['status']}: {path}; successful baseline retained"
+        json.dumps(data, indent=2) if as_json else f"{data['status']}; successful baseline retained"
     )
     for conflict in result.conflicts:
         print(f"Recovery conflict: {conflict}", file=sys.stderr)

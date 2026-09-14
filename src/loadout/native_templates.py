@@ -95,8 +95,9 @@ def native_template_prefix(
     if missing:
         raise LoadoutError(
             f"template instructions have no opted-in artifact route for {', '.join(sorted(missing))}. "
-            "Set template_instructions = true on each intended required project copy/text "
-            "instruction route in artifacts.toml, then retry the template command."
+            "Add any missing instruction sources and required project copy/text routes in "
+            "artifacts.toml, set template_instructions = true on each intended route, then "
+            "retry the template command."
         )
     return ("\n\n".join(blocks) + "\n\n").encode()
 

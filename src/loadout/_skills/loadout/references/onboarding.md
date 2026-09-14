@@ -14,6 +14,11 @@ root for a new repository. Project discovery finds the enclosing Loadout/Git roo
 directories. Configured roots establish agents; a shared AGENTS.md or installed binary does not.
 Repeat `--harness` when membership needs an explicit selection.
 
+Project init creates sources for existing configuration and explicitly selected starter categories.
+An empty project starts with just `loadout/config.toml` and `loadout/artifacts.toml`, plus managed
+state and recovery ignore entries. Add sources and artifact bindings as needed later. Global init supplies the
+full category scaffold and dormant routes. Repeat init preserves existing source layouts.
+
 Offer an optional project starter with `--starter none|frontend|backend`; default to `none`.
 These packaged templates work offline and provide short instruction seeds with empty categories.
 Reuse the same selection in preview and apply. They are vendored with content-hash provenance and
@@ -74,7 +79,9 @@ loadout init --recover /work/project/.loadout-state/migrations/ID/journal.json -
 ```
 
 Resume continues frozen operations after guards. Recover restores only unchanged postimages and
-reports conflicting paths with exit 1; successful baseline commits survive. Keep recovery data
+reports conflicting paths with exit 1; successful baseline commits survive. Successful init, resume
+and conflict-free recovery delete the transaction's recovery data and return `journal: null`.
+The deployment receipt remains for sync. Retain journals from unfinished transactions. Keep recovery data
 private and never paste its content into the conversation. Report the journal path and status.
 
 The same skill handles later configuration using the configuration reference. `loadout skill

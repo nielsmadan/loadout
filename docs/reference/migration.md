@@ -143,13 +143,19 @@ directories; those names identify runtime state only beneath known harness roots
 
 New source lives in `<selected-directory>/loadout/`; an already initialized root manifest keeps
 its existing source root. `source_root` identifies the actual manifest directory for the later
-machine-config write. Every artifact category has a source directory. Explicit routes preserve
-agent membership, nested instruction paths, rules, commands, skills, module files and relative
-support subtrees. Tree routes discover first additions, edits, renames and removals.
+machine-config write. Project init creates only sources for existing configuration and categories
+needed by an explicitly selected starter. Without either, it writes `config.toml` and an empty
+`artifacts.toml`; ignores cover only Loadout's managed-state and recovery directories.
+Global init scaffolds every artifact category. Explicit routes preserve agent membership,
+nested instruction paths, rules, commands, skills, module files and relative
+support subtrees. Tree routes discover first additions, edits, renames and removals; their
+`.gitkeep` keeps an empty source usable after reconstruction from Git.
 
 Native composite documents split settings, permissions, hooks, plugins and MCP into separately
-owned fragments. JSON null/false/empty values and ordered nested keys survive literally. Native
-supporting assets remain byte-and-mode exact. Copy `mode` and tree `modes` bindings record full
+owned fragments. Project init omits fragments for absent sections; an existing empty document
+keeps one source to preserve its presence. JSON null/false/empty values and ordered nested keys
+survive literally. Native supporting assets remain byte-and-mode exact. Copy `mode` and tree
+`modes` bindings record full
 filesystem modes in source; Git itself retains only executable bits. See [artifacts](artifacts.md#files-and-trees)
 for changing an explicit mode or adding a tree file without one. Portable permissions are used only after the
 proposed TOML is serialized, parsed by `parse_rules`, and rendered with the normal renderer;
@@ -174,13 +180,17 @@ Runtime-only mixed documents remain intact. `required_owned_absences` records do
 keys separately from `required_absences`, which requires an entire output path to be absent.
 Their first authored entries still activate through the declared category routes.
 
-Empty core categories are routed but dormant until their first entry. An originally present
+Global init routes empty core categories, dormant until their first entry. Project categories
+with known destinations but no routes report `explicit-binding`: add a source and binding when
+needed, including an opted-in instruction route before adding instruction templates later. Repeat init leaves existing
+source intact and does not remove scaffolding from projects initialized previously. An originally present
 empty instruction remains present. `categories` reports readiness for each agent: `routed`,
 `explicit-binding`, or `unsupported`. Module/support filenames are chosen by their consumers,
 and templates need explicit selection; new arbitrary targets require an artifact binding, with
-a README in the category directory. Existing module/support targets have concrete routes. The
-unsupported scope distinctions follow [config.md](config.md) and [servers.md](servers.md),
-including the documented Codex project-skill negative and unverified project MCP support.
+a README in each global category directory. Existing module/support targets have concrete routes.
+`unsupported` means the planner has no verified independent destination for that scope/category;
+existing explicit mappings still report `routed`. Destination knowledge follows
+[config.md](config.md) and [servers.md](servers.md).
 
 ## Privacy and transaction handoff
 
@@ -323,8 +333,18 @@ and signing settings may still be repaired after a failed checkpoint.
 The protected journal is `<selected-root>/.loadout-state/migrations/<id>/journal.json`. Its
 container is mode `0700`, files are mode `0600`, and its own `*` ignore is installed before
 preimages, including before a checkpoint hook can run. Tracked, symlinked, foreign-owned or
-public state containers are refused. Completed journals remain private recovery records; they
-are not authored configuration or staging inputs.
+public state containers are refused. Journals are temporary transaction state. Successful init,
+resume and conflict-free recovery remove their transaction directory, including payloads and
+Git index snapshots. Their JSON results return `journal: null`. The deployment receipt remains
+available to ordinary sync. Failed, interrupted or conflicted transactions retain their journals.
+After successful init, use Git for source history; `init --recover` is for unfinished transactions.
+
+Only the currently referenced payload is retained after a durable cursor update. An interruption
+before that update preserves the previous payload. Cleanup first makes the terminal journal
+self-contained, so interrupted deletion can be retried with resume or recovery. Existing terminal
+journals are also removed when their corresponding resume or recovery command is retried.
+Cleanup failures use the same exit-1 interrupted result and journal path as migration failures,
+including JSON output and retry instructions.
 
 `MigrationFailure.journal` gives the actionable path. `resume_migration(path)` continues the
 frozen operations after checking their state. A checkpoint interrupted after committing is

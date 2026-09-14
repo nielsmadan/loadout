@@ -56,6 +56,21 @@ def plan(
     return result
 
 
+def interrupted_completion(prepared: migration_transaction.MigrationPreparation) -> Path:
+    save = migration_journal.Journal.save
+
+    def interrupt(journal: migration_journal.Journal) -> None:
+        if journal.status == "complete":
+            raise KeyboardInterrupt()
+        save(journal)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(migration_journal.Journal, "save", interrupt)
+        with pytest.raises(MigrationFailure) as failure:
+            apply_migration(prepared)
+    return failure.value.journal
+
+
 def test_project_migration_checkpoints_stages_and_uses_normal_lifecycle(tmp_path: Path) -> None:
     repository(tmp_path)
     settings = write(tmp_path, ".claude/settings.json", '{"model":"before"}')
@@ -63,6 +78,9 @@ def test_project_migration_checkpoints_stages_and_uses_normal_lifecycle(tmp_path
     prepared = prepare_migration(plan(tmp_path))
     assert prepared.preview()["git"]["baseline_paths"] == [".claude/settings.json"]
     result = apply_migration(prepared)
+    assert result.journal is None
+    assert list((tmp_path / ".loadout-state/migrations").iterdir()) == []
+    assert json.loads((tmp_path / "loadout/.loadout-state/project.json").read_bytes())["entries"]
     assert result.baseline == git(tmp_path, "rev-parse", "HEAD").decode().strip()
     assert git(tmp_path, "show", "HEAD:.claude/settings.json") == original
     assert json.loads(settings.read_bytes()) == {"model": "before"}
@@ -185,7 +203,10 @@ def test_hook_failure_has_journal_and_does_not_write_source(tmp_path: Path) -> N
     assert failure.value.journal.is_file()
     assert settings.read_bytes() == b'{"model":"before"}'
     assert not (tmp_path / "loadout").exists()
-    assert recover_migration(failure.value.journal).conflicts == ()
+    recovery = recover_migration(failure.value.journal)
+    assert recovery.conflicts == ()
+    assert recovery.journal is None
+    assert not failure.value.journal.parent.exists()
 
 
 def test_existing_source_noop_can_write_explicit_registration(
@@ -202,8 +223,8 @@ def test_existing_source_noop_can_write_explicit_registration(
     result = apply_migration(prepare_migration(existing, machine_write=write))
     assert result.already_initialized
     assert write.path.read_bytes() == write.content
-    assert result.journal is not None
-    assert resume_migration(result.journal) == result
+    assert result.journal is None
+    assert list((tmp_path / ".loadout-state/migrations").iterdir()) == []
 
 
 def test_new_repository_checkpoint_filters_private_namespaces_and_ignored_files(
@@ -358,6 +379,8 @@ def test_interrupted_deployment_resumes_frozen_bytes_and_normal_receipt(
     assert journal.pending
     baseline = git(tmp_path, "rev-parse", "HEAD")
     result = resume_migration(failure.value.journal)
+    assert result.journal is None
+    assert not failure.value.journal.parent.exists()
     assert git(tmp_path, "rev-parse", "HEAD") == baseline
     assert result.baseline == baseline.decode().strip()
     assert cmd_check(tmp_path) == 0
@@ -381,6 +404,8 @@ def test_recovery_preserves_conflicting_edits_and_successful_baseline(
     settings.write_text('{"model":"concurrent"}')
     recovery = recover_migration(failure.value.journal)
     assert settings in recovery.conflicts
+    assert recovery.journal == failure.value.journal
+    assert migration_journal.Journal.load(recovery.journal).status == "recovery-conflicts"
     assert settings.read_bytes() == b'{"model":"concurrent"}'
     assert git(tmp_path, "rev-parse", "HEAD") == baseline
     assert git(tmp_path, "show", "HEAD:.claude/settings.json") == b'{"model":"before"}'
@@ -447,11 +472,14 @@ def test_unresolved_plan_cannot_be_prepared(tmp_path: Path) -> None:
 
 def test_first_skill_entry_edit_and_last_deletion_use_adopted_receipt(tmp_path: Path) -> None:
     repository(tmp_path)
+    destination = write(tmp_path, ".claude/skills/first/SKILL.md", "original\n")
     apply_migration(prepare_migration(plan(tmp_path)))
     records = tomllib.loads((tmp_path / "loadout/artifacts.toml").read_text())["artifact"]
     skills = next(record for record in records if record.get("category") == "skills")
+    (tmp_path / "loadout" / skills["source"] / "first/SKILL.md").unlink()
+    assert cmd_sync(tmp_path) == 0
+    assert not destination.exists()
     source = write(tmp_path / "loadout" / skills["source"], "first/SKILL.md", "first\n")
-    destination = tmp_path / ".claude/skills/first/SKILL.md"
     assert cmd_sync(tmp_path) == 0
     assert destination.read_text() == "first\n"
     source.write_text("edited\n")
@@ -573,27 +601,26 @@ def test_recovery_after_final_staging_keeps_baseline_and_restores_original_entri
 ) -> None:
     repository(tmp_path)
     settings = write(tmp_path, ".claude/settings.json", '{"model":"before"}')
-    result = apply_migration(prepare_migration(plan(tmp_path)))
-    assert result.journal is not None
+    journal = interrupted_completion(prepare_migration(plan(tmp_path)))
     baseline = git(tmp_path, "rev-parse", "HEAD")
-    recovery = recover_migration(result.journal)
+    recovery = recover_migration(journal)
     assert recovery.conflicts == ()
     assert settings.read_bytes() == b'{"model":"before"}'
     assert git(tmp_path, "rev-parse", "HEAD") == baseline
     assert git(tmp_path, "diff", "--cached", "--name-only") == b""
-    assert recover_migration(result.journal).conflicts == ()
+    assert recovery.journal is None
+    assert not journal.parent.exists()
 
 
 def test_recovery_after_user_commit_preserves_committed_source_and_index(tmp_path: Path) -> None:
     repository(tmp_path)
     write(tmp_path, ".claude/settings.json", '{"model":"before"}')
-    result = apply_migration(prepare_migration(plan(tmp_path)))
-    assert result.journal is not None
+    journal = interrupted_completion(prepare_migration(plan(tmp_path)))
     git(tmp_path, "commit", "-qm", "user adopted migration")
     head = git(tmp_path, "rev-parse", "HEAD")
     index = (tmp_path / ".git/index").read_bytes()
     source = (tmp_path / "loadout/config.toml").read_bytes()
-    recovery = recover_migration(result.journal)
+    recovery = recover_migration(journal)
     assert recovery.conflicts == (tmp_path / ".git/index",)
     assert git(tmp_path, "rev-parse", "HEAD") == head
     assert (tmp_path / ".git/index").read_bytes() == index
@@ -628,14 +655,13 @@ def test_journal_is_ignored_during_the_real_checkpoint_hook(tmp_path: Path) -> N
 def test_loaded_journal_rejects_invalid_shape_before_recovery(tmp_path: Path, tamper: str) -> None:
     repository(tmp_path)
     write(tmp_path, ".claude/settings.json", '{"model":"before"}')
-    result = apply_migration(prepare_migration(plan(tmp_path)))
-    assert result.journal is not None
+    path = interrupted_completion(prepare_migration(plan(tmp_path)))
     if tamper == "cursor":
-        raw = json.loads(result.journal.read_bytes())
+        raw = json.loads(path.read_bytes())
         raw["next"] = True
-        result.journal.write_text(json.dumps(raw))
+        path.write_text(json.dumps(raw))
     else:
-        journal = migration_journal.Journal.load(result.journal)
+        journal = migration_journal.Journal.load(path)
         operation = journal.operations[0]
         operation = (
             replace(operation, phase="execute")
@@ -645,7 +671,7 @@ def test_loaded_journal_rejects_invalid_shape_before_recovery(tmp_path: Path, ta
         journal.operations = (operation, *journal.operations[1:])
         journal.save()
     with pytest.raises(LoadoutError, match="journal"):
-        recover_migration(result.journal)
+        recover_migration(path)
     assert (tmp_path / "loadout/config.toml").is_file()
 
 
@@ -1082,14 +1108,22 @@ def test_unchanged_outputs_validate_before_retiring_originals(
 
 
 def test_final_index_resume_validates_dormant_outputs(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repository(tmp_path)
-    write(tmp_path, ".claude/settings.json", '{"model":"before"}')
-    prepared = prepare_migration(plan(tmp_path))
-    absent = tmp_path / ".mcp.json"
+    original = write(tmp_path, "claude/settings.json", '{"model":"before"}')
+    prepared = prepare_migration(
+        plan(
+            tmp_path,
+            scope="global",
+            mappings=(RootMapping(original.parent, fake_home / ".claude", ("claude",)),),
+        )
+    )
+    assert prepared.preview()["git"]["baseline_paths"] == ["claude/settings.json"]
+    absent = fake_home / ".claude/CLAUDE.md"
     assert absent in prepared.plan.required_absences
     journal = interrupt_migration(prepared, "after-index", monkeypatch)
+    absent.parent.mkdir(parents=True, exist_ok=True)
     absent.write_text("{}\n")
     with pytest.raises(MigrationFailure, match="dormant output"):
         resume_migration(journal)

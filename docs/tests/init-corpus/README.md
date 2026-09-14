@@ -92,7 +92,7 @@ separate global workload when changing retirement or transaction guards:
 
 It reuses the same inert skill and fixed 1-KiB support files in a disposable existing repository,
 explicitly mapped to a separate fake-home Claude directory. Each original must be retired only
-after its replacement is generated. The runner asserts retirement count against input count,
+after its replacement is generated. The runner checks every original was retired,
 complete output bytes/modes, original index removals, staged global source, unchanged baseline
 HEAD, normal check and staged check. The default is a 25-file warmup followed by three runs at
 25/100/1000; `--counts` selects a bounded comparison and `--repetitions` changes its sample count.
@@ -101,6 +101,11 @@ timeout recovery/evidence preservation as the project benchmark.
 
 Global and project timings are distinct workloads. Do not use the project measurements to infer
 retirement cost, or describe a single diagnostic sample as a controlled speedup.
+
+Both init benchmarks assert successful transactions leave no recovery journal or payloads.
+`tests/benchmark_recovery.py` injects a staging failure into the real init CLI, then measures
+supported recovery against that unfinished transaction. It verifies restoration of bytes, modes
+and the index, retention of the baseline, and removal of the completed recovery's state.
 
 ## Publish and retain
 

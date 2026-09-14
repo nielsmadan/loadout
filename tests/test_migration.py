@@ -66,7 +66,14 @@ def test_project_plan_reconstructs_composite_native_data_without_mutation(tmp_pa
     source_categories = {
         w.path.relative_to(plan.inventory.source_root).parts[0] for w in plan.source_writes
     }
-    assert source_categories >= CATEGORIES
+    assert source_categories == {
+        "config.toml",
+        "artifacts.toml",
+        "settings",
+        "permissions",
+        "hooks",
+        "plugins",
+    }
     assert any(
         c.category == "module-config" and c.state == "explicit-binding" for c in plan.categories
     )
@@ -346,10 +353,55 @@ def test_validation_rejects_actual_serialized_source_changes(tmp_path: Path) -> 
     assert path.read_text() == '{"model":"original"}'
 
 
-def test_empty_routes_do_not_suppress_fallback_instructions(tmp_path: Path) -> None:
-    plan = migration(tmp_path, ("claude", "codex", "opencode", "pi"))
+@pytest.mark.parametrize(
+    "agents",
+    [("claude",), ("codex",), ("opencode",), ("pi",), ("claude", "codex", "opencode", "pi")],
+)
+def test_empty_project_creates_only_config_and_index(
+    tmp_path: Path, agents: tuple[str, ...]
+) -> None:
+    plan = migration(tmp_path, agents)
+    assert {
+        w.path.relative_to(plan.inventory.source_root).as_posix() for w in plan.source_writes
+    } == {"config.toml", "artifacts.toml"}
+    assert index(plan) == {"artifact": []}
+    assert plan.generated_writes == ()
+    assert plan.artifact_routes == ()
+    assert plan.ignores == ("/loadout/.loadout-state/",)
+    readiness = {(c.agents[0], c.category): c for c in plan.categories}
+    for agent in agents:
+        assert readiness[agent, "settings"].state == "explicit-binding"
+        assert readiness[agent, "instructions"].state == "explicit-binding"
+        assert readiness[agent, "plugins"].state == "explicit-binding"
+        assert readiness[agent, "hooks"].state == (
+            "unsupported" if agent == "codex" else "explicit-binding"
+        )
+        assert readiness[agent, "mcp-permissions"].state == (
+            "explicit-binding" if agent == "claude" else "unsupported"
+        )
+
+
+def test_existing_codex_hook_mapping_keeps_its_readiness(tmp_path: Path) -> None:
+    path = write(tmp_path, ".codex/hooks/notify.sh", "notify\n")
+    plan = migration(tmp_path, ("codex",))
+    hooks = next(c for c in plan.categories if c.category == "hooks")
+    assert hooks.state == "routed"
+    assert hooks.destinations == (path.parent,)
+    assert generated(plan, path) == b"notify\n"
+
+
+def test_global_keeps_full_dormant_scaffold(tmp_path: Path, fake_home: Path) -> None:
+    plan = plan_migration(
+        discover(tmp_path, scope="global", agents=("claude", "codex", "opencode", "pi"))
+    )
+    assert plan.complete, plan.preview()
+    assert {
+        w.path.relative_to(plan.inventory.source_root).parts[0] for w in plan.source_writes
+    } == CATEGORIES | {"loadout.toml", "artifacts.toml"}
     assert {o.path for o in plan.expected_outputs} == set()
-    assert {tmp_path / "CLAUDE.md", tmp_path / "AGENTS.md"} <= set(plan.required_absences)
+    assert {fake_home / ".claude/CLAUDE.md", fake_home / ".codex/AGENTS.md"} <= set(
+        plan.required_absences
+    )
     assert {c.category for c in plan.categories if c.state == "routed"} >= {
         "settings",
         "instructions",
@@ -365,6 +417,44 @@ def test_originally_empty_instruction_file_is_recreated(tmp_path: Path) -> None:
     path = write(tmp_path, "CLAUDE.md", b"")
     plan = migration(tmp_path)
     assert generated(plan, path) == b""
+
+
+def test_existing_opencode_plugins_keep_hooks_routed(tmp_path: Path) -> None:
+    path = write(tmp_path, ".opencode/plugins/notify.ts", "export default {}\n")
+    plan = migration(tmp_path, ("opencode",))
+    hooks = next(c for c in plan.categories if c.category == "hooks")
+    assert hooks.state == "routed"
+    assert hooks.destinations == (path.parent,)
+    assert generated(plan, path) == b"export default {}\n"
+
+
+@pytest.mark.parametrize(
+    "agent,path,content,category",
+    [
+        ("claude", ".claude/settings.json", '{"permissions":{"allow":["Read"]}}', "permissions"),
+        ("claude", ".claude/settings.json", '{"hooks":{}}', "hooks"),
+        ("claude", ".claude/settings.json", "{}", "settings"),
+        ("claude", ".mcp.json", "{}", "mcp"),
+        ("codex", ".codex/config.toml", 'model = "test"\n', "settings"),
+        ("opencode", "opencode.json", '{"plugin":[]}', "plugins"),
+        ("pi", ".pi/settings.json", '{"packages":[]}', "plugins"),
+    ],
+)
+def test_project_documents_create_only_their_populated_sources(
+    tmp_path: Path, agent: str, path: str, content: str, category: str
+) -> None:
+    destination = write(tmp_path, path, content)
+    plan = migration(tmp_path, (agent,))
+    assert {
+        w.path.relative_to(plan.inventory.source_root).parts[0] for w in plan.source_writes
+    } == {"config.toml", "artifacts.toml", category}
+    assert len(plan.source_writes) == 3
+    (record,) = index(plan)["artifact"]
+    assert set(record["parts"]) == {category}
+    format_name = "toml" if path.endswith(".toml") else "json"
+    assert parse_document(generated(plan, destination).decode(), format_name) == parse_document(
+        content, format_name
+    )
 
 
 def test_global_synthetic_dbochman_and_anaiis_shapes(tmp_path: Path, fake_home: Path) -> None:
@@ -430,15 +520,19 @@ def test_dormant_document_parts_activate_on_first_entry(
 ) -> None:
     origin = tmp_path / "origin"
     origin.mkdir()
-    plan = migration(origin, (agent,))
+    plan = plan_migration(discover(origin, scope="global", agents=(agent,)))
+    assert plan.complete, plan.preview()
     fresh = tmp_path / "fresh"
     materialize_sources(plan, fresh)
     records = tomllib.loads((fresh / "loadout/artifacts.toml").read_text())["artifact"]
     record = next(r for r in records if category in r.get("parts", {}))
     source = fresh / "loadout" / record["parts"][category]["source"]
     source.write_text(json.dumps(content))
-    outputs = render_all(fresh)
-    output = outputs[fresh / record["output"]]
+    outputs = render_all(fresh / "loadout")
+    destination = next(
+        path for route, path in plan.artifact_routes if route == record["destination"]
+    )
+    output = outputs[destination]
     actual = output.document if isinstance(output, Merged) else output
     assert isinstance(actual, str)
     assert json.loads(actual) == content
@@ -447,11 +541,14 @@ def test_dormant_document_parts_activate_on_first_entry(
 def test_skill_tree_first_entry_edit_rename_and_delete(tmp_path: Path) -> None:
     origin = tmp_path / "origin"
     origin.mkdir()
+    write(origin, ".claude/skills/first/SKILL.md", "first skill\n")
     plan = migration(origin)
     fresh = tmp_path / "fresh"
     materialize_sources(plan, fresh)
     record = next(r for r in index(plan)["artifact"] if r.get("category") == "skills")
     source_root = fresh / "loadout" / record["source"]
+    (source_root / "first/SKILL.md").unlink()
+    assert render_all(fresh) == {}
     path = write(source_root, "first/SKILL.md", "first skill\n")
     output = render_all(fresh)[fresh / ".claude/skills/first/SKILL.md"]
     assert isinstance(output, Copied)
@@ -463,6 +560,11 @@ def test_skill_tree_first_entry_edit_rename_and_delete(tmp_path: Path) -> None:
     assert tuple(outputs) == (fresh / ".claude/skills/first/changed.md",)
     renamed.unlink()
     assert render_all(fresh) == {}
+    clone = tmp_path / "clone"
+    for file in (fresh / "loadout").rglob("*"):
+        if file.is_file():
+            write(clone, file.relative_to(fresh).as_posix(), file.read_bytes())
+    assert render_all(clone) == {}
 
 
 def test_partial_output_mode_policy_preserves_adopted_destination_mode(tmp_path: Path) -> None:

@@ -68,15 +68,7 @@ def run_case(directory: Path, count: int) -> dict:
         write_json(directory / "result.json", result)
         return result
     assert_exit(result)
-    assert len(journals) == 1
-    cursor = json.loads(journals[0].read_bytes())
-    journal = (
-        json.loads((journals[0].parent / f"payload-{cursor['payload']}.json").read_bytes())
-        if cursor["version"] == 2
-        else cursor
-    )
-    retirements = [op for op in journal["operations"] if op["phase"] == "retire"]
-    assert len(retirements) == len(expected)
+    assert journals == []
     for name, content in expected.items():
         assert (home / name).read_bytes() == content
         assert (home / name).stat().st_mode & 0o7777 == 0o644
@@ -92,8 +84,9 @@ def run_case(directory: Path, count: int) -> dict:
         result[label] = command(arguments, environment, logs, label)
         assert_exit(result[label])
     result.update(
-        operations=len(journal["operations"]),
-        retirements=len(retirements),
+        journal_bytes=0,
+        payload_bytes=0,
+        retirements=len(expected),
         output_files=len(expected),
         output_bytes=sum(map(len, expected.values())),
         correctness="exact deployed bytes/modes; mapped originals retired and removed from index; global source staged; baseline retained; check and staged check",

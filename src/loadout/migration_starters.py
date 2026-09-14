@@ -11,7 +11,7 @@ from .bundled_templates import BUNDLED, STARTERS
 from .discovery import credential_material, digest, path_preconditions
 from .errors import LoadoutError
 from .migration_git import ignored_original, privacy_policy
-from .migration_models import ExpectedOutput, Issue, MigrationPlan, SourceWrite
+from .migration_models import ExpectedOutput, Inventory, Issue, MigrationPlan, SourceWrite
 from .migration_paths import entry_path
 from .migration_validation import validate_plan
 from .native_documents import key_fingerprints, parse_document
@@ -20,9 +20,29 @@ from .native_templates import (
     render_native_templates,
     validate_template_tree,
 )
+from .permissions.rules import parse_rules
 from .project import load_project_config, project_config_path
 from .resolve import ResolvedItem
+from .template_catalog import load_catalog
 from .templates import copy_tree, declare, record_hash, resolve_template, template_files, tree_hash
+
+
+def starter_categories(inventory: Inventory, name: str | None) -> frozenset[str]:
+    if inventory.scope != "project" or name not in STARTERS:
+        return frozenset()
+    assert name is not None
+    found = resolve_template(name, inventory.root)
+    _public_starter(found)
+    if not found.path.is_file():
+        instructions = found.path / "instructions.md"
+        return frozenset({"instructions"}) if instructions.is_file() else frozenset()
+    catalog = load_catalog(found.path)
+    categories = {category for category, _ in catalog.parts}
+    for path in catalog.paths("permissions"):
+        rules = parse_rules(path)
+        if rules.mcp_allow or rules.mcp_ask or rules.mcp_deny:
+            categories.update(("mcp", "mcp-permissions"))
+    return frozenset(categories)
 
 
 def select_starter(plan: MigrationPlan, name: str | None) -> MigrationPlan:
@@ -43,7 +63,9 @@ def select_starter(plan: MigrationPlan, name: str | None) -> MigrationPlan:
         return _issue(
             plan,
             "starter-existing-source",
-            f"Existing source is already initialized. Run `loadout template vendor {name} --root {root}` "
+            "Existing source is already initialized. Add any missing instruction sources and "
+            "routes with template_instructions = true in artifacts.toml, then run "
+            f"`loadout template vendor {name} --root {root}` "
             f"(or `loadout template sync {name} --root {root}` if already vendored), "
             f"then `loadout sync --root {root}`.",
         )

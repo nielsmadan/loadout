@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 import loadout
-from loadout import migration_git
+from loadout import migration_transaction
 from loadout.errors import LoadoutError
 from loadout.machine import machine_config_path
 
@@ -187,15 +187,16 @@ def test_invalid_mapping_shape_is_usage_error(tmp_path, capsys, kind):
     assert "mapping kind" in capsys.readouterr().err
 
 
-def test_cli_resume_and_recover_use_the_reported_journal(tmp_path, monkeypatch, capsys):
+@pytest.mark.parametrize("action", ["resume", "recover"])
+def test_cli_resume_and_recover_use_the_reported_journal(tmp_path, monkeypatch, capsys, action):
     _repo(tmp_path)
     (tmp_path / "CLAUDE.md").write_text("original rules\n")
 
-    def checkpoint_fails(*args, **kwargs):
-        raise LoadoutError("checkpoint interrupted")
+    def finish_fails(*args, **kwargs):
+        raise LoadoutError("staging interrupted")
 
     with monkeypatch.context() as patch:
-        patch.setattr(migration_git, "checkpoint", checkpoint_fails)
+        patch.setattr(migration_transaction, "_finish", finish_fails)
         assert (
             loadout.main(
                 [
@@ -213,28 +214,44 @@ def test_cli_resume_and_recover_use_the_reported_journal(tmp_path, monkeypatch, 
         )
     failure = json.loads(capsys.readouterr().out)
     assert failure["status"] == "interrupted"
-    assert not (tmp_path / "loadout/config.toml").exists()
-    assert loadout.main(["init", "--resume", failure["journal"], "--yes", "--json"]) == 0
-    resumed = json.loads(capsys.readouterr().out)
-    assert resumed["status"] == "complete"
-    assert resumed["baseline"] == _git(tmp_path, "rev-parse", "HEAD")
     assert (tmp_path / "loadout/config.toml").exists()
-    assert loadout.main(["init", "--recover", failure["journal"], "--yes", "--json"]) == 0
-    recovered = json.loads(capsys.readouterr().out)
-    assert recovered["status"] == "recovered"
-    assert recovered["baseline"] == _git(tmp_path, "rev-parse", "HEAD")
+    assert loadout.main(["init", f"--{action}", failure["journal"], "--yes", "--json"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == ("complete" if action == "resume" else "recovered")
+    assert result["baseline"] == _git(tmp_path, "rev-parse", "HEAD")
+    assert result["journal"] is None
+    assert not Path(failure["journal"]).parent.exists()
     assert (tmp_path / "CLAUDE.md").read_text() == "original rules\n"
-    assert not (tmp_path / "loadout/config.toml").exists()
+    assert (tmp_path / "loadout/config.toml").exists() == (action == "resume")
+    assert loadout.main(["init", f"--{action}", failure["journal"], "--yes", "--json"]) == 3
+    missing = capsys.readouterr()
+    assert "missing or unreadable migration journal" in missing.err
+    assert json.loads(missing.out) == {"status": "error", "complete": False, "exit_code": 3}
 
 
-def test_cli_recovery_conflicts_report_paths_and_nonzero_status(tmp_path, capsys):
+def test_cli_recovery_conflicts_report_paths_and_nonzero_status(tmp_path, monkeypatch, capsys):
     _repo(tmp_path)
-    assert (
-        loadout.main(
-            ["init", "--project", "--root", str(tmp_path), "--harness", "claude", "--yes", "--json"]
+
+    def finish_fails(*args, **kwargs):
+        raise LoadoutError("staging interrupted")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(migration_transaction, "_finish", finish_fails)
+        assert (
+            loadout.main(
+                [
+                    "init",
+                    "--project",
+                    "--root",
+                    str(tmp_path),
+                    "--harness",
+                    "claude",
+                    "--yes",
+                    "--json",
+                ]
+            )
+            == 1
         )
-        == 0
-    )
     result = json.loads(capsys.readouterr().out)
     source = tmp_path / "loadout/config.toml"
     source.write_text("user changed source\n")

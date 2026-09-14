@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 import loadout
+from loadout import migration_transaction
 from loadout.discovery import discover
 from loadout.emit import check_all, render_all, write_all
 from loadout.errors import LoadoutError
@@ -551,8 +552,9 @@ def test_migration_rechecks_hook_sharing_at_mutation_boundaries(
     assert {p.name: p.read_bytes() for p in (repo / ".git/hooks").iterdir()} == before
 
 
+@pytest.mark.parametrize("interrupted", [False, True])
 def test_init_hook_preview_and_new_git_metadata_are_transactional(
-    repo, tmp_path_factory, capsys, monkeypatch
+    repo, tmp_path_factory, capsys, monkeypatch, interrupted
 ):
     new = tmp_path_factory.mktemp("new-repository")
     monkeypatch.setenv("GIT_CONFIG_COUNT", "2")
@@ -575,11 +577,22 @@ def test_init_hook_preview_and_new_git_metadata_are_transactional(
     preview = json.loads(capsys.readouterr().out)
     assert {h["status"] for h in preview["git_hooks"]["hooks"]} == {"install"}
     assert not (new / ".git").exists()
-    assert loadout.main([*args, "--yes", "--json"]) == 0
+
+    def fail(journal):
+        raise OSError("fixture staging interruption")
+
+    if interrupted:
+        monkeypatch.setattr(migration_transaction, "_finish", fail)
+    assert loadout.main([*args, "--yes", "--json"]) == (1 if interrupted else 0)
     result = json.loads(capsys.readouterr().out)
     assert _git(new, "show", "HEAD:AGENTS.md").stdout == "initial\n"
+    if not interrupted:
+        assert result["journal"] is None
+        assert (new / ".git/hooks/pre-commit").is_file()
+        assert list((new / ".loadout-state/migrations").iterdir()) == []
+        return
     journal = Path(result["journal"])
-    assert Journal.load(journal).status == "complete"
+    assert Journal.load(journal).status == "apply"
     baseline = _git(new, "rev-parse", "HEAD").stdout
     recovered = recover_migration(journal)
     assert recovered.conflicts == ()
@@ -591,7 +604,10 @@ def test_init_hook_preview_and_new_git_metadata_are_transactional(
     )
 
 
-def test_hook_failure_can_resume_and_external_hook_is_preserved_by_recovery(repo, monkeypatch):
+@pytest.mark.parametrize("action", ["resume", "recover"])
+def test_hook_failure_can_resume_and_external_hook_is_preserved_by_recovery(
+    repo, monkeypatch, action
+):
     (repo / "AGENTS.md").write_text("initial\n")
     plan = plan_migration(discover(repo, scope="project", agents=("codex",)))
     prepared = prepare_migration(plan, hooks=plan_hooks(repo, regenerate=True))
@@ -608,8 +624,12 @@ def test_hook_failure_can_resume_and_external_hook_is_preserved_by_recovery(repo
     journal = error.value.journal
     assert (repo / ".git/hooks/pre-commit").is_file()
     monkeypatch.setattr(Journal, "step", original)
-    resume_migration(journal)
-    hook = repo / ".git/hooks/post-merge"
+    if action == "resume":
+        assert resume_migration(journal).journal is None
+        assert (repo / ".git/hooks/post-merge").is_file()
+        assert not journal.parent.exists()
+        return
+    hook = repo / ".git/hooks/pre-commit"
     hook.write_text("external edit\n")
     recovered = recover_migration(journal)
     assert recovered.conflicts == (hook,)
