@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
+from loadout.errors import LoadoutError
 from loadout.permissions.renderers import (
     CATCH_ALL_RENDERERS,
     CODEX_PROJECT_HEADER,
@@ -20,6 +23,7 @@ from loadout.permissions.renderers import (
     render_codex,
     render_codex_mcp,
     render_codex_project,
+    render_droid,
     render_opencode,
     render_pi,
     render_pi_project,
@@ -248,6 +252,31 @@ def test_claude_never_reads_a_file() -> None:
     assert doc["permissions"]["allow"] == ["Bash(ls:*)"]
 
 
+def test_droid_maps_ask_to_denylist_and_deny_to_blocklist() -> None:
+    doc = render_droid(Rules(allow=("ls",), ask=("git push",), deny=("rm",)), {})
+    assert doc == {
+        "commandAllowlist": ["ls"],
+        "commandDenylist": ["git push"],
+        "commandBlocklist": ["rm"],
+    }
+
+
+def test_droid_skips_globs_its_literal_matcher_cannot_express() -> None:
+    doc = render_droid(Rules(allow=("ls", "docker stop cc-*")), {})
+    assert doc["commandAllowlist"] == ["ls"]
+
+
+def test_droid_preserves_settings_and_does_not_mutate_them() -> None:
+    base = {"model": "opus", "commandAllowlist": ["STALE"]}
+    assert render_droid(Rules(allow=("ls",)), base) == {
+        "model": "opus",
+        "commandAllowlist": ["ls"],
+        "commandDenylist": [],
+        "commandBlocklist": [],
+    }
+    assert base == {"model": "opus", "commandAllowlist": ["STALE"]}
+
+
 def test_opencode_emits_both_bare_and_argument_forms() -> None:
     assert opencode_patterns("pwd") == ["pwd", "pwd *"]
 
@@ -375,3 +404,29 @@ def test_claude_project_emits_allow_ask_deny_unlike_the_global_renderer() -> Non
     to match manage.py and claude-mcp-permissions's order — see _claude_settings."""
     doc = render_claude_project(Rules(allow=("ls",), ask=("heroku",), deny=("rm",)), {})
     assert list(doc["permissions"]) == ["allow", "ask", "deny"]
+
+
+def test_droid_refuses_a_deny_glob_rather_than_rendering_a_weaker_blocklist() -> None:
+    """The one category where dropping is unsafe. Droid's blocklist is the list
+    with "no prompt and no way to approve", so a rule that cannot be carried there
+    leaves the rendered policy wider than the source asks for — unlike `allow`,
+    where dropping withholds a pre-approval, and `ask`, which falls through to the
+    session autonomy level.
+
+    The message has to name the rewrite: a bare prefix is what Droid can carry,
+    and the test pins that it is offered, not merely that something was refused.
+    """
+    with pytest.raises(LoadoutError) as raised:
+        render_droid(Rules(allow=("ls",), deny=("rm -rf *",)), {})
+
+    assert "'rm -rf'" in str(raised.value), "the error must offer the bare prefix"
+
+
+def test_droid_still_drops_allow_and_ask_globs_and_keeps_the_rest() -> None:
+    """The counterpart: refusing `deny` must not turn into refusing everything.
+    Both surviving entries prove the other categories still render."""
+    doc = render_droid(Rules(allow=("ls", "a-*"), ask=("git push", "b-*"), deny=("rm",)), {})
+
+    assert doc["commandAllowlist"] == ["ls"]
+    assert doc["commandDenylist"] == ["git push"]
+    assert doc["commandBlocklist"] == ["rm"]

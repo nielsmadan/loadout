@@ -2,10 +2,10 @@
 
 ## The problem
 
-Four AI coding harnesses each want the same information — which commands may run, what the
-agent should know about a project — in four different formats, with four different matchers
-and four different file layouts. Maintaining that by hand means four copies drifting apart.
-Maintaining it with four ad-hoc scripts means the same, plus the scripts drift from each
+Five AI coding harnesses each want the same information — which commands may run, what the
+agent should know about a project — in five different formats, with different matchers
+and file layouts. Maintaining that by hand means five copies drifting apart.
+Maintaining it with five ad-hoc scripts means the same, plus the scripts drift from each
 other too: the system loadout replaced had two independent copies of its render logic, and
 they diverged into a real defect.
 
@@ -94,12 +94,14 @@ Per-repo configuration, layered on top of global. Two sources per artifact type:
 | project | yes | rules and instructions everyone working on this repo gets |
 | personal | **no** | your rules for this repo — machine paths, local tools |
 
-loadout merges the two and writes **generated outputs that are always gitignored** — eight
-documents across four harnesses (`claude`, `codex`, `opencode`, `pi`), of which `AGENTS.md` is
-one file three of them read, plus a skills directory per harness that has one. Claude's eighth is
-`.mcp.json`, the one document the `mcp` slice adds at project scope on top of the seven permissions
-and instructions already generated — OpenCode's `mcp` key composes into `opencode.json`, an
-existing output, so it adds no file of its own; Codex and Pi have no project `mcp` destination
+loadout merges the two and writes **generated outputs that are always gitignored** — eleven
+documents across five harnesses (`claude`, `codex`, `droid`, `opencode`, `pi`), of which
+`AGENTS.md` is one file four of them read, plus a skills directory per harness that has one.
+Claude's fourth non-skill file is
+`.mcp.json`, the document its `mcp` slice adds at project scope on top of its permission and
+instruction outputs — OpenCode's `mcp` key composes into `opencode.json`, an
+existing output, so it adds no file of its own; Droid adds `.factory/mcp.json`; Codex and Pi
+have no project `mcp` destination
 (see [reference/servers.md](reference/servers.md)). `.codex/config.toml`, in the system this
 replaces, turned out to be a one-byte leftover of the old tooling rather than a real output, so
 the port does not reproduce it.
@@ -110,8 +112,9 @@ people through the committed *source*, which works precisely because adoption is
 all-or-nothing.
 
 **loadout merges the tiers itself rather than using each harness's native mechanism.** Three
-of the four do have one — Claude's `CLAUDE.local.md`, Codex's `AGENTS.override.md`, OpenCode's
-`instructions` config key — but they are three different shapes, Pi has none so the merge path
+of the five do have one — Claude's `CLAUDE.local.md`, Codex's `AGENTS.override.md`, OpenCode's
+`instructions` config key — but they are three different shapes, Droid and Pi have no equivalent
+represented here, so the merge path
 must exist anyway, and the only thing native mechanisms would buy is committed outputs, which
 nobody needs given all-or-nothing adoption. Revisit only if that adoption model ever changes.
 
@@ -147,9 +150,10 @@ is not its author. So a project entry sets `output` and never `destination`, and
 
 Two consequences worth stating because they look inconsistent side by side:
 
-- **Project instructions are one order for the repo, not one per harness.** Codex, OpenCode and
-  Pi all read a repo-root `AGENTS.md` ([reference/config.md](reference/config.md#instructions)),
-  so one path would have to hold three orders. One order makes `CLAUDE.md` and `AGENTS.md`
+- **Project instructions are one order for the repo, not one per harness.** Codex, Droid,
+  OpenCode and Pi all read a repo-root `AGENTS.md`
+  ([reference/config.md](reference/config.md#instructions)),
+  so one path would have to hold four orders. One order makes `CLAUDE.md` and `AGENTS.md`
   byte-identical by construction — `composition.render` takes no agent argument — rather than by
   a check that would pass whenever nothing was rendered.
 - **Skills cannot share a path the same way.** `render_skill` takes a harness and varies its
@@ -211,7 +215,9 @@ person's setup; a repo's configuration is the same for everyone who checks it ou
   ["mcp"]` is gone from the manifest, and `mcp/servers.toml` and `mcp/sync.py` are deleted. Not to
   be confused with the
   `mcp-permissions` slice, which renders tool-approval *policy* from `permissions.toml` and is
-  complete on all four harnesses — the two shared a word before the rename and produced one wrong
+  complete on the four harnesses that have a destination for it; Droid has none
+  ([reference/droid.md](reference/droid.md#shell-permissions)) — the two shared a word before
+  the rename and produced one wrong
   gap analysis from it. See [reference/config.md](reference/config.md#mcp--retracted-as-a-gap-and-built).
 - Skills **shipped** on 2026-08-15 — `skills/sync.py` is deleted and loadout renders all 50 to
   every harness, so this bullet no longer names it.

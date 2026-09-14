@@ -16,6 +16,7 @@ PERMISSION_OUTPUTS = (
     "perm/claude-mcp.json",
     "perm/codex.rules",
     "perm/codex-mcp.toml",
+    "perm/droid.json",
     "perm/opencode.json",
     "perm/pi.json",
 )

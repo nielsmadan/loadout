@@ -29,6 +29,7 @@ from loadout.servers import (
     render_claude_project_servers,
     render_claude_servers,
     render_codex_servers,
+    render_droid_servers,
     render_opencode_servers,
     render_pi_servers,
 )
@@ -86,6 +87,17 @@ def test_claude_stdio_server_round_trips() -> None:
     assert extraction.notes == ()
     assert extraction.value == STDIO_WITH_ENV
     assert render_claude_project_servers(extraction.value) == document
+
+
+# --- droid-servers ----------------------------------------------------------
+
+
+def test_droid_server_round_trips() -> None:
+    document = render_droid_servers({**HTTP, **STDIO_WITH_ENV})
+    extraction = extract_value("droid-servers", document)
+    assert extraction.notes == ()
+    assert extraction.value == {**HTTP, **STDIO_WITH_ENV}
+    assert render_droid_servers(extraction.value) == document
 
 
 def test_claude_http_server_without_auth_round_trips() -> None:

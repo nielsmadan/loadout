@@ -22,10 +22,12 @@ from __future__ import annotations
 
 import itertools
 import json
+from collections.abc import Callable
 from typing import Any
 
 import pytest
 
+from loadout.errors import LoadoutError
 from loadout.extract import EXTRACTORS, VALUE_EXTRACTORS, extract
 from loadout.permissions.renderers import RENDERERS, JsonSpec, TextSpec, render_codex_project
 from loadout.permissions.rules import UNSTATED_DEFAULT, Rules, is_glob, mcp_parts
@@ -284,6 +286,16 @@ def _codex_carried(rules: Rules) -> Rules:
     )
 
 
+def _droid_carried(rules: Rules) -> Rules:
+    # `deny` is carried whole: a glob there is refused at render (see REFUSES),
+    # so it never reaches extraction and nothing is dropped from the blocklist.
+    return Rules(
+        allow=tuple(e for e in rules.allow if not is_glob(e)),
+        ask=tuple(e for e in rules.ask if not is_glob(e)),
+        deny=rules.deny,
+    )
+
+
 def _claude_carried(rules: Rules) -> Rules:
     return Rules(
         allow=rules.allow,
@@ -334,6 +346,7 @@ PROJECTIONS = {
     "codex": _codex_carried,
     "codex-mcp-permissions": _codex_mcp_carried,
     "codex-project": _shell_only,
+    "droid": _droid_carried,
     "opencode": _opencode_carried,
     "pi": _pi_carried,
     "pi-project": _shell_and_mcp,
@@ -343,6 +356,30 @@ PROJECTIONS = {
 def carried(name: str, rules: Rules) -> Rules:
     assert name in PROJECTIONS, f"no declared projection for renderer {name!r}"
     return PROJECTIONS[name](rules)
+
+
+# Inputs a renderer refuses outright rather than carrying a weaker version of.
+# Declared here so the round-trip loops skip them as a *checked* case: each loop
+# asserts the refusal fires and that the space provoked it at least once, so a
+# renderer that quietly started carrying one fails rather than widening in
+# silence.
+REFUSES: dict[str, Callable[[Rules], bool]] = {
+    "droid": lambda rules: any(is_glob(entry) for entry in rules.deny),
+}
+
+
+def _declines(name: str, rules: Rules) -> bool:
+    """Whether this renderer refuses these rules outright."""
+    predicate = REFUSES.get(name)
+    return predicate is not None and predicate(rules)
+
+
+def _refused(name: str, rules: Rules) -> bool:
+    if not _declines(name, rules):
+        return False
+    with pytest.raises(LoadoutError):
+        _render(name, rules, {})
+    return True
 
 
 # --------------------------------------------------------------------------
@@ -400,21 +437,33 @@ def test_a_default_of_ask_is_the_same_document_as_no_default(name: str) -> None:
 
 @pytest.mark.parametrize("name", INVERTED)
 def test_extraction_recovers_every_rule_the_harness_can_carry(name: str) -> None:
+    refused = 0
     for rules in CLEAN_SPACE:
+        if _refused(name, rules):
+            refused += 1
+            continue
         document = _render(name, rules, {})
         assert extract(name, document).rules == carried(name, rules), f"{name}: {rules}"
+    if name in REFUSES:
+        assert refused, f"{name}: declares a refusal the clean space never provoked"
 
 
 @pytest.mark.parametrize("name", INVERTED)
 def test_reextraction_reproduces_the_document_byte_for_byte(name: str) -> None:
+    skipped = 0
     for base in BASES:
         for rules in FULL_SPACE:
+            if _declines(name, rules):
+                skipped += 1
+                continue
             document = _render(name, rules, base)
             extraction = extract(name, document)
             if extraction.notes:
                 continue
             again = _render(name, extraction.rules, extraction.base)
             assert _serialize(name, again) == _serialize(name, document), f"{name}: {rules}"
+    if name in REFUSES:
+        assert skipped, f"{name}: declares a refusal the full space never provoked"
 
 
 @pytest.mark.parametrize("name", INVERTED)
@@ -424,10 +473,16 @@ def test_extraction_is_idempotent(name: str) -> None:
     Distinct from P2: a document can be stable while the extractor keeps
     reinterpreting it, which is the shape a half-done pair collapse takes.
     """
+    skipped = 0
     for rules in FULL_SPACE:
+        if _declines(name, rules):
+            skipped += 1
+            continue
         first = extract(name, _render(name, rules, {}))
         second = extract(name, _render(name, first.rules, first.base))
         assert second.rules == first.rules, f"{name}: {rules}"
+    if name in REFUSES:
+        assert skipped, f"{name}: declares a refusal the full space never provoked"
 
 
 @pytest.mark.parametrize("name", INVERTED)

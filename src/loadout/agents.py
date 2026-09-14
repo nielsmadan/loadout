@@ -38,6 +38,11 @@ class SliceOutput:
     | input | key names from the manifest | the whole existing file |
     | when | re-read after render, appended last | handed in as the base, keys keep position |
     | guard | errors if a named key is generated | none |
+
+    `takes_settings` says this slice's renderer writes its keys *into* a residual
+    document, so a manifest's `settings` fragment is its base. Declared rather than
+    inferred from the destination's filename: the renderer's shape decides it, and
+    a slice that cannot use one has to say so loudly instead of dropping it.
     """
 
     renderer: str | None = None
@@ -47,6 +52,7 @@ class SliceOutput:
     owned_key: str | None = None
     preserve: tuple[str, ...] = ()
     preserve_foreign: bool = False
+    takes_settings: bool = False
 
 
 # Destinations carry each harness's config-directory variable rather than a
@@ -65,6 +71,7 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
         "permissions": SliceOutput(
             renderer="claude",
             destination="${CLAUDE_CONFIG_DIR:-~/.claude}/settings.json",
+            takes_settings=True,
         ),
         "mcp-permissions": SliceOutput(
             renderer="claude-mcp-permissions",
@@ -75,6 +82,7 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
         "hooks": SliceOutput(
             renderer="claude-hooks",
             destination="${CLAUDE_CONFIG_DIR:-~/.claude}/settings.json",
+            takes_settings=True,
             source_slice="hooks",
             owned_key="hooks",
         ),
@@ -86,6 +94,7 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
         "plugins": SliceOutput(
             renderer="claude-plugins",
             destination="${CLAUDE_CONFIG_DIR:-~/.claude}/settings.json",
+            takes_settings=True,
             source_slice="plugins",
             owned_key="enabledPlugins",
         ),
@@ -127,6 +136,7 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
         "mcp": SliceOutput(
             renderer="codex-config",
             destination="${CODEX_HOME:-~/.codex}/config.toml",
+            takes_settings=True,
         ),
         # Opt-in, not automatic: it strips every key it manages, so a machine that
         # never asked for it must never have its hand-maintained settings touched.
@@ -136,6 +146,7 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
         "defaults": SliceOutput(
             renderer="codex-settings",
             destination="${CODEX_HOME:-~/.codex}/config.toml",
+            takes_settings=True,
             source_slice="defaults",
         ),
         # The same destination, disjoint keys. config.toml also holds
@@ -145,7 +156,38 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
         "plugins": SliceOutput(
             renderer="codex-plugins",
             destination="${CODEX_HOME:-~/.codex}/config.toml",
+            takes_settings=True,
             source_slice="plugins",
+        ),
+    },
+    "droid": {
+        "skills": SliceOutput(destination="${FACTORY_HOME_OVERRIDE:-~}/.factory/skills"),
+        "module-config": SliceOutput(destination="${FACTORY_HOME_OVERRIDE:-~}/.factory"),
+        "instructions": SliceOutput(destination="${FACTORY_HOME_OVERRIDE:-~}/.factory/AGENTS.md"),
+        "permissions": SliceOutput(
+            renderer="droid",
+            destination="${FACTORY_HOME_OVERRIDE:-~}/.factory/settings.json",
+            takes_settings=True,
+            # Droid records per-repository trust decisions here, including
+            # timestamps it advances itself. That is runtime state, not a
+            # versioned setting, so carry it from the live destination.
+            preserve=("trustedFolders",),
+        ),
+        "hooks": SliceOutput(
+            renderer="droid-hooks",
+            destination="${FACTORY_HOME_OVERRIDE:-~}/.factory/hooks.json",
+            source_slice="hooks",
+            owned_key="hooks",
+        ),
+        "plugins": SliceOutput(
+            renderer="droid-plugins",
+            destination="${FACTORY_HOME_OVERRIDE:-~}/.factory/settings.json",
+            takes_settings=True,
+            source_slice="plugins",
+        ),
+        "mcp": SliceOutput(
+            renderer="droid-servers",
+            destination="${FACTORY_HOME_OVERRIDE:-~}/.factory/mcp.json",
         ),
     },
     "opencode": {
@@ -168,6 +210,7 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
         "permissions": SliceOutput(
             renderer="opencode",
             destination="${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json",
+            takes_settings=True,
         ),
         # No hooks *file* — OpenCode registers hooks in code, so loadout
         # generates the code. The file is a plugin, auto-discovered from
@@ -182,6 +225,7 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
         "mcp": SliceOutput(
             renderer="opencode-servers",
             destination="${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json",
+            takes_settings=True,
             owned_key="mcp",
         ),
     },
@@ -214,6 +258,7 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
         "plugins": SliceOutput(
             renderer="pi-plugins",
             destination="${PI_CODING_AGENT_DIR:-~/.pi/agent}/settings.json",
+            takes_settings=True,
             source_slice="plugins",
             owned_key="packages",
             preserve=("lastChangelogVersion",),

@@ -94,4 +94,18 @@ def test_a_comment_key_does_not_break_the_scan() -> None:
 
 
 def test_every_supported_harness_has_a_namespace() -> None:
-    assert {"claude", "codex"} == set(HARNESS_PREFIXES)
+    assert {"claude", "codex", "droid"} == set(HARNESS_PREFIXES)
+
+
+def test_droids_namespaces_are_foreign_to_the_other_harnesses() -> None:
+    """The other direction of the tuple-valued prefix entry. Droid is the only
+    harness with two namespaces, so it is the only one whose entry is flattened
+    into the foreign set — a bug there makes `FACTORY_`/`DROID_` foreign to
+    nobody, and the command rendered for Claude expands to nothing and exits 2,
+    which Claude reads as a block.
+    """
+    for variable in ("$FACTORY_PROJECT_DIR", "$DROID_PROJECT_DIR"):
+        document = {"Stop": [cmd(f'"{variable}"/a.sh')]}
+        assert foreign_variables(document, "claude") == (f"Stop: {variable}",)
+        assert foreign_variables(document, "codex") == (f"Stop: {variable}",)
+        assert foreign_variables(document, "droid") == ()

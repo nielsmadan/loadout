@@ -151,6 +151,49 @@ def extract_claude(document: Any) -> Extraction:
 
 
 # --------------------------------------------------------------------------
+# droid — settings.json. The three top-level lists carry command prefixes only;
+# MCP policy, globs, and the autonomy default have no representation here.
+# --------------------------------------------------------------------------
+
+
+DROID_KEYS = {
+    "commandAllowlist": "allow",
+    "commandDenylist": "ask",
+    "commandBlocklist": "deny",
+}
+
+
+def extract_droid(document: Any) -> Extraction:
+    if not isinstance(document, Mapping):
+        return Extraction(Rules(), notes=(Note("unrecognised", "droid: document is not a map"),))
+
+    buckets: dict[str, list[str]] = {category: [] for category in CATEGORIES}
+    notes: list[Note] = []
+    for key, category in DROID_KEYS.items():
+        entries = document.get(key, [])
+        if not isinstance(entries, list) or not all(isinstance(entry, str) for entry in entries):
+            notes.append(Note("unrecognised", f"droid: {key} is not a list of strings"))
+            continue
+        buckets[category].extend(entries)
+
+    base = copy.deepcopy(dict(document))
+    for key in DROID_KEYS:
+        if key in base:
+            # Keep the insertion slot so rendering the extracted document does
+            # not move owned keys past foreign settings that followed them.
+            base[key] = []
+    return Extraction(
+        Rules(
+            allow=tuple(buckets["allow"]),
+            ask=tuple(buckets["ask"]),
+            deny=tuple(buckets["deny"]),
+        ),
+        base,
+        tuple(notes),
+    )
+
+
+# --------------------------------------------------------------------------
 # The lossy pattern forms, collapsed. Rendering is not injective: OpenCode and
 # Pi each emit BOTH `foo` and `foo *` for one source entry, because neither
 # matcher lets `foo *` match a bare `foo`. Extraction has to recognise the pair
@@ -532,6 +575,17 @@ def extract_codex_hooks(document: Any) -> ValueExtraction:
     return ValueExtraction(copy.deepcopy(dict(value)), notes)
 
 
+def extract_droid_hooks(document: Any) -> ValueExtraction:
+    if not isinstance(document, Mapping):
+        return ValueExtraction({})
+    value = document.get("hooks", {})
+    unowned = [key for key in document if key != "hooks"]
+    notes = _foreign_variable_notes(value, "droid")
+    if unowned:
+        notes += (Note("cannot", f"hooks.json holds unowned key(s): {', '.join(unowned)}"),)
+    return ValueExtraction(copy.deepcopy(dict(value)), notes)
+
+
 # --------------------------------------------------------------------------
 # plugins — three inverses of one slice, and each loses a different half of the
 # portable reference, because each harness can only state the half it addresses
@@ -601,6 +655,30 @@ def extract_claude_plugins(document: Any) -> ValueExtraction:
         return ValueExtraction({}, (Note("unrecognised", "claude: enabledPlugins is not a map"),))
     references, notes = _enablement(enabled, "claude", lambda entry: entry)
     return ValueExtraction(_fragment({}, references), tuple(notes))
+
+
+def extract_droid_plugins(document: Any) -> ValueExtraction:
+    if not isinstance(document, Mapping):
+        return ValueExtraction({})
+    enabled = document.get("enabledPlugins", {})
+    if not isinstance(enabled, Mapping):
+        return ValueExtraction({}, (Note("unrecognised", "droid: enabledPlugins is not a map"),))
+    references, notes = _enablement(enabled, "droid", lambda entry: entry)
+    raw_marketplaces = document.get("extraKnownMarketplaces", {})
+    if not isinstance(raw_marketplaces, Mapping):
+        notes.append(Note("unrecognised", "droid: extraKnownMarketplaces is not a map"))
+        raw_marketplaces = {}
+    marketplaces: dict[str, Any] = {}
+    for name, block in raw_marketplaces.items():
+        if not isinstance(block, Mapping):
+            notes.append(Note("unrecognised", f"droid: marketplace {name!r} is not a map"))
+            continue
+        marketplaces[name] = copy.deepcopy(dict(block))
+    used = {ref["marketplace"] for ref in references.values()}
+    for name in marketplaces:
+        if name not in used:
+            notes.append(Note("cannot", f"droid: marketplace {name!r} is enabled by no plugin"))
+    return ValueExtraction(_fragment(marketplaces, references), tuple(notes))
 
 
 CODEX_PLUGIN_KEYS = ("enabled",)
@@ -749,28 +827,31 @@ def _bearer_env_var(
     return match["var"]
 
 
-def _extract_claude_server(name: str, entry: Any, notes: list[Note]) -> Server | None:
+def _extract_claude_server(
+    name: str, entry: Any, notes: list[Note], label: str = "claude-servers"
+) -> Server | None:
     if not isinstance(entry, Mapping):
-        notes.append(Note("unrecognised", f"claude-servers: {name} is not a table"))
+        notes.append(Note("unrecognised", f"{label}: {name} is not a table"))
         return None
     stray = sorted(set(entry) - CLAUDE_SERVER_KEYS)
     if stray:
-        notes.append(Note("cannot", f"claude-servers: {name} carries {', '.join(stray)}"))
+        notes.append(Note("cannot", f"{label}: {name} carries {', '.join(stray)}"))
     kind = entry.get("type")
     if kind == "http":
         url = entry.get("url")
         if not isinstance(url, str):
-            notes.append(Note("unrecognised", f"claude-servers: {name} http entry has no url"))
+            notes.append(Note("unrecognised", f"{label}: {name} http entry has no url"))
             return None
         auth_env_var = None
         if "headers" in entry:
-            label = f"claude-servers: {name}"
-            auth_env_var = _bearer_env_var(entry["headers"], CLAUDE_BEARER, label, notes)
+            auth_env_var = _bearer_env_var(
+                entry["headers"], CLAUDE_BEARER, f"{label}: {name}", notes
+            )
         return Server(name=name, transport="http", url=url, auth_env_var=auth_env_var)
     if kind == "stdio":
         command = entry.get("command")
         if not isinstance(command, str):
-            notes.append(Note("unrecognised", f"claude-servers: {name} stdio entry has no command"))
+            notes.append(Note("unrecognised", f"{label}: {name} stdio entry has no command"))
             return None
         return Server(
             name=name,
@@ -779,7 +860,7 @@ def _extract_claude_server(name: str, entry: Any, notes: list[Note]) -> Server |
             args=tuple(entry.get("args", ())),
             env=dict(entry.get("env", {})),
         )
-    notes.append(Note("unrecognised", f"claude-servers: {name} unknown type {kind!r}"))
+    notes.append(Note("unrecognised", f"{label}: {name} unknown type {kind!r}"))
     return None
 
 
@@ -809,6 +890,29 @@ def extract_claude_servers(document: Any) -> ValueExtraction:
                 servers[name] = server
     else:
         notes.append(Note("unrecognised", "claude-servers: mcpServers is not a table"))
+    return ValueExtraction(servers, tuple(notes))
+
+
+def extract_droid_servers(document: Any) -> ValueExtraction:
+    if not isinstance(document, Mapping):
+        return ValueExtraction(
+            {}, (Note("unrecognised", "droid-servers: document is not a table"),)
+        )
+    notes: list[Note] = []
+    unowned = sorted(set(document) - {"mcpServers"})
+    if unowned:
+        notes.append(
+            Note("cannot", f"droid-servers: mcp.json holds unowned key(s): {', '.join(unowned)}")
+        )
+    config = document.get("mcpServers", {})
+    servers: dict[str, Server] = {}
+    if isinstance(config, Mapping):
+        for name, entry in config.items():
+            server = _extract_claude_server(name, entry, notes, "droid-servers")
+            if server is not None:
+                servers[name] = server
+    else:
+        notes.append(Note("unrecognised", "droid-servers: mcpServers is not a table"))
     return ValueExtraction(servers, tuple(notes))
 
 
@@ -1032,9 +1136,12 @@ def extract_codex_servers(document: Any) -> ValueExtraction:
 VALUE_EXTRACTORS: dict[str, ValueExtractor] = {
     "claude-hooks": extract_claude_hooks,
     "codex-hooks": extract_codex_hooks,
+    "droid-hooks": extract_droid_hooks,
     "claude-plugins": extract_claude_plugins,
+    "droid-plugins": extract_droid_plugins,
     "pi-plugins": extract_pi_plugins,
     "claude-project-servers": extract_claude_servers,
+    "droid-servers": extract_droid_servers,
     "opencode-servers": extract_opencode_servers,
     "claude-servers": extract_claude_global_servers,
     "pi-servers": extract_pi_servers,
@@ -1048,6 +1155,7 @@ EXTRACTORS: dict[str, Extractor] = {
     "codex": extract_codex,
     "codex-mcp-permissions": extract_codex_mcp,
     "codex-project": extract_codex,
+    "droid": extract_droid,
     "opencode": extract_opencode,
     "pi": extract_pi,
     "pi-project": extract_pi_project,
@@ -1119,6 +1227,7 @@ CAPABILITIES: dict[str, Capability] = {
     "codex-mcp-permissions": Capability(shell=False, mcp=True),
     # render_codex_project does not skip globs; it emits them as prefix_rules.
     "codex-project": Capability(shell=True, mcp=False),
+    "droid": Capability(shell=True, mcp=False, globs=False),
     "opencode": Capability(shell=True, mcp=True, default=True),
     "pi": Capability(shell=True, mcp=True, default=True),
     "pi-project": Capability(shell=True, mcp=True),

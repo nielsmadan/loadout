@@ -49,12 +49,11 @@ def test_atomic_write_preserves_a_symlink(tmp_path: Path) -> None:
 
 
 def test_write_all_creates_every_target(root: Path) -> None:
-    # 14, not 11: instructions.claude-autonomous declares profile = "autonomous"
-    # in the fixture manifest, so it is excluded under the default (no) profile,
-    # leaving 10 in-repo outputs plus the 4 destinations those 10 fan out to
-    # (1 for claude/CLAUDE.md, 3 for global/AGENTS.md).
+    # 10 in-repo outputs (8 permission targets including Droid's, 2 instruction
+    # documents) plus the 3 external destinations those instructions fan out to.
+    # The autonomous-only instruction target is excluded under the default profile.
     written = write_all(root)
-    assert len(written) == 12
+    assert len(written) == 13
     for path in written:
         assert path.is_file()
 

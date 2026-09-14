@@ -11,11 +11,13 @@ __all__ = [
     "ADAPTABLE_TYPES",
     "CLAUDE_EVENTS",
     "CODEX_EVENTS",
+    "DROID_EVENTS",
     "HARNESS_PREFIXES",
     "adaptable_document",
     "foreign_variables",
     "render_claude_hooks",
     "render_codex_hooks",
+    "render_droid_hooks",
     "unrecognised_events",
 ]
 
@@ -109,6 +111,20 @@ CODEX_EVENTS = frozenset(
     }
 )
 
+DROID_EVENTS = frozenset(
+    {
+        "PreToolUse",
+        "PostToolUse",
+        "UserPromptSubmit",
+        "Notification",
+        "Stop",
+        "SubagentStop",
+        "PreCompact",
+        "SessionStart",
+        "SessionEnd",
+    }
+)
+
 
 def _looks_like_an_event(key: str) -> bool:
     """Whether a key is an event name rather than a comment.
@@ -183,6 +199,12 @@ def render_codex_hooks(document: Mapping[str, Any]) -> dict[str, Any]:
     return copy.deepcopy(dict(document))
 
 
+def render_droid_hooks(document: Mapping[str, Any]) -> dict[str, Any]:
+    """Droid implements the same declarative hook document shape."""
+    _reject_foreign_variables(document, "droid")
+    return copy.deepcopy(dict(document))
+
+
 def adaptable_document(
     document: Mapping[str, Any], adaptable: frozenset[str] = ADAPTABLE_TYPES
 ) -> tuple[dict[str, Any], tuple[str, ...]]:
@@ -242,7 +264,11 @@ def adaptable_document(
 # the former. **Codex defines no project or plugin root at all**: its binary has
 # 16 `CODEX_*` variables, all of them config-dir, auth or protocol. So this is
 # not a translation loadout declines to do; there is nothing to translate into.
-HARNESS_PREFIXES = {"claude": "CLAUDE_", "codex": "CODEX_"}
+HARNESS_PREFIXES = {
+    "claude": "CLAUDE_",
+    "codex": "CODEX_",
+    "droid": ("FACTORY_", "DROID_"),
+}
 
 _VARIABLE = re.compile(r"\$\{?([A-Z][A-Z0-9_]*)\}?")
 
@@ -254,7 +280,12 @@ def foreign_variables(document: Mapping[str, Any], harness: str) -> tuple[str, .
     scoped to the target rather than banning the namespaces outright.
     """
     own = HARNESS_PREFIXES.get(harness)
-    foreign = {p for h, p in HARNESS_PREFIXES.items() if p != own}
+    own_prefixes = (own,) if isinstance(own, str) else own or ()
+    foreign: set[str] = set()
+    for candidate in HARNESS_PREFIXES.values():
+        prefixes = (candidate,) if isinstance(candidate, str) else candidate
+        if not any(prefix in own_prefixes for prefix in prefixes):
+            foreign.update(prefixes)
     found: list[str] = []
     for event, entries in document.items():
         if not isinstance(entries, list):

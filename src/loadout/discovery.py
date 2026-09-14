@@ -21,13 +21,21 @@ from .project import KNOWN_HARNESSES
 GLOBAL_ROOTS = {
     "claude": ("CLAUDE_CONFIG_DIR", ".claude"),
     "codex": ("CODEX_HOME", ".codex"),
+    "droid": ("FACTORY_HOME_OVERRIDE", ".factory"),
     "opencode": ("XDG_CONFIG_HOME", ".config"),
     "pi": ("PI_CODING_AGENT_DIR", ".pi/agent"),
 }
-PROJECT_ROOTS = {"claude": ".claude", "codex": ".codex", "opencode": ".opencode", "pi": ".pi"}
+PROJECT_ROOTS = {
+    "claude": ".claude",
+    "codex": ".codex",
+    "droid": ".factory",
+    "opencode": ".opencode",
+    "pi": ".pi",
+}
 SOURCE_LAYOUTS = {
     "claude": (".claude", "claude"),
     "codex": (".codex", "codex"),
+    "droid": (".factory", "droid"),
     "opencode": (".config/opencode", "opencode"),
     "pi": (".pi/agent", ".pi", "pi"),
 }
@@ -147,11 +155,17 @@ def live_roots(home: Path, environ: Mapping[str, str]) -> tuple[RootMapping, ...
     for agent, (variable, fallback) in GLOBAL_ROOTS.items():
         value = environ.get(variable)
         root = _home_path(value, home) if value else home / fallback
+        if agent == "droid" and value:
+            root /= ".factory"
         if agent == "opencode":
             root /= "opencode"
         if not root.is_absolute() or ".." in root.parts:
             raise LoadoutError(f"{variable} must identify an absolute harness root")
-        template = f"${{{variable}:-~/{fallback}}}" + ("/opencode" if agent == "opencode" else "")
+        template = (
+            "${FACTORY_HOME_OVERRIDE:-~}/.factory"
+            if agent == "droid"
+            else f"${{{variable}:-~/{fallback}}}" + ("/opencode" if agent == "opencode" else "")
+        )
         result.append(RootMapping(root, root, (agent,), destination_template=template))
     claude_parent = (
         _home_path(environ["CLAUDE_CONFIG_DIR"], home) if environ.get("CLAUDE_CONFIG_DIR") else home
@@ -584,7 +598,7 @@ def _instruction_mappings(
             if name.startswith("CLAUDE")
             else ("opencode",)
             if name == "opencode.md"
-            else ("codex", "opencode", "pi")
+            else ("codex", "droid", "opencode", "pi")
         )
         active = tuple(a for a in consumers if a in agents)
         mappings.append(RootMapping(path, path, active, "file", "instructions"))
@@ -745,6 +759,7 @@ def discover(
                 "HOME",
                 "CLAUDE_CONFIG_DIR",
                 "CODEX_HOME",
+                "FACTORY_HOME_OVERRIDE",
                 "XDG_CONFIG_HOME",
                 "PI_CODING_AGENT_DIR",
                 "OPENCODE_CONFIG",
@@ -813,6 +828,10 @@ def _references(candidate: Candidate) -> tuple[str, ...]:
             elif candidate.document_name == "settings.json" and "pi" in candidate.agents:
                 document = {
                     key: value for key, value in document.items() if key != "lastChangelogVersion"
+                }
+            elif candidate.document_name == "settings.json" and "droid" in candidate.agents:
+                document = {
+                    key: value for key, value in document.items() if key != "trustedFolders"
                 }
             return _dependency_strings(document)
         except (LoadoutError, UnicodeError):
@@ -992,7 +1011,18 @@ def _global_sources(
             or any(child.is_relative_to(p) for p in mapped)
             or child.name in WALK_EXCLUSIONS
             or child.name
-            in {".claude", ".codex", ".pi", ".config", "claude", "codex", "opencode", "pi"}
+            in {
+                ".claude",
+                ".codex",
+                ".factory",
+                ".pi",
+                ".config",
+                "claude",
+                "codex",
+                "droid",
+                "opencode",
+                "pi",
+            }
         ):
             continue
         if child.name == ".agents":

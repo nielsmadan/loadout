@@ -29,14 +29,14 @@ depends on, and the ones a docs page will not tell you have changed.
 [0012](../decisions/0012-antigravity-is-dropped-until-it-matures.md). Its rows are kept because
 the findings were expensive to establish and re-adding support depends on them.
 
-| | [Claude](claude-code.md) | [Codex](codex.md) | [Antigravity](antigravity.md) | [OpenCode](opencode.md) | [Pi](pi.md) |
-|---|---|---|---|---|---|
-| resolution | deny → ask → allow | most-restrictive | deny > ask > allow | last match | last match |
-| specificity affects order | no | no | no | n/a | n/a |
-| glob patterns | yes | **no** | **no** | yes | yes (minimatch) |
-| bare matches with-args | yes, via `:*` | yes (prefix) | yes (prefix) | **no** | **no** |
-| permissions in own file | no | **yes** | no | no | **yes** |
-| emission order matters | no | no | no | **yes** | **yes** |
+| | [Claude](claude-code.md) | [Codex](codex.md) | [Droid](droid.md) | [Antigravity](antigravity.md) | [OpenCode](opencode.md) | [Pi](pi.md) |
+|---|---|---|---|---|---|---|
+| resolution | deny → ask → allow | most-restrictive | native lists | deny > ask > allow | last match | last match |
+| specificity affects order | no | no | no | no | n/a | n/a |
+| glob patterns | yes | **no** | **no** | **no** | yes | yes (minimatch) |
+| bare matches with-args | yes, via `:*` | yes (prefix) | native list semantics | yes (prefix) | **no** | **no** |
+| permissions in own file | no | **yes** | no | no | no | **yes** |
+| emission order matters | no | no | no | no | **yes** | **yes** |
 
 ## Cross-cutting rules
 
@@ -48,18 +48,25 @@ the allows they refine**. Both renderers do this, and Pi additionally deletes an
 reinserts a key to move it to the end of the map when a later category overwrites an
 earlier one.
 
-This is why `dedupe()` is order-preserving and never uses `set()`: on two of five
+This is why `dedupe()` is order-preserving and never uses `set()`: on two of six
 harnesses, order is semantic.
 
 ### Globs
 
 A source entry ending in `*` is a glob. Claude, OpenCode and Pi keep it literal — their
-matchers understand `*`. **Codex and Antigravity cannot express it**, so glob entries are
-skipped for those two and fall through to the harness's runtime approval prompt. Codex's
+matchers understand `*`. **Codex, Droid and Antigravity cannot express it**, so glob entries are
+skipped and fall through to each harness's runtime behavior. Codex's
 docs are explicit: patterns are "literal strings or unions of literals". Antigravity's
-docs only ever show literal command strings.
+docs only ever show literal command strings. Droid escapes every regex metacharacter before
+building its matcher, so `*` matches an asterisk — see
+[droid.md](droid.md#how-an-entry-matches-and-what-that-costs-a-glob).
 
-Skipping is fail-closed — the command prompts rather than being silently allowed.
+Skipping is fail-closed where the harness's fall-through is a prompt: an `allow` entry that is
+skipped withholds a pre-approval, and Codex and Antigravity fall through to an approval prompt.
+**Droid is the exception in the `deny` direction.** Its fall-through is the session autonomy
+level, not a prompt, and `commandBlocklist` has no approval path at all — so a skipped `deny`
+glob would remove a block outright. Loadout refuses to render that rather than skipping it, and
+skips-with-a-report only in `allow` and `ask`.
 
 ### Bare vs with-arguments
 
@@ -67,6 +74,9 @@ Three matchers prefix-match, so `pwd` matches `pwd --help` for free. Two do not:
 
 - **Claude** needs the `:*` suffix, which matches both forms (verified — see
   [claude-code.md](claude-code.md)).
+- **Droid** goes further than prefix-matching: an entry matches a whole-word token run
+  *anywhere* in the command, so `rm -rf` also matches `x && rm -rf /foo`
+  ([droid.md](droid.md#how-an-entry-matches-and-what-that-costs-a-glob)).
 - **OpenCode and Pi** need **both** `<entry>` and `<entry> *` emitted, because their
   matchers treat `foo *` as not matching a bare `foo`.
 
@@ -77,7 +87,7 @@ renderer emits only the `<entry> *` form.
 ### The catch-all default
 
 `[shell] default` sets the verdict for everything no rule matches. It is authored for
-**OpenCode and Pi only** — not because the other two cannot express a catch-all, but because
+**OpenCode and Pi only** — not because every other harness cannot express a catch-all, but because
 of where each keeps one and who owns that key:
 
 | harness | catch-all lives in | loadout |
@@ -86,6 +96,7 @@ of where each keeps one and who owns that key:
 | Pi | `permission.bash["*"]`, same | authors it |
 | Claude | `permissions.defaultMode`, in the same `settings.json` | **preserves** it — hand-maintained through the settings slice, and `render_claude` copies it back rather than writing a second spelling |
 | Codex | `approval_policy` in `config.toml` | does not write that file at all |
+| Droid | session autonomy level | reports that the portable default is not represented |
 
 Claude's is a deliberate narrowing, not an inability: `defaultMode` sits inside the very map
 `render_claude` rebuilds. Codex's rules file is the one that genuinely has nowhere to put it —
@@ -162,6 +173,7 @@ only.
 |---|---|---|---|
 | Claude | `settings.json` → `permissions.{allow,ask,deny}` | **both** the same `settings.json` list (as `mcp__<server>__<tool>` patterns) **and** a separate `mcp-permissions.json` | split — MCP policy is rendered twice, to two consumers |
 | Codex | `.codex/rules/permissions.rules` | `config.toml` → `[mcp_servers.<name>].tools.<tool>`, owned by declared key | split |
+| Droid | `settings.json` → three command lists | not rendered | shell only |
 | OpenCode | `opencode.json` → `permission.bash` | the same `opencode.json` → `permission.<server>_<tool>` | shared |
 | Pi | `pi/permissions.json` → `permission.bash` | the same document → `permission.mcp` | shared |
 
@@ -175,7 +187,7 @@ file.
 
 ### Relocating the config directory
 
-Four of the five let an environment variable move the directory `loadout` writes into.
+Five of the six let an environment variable move the directory `loadout` writes into.
 The variable differs in name *and in kind* — this is the case the "never generalise from
 Claude" rule exists for.
 
@@ -183,6 +195,7 @@ Claude" rule exists for.
 |---|---|---|
 | Claude | `CLAUDE_CONFIG_DIR` | all of `~/.claude` — `settings.json`, `CLAUDE.md`, `ide/`, `teams/` — and `~/.claude.json` with it |
 | Codex | `CODEX_HOME` | `~/.codex`, so `rules/` moves too |
+| Droid | `FACTORY_HOME_OVERRIDE` | the parent home directory; Loadout appends `.factory` |
 | Pi | `PI_CODING_AGENT_DIR` | `~/.pi/agent`, and `extensions/` under it |
 | OpenCode | `XDG_CONFIG_HOME` | the global config dir: `(XDG_CONFIG_HOME ?? ~/.config) / "opencode"` |
 | Antigravity | **none** | `~/.gemini/antigravity-cli/settings.json` is built from `$HOME` and nothing else |
@@ -215,6 +228,7 @@ matching what a harness actually enforces.
 | Claude | https://code.claude.com/docs/en/iam | https://code.claude.com/docs/en/settings |
 | Codex | https://developers.openai.com/codex/agent-approvals-security | https://developers.openai.com/codex/config-reference |
 | Codex rules | https://developers.openai.com/codex/rules | |
+| Droid | https://docs.factory.ai/docs/autonomy-and-safety/auto-run | https://docs.factory.ai/cli/configuration/settings |
 | OpenCode | https://opencode.ai/docs/permissions/ | https://opencode.ai/docs/config/ |
 | Antigravity | https://antigravity.google/docs/cli-features | |
 | Pi | `@gotgenes/pi-permission-system` package docs | |

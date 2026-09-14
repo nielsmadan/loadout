@@ -83,7 +83,7 @@ def test_supporting_files_are_found_and_sorted(tmp_path: Path) -> None:
 
 def test_build_artifacts_are_not_skill_content(tmp_path: Path) -> None:
     """A tree carries __pycache__ in the live source today; copying stale
-    bytecode into four harnesses is a bug waiting to be filed."""
+    bytecode into five harnesses is a bug waiting to be filed."""
     directory = _write(tmp_path, "tool", PLAIN)
     cache = directory / "scripts" / "__pycache__"
     cache.mkdir(parents=True)

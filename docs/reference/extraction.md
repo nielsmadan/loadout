@@ -4,12 +4,11 @@
 rendered artifact and returns the `Rules` that produced it, the base it was written into, and a
 list of notes for anything the document held that the source cannot represent.
 
-`EXTRACTORS` is keyed by the same names as `RENDERERS`, and covers every **permissions**
-renderer. `RENDERERS` also holds the hooks slice's two `ValueSpec` entries, which have no
-inverse yet; they are named in `NOT_INVERTED`, and a renderer that lacks an inverse without
-being named there fails `test_no_renderer_lacks_an_inverse_without_being_named`. Inverting them
-is separate work — a hook fragment is not `Rules`, and a value renderer is handed no base to
-hold a residual in.
+`EXTRACTORS` covers every **permissions** renderer. `VALUE_EXTRACTORS` covers the native
+declarative hook renderers, plugin declarations, and JSON MCP server definitions, including
+Droid's. Code adapters and TOML-text value renderers that cannot use that parsed-document
+contract are named explicitly in `NOT_INVERTED`; a new renderer missing both an inverse and a
+reason fails `test_no_renderer_lacks_an_inverse_without_being_named`.
 
 ## The two properties
 
@@ -45,6 +44,7 @@ which do not break the round trip belong at render time, where they can still be
 | `codex` | non-glob shell | **glob entries.** `render_codex` diverts them to a trailing comment block with no decision attached, so the file does not record whether `gamma-*` was allowed, asked or denied. Reported, never guessed. |
 | `codex-project` | shell | quote *style*. `render_codex_project` tokenises with `shlex.split`, and a token holding whitespace is re-quoted on the way back, so `echo "a b"` returns as `echo 'a b'` — the document round-trips, the source spelling normalises. |
 | `codex-mcp-permissions` | MCP | **source order.** `render_codex_mcp` groups by server and sorts servers and tools, and resolves an entry listed twice to its last category. The emitted order is canonical, so re-rendering is stable. |
+| `droid` | non-glob shell | MCP policy, trailing shell globs, and `[shell] default`; Droid's command lists have no representation for them |
 | `opencode` | shell, MCP, `opencode.extra` | see *order loss* below |
 | `pi`, `pi-project` | shell, MCP | see *order loss* below |
 
@@ -145,7 +145,7 @@ onboarding tool. The entry is withheld and named in the report for a person to r
 
 Silence counts as disagreement, but only from a harness that could have spoken. `CAPABILITIES`
 declares, per renderer, whether its document can state a shell rule, an MCP rule, a glob, and a
-catch-all default; Codex is not a voter on globs, and the MCP-only renderers are not voters on
+catch-all default; Codex and Droid are not voters on globs, and the MCP-only renderers are not voters on
 shell entries. Counting their silence would suppress rules every harness that can express them
 agrees on.
 

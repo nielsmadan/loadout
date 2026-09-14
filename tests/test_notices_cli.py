@@ -102,9 +102,13 @@ def test_a_clean_source_says_nothing(tmp_path: Path, capsys) -> None:
 
 
 def test_a_stated_catch_all_names_the_harnesses_it_misses(root: Path, capsys) -> None:
-    """The shared fixture states `default = "allow"` and renders Claude and Codex,
-    neither of which authors a catch-all. The docs record that; this is the run
-    saying it, which is the whole point of ADR 0015's surface."""
+    """The shared fixture states `default = "allow"` and renders Claude, Codex and
+    Droid, none of which authors a catch-all. The docs record that; this is the run
+    saying it, which is the whole point of ADR 0015's surface.
+
+    The glob assertion pins the other half of the same wiring: `unsupported_shell_globs`
+    reaching output through `_permission_notices`, which nothing else exercises.
+    """
     loadout.main(["sync", "--root", str(root), "--force"])
     capsys.readouterr()
     loadout.main(["check", "--root", str(root)])
@@ -112,10 +116,12 @@ def test_a_stated_catch_all_names_the_harnesses_it_misses(root: Path, capsys) ->
 
     assert "note: claude.permissions: [shell] default" in out
     assert "note: codex.permissions: [shell] default" in out
+    assert "note: droid.permissions: [shell] default" in out
     # The carriers render it, so they must stay silent — a notice that fires for
     # everyone teaches nothing.
     assert "opencode.permissions: [shell] default" not in out
     assert "pi.permissions: [shell] default" not in out
+    assert "note: droid.permissions: allow glob 'gamma-*'" in out
 
 
 def test_a_project_only_repo_reports_nothing_rather_than_failing(
@@ -123,10 +129,22 @@ def test_a_project_only_repo_reports_nothing_rather_than_failing(
 ) -> None:
     """A project-only repo has no manifest to load, so every global reporter has
     to be skipped rather than asked — asking would raise where reporting nothing
-    is correct. The flag is set so the one project-scope reporter stays silent
-    too, leaving the absent manifest as the only thing under test."""
+    is correct.
+
+    The fixture's whole harness set is kept. Narrowing it to harnesses that report
+    nothing would leave the absent manifest tested against reporters that never
+    ran, which passes just as well against a build where the input was never
+    constructed. What proves the global reporters were skipped is that the notices
+    that *do* come back are all project-scope ones.
+    """
     monkeypatch.setenv("OPENCODE_DISABLE_CLAUDE_CODE_SKILLS", "1")
-    assert collect_notices(project) == ()
+    messages = [f"{n.agent}.{n.slice}: {n.message}" for n in collect_notices(project)]
+
+    # OpenCode authors its own catch-all at project scope, so it is the one
+    # harness that stays silent — the loser that proves the rest were asked.
+    assert not any(m.startswith("opencode.") for m in messages)
+    assert sum("[shell] default" in m for m in messages) == 4
+    assert "droid.permissions: allow glob 'gamma-*' is not rendered" in " | ".join(messages)
 
 
 def test_check_reports_the_opencode_skills_race_without_failing(
@@ -153,7 +171,7 @@ def test_a_project_without_opencode_is_not_told_about_its_flag(
     config = project / "loadout" / "config.toml"
     config.write_text(
         config.read_text(encoding="utf-8").replace(
-            '"claude", "codex", "opencode", "pi"', '"claude"'
+            '"claude", "codex", "droid", "opencode", "pi"', '"claude"'
         ),
         encoding="utf-8",
     )
@@ -261,3 +279,22 @@ def test_a_server_named_by_policy_says_nothing(tmp_path: Path, capsys) -> None:
 
     assert loadout.main(["check", "--root", str(root)]) == 0
     assert "mcp.servers" not in capsys.readouterr().out
+
+
+def test_a_native_project_declaring_droid_reports_rather_than_failing(tmp_path: Path) -> None:
+    """`presets = false` renders from artifacts and never reads permissions.toml,
+    so a reporter that parses it unconditionally failed `check` on a project with
+    nothing wrong with it. The notice path has to follow the render path.
+    """
+    (tmp_path / "loadout" / "settings").mkdir(parents=True)
+    (tmp_path / "loadout" / "settings" / "native.json").write_text('{"model": "x"}\n')
+    (tmp_path / "loadout" / "config.toml").write_text(
+        'harnesses = ["droid"]\nartifacts = "artifacts.toml"\npresets = false\n'
+    )
+    (tmp_path / "loadout" / "artifacts.toml").write_text(
+        '[[artifact]]\nagents = ["droid"]\noutput = ".factory/settings.json"\n'
+        'format = "json"\n[artifact.parts]\nsettings = {source = "settings/native.json"}\n'
+    )
+
+    assert not (tmp_path / "loadout" / "permissions.toml").exists()
+    assert collect_notices(tmp_path) == ()

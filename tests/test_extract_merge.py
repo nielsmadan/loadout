@@ -32,7 +32,7 @@ from loadout.extract import (
     merge_extractions,
 )
 from loadout.permissions.rules import Rules
-from test_extract_roundtrip import CLEAN_SPACE, INVERTED, _render
+from test_extract_roundtrip import CLEAN_SPACE, INVERTED, REFUSES, _declines, _render
 
 
 def _verdicts(merged: Merged, entry: str, kind: str | None = None) -> dict[str, str]:
@@ -298,7 +298,17 @@ def test_a_machine_rendered_from_one_source_merges_back_to_it(rules: Rules) -> N
     consistent, so any divergence reported here is the extractor inventing drift
     that is not on disk.
     """
-    extractions = {name: extract(name, _render(name, rules, {})) for name in ("claude", *INVERTED)}
+    names = [name for name in ("claude", *INVERTED) if not _declines(name, rules)]
+    extractions = {name: extract(name, _render(name, rules, {})) for name in names}
     merged = merge_extractions(extractions)
     assert merged.divergences == ()
     assert merged.rules == rules
+
+
+def test_the_merge_space_provokes_every_declared_refusal() -> None:
+    """`_declines` drops renderers from the reconciliation above, so the space has
+    to contain a case each one refuses. Without this the exclusion could quietly
+    match nothing and the loop would read as covering every renderer while
+    covering one fewer."""
+    for name in REFUSES:
+        assert any(_declines(name, rules) for rules in CLEAN_SPACE), name

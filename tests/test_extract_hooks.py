@@ -19,12 +19,13 @@ import pytest
 
 from loadout.errors import LoadoutError
 from loadout.extract import VALUE_EXTRACTORS, extract_value
-from loadout.hooks import render_claude_hooks, render_codex_hooks
+from loadout.hooks import render_claude_hooks, render_codex_hooks, render_droid_hooks
 from loadout.permissions.renderers import (
     RENDERERS,
     DocumentJsonSpec,
     MergedJsonSpec,
     ValueSpec,
+    ValuesSpec,
 )
 from test_extract_roundtrip import NOT_INVERTED
 
@@ -48,6 +49,10 @@ def codex_file(fragment: dict[str, Any]) -> dict[str, Any]:
     return {"hooks": render_codex_hooks(fragment)}
 
 
+def droid_file(fragment: dict[str, Any]) -> dict[str, Any]:
+    return {"hooks": render_droid_hooks(fragment)}
+
+
 # --- property 1: extract(render(x)) == carried(x), carried == identity --------
 
 
@@ -57,6 +62,10 @@ def test_claude_round_trips_the_fragment_unchanged() -> None:
 
 def test_codex_round_trips_the_fragment_unchanged() -> None:
     assert extract_value("codex-hooks", codex_file(FRAGMENT)).value == FRAGMENT
+
+
+def test_droid_round_trips_the_fragment_unchanged() -> None:
+    assert extract_value("droid-hooks", droid_file(FRAGMENT)).value == FRAGMENT
 
 
 def test_extraction_does_not_alias_the_document() -> None:
@@ -73,6 +82,7 @@ def test_a_clean_document_reports_nothing_and_closes() -> None:
     for name, build, render in (
         ("claude-hooks", claude_file, render_claude_hooks),
         ("codex-hooks", codex_file, render_codex_hooks),
+        ("droid-hooks", droid_file, render_droid_hooks),
     ):
         extraction = extract_value(name, build(FRAGMENT))
         assert extraction.notes == ()
@@ -134,7 +144,7 @@ def test_every_value_renderer_has_a_value_extractor() -> None:
     value_renderers = {
         n
         for n, s in RENDERERS.items()
-        if isinstance(s, ValueSpec | DocumentJsonSpec | MergedJsonSpec)
+        if isinstance(s, ValueSpec | ValuesSpec | DocumentJsonSpec | MergedJsonSpec)
     }
     assert value_renderers - NOT_INVERTED == set(VALUE_EXTRACTORS)
 

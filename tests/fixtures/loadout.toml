@@ -61,6 +61,11 @@ render = "codex"
 output = "perm/codex-mcp.toml"
 render = "codex-mcp-permissions"
 
+[permissions.droid]
+output   = "perm/droid.json"
+render   = "droid"
+settings = "claude"
+
 # The co-owned shape: a base plus a foreign key carried through from the file
 # being overwritten.
 [permissions.opencode]

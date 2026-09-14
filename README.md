@@ -596,6 +596,7 @@ Legacy preset harnesses and their outputs (native routes can preserve additional
 | --- | --- |
 | `claude` | `.claude/settings.json`, `.claude/mcp-permissions.json`, `.mcp.json`, `CLAUDE.md`, `.claude/skills/` |
 | `codex` | `.codex/rules/permissions.rules`, `AGENTS.md` |
+| `droid` | `.factory/settings.json`, `.factory/hooks.json`, `.factory/mcp.json`, `AGENTS.md`, `.factory/skills/` |
 | `opencode` | `opencode.json`, `AGENTS.md`, `.opencode/skills/` |
 | `pi` | `.pi/extensions/pi-permission-system/config.json`, `AGENTS.md`, `.pi/skills/` |
 
@@ -611,9 +612,9 @@ order, and they compose into `CLAUDE.md` and `AGENTS.md`:
 instructions = ["conventions", "testing"]
 ```
 
-**One order for the repo, not one per harness.** Codex, OpenCode and Pi all read a repo-root
+**One order for the repo, not one per harness.** Codex, Droid, OpenCode and Pi all read a repo-root
 `AGENTS.md` (see [config.md](docs/reference/config.md#instructions)), so a per-harness order
-would need one file to hold three of them. With a single order the two documents are identical
+would need one file to hold four of them. With a single order the two documents are identical
 by construction rather than by an assertion that could fail open. Declare no `instructions` and
 neither file is generated, so a repo using loadout for permissions alone keeps its hand-written
 `CLAUDE.md`.
@@ -622,9 +623,10 @@ A template contributes its `instructions.md` as one unnamed block **above** the 
 fragments — adopting `web` brings its prose without the repo restating it, and anything the repo
 declares is read last.
 
-`opencode.json` and `.claude/settings.json` are a harness's own multi-purpose config file, so
+`opencode.json`, `.factory/settings.json`, and `.claude/settings.json` are harness-owned
+multi-purpose config files, so
 loadout preserves any foreign top-level key already there (`$schema`, for example) instead of
-overwriting the whole document. The other three outputs are loadout-only and always render from
+overwriting the whole document. Every other output is loadout-only and always renders from
 a blank document.
 
 `.claude/settings.json` is loadout's Claude output at project scope; Claude Code writes to
@@ -677,7 +679,8 @@ optionally `auth_env_var`) or `"stdio"` (needs `command`, optionally `args` and 
 at parse time otherwise. `auth_env_var` names a variable; the value it holds never reaches a
 rendered file.
 
-At project scope this reaches Claude (`.mcp.json`) and OpenCode (`opencode.json`'s `mcp` key).
+At project scope this reaches Claude (`.mcp.json`), Droid (`.factory/mcp.json`), and OpenCode
+(`opencode.json`'s `mcp` key).
 Pi has no project destination — `.mcp.json` already serves it, since `pi-mcp-adapter` reads it
 directly. Codex has none yet — whether it survives Codex's project-config filter is unverified.
 A template contributes its own `mcp.toml` the same way it contributes `permissions.toml`,

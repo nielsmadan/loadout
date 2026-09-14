@@ -17,6 +17,7 @@ from loadout.servers import (
     parse_servers,
     render_claude_servers,
     render_codex_servers,
+    render_droid_servers,
     render_opencode_servers,
     render_pi_servers,
 )
@@ -61,7 +62,7 @@ def test_an_unknown_transport_is_refused(tmp_path: Path) -> None:
 
 
 def test_http_without_a_url_is_refused(tmp_path: Path) -> None:
-    """Fail at parse, not at render: four renderers would each fail differently."""
+    """Fail at parse, not at render: five renderers would each fail differently."""
     source = tmp_path / "mcp.toml"
     source.write_text('[x]\ntransport = "http"\n', encoding="utf-8")
 
@@ -132,6 +133,15 @@ def test_pi_names_the_auth_variable_bearer_token_env() -> None:
     assert doc["mcpServers"]["jina"] == {
         "url": "https://mcp.jina.ai/v1",
         "bearerTokenEnv": "JINA_API_KEY",
+    }
+
+
+def test_droid_uses_the_mcpservers_wrapper_and_env_bearer_header() -> None:
+    doc = render_droid_servers(HTTP)
+    assert doc["mcpServers"]["jina"] == {
+        "type": "http",
+        "url": "https://mcp.jina.ai/v1",
+        "headers": {"Authorization": "Bearer ${JINA_API_KEY}"},
     }
 
 

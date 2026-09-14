@@ -19,6 +19,7 @@ from loadout.notices import (
     notices_for,
     opencode_skills_race,
     unpermitted_servers,
+    unsupported_shell_globs,
 )
 from loadout.permissions.rules import Rules
 from loadout.servers import Server
@@ -49,6 +50,7 @@ def test_an_adapted_harness_reports_a_missing_mapping_instead() -> None:
 def test_known_events_differ_per_harness() -> None:
     assert "PreToolUse" in known_events("claude")
     assert "PreToolUse" in known_events("opencode")
+    assert "SessionEnd" in known_events("droid")
     assert known_events("nonesuch") == frozenset()
 
 
@@ -150,3 +152,22 @@ def test_a_server_covered_by_one_tool_is_silent() -> None:
     servers = {"jina": Server(name="jina", transport="http", url="https://x")}
 
     assert unpermitted_servers(servers, Rules(mcp_allow=("jina/search",))) == ()
+
+
+def test_droid_reports_each_permission_glob_it_drops_but_not_the_one_it_refuses() -> None:
+    """Reporting covers the two categories a dropped glob is safe in. `deny` is
+    refused at render instead (`render_droid`), so a notice about it would
+    describe output that never exists — and the deny entry is in this input to
+    prove the omission is the rule and not an empty category.
+    """
+    found = unsupported_shell_globs(
+        "droid",
+        "droid",
+        Rules(allow=("ls", "docker stop cc-*"), ask=("git push *",), deny=("rm *",)),
+    )
+    assert [notice.message for notice in found] == [
+        "allow glob 'docker stop cc-*' is not rendered because Droid treats "
+        "permission-list metacharacters literally",
+        "ask glob 'git push *' is not rendered because Droid treats "
+        "permission-list metacharacters literally",
+    ]

@@ -15,10 +15,15 @@ A module's *own* configuration is not one of the seven and gets no row in the su
 belongs to the module rather than the harness, and only Pi's is enumerated here. See
 [module config](#module-config).
 
-**Verified 2026-08-09**, hooks section updated 2026-08-11, against Claude Code 2.1.226, codex-cli 0.147.0, OpenCode 1.18.15, Pi
-0.84.1 and Antigravity (`agy`) 1.1.11, by inspecting the installed binaries and shipped docs —
-not by reading upstream documentation. Method per harness: `strings` over the Claude, Codex,
-OpenCode and `agy` binaries; the JavaScript bundle and shipped `docs/` for Pi.
+**Verified 2026-08-09**, hooks section updated 2026-08-11 and Droid added 2026-09-14,
+against Claude Code 2.1.226, codex-cli 0.147.0, Factory Droid 0.218.2, OpenCode 1.18.15, Pi
+0.84.1 and Antigravity (`agy`) 1.1.11, by inspecting installed binaries and shipped docs — not
+by reading upstream documentation, except for Droid, whose rows rest on Factory's published
+configuration documentation alongside inspection of the installed 0.218.2 CLI. Method per
+harness: `strings` over the Claude, Codex, Droid, OpenCode and `agy` binaries; the JavaScript
+bundle and shipped `docs/` for Pi. Droid's binary carries its bundled JavaScript, so its settings
+class is readable — but that class nests under `general` where the file is flat, so key *paths*
+from it are not evidence about the file. See [droid.md](droid.md#shell-permissions).
 
 Two caveats on that. Pi's evidence comes from the **0.80.10** tree on disk while the running
 binary reports 0.84.1, so Pi's rows are one minor version behind. And a blank cell means **not
@@ -27,36 +32,37 @@ filename in another harness proves nothing.
 
 ## Summary
 
-| | Claude | Codex | OpenCode | Pi | Antigravity |
-|---|---|---|---|---|---|
-| settings | ✓ | ✓ | ✓ | ✓ | ✓ |
-| instructions | ✓ | ✓ | ✓ | ✓ | ✓ |
-| permissions | ✓ | ✓ | ✓ | ✓ | ✓ |
-| hooks | ✓ declarative | ✓ declarative | ✓ **in code** | ✓ **in code** | ✓ declarative |
-| mcp | ✓ CLI only | ✓ | ✓ | ✓ | ✓ |
-| plugins | ✓ | ✓ | ✓ npm | ✓ | ✓ |
-| skills | ✓ | ✓ | ✓ | ✓ | ✓ project only |
+| | Claude | Codex | Droid | OpenCode | Pi | Antigravity |
+|---|---|---|---|---|---|---|
+| settings | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| instructions | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| permissions | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| hooks | ✓ declarative | ✓ declarative | ✓ declarative | ✓ **in code** | ✓ **in code** | ✓ declarative |
+| mcp | ✓ CLI only | ✓ | ✓ | ✓ | ✓ | ✓ |
+| plugins | ✓ | ✓ | ✓ | ✓ npm | ✓ | ✓ |
+| skills | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ project only |
 
 Four structural facts fall out of the detail below, and each matters more than any individual
 path.
 
-**There is a cross-harness `.agents/` convention, and Claude is the only one not in it.** See
+**There is a cross-harness `.agents/` convention.** See
 the section below — it is the single most consequential finding here, because for some slices
 one write covers three harnesses.
 
 **Slice boundaries are not file boundaries.** Claude puts settings, permissions and hooks in one
 `settings.json`. OpenCode puts settings, permissions, instructions and mcp in one
-`opencode.json`. Codex splits settings (`config.toml`), permissions (`rules/`) and hooks
-(`hooks.json`) into three. Pi splits them four ways. Any design assuming one slice ↔ one file is
-wrong on three of five harnesses.
+`opencode.json`. Droid puts settings, permissions, and plugin declarations in `settings.json`
+while keeping hooks and MCP definitions separate. Codex splits settings (`config.toml`),
+permissions (`rules/`) and hooks (`hooks.json`) into three. Pi splits them four ways. Any design
+assuming one slice ↔ one file is wrong on four of six harnesses.
 
-**All four supported harnesses have hooks; two declare them and two register them in code.**
-Claude and Codex take a JSON document of events. OpenCode and Pi have no hooks *file*, which is
+**All five supported harnesses have hooks; three declare them and two register them in code.**
+Claude, Codex, and Droid take a JSON document of events. OpenCode and Pi have no hooks *file*, which is
 not the same as having no hooks — both expose a documented event API that a TypeScript
 plugin/extension subscribes to, and Pi's is larger than Claude's.
 
-**Only Claude and OpenCode have a machine-wide managed tier.** Codex, Pi and Antigravity have
-none.
+**Only Claude and OpenCode have a verified machine-wide managed tier.** Droid's is not verified;
+Codex, Pi and Antigravity have none.
 
 ## What loadout writes is narrower than this page, and the preset is not a capability map
 
@@ -94,8 +100,8 @@ to **`mcp-permissions`** — its outputs already said so (`mcp-permissions.json`
 `mcp-permissions.toml`) — which freed `mcp` for what the table below, and every upstream document,
 already meant by it: server definitions. `mcp` now renders `<source>/mcp.toml` to six of the eight
 harness/scope destinations; see [servers.md](servers.md) for the slice — the format, why Pi has no
-project destination, why Codex's is still an open question, and why Claude's global entry is
-staged rather than written.
+project destination, why Codex's is still an open question, and how Claude's global entry
+co-owns `.claude.json`.
 
 `~/ac/mcp/servers.toml` already kept the two apart in its own header: *"This file defines which
 servers EXIST. Which of their tools may be called is the separate `[mcp]` section of
@@ -115,17 +121,18 @@ headings quietly disagree with the code's vocabulary.
 
 ## The `.agents/` convention
 
-Four of the five harnesses read a shared, harness-neutral directory — `~/.agents/` globally and
+Four of the six harnesses recorded here read a shared, harness-neutral directory — `~/.agents/` globally and
 `.agents/` in a project. Coverage is per slice, not all-or-nothing:
 
-| slice | Claude | Codex | OpenCode | Pi | Antigravity |
-|---|---|---|---|---|---|
-| skills | | | `~/.agents/skills/`, `.agents/skills/` | `~/.agents/skills/`, `.agents/skills/` | `.agents/skills/`, `.agents/skills.json` |
-| plugins | | `~/.agents/plugins/`, `.agents/plugins/` | | | `.agents/plugins/` |
-| instructions | | | | | `.agents/rules/` |
-| hooks | | | | | `.agents/hooks.json` |
+| slice | Claude | Codex | Droid | OpenCode | Pi | Antigravity |
+|---|---|---|---|---|---|---|
+| skills | | | | `~/.agents/skills/`, `.agents/skills/` | `~/.agents/skills/`, `.agents/skills/` | `.agents/skills/`, `.agents/skills.json` |
+| plugins | | `~/.agents/plugins/`, `.agents/plugins/` | | | | `.agents/plugins/` |
+| instructions | | | | | | `.agents/rules/` |
+| hooks | | | | | | `.agents/hooks.json` |
 
-**Claude reads nothing under `.agents/`** — zero occurrences in the 2.1.226 bundle. Antigravity
+**Claude reads nothing under `.agents/`** — zero occurrences in the 2.1.226 bundle. Droid uses
+its own `.factory` paths for the slices Loadout supports. Antigravity
 is the broadest adopter, with `rules/`, `hooks.json`, `plugins/`, `skills/`, `skills.json` and
 `agents/` beneath it.
 
@@ -145,6 +152,7 @@ from Claude's layout, this convention is invisible.
 |---|---|---|
 | Claude | `~/.claude/settings.json` | `.claude/settings.json`, `.claude/settings.local.json` |
 | Codex | `~/.codex/config.toml` | `.codex/config.toml` |
+| Droid | `~/.factory/settings.json` | `.factory/settings.json` |
 | OpenCode | `~/.config/opencode/opencode.json` | `opencode.json` at repo root |
 | Pi | `~/.pi/agent/settings.json` | `.pi/settings.json` |
 | Antigravity | `~/.gemini/antigravity-cli/settings.json` | |
@@ -155,6 +163,8 @@ Observed top-level keys, to show how little the vocabularies overlap:
   `attribution`, `permissions`, `model`, `hooks`, `statusLine`, `enabledPlugins`, `sandbox`,
   `effortLevel`, `awaySummaryEnabled`, `autoMemoryEnabled`, `skipAutoPermissionPrompt`,
   `skipWorkflowUsageWarning`
+- **Droid** — `model`, `commandAllowlist`, `commandDenylist`, `commandBlocklist`,
+  `enabledPlugins`, `extraKnownMarketplaces`
 - **OpenCode** — `$schema`, `model`, `provider`, `permission`, `mcp`
 - **Pi** — `lastChangelogVersion`, `theme`, `defaultProvider`, `defaultModel`,
   `defaultThinkingLevel`, `enabledModels`, `packages`
@@ -179,6 +189,7 @@ relationship to the `antigravity-cli/` one are unverified.
 |---|---|---|
 | Claude | `~/.claude/CLAUDE.md` | `CLAUDE.md`, `CLAUDE.local.md` |
 | Codex | `~/.codex/AGENTS.md` | `AGENTS.md` |
+| Droid | `~/.factory/AGENTS.md` | `AGENTS.md` |
 | OpenCode | `~/.config/opencode/AGENTS.md` | `AGENTS.md`; also `CLAUDE.md`, `opencode.md` |
 | Pi | `~/.pi/agent/AGENTS.md` | `AGENTS.md` |
 | Antigravity | `~/.gemini/GEMINI.md` | `.agents/rules/` |
@@ -199,7 +210,7 @@ document, so OpenCode read Claude's — Claude's fragment order and Claude-speci
 nothing looked broken. Verified on this machine that day: no `~/.config/opencode/AGENTS.md`
 existed, and `~/.claude/CLAUDE.md` began `# Global CLAUDE.md`.
 
-The three `AGENTS.md`-family documents are typically byte-identical, which is why extraction can
+The four `AGENTS.md`-family documents are typically byte-identical, which is why extraction can
 collapse them into one fragment by exact comparison rather than judgement.
 
 ## permissions
@@ -208,14 +219,15 @@ collapse them into one fragment by exact comparison rather than judgement.
 |---|---|---|
 | Claude | `~/.claude/settings.json` → `permissions` | `.claude/settings.json`, `.claude/settings.local.json` |
 | Codex | `~/.codex/rules/*.rules` (directory, read whole) | `.codex/rules/*.rules` |
+| Droid | `~/.factory/settings.json` → command lists | `.factory/settings.json` → command lists |
 | OpenCode | `~/.config/opencode/opencode.json` → `permission` | `opencode.json` → `permission` |
 | Pi | `~/.pi/agent/extensions/pi-permission-system/config.json` | `.pi/extensions/pi-permission-system/config.json` |
 | Antigravity | `~/.gemini/antigravity-cli/settings.json` → `permissions` | none known |
 
-The only slice loadout renders today. Matcher semantics, pattern shapes and resolution order are
+Matcher semantics, pattern shapes and resolution order are
 in the per-harness pages — do not re-derive them from these paths.
 
-Codex and Pi are the two that give permissions their own file. The other three share a file with
+Codex and Pi are the two that give permissions their own file. The other four share a file with
 settings, which is why those targets need a `base` document and the rest do not.
 
 ## hooks
@@ -224,11 +236,12 @@ settings, which is why those targets need a `base` document and the rest do not.
 |---|---|---|
 | Claude | `~/.claude/settings.json` → `hooks` | `.claude/settings.json` → `hooks` |
 | Codex | `~/.codex/hooks.json` → `hooks` | |
+| Droid | `~/.factory/hooks.json` → `hooks` | `.factory/hooks.json` → `hooks` |
 | OpenCode | **in code** — `~/.config/opencode/plugins/*.ts` | |
 | Pi | **in code** — `~/.pi/agent/extensions/*.ts` | |
 | Antigravity | `~/.gemini/config/hooks.json` | `.agents/hooks.json` |
 
-**Claude and Codex share an event vocabulary and an entry shape.** Both are a map of event name
+**Claude, Codex, and Droid use the same declarative entry shape.** Each is a map of event name
 → list of entries, each `{matcher?, hooks: [{type, command, timeout}]}`. Observed events:
 
 **Claude — 31 hook events**, from the 2.1.226 binary. Extracted by *shape*
@@ -262,6 +275,11 @@ Codex does carry Claude's hook *I/O* vocabulary — `hookSpecificOutput`, `permi
 `permissionDecisionReason`, `updatedInput`, `additionalContext`, `hook_event_name`, `tool_input`
 — and honours exit code 2. Those are **presence** claims, which a seeded query establishes
 perfectly well; it is completeness a seeded query cannot establish.
+
+**Droid — nine documented events:** `PreToolUse`, `PostToolUse`, `UserPromptSubmit`,
+`Notification`, `Stop`, `SubagentStop`, `PreCompact`, `SessionStart`, and `SessionEnd`.
+Loadout writes the document directly and accepts the `FACTORY_` and `DROID_` variable
+namespaces.
 
 Only 11 of Claude's 31 and 9 of Codex's 11 are configured on this machine. **Configuration is a
 lower bound on capability, and so is a search that names what it expects to find.**
@@ -330,6 +348,7 @@ event mapping, what each can and cannot express, and the payload fields neither 
 |---|---|---|
 | Claude | `claude mcp add-json` CLI; state in `${CLAUDE_CONFIG_DIR:-~}/.claude.json` | `.mcp.json` |
 | Codex | `~/.codex/config.toml` → `[mcp_servers.*]` | `.codex/config.toml` |
+| Droid | `~/.factory/mcp.json` → `mcpServers` | `.factory/mcp.json` → `mcpServers` |
 | OpenCode | `~/.config/opencode/opencode.json` → `mcp` | `opencode.json` → `mcp` |
 | Pi | `~/.pi/agent/mcp.json` (+ shared paths below) | `.pi/mcp.json`, `.mcp.json` |
 | Antigravity | `~/.gemini/config/mcp_config.json` | |
@@ -370,13 +389,14 @@ rest of the file alone. See [servers.md](servers.md).
 |---|---|---|
 | Claude | `~/.claude/plugins/`, enabled via `settings.json` → `enabledPlugins` | |
 | Codex | `~/.codex/plugins/`, `~/.agents/plugins/` | `.agents/plugins/` |
+| Droid | `~/.factory/settings.json` → `enabledPlugins`, `extraKnownMarketplaces` | `.factory/settings.json` |
 | OpenCode | `~/.config/opencode/plugins/*.ts`, plus npm `package.json` | |
 | Pi | `~/.pi/agent/settings.json` → `packages`; `./extensions` | |
 | Antigravity | `~/.gemini/config/plugins/` | `.agents/plugins/` |
 
 Plugins are consistently **two things**: content on disk, and a declaration that it is on.
 
-**Claude and Codex converge**: both address a plugin as `<name>@<marketplace>` and both need the
+**Claude, Codex, and Droid converge**: all address a plugin as `<name>@<marketplace>` and need the
 marketplace registered separately.
 
 - Claude — `settings.json` → `"enabledPlugins": {"superpowers@claude-plugins-official": true}`,
@@ -384,6 +404,8 @@ marketplace registered separately.
   carrying `lastUpdated` and `installLocation`.
 - Codex — `config.toml` → `[plugins."nono@nolabs-ai"] enabled = true`, with
   `[marketplaces.nolabs-ai] source_type = "local"` in the *same* file.
+- Droid — `settings.json` → `enabledPlugins`, with used registrations in
+  `extraKnownMarketplaces` in the same file.
 
 **Pi and OpenCode do not.** Pi has no marketplace concept: `packages` references a source
 directly (`npm:`, `git:`, or a path), as a string or an object. OpenCode has no enablement list
@@ -399,6 +421,7 @@ What loadout renders from one portable reference, and what it reports instead of
 |---|---|---|
 | Claude | `~/.claude/skills/<name>/` | `.claude/skills/<name>/` |
 | Codex | `~/.agents/skills/<name>/`, legacy `~/.codex/skills/<name>/` | `.agents/skills/<name>/` |
+| Droid | `~/.factory/skills/<name>/` | `.factory/skills/<name>/` |
 | OpenCode | `~/.config/opencode/skills/<name>/`, `~/.claude/skills/`, `~/.agents/skills/` | `.opencode/skills/`, `.claude/skills/`, `.agents/skills/` |
 | Pi | `~/.pi/agent/skills/`, `~/.agents/skills/` | `.pi/skills/`, `.agents/skills/` |
 | Antigravity | **none** | `.agents/skills/`, `.agents/skills.json` |
@@ -466,6 +489,7 @@ module's name. Enumerated, with the verified negatives, in
 |---|---|---|
 | Claude | `/Library/Application Support/ClaudeCode/` | 103 `managed-settings` references |
 | OpenCode | `/Library/Application Support/opencode/` | path present in bundle |
+| Droid | not verified | Factory documentation and Droid 0.218.2 inspection did not establish this tier |
 | Codex | none | 0 references, no `/Library` path |
 | Pi | none | 0 references |
 | Antigravity | none | 0 references |
@@ -486,4 +510,7 @@ Each is a real gap, not a judgement that the feature is absent:
 - Project-scope paths for mcp on Pi and Antigravity, and for hooks on Codex, OpenCode and Pi.
 - Whether Codex's `~/.agents/plugins/` is read at global scope or only resolved as a marketplace
   script path.
+- Droid's machine-wide managed tier. Factory documents an org-managed settings layer
+  ([hierarchical settings](https://docs.factory.ai/docs/enterprise/hierarchical-settings-and-org-control)),
+  but neither that page nor the 0.218.2 CLI established the on-disk path it occupies.
 - Pi's rows reflect 0.80.10 on disk; the running binary reports 0.84.1.

@@ -25,6 +25,7 @@ __all__ = [
     "render_claude_project_servers",
     "render_claude_servers",
     "render_codex_servers",
+    "render_droid_servers",
     "render_opencode_servers",
     "render_pi_servers",
 ]
@@ -89,8 +90,8 @@ def parse_servers(path: Path) -> dict[str, Server]:
                 f"{path}: [{name}] unknown transport {transport!r} "
                 f"(expected one of {', '.join(TRANSPORTS)})"
             )
-        # Validated here rather than in four renderers: each would fail
-        # differently, and three of them only when that harness is enabled.
+        # Validated here rather than in five renderers: each would fail
+        # differently, and four of them only when that harness is enabled.
         if transport == "http" and not spec.get("url"):
             raise LoadoutError(f"{path}: [{name}] transport is http, so it needs a url")
         if transport == "stdio" and not spec.get("command"):
@@ -163,6 +164,10 @@ def render_claude_servers(servers: dict[str, Server]) -> dict[str, Any]:
 
 
 def render_claude_project_servers(servers: dict[str, Server]) -> dict[str, Any]:
+    return {"mcpServers": render_claude_servers(servers)}
+
+
+def render_droid_servers(servers: dict[str, Server]) -> dict[str, Any]:
     return {"mcpServers": render_claude_servers(servers)}
 
 

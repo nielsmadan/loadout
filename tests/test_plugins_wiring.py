@@ -41,6 +41,9 @@ plugins  = ["kit"]
 [codex]
 plugins = ["kit"]
 
+[droid]
+plugins = ["kit"]
+
 [pi]
 plugins = ["kit"]
 """
@@ -75,7 +78,13 @@ def pi_settings(outputs: dict[Path, str]) -> dict[str, Any]:
     return json.loads(hits[0])
 
 
-def test_one_fragment_reaches_all_three_harnesses(tmp_path: Path) -> None:
+def droid_settings(outputs: dict[Path, str]) -> dict[str, Any]:
+    hits = [c for p, c in outputs.items() if p.parts[-2:] == (".factory", "settings.json")]
+    assert len(hits) == 1, "expected one Droid settings.json"
+    return json.loads(hits[0])
+
+
+def test_one_fragment_reaches_all_four_harnesses(tmp_path: Path) -> None:
     """The same reference, addressed three ways: by name and marketplace on
     Claude and Codex, by source on Pi."""
     outputs = render_global(build(tmp_path, {"kit": FRAGMENT}), "default")
@@ -88,6 +97,13 @@ def test_one_fragment_reaches_all_three_harnesses(tmp_path: Path) -> None:
         {"source": "git:github.com/obra/superpowers", "extensions": []},
         "/packages/nono",
     ]
+    assert droid_settings(outputs)["enabledPlugins"] == {
+        "superpowers@claude-plugins-official": True,
+        "nono@nolabs-ai": True,
+    }
+    assert droid_settings(outputs)["extraKnownMarketplaces"] == {
+        "nolabs-ai": {"source_type": "local", "source": "/marketplaces/nolabs-ai"}
+    }
     _, codex = written(outputs, "config.toml")
     assert isinstance(codex, Merged)
     assert tomllib.loads(codex.document)["plugins"] == {
@@ -137,6 +153,45 @@ def test_pi_runtime_changelog_cursor_cannot_be_a_settings_source(tmp_path: Path)
     )
 
     with pytest.raises(LoadoutError, match="lastChangelogVersion"):
+        render_global(root)
+
+
+def test_droid_preserves_its_runtime_trusted_folders(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    factory_home = tmp_path / "factory-home"
+    monkeypatch.setenv("FACTORY_HOME_OVERRIDE", str(factory_home))
+    live = factory_home / ".factory/settings.json"
+    live.parent.mkdir(parents=True)
+    live.write_text(
+        json.dumps(
+            {
+                "trustedFolders": {"/workspace": {"trustedAt": "2026-09-14T09:41:28.530Z"}},
+                "logoAnimation": "off",
+            }
+        ),
+        encoding="utf-8",
+    )
+    root = build(tmp_path / "source", {"kit": FRAGMENT})
+
+    write_all(root)
+    document = json.loads(live.read_text(encoding="utf-8"))
+    assert document["trustedFolders"] == {"/workspace": {"trustedAt": "2026-09-14T09:41:28.530Z"}}
+    assert "logoAnimation" not in document
+
+    document["trustedFolders"]["/workspace"]["trustedAt"] = "2026-09-14T10:00:00.000Z"
+    live.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    assert check_all(root) == []
+
+
+def test_droid_runtime_trusted_folders_cannot_be_a_settings_source(tmp_path: Path) -> None:
+    manifest = MANIFEST.replace('[droid]\nplugins = ["kit"]', '[droid]\nsettings = "droid"')
+    root = build(tmp_path, {"kit": FRAGMENT}, manifest)
+    (root / "settings" / "droid.json").write_text(
+        '{"trustedFolders": {"/workspace": {"trustedAt": "fixture"}}}', encoding="utf-8"
+    )
+
+    with pytest.raises(LoadoutError, match="trustedFolders"):
         render_global(root)
 
 
@@ -196,10 +251,12 @@ def test_the_destinations_follow_each_harnesss_config_variable(
     """ADR 0011 — a relocated harness is followed without editing a manifest."""
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "moved-claude"))
     monkeypatch.setenv("PI_CODING_AGENT_DIR", str(tmp_path / "moved-pi"))
+    monkeypatch.setenv("FACTORY_HOME_OVERRIDE", str(tmp_path / "moved-droid-home"))
     outputs = render_global(build(tmp_path, {"kit": FRAGMENT}), "default")
     paths = {p for p in outputs if p.name == "settings.json"}
     assert paths == {
         tmp_path / "moved-claude" / "settings.json",
+        tmp_path / "moved-droid-home" / ".factory" / "settings.json",
         tmp_path / "moved-pi" / "settings.json",
     }
 

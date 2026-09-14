@@ -11,6 +11,10 @@ Shared prose every harness gets.
 Claude-only paragraph.
 :::
 
+::: droid
+Droid-only paragraph.
+:::
+
 ::: opencode
 OpenCode-only paragraph.
 :::

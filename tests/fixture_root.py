@@ -24,7 +24,7 @@ PRESERVE_TARGET = "perm/opencode.json"
 
 
 PROJECT_FIXTURES = FIXTURES / "project"
-PROJECT_HARNESSES = ("claude", "codex", "opencode", "pi")
+PROJECT_HARNESSES = ("claude", "codex", "droid", "opencode", "pi")
 
 # Vendored, so resolution reads no machine config and the expected tree stays
 # machine-independent. It is what puts a template's contribution into the
@@ -36,9 +36,10 @@ PROJECT_TEMPLATES = ("web",)
 # config's rather than the directory listing's.
 PROJECT_INSTRUCTIONS = ("testing", "conventions")
 
-# Both preserve_foreign project targets, seeded so the carry-through path runs.
+# Every preserve_foreign project target, seeded so the carry-through path runs.
 PROJECT_FOREIGN = {
     ".claude/settings.json": {"$schema": "https://example.invalid/claude.json"},
+    ".factory/settings.json": {"model": "custom-model"},
     "opencode.json": {"$schema": "https://example.invalid/opencode.json"},
 }
 
@@ -63,7 +64,13 @@ def build_project_root(destination: Path) -> Path:
         PROJECT_FIXTURES / "instructions", directory / "instructions", dirs_exist_ok=True
     )
     shutil.copytree(PROJECT_FIXTURES / "skills", directory / "skills", dirs_exist_ok=True)
-    for name in ("permissions.toml", "permissions.local.toml", "mcp.toml"):
+    for name in (
+        "permissions.toml",
+        "permissions.local.toml",
+        "mcp.toml",
+        "hooks.json",
+        "plugins.json",
+    ):
         shutil.copy2(PROJECT_FIXTURES / name, directory / name)
 
     for name, document in PROJECT_FOREIGN.items():

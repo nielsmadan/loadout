@@ -16,7 +16,14 @@ from pathlib import Path
 import pytest
 
 from loadout.extract import Extraction, ValueExtraction, extract, extract_value
-from loadout.permissions.renderers import RENDERERS, DocumentJsonSpec, JsonSpec, TextSpec, ValueSpec
+from loadout.permissions.renderers import (
+    RENDERERS,
+    DocumentJsonSpec,
+    JsonSpec,
+    TextSpec,
+    ValueSpec,
+    ValuesSpec,
+)
 from loadout.project import PROJECT_PRESET
 from test_extract_roundtrip import NOT_INVERTED
 
@@ -30,6 +37,7 @@ GLOBAL_RENDERERS = {
     "claude-mcp.json": "claude-mcp-permissions",
     "codex.rules": "codex",
     "codex-mcp.toml": "codex-mcp-permissions",
+    "droid.json": "droid",
     "opencode.json": "opencode",
     "pi.json": "pi",
 }
@@ -56,6 +64,9 @@ def _artifacts() -> list[tuple[Path, str]]:
         # comparison this loop drives does not apply — see
         # test_the_shipped_opencode_mcp_key_round_trips below instead.
         and spec.owned_key is None
+        # A ValuesSpec contributes several keys to a document another slice
+        # also owns, so it gets the same value-level check below.
+        and not isinstance(RENDERERS[spec.renderer], ValuesSpec)
         and (EXPECTED / "project" / spec.output).is_file()
     ]
     return found
@@ -151,6 +162,16 @@ def test_the_shipped_opencode_mcp_key_round_trips() -> None:
     extraction = extract_value("opencode-servers", document)
     assert extraction.notes == ()
     assert spec.fn(extraction.value) == document["mcp"]
+
+
+def test_the_shipped_droid_plugin_values_round_trip() -> None:
+    spec = RENDERERS["droid-plugins"]
+    assert isinstance(spec, ValuesSpec)
+    document = json.loads((EXPECTED / "project" / ".factory/settings.json").read_text())
+    extraction = extract_value("droid-plugins", document)
+    assert extraction.notes == ()
+    rendered = spec.fn(extraction.value)
+    assert {key: document[key] for key in rendered} == rendered
 
 
 @pytest.mark.parametrize("profile", ["default", "variant"])

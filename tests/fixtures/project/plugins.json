@@ -1,0 +1,15 @@
+{
+  "marketplaces": {
+    "official": {
+      "source": {
+        "source": "github",
+        "repo": "Factory-AI/factory-marketplace"
+      }
+    }
+  },
+  "plugins": {
+    "review": {
+      "marketplace": "official"
+    }
+  }
+}

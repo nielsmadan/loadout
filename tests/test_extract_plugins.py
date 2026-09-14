@@ -24,7 +24,12 @@ import pytest
 
 from loadout.errors import LoadoutError
 from loadout.extract import extract_codex_plugins, extract_value
-from loadout.plugins import render_claude_plugins, render_codex_plugins, render_pi_plugins
+from loadout.plugins import (
+    render_claude_plugins,
+    render_codex_plugins,
+    render_droid_plugins,
+    render_pi_plugins,
+)
 
 FRAGMENT: dict[str, Any] = {
     "marketplaces": {"nolabs-ai": {"source_type": "local", "source": "/marketplaces/nolabs-ai"}},
@@ -48,6 +53,10 @@ def pi_file(fragment: dict[str, Any]) -> dict[str, Any]:
     return {"packages": render_pi_plugins(fragment)}
 
 
+def droid_file(fragment: dict[str, Any]) -> dict[str, Any]:
+    return {"model": "opus", **render_droid_plugins(fragment)}
+
+
 # --- property 1: extract(render(x)) == carried(x) ----------------------------
 
 
@@ -64,6 +73,18 @@ def test_codex_carries_the_marketplace_registration_as_well() -> None:
     """The difference that makes Codex's half of the slice renderable: its
     registration lives in the file loadout writes, so it reads back too."""
     assert extract_codex_plugins(render_codex_plugins(FRAGMENT)).value == {
+        "marketplaces": {
+            "nolabs-ai": {"source_type": "local", "source": "/marketplaces/nolabs-ai"}
+        },
+        "plugins": {
+            "superpowers": {"marketplace": "claude-plugins-official"},
+            "nono": {"marketplace": "nolabs-ai"},
+        },
+    }
+
+
+def test_droid_carries_enablement_and_marketplace_registration() -> None:
+    assert extract_value("droid-plugins", droid_file(FRAGMENT)).value == {
         "marketplaces": {
             "nolabs-ai": {"source_type": "local", "source": "/marketplaces/nolabs-ai"}
         },
@@ -108,6 +129,16 @@ def test_codex_re_renders_the_document_it_read() -> None:
     extraction = extract_codex_plugins(rendered)
     assert extraction.notes == ()
     assert render_codex_plugins(extraction.value) == rendered
+
+
+def test_droid_re_renders_the_values_it_read() -> None:
+    document = droid_file(FRAGMENT)
+    extraction = extract_value("droid-plugins", document)
+    assert extraction.notes == ()
+    assert render_droid_plugins(extraction.value) == {
+        "enabledPlugins": document["enabledPlugins"],
+        "extraKnownMarketplaces": document["extraKnownMarketplaces"],
+    }
 
 
 def test_pi_re_renders_the_document_it_read_though_the_name_was_derived() -> None:

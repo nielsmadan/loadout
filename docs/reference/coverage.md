@@ -215,7 +215,7 @@ The contract is [git-integration.md](git-integration.md). These cases run in
 | `opencode-keeps-key` | OpenCode assigns in place, so the key stays put — deliberately unlike Pi | [ADR 0006](../decisions/0006-faithful-ports-reproduce-upstream-quirks.md) | `test_opencode_does_not_reorder_cross_key_entries` |
 | `dedupe-order` | `dedupe()` is order-preserving and never `set()` | [README](README.md#order-independent-vs-last-match) | `test_dedupe_preserves_order` |
 | `glob-literal` | a trailing-`*` entry is kept literal on Claude, OpenCode, Pi | [README](README.md#globs) | `test_claude_pattern_keeps_a_glob_literal`, `test_opencode_keeps_a_glob_literal`, `test_pi_keeps_a_glob_literal` |
-| `glob-skipped` | Codex cannot express a glob, so it is skipped | [README](README.md#globs) | `test_codex_skips_globs_and_lists_them_at_the_end` |
+| `glob-skipped` | Codex and Droid cannot express a portable glob; Codex and Droid's `allow`/`ask` skip it with a report, and Droid's `deny` is refused outright because its blocklist has no fallback | [README](README.md#globs), [droid](droid.md#how-an-entry-matches-and-what-that-costs-a-glob) | `test_codex_skips_globs_and_lists_them_at_the_end`, `test_droid_skips_globs_its_literal_matcher_cannot_express`, `test_droid_reports_each_permission_glob_it_drops_but_not_the_one_it_refuses`, `test_droid_refuses_a_deny_glob_rather_than_rendering_a_weaker_blocklist`, `test_droid_still_drops_allow_and_ask_globs_and_keeps_the_rest` |
 | `glob-block-absent` | no trailing skipped-block when there are no globs | [codex](codex.md#pattern-shape) | `test_codex_omits_the_skipped_block_when_there_are_no_globs` |
 | `claude-colon-star` | Claude needs the `:*` suffix, which matches bare and with-args | [claude](claude-code.md#pattern-shape) | `test_claude_pattern_appends_colon_star_to_a_prefix` |
 | `both-forms` | OpenCode and Pi need both `<entry>` and `<entry> *` | [README](README.md#bare-vs-with-arguments) | `test_opencode_emits_both_bare_and_argument_forms`, `test_pi_emits_both_bare_and_argument_forms` |
@@ -305,6 +305,19 @@ The contract is [git-integration.md](git-integration.md). These cases run in
 | `oc-instructions-document` | global instructions are a document at `~/.config/opencode/AGENTS.md`, not the `instructions` key | [config](config.md#instructions) | `test_opencode_gets_its_own_agents_md`, `test_instructions_stay_out_of_opencode_json` |
 | `oc-instructions-own` | the document is OpenCode's own; before the slice existed OpenCode fell back to Claude's `CLAUDE.md`, which loadout also writes | [config](config.md#instructions) | `test_the_document_is_opencodes_own_not_claudes` |
 
+## Droid
+
+| id | behaviour | source | pinned by |
+|---|---|---|---|
+| `droid-command-lists` | allow, ask, and deny map to allowlist, denylist, and hard blocklist respectively | [droid](droid.md#shell-permissions) | `test_droid_maps_ask_to_denylist_and_deny_to_blocklist` |
+| `droid-settings-residual` | unrelated settings survive and stale owned lists do not | [droid](droid.md#shell-permissions) | `test_droid_preserves_settings_and_does_not_mutate_them` |
+| `droid-runtime-trust` | global sync preserves Droid's live `trustedFolders` timestamps and refuses to take ownership through a settings fragment | [droid](droid.md#shell-permissions) | `test_droid_preserves_its_runtime_trusted_folders`, `test_droid_runtime_trusted_folders_cannot_be_a_settings_source` |
+| `droid-hooks` | the native hook ABI passes through unchanged, accepts both native variable namespaces, and rejects another harness's namespace | [droid](droid.md#hooks) | `test_droid_render_is_the_abi_document_itself`, `test_droid_accepts_both_native_variable_namespaces`, `test_droid_rejects_a_foreign_harness_variable`, `test_droids_namespaces_are_foreign_to_the_other_harnesses` |
+| `droid-hook-events` | the documented event set has nine entries, and an event outside it is reported | [droid](droid.md#hooks) | `test_droid_documented_event_set_has_nine_events`, `test_an_event_outside_droids_set_is_reported_and_one_inside_it_is_not` |
+| `droid-mcp` | MCP definitions use the `mcpServers` wrapper and `${ENV}` bearer interpolation | [droid](droid.md#mcp-servers) | `test_droid_uses_the_mcpservers_wrapper_and_env_bearer_header` |
+| `droid-plugins` | enabled plugins and only their declared marketplaces compose into two settings keys | [droid](droid.md#plugins) | `test_droid_renders_enablement_and_declared_marketplaces`, `test_droid_omits_an_unused_marketplace` |
+| `droid-extraction` | permissions, hooks, plugins, and MCP definitions re-render what they read | [droid](droid.md#extraction-and-migration) | `test_droid_round_trips_the_fragment_unchanged`, `test_droid_re_renders_the_values_it_read`, `test_droid_server_round_trips` |
+
 ## Covered only by whole-document comparison
 
 These have no unit test, because they are not renderer behaviour — they are wiring. This is the
@@ -334,7 +347,10 @@ list the expected-output files exist for, and the reason the comparison stays.
 | `default-no-star-entry` | a bare `*` shell entry is refused; the key is the only spelling | [reference](README.md#the-catch-all-default) | `test_parse_rules_refuses_a_bare_catch_all_entry`, `test_a_glob_entry_is_still_allowed_beside_the_refused_bare_star` |
 | `default-resolved` | `Rules.catch_all` never hands a renderer `None` | — (test is the record) | `test_catch_all_resolves_unstated_to_the_seeded_verdict` |
 | `default-carriers` | the declared carrier set matches what the renderers actually seed | — (test is the record) | `test_only_the_declared_renderers_seed_a_catch_all` |
-| `default-unreached` | a stated default names the targets it does not reach, at sync time | [ADR 0015](../decisions/0015-enablement-is-rendered-installation-is-reported.md) | `test_a_stated_catch_all_names_the_harnesses_it_misses` |
+| `default-unreached` | a stated default names the targets it does not reach, at sync time, at both scopes and for every selected harness rather than a named one | [ADR 0015](../decisions/0015-enablement-is-rendered-installation-is-reported.md) | `test_a_stated_catch_all_names_the_harnesses_it_misses`, `test_a_project_only_repo_reports_nothing_rather_than_failing` |
+| `project-notice-scope` | project-scope hooks and plugins documents are reported like their global counterparts, and a `presets = false` project reports rather than failing | [ADR 0015](../decisions/0015-enablement-is-rendered-installation-is-reported.md) | `test_a_native_project_declaring_droid_reports_rather_than_failing` |
+| `project-key-retirement` | a project slice that contributes nothing retires the keys it owns from a co-owned document instead of leaving them for `preserve_foreign` to read back | [ADR 0001](../decisions/0001-render-never-reads-its-own-output.md) | `test_removing_the_plugins_fragment_retires_the_keys_it_wrote` |
+| `settings-routing` | a `settings` fragment reaches only the slices whose preset declares `takes_settings` | [README](../../README.md) | `test_a_settings_fragment_reaches_only_the_slices_whose_renderer_reads_one` |
 
 ## Extraction
 
@@ -416,7 +432,7 @@ composition untouched, and that a file's *mode* survives a copy.
 | `s-marker-errors` | an unknown harness, an unclosed section and a stray close each fail loudly | `test_an_unknown_harness_in_a_marker_is_refused`, `test_an_unclosed_marker_is_refused`, `test_a_stray_close_marker_is_refused` |
 | `s-frontmatter-override` | a harness block replaces shared values and every block is stripped, including for a harness with none | `test_frontmatter_overrides_replace_the_shared_value`, `test_every_harness_block_is_stripped_even_for_an_unnamed_harness` |
 | `s-frontmatter-untouched` | frontmatter with no harness block passes through unchanged | `test_frontmatter_without_a_harness_block_is_untouched` |
-| `s-artifacts-excluded` | `__pycache__` and friends are not skill content, so stale bytecode is not copied to four harnesses | `test_build_artifacts_are_not_skill_content` |
+| `s-artifacts-excluded` | `__pycache__` and friends are not skill content, so stale bytecode is not copied to five harnesses | `test_build_artifacts_are_not_skill_content` |
 | `s-exec-bit` | a copied file keeps its mode — three `scripts/` files are executable and a mode does not survive a `str` | `test_copy_preserves_the_exec_bit` |
 | `s-copy-bytes` | a copied file reproduces bytes exactly, including non-text | `test_copy_reproduces_bytes_exactly` |
 | `s-copy-symlink` | a copy writes *through* a destination symlink rather than replacing it | `test_copy_writes_through_a_symlink` |
@@ -495,7 +511,7 @@ source rather than generated output. See [templates](templates.md) and
 |---|---|---|
 | `p-one-type` | both scopes describe a slice with one `SliceOutput` type, in two separate tables | `test_the_two_presets_agree_on_which_harnesses_exist`, `test_every_renderer_named_by_the_project_preset_exists` |
 | `p-repo-relative` | a project slice sets `output` and never `destination`, so no machine path can reach a committed repo | `test_a_project_slice_is_written_relative_to_the_repo` |
-| `p-one-order` | one instruction order per repo, not one per harness — three harnesses share `AGENTS.md` | `test_the_two_instruction_documents_are_byte_identical` |
+| `p-one-order` | one instruction order per repo, not one per harness — four harnesses share `AGENTS.md` | `test_the_two_instruction_documents_are_byte_identical` |
 | `p-instruction-order` | declared order reaches the document, below the template block and unsorted | `test_instruction_blocks_appear_in_declared_order_below_the_template` |
 | `p-fixture-unsorted` | the fixture declares its fragments out of sorted order, or the ordering test would pass against a render that sorted | `test_the_project_fixture_declares_instructions_out_of_sorted_order` |
 | `p-no-order-no-file` | a repo declaring no instructions generates neither document, so a permissions-only adopter keeps its own `CLAUDE.md` | `test_a_project_declaring_no_instructions_generates_neither_document` |
@@ -531,13 +547,13 @@ adapters were caught by one of the tests named here.
 
 ## Plugins
 
-Three renderers off one fragment, and each states only the half of a reference it addresses by —
+Four renderers off one fragment, and each states only the half of a reference it addresses by —
 so most rows here are about what a harness *cannot* say. Source for all of them is
 [plugins](plugins.md).
 
 | id | behaviour | pinned by |
 |---|---|---|
-| `pl-addressing` | Claude and Codex both name a plugin `<name>@<marketplace>`, arrived at independently | `test_claude_addresses_a_plugin_as_name_at_marketplace`, `test_codex_renders_enablement_and_the_marketplaces_its_plugins_reach` |
+| `pl-addressing` | Claude, Codex, and Droid name a plugin `<name>@<marketplace>` | `test_claude_addresses_a_plugin_as_name_at_marketplace`, `test_codex_renders_enablement_and_the_marketplaces_its_plugins_reach`, `test_droid_renders_enablement_and_declared_marketplaces` |
 | `pl-codex-quoting` | `@` in a Codex table header is quoted — `[plugins.nono@nolabs-ai]` is not valid TOML | `test_codex_quotes_the_at_sign_in_a_plugin_table_header` |
 | `pl-pi-two-forms` | Pi renders a bare source string, and the object form only when the reference carries filters | `test_pi_renders_a_bare_source_string_when_nothing_filters_it`, `test_pi_renders_the_object_form_only_when_the_reference_carries_filters` |
 | `pl-skip-unaddressable` | a reference the harness cannot name is skipped, not refused — a mixed set is the ordinary case | `test_claude_skips_a_reference_with_no_marketplace`, `test_pi_skips_a_reference_with_no_source`, `test_unaddressable_names_the_key_each_harness_needs` |
@@ -549,7 +565,7 @@ so most rows here are about what a harness *cannot* say. Source for all of them 
 | `pl-pi-runtime` | Pi's preset preserves its live `lastChangelogVersion` cursor through plugin rendering and refuses to take ownership of it through a settings fragment | `test_pi_preserves_its_runtime_changelog_cursor`, `test_pi_runtime_changelog_cursor_cannot_be_a_settings_source` |
 | `pl-opencode-absent` | OpenCode has no enablement list, so naming the slice is an error | `test_opencode_rejects_a_plugins_key` |
 | `pl-not-automatic` | unlike permissions and mcp, an absent `plugins` key means "not managed", not "none" | `test_an_agent_block_naming_no_plugins_renders_none` |
-| `pl-x-projection` | each inverse recovers only the half its harness states | `test_claude_carries_the_marketplace_and_drops_the_source`, `test_codex_carries_the_marketplace_registration_as_well`, `test_pi_carries_the_source_and_its_filters` |
+| `pl-x-projection` | each inverse recovers only the half its harness states | `test_claude_carries_the_marketplace_and_drops_the_source`, `test_codex_carries_the_marketplace_registration_as_well`, `test_droid_carries_enablement_and_marketplace_registration`, `test_pi_carries_the_source_and_its_filters` |
 | `pl-x-off-reported` | a plugin the file marks off has no fragment representation, so it is reported rather than extracted | `test_a_plugin_switched_off_in_the_file_is_reported_not_extracted` |
 | `pl-x-pi-name` | Pi's document carries no name; one is derived, a collision falls back to the source, and **every entry is reported** | `test_a_pi_name_comes_from_the_last_segment_ahead_of_the_pinned_ref`, `test_two_packages_deriving_one_name_keep_both_references`, `test_every_pi_entry_reports_the_name_it_had_to_invent` |
 | `pl-x-pi-object` | `{"source": x}` with nothing filtering it renders as the string form, so the bytes change and it is reported | `test_an_object_entry_that_filters_nothing_is_reported_as_renormalised` |
@@ -560,7 +576,7 @@ and saying so is the point.
 
 ## MCP server definitions
 
-One file (`servers.py`) parses `<source>/mcp.toml` and renders it through four per-harness
+One file (`servers.py`) parses `<source>/mcp.toml` and renders it through five per-harness
 functions plus a project-scope variant for Claude — the same shape as `plugins.py`. Source for
 all of them is [servers](servers.md).
 
@@ -576,7 +592,8 @@ all of them is [servers](servers.md).
 | `srv-all-keys` | every documented key is accepted | — (test is the record) | `test_every_documented_key_is_accepted` |
 | `srv-pi-bearer` | Pi names the auth variable `bearerTokenEnv` | [ADR 0006](../decisions/0006-faithful-ports-reproduce-upstream-quirks.md) | `test_pi_names_the_auth_variable_bearer_token_env` |
 | `srv-stdio-shape` | a stdio server carries `command` and `args` | — (test is the record) | `test_a_stdio_server_carries_command_and_args` |
-| `srv-no-secret` | `auth_env_var`'s value never reaches a rendered file, on any of the four | [ADR 0008](../decisions/0008-generated-files-carry-no-machine-state.md) | `test_no_renderer_emits_a_secret_value` |
+| `srv-no-secret` | `auth_env_var`'s value never reaches a rendered file, on any of the five | [ADR 0008](../decisions/0008-generated-files-carry-no-machine-state.md) | `test_no_renderer_emits_a_secret_value` |
+| `srv-droid-shape` | Droid uses the `mcpServers` wrapper and environment-reference bearer header at both scopes | [droid](droid.md#mcp-servers) | `test_droid_uses_the_mcpservers_wrapper_and_env_bearer_header`, `test_droid_writes_global_mcp_json` |
 | `srv-codex-table` | Codex emits one `[mcp_servers.<name>]` table per server | [servers](servers.md) | `test_codex_emits_a_table_per_server` |
 | `srv-claude-env-always` | Claude's stdio entry always carries `env`, even empty | — (test is the record) | `test_claude_stdio_entry_always_carries_env_even_when_empty` |
 | `srv-codex-env-omit` | Codex omits the `env` table when empty — unlike Claude | [ADR 0006](../decisions/0006-faithful-ports-reproduce-upstream-quirks.md) | `test_codex_omits_the_env_table_when_empty` |
@@ -587,10 +604,10 @@ all of them is [servers](servers.md).
 | `srv-pi-no-project` | Pi gets no project destination — `.mcp.json` already serves it | [servers](servers.md#pi-has-no-project-destination) | `test_pi_gets_no_project_destination` |
 | `srv-codex-no-project` | Codex gets no project destination yet — open question, not a gap | [servers](servers.md#codex-has-no-project-destination-yet) | `test_codex_gets_no_project_destination_yet` |
 | `srv-template-tier` | a template contributes its servers, beneath the project | [templates](templates.md) | `test_a_template_contributes_its_servers` |
-| `srv-claude-staged` | Claude's global entry is staged (`output` set, `destination` unset) | [servers](servers.md#claudes-global-entry-is-staged-not-written) | `test_claude_global_is_staged_rather_than_written` |
+| `srv-claude-global` | Claude's global entry writes the owned `mcpServers` key in `.claude.json` | [servers](servers.md#claudes-global-entry-writes-claudejson) | `test_claude_global_writes_claude_json` |
 | `srv-no-toml-no-output` | no `mcp.toml` anywhere means no servers output, at global scope too | [servers](servers.md#the-input-is-sourcemcptoml) | `test_no_mcp_toml_means_no_servers_output` |
 | `srv-automatic` | `mcp` is automatic, like `permissions` — no per-agent authoring decision | [servers](servers.md#the-input-is-sourcemcptoml) | `test_a_global_source_renders_claude_servers_without_being_named` |
-| `srv-codex-global` | Codex's global destination is `~/.codex/config.toml`, owning `mcp_servers` only | [servers](servers.md#eight-destinations-six-built) | `test_codex_global_writes_config_toml` |
+| `srv-codex-global` | Codex's global destination is `~/.codex/config.toml`, owning `mcp_servers` only | [servers](servers.md#ten-destinations-eight-built) | `test_codex_global_writes_config_toml` |
 | `own-foreign-survives` | applying owned keys leaves comments, another tool's managed block, a multi-line string and `[projects."…"]` untouched | [codex](codex.md#configtoml-is-co-owned) | `test_content_loadout_does_not_generate_survives` |
 | `own-in-place` | an owned block is replaced where it sits, so the harness appending a table of its own is not reported as drift | [codex](codex.md#configtoml-is-co-owned) | `test_the_harness_writing_its_own_table_is_not_drift` |
 | `own-declared-not-derived` | removing every server strips the whole table tree — the case a set derived from what is written cannot express | [0017](../decisions/0017-ownership-may-be-declared-instead-of-derived.md) | `test_removing_every_server_removes_the_whole_table_tree` |
@@ -614,8 +631,8 @@ all of them is [servers](servers.md).
 | `defaults-multiline-scan` | complete string and container boundaries are scanned with linear parsing work | [codex](codex.md#nested-defaults) | `test_statement_scanner_preserves_string_and_container_boundaries`, `test_multiline_values_require_linear_parsing_work` |
 | `defaults-file-newlines` | sync and check preserve unrelated CRLF bytes through addition, update and removal | [codex](codex.md#nested-defaults) | `test_file_backed_sync_preserves_foreign_crlf_bytes` |
 | `defaults-first-array` | initial array insertion and scalar-to-array transitions are immediately idempotent | [codex](codex.md#nested-defaults) | `test_first_array_insertion_is_idempotent`, `test_first_array_sync_is_immediately_clean` |
-| `srv-pi-global` | Pi's global destination is its own `mcp.json`, written directly | [servers](servers.md#eight-destinations-six-built) | `test_pi_global_writes_its_own_mcp_json` |
-| `srv-opencode-compose` | OpenCode's global `mcp` key composes with `permission` in the same `opencode.json`, the same shape project scope already proves | [servers](servers.md#eight-destinations-six-built) | `test_opencode_global_composes_the_mcp_key_with_permission` |
+| `srv-pi-global` | Pi's global destination is its own `mcp.json`, written directly | [servers](servers.md#ten-destinations-eight-built) | `test_pi_global_writes_its_own_mcp_json` |
+| `srv-opencode-compose` | OpenCode's global `mcp` key composes with `permission` in the same `opencode.json`, the same shape project scope already proves | [servers](servers.md#ten-destinations-eight-built) | `test_opencode_global_composes_the_mcp_key_with_permission` |
 | `srv-unpermitted` | a server defined but named by no `[mcp]` policy entry is reported | [servers](servers.md#a-server-defined-but-not-permitted-is-reported) | `test_a_defined_server_with_no_policy_is_reported` |
 | `srv-wildcard-silent` | a `server/*` policy entry silences the notice | [servers](servers.md#a-server-defined-but-not-permitted-is-reported) | `test_a_server_covered_by_a_wildcard_is_silent` |
 | `srv-one-tool-silent` | naming even one tool silences the notice — it is not a completeness check | [servers](servers.md#a-server-defined-but-not-permitted-is-reported) | `test_a_server_covered_by_one_tool_is_silent` |
@@ -639,9 +656,9 @@ all of them is [servers](servers.md).
 | `srv-x-opencode-missing` | a missing `mcp` key extracts empty rather than failing | `test_a_missing_mcp_key_extracts_empty_rather_than_failing` |
 | `srv-x-opencode-unrecognised` | an unrecognised OpenCode server type is reported | `test_an_unrecognised_opencode_server_type_is_reported` |
 | `srv-x-opencode-no-alias` | OpenCode extraction does not alias the document | `test_opencode_extraction_does_not_alias_the_document` |
-| `srv-x-claude-global-http` | the staged global document's http server round-trips | `test_claude_global_http_server_round_trips` |
-| `srv-x-claude-global-stdio` | the staged global document's stdio server round-trips | `test_claude_global_stdio_server_round_trips` |
-| `srv-x-claude-global-flat` | the staged document has no `mcpServers` wrapper, unlike `.mcp.json` | `test_claude_global_document_has_no_mcpservers_wrapper` |
+| `srv-x-claude-global-http` | the global `mcpServers` value's http server round-trips | `test_claude_global_http_server_round_trips` |
+| `srv-x-claude-global-stdio` | the global `mcpServers` value's stdio server round-trips | `test_claude_global_stdio_server_round_trips` |
+| `srv-x-claude-global-owned` | the global document wraps `mcpServers` and leaves adjacent runtime keys unowned | `test_claude_global_wraps_in_mcpservers_and_owns_only_that_key` |
 | `srv-x-pi-http` | a Pi http server round-trips | `test_pi_http_server_round_trips` |
 | `srv-x-pi-stdio` | a Pi stdio server round-trips | `test_pi_stdio_server_round_trips` |
 | `srv-x-pi-unowned` | a key Pi's `mcp.json` doesn't own is reported | `test_an_unowned_key_in_pis_mcp_json_is_reported` |

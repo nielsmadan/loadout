@@ -110,13 +110,13 @@ def test_capability_matrix_pins_every_scope_mapping() -> None:
         ),
         "skills": (
             "unsupported",
-            "supported for `claude`, `opencode`, `pi` via `loadout/skills/<name>/`; Codex unsupported",
+            "supported for `claude`, `droid`, `opencode`, `pi` via `loadout/skills/<name>/`; Codex unsupported",
             "`skills/<name>/` trees from selected sources",
         ),
         "settings": (
             "unsupported",
             "unsupported",
-            "supported for `claude`, `opencode` via `settings/<name>.json` fragments; Codex uses `defaults`; Pi unsupported",
+            "supported for `claude`, `droid`, `opencode` via `settings/<name>.json` fragments; Codex uses `defaults`; Pi unsupported",
         ),
         "defaults": (
             "unsupported",
@@ -125,18 +125,18 @@ def test_capability_matrix_pins_every_scope_mapping() -> None:
         ),
         "hooks": (
             "unsupported",
-            "unsupported",
+            "Droid via `loadout/hooks.json`",
             "`hooks/<name>.json` fragments selected by agents offering hooks",
         ),
         "plugins": (
             "unsupported",
-            "unsupported",
+            "Droid via `loadout/plugins.json`",
             "`plugins/<name>.json` fragments selected by agents offering plugins",
         ),
         "module-config": (
             "unsupported",
             "unsupported",
-            "supported for `claude`, `opencode`, `pi` via "
+            "supported for `claude`, `droid`, `opencode`, `pi` via "
             "`module-config/<agent>/<relative path>`; Codex unsupported",
         ),
         "templates": (
@@ -176,7 +176,7 @@ def test_settings_capability_names_only_agents_whose_render_preserves_settings(
     documented = {
         agent for agent in GLOBAL_PRESET if f"`{agent}`" in _global_capability("settings")
     }
-    assert actual == {"claude", "opencode"}
+    assert actual == {"claude", "droid", "opencode"}
     assert documented == actual
 
 
@@ -185,5 +185,5 @@ def test_project_skill_capability_names_only_agents_with_a_destination() -> None
     documented = {
         agent for agent in PROJECT_PRESET if f"`{agent}`" in _capability_matrix()["skills"][1]
     }
-    assert actual == {"claude", "opencode", "pi"}
+    assert actual == {"claude", "droid", "opencode", "pi"}
     assert documented == actual

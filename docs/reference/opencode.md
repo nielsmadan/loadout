@@ -67,7 +67,7 @@ output count across the repo is 12 distinct paths, not 13.
 verbatim — currently `skill`, `webfetch`, `websearch`, `codesearch`.
 
 `opencode/AGENTS.md` → the global instructions document. It is a document at a path, like the
-other three harnesses — **not** the `instructions` key in `opencode.json`, which is a separate
+other four harnesses — **not** the `instructions` key in `opencode.json`, which is a separate
 include feature for rule files someone else already wrote (globs and remote URLs among them).
 Loadout leaves that key untouched, so nothing is included twice. Upstream calls the document
 "global rules … applied across all opencode sessions".

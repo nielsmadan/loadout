@@ -11,14 +11,20 @@ import tomlkit
 
 from ..adapters import render_opencode_adapter, render_pi_adapter
 from ..errors import LoadoutError
-from ..hooks import render_claude_hooks, render_codex_hooks
-from ..plugins import render_claude_plugins, render_codex_plugins, render_pi_plugins
+from ..hooks import render_claude_hooks, render_codex_hooks, render_droid_hooks
+from ..plugins import (
+    render_claude_plugins,
+    render_codex_plugins,
+    render_droid_plugins,
+    render_pi_plugins,
+)
 from ..servers import (
     Server,
     is_http,
     render_claude_global_servers,
     render_claude_project_servers,
     render_codex_servers,
+    render_droid_servers,
     render_opencode_servers,
     render_pi_servers,
 )
@@ -70,6 +76,20 @@ class ValueSpec:
     """
 
     fn: Callable[[dict[str, Any]], Any]
+
+
+@dataclass(frozen=True)
+class ValuesSpec:
+    """A renderer that produces several top-level values from one slice.
+
+    `owns` names them. A single-key renderer gets the same information from the
+    preset's `owned_key`; without it here, a composing loop cannot tell which keys
+    of a co-owned document this slice is answerable for — and a slice that
+    contributes nothing has to retire its keys, not merely skip writing them.
+    """
+
+    fn: Callable[[dict[str, Any]], dict[str, Any]]
+    owns: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -476,6 +496,40 @@ def render_claude(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------
+# droid — settings.json: replace the three command-policy lists and preserve
+# every other key. Droid treats metacharacters literally in these lists, so a
+# portable glob cannot be represented and is reported rather than emitted.
+# --------------------------------------------------------------------------
+
+
+def render_droid(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
+    # A dropped glob is safe in two of the three lists and not in the third.
+    # Dropping from `allow` withholds a pre-approval — fails closed. Dropping from
+    # `ask` leaves the command to the session autonomy level, which may still
+    # prompt. Dropping from `deny` removes a block that has no fallback: Droid's
+    # blocklist is the one list with "no prompt and no way to approve", so the
+    # rule simply ceases to exist and the rendered policy is wider than the source
+    # asked for. Refusing is the only reading of that which cannot mislead.
+    refused = [entry for entry in rules.deny if is_glob(entry)]
+    if refused:
+        rewritten = ", ".join(repr(entry.rstrip("* ").rstrip()) for entry in refused)
+        raise LoadoutError(
+            f"droid: cannot render deny {', '.join(repr(e) for e in refused)} — Droid matches "
+            f"list entries literally, so a trailing '*' would match an asterisk rather than "
+            f"acting as a wildcard, and dropping the rule would leave the blocklist wider than "
+            f"the source asks for. Write the bare prefix instead ({rewritten}): Droid matches an "
+            f"entry as a whole-word run anywhere in the command, so it already covers the same "
+            f"commands, and every other harness reads a bare entry as 'this command with any "
+            f"arguments'. See docs/reference/droid.md#shell-permissions."
+        )
+    settings = copy.deepcopy(base)
+    settings["commandAllowlist"] = [entry for entry in rules.allow if not is_glob(entry)]
+    settings["commandDenylist"] = [entry for entry in rules.ask if not is_glob(entry)]
+    settings["commandBlocklist"] = list(rules.deny)
+    return settings
+
+
+# --------------------------------------------------------------------------
 # opencode — opencode.json: replace the `permission` key, preserve model /
 # provider from the base. Last-match-wins, so deny is emitted after allow.
 # A plain prefix emits BOTH `<entry>` and `<entry> *`, because `pwd *` does
@@ -582,6 +636,7 @@ RENDERERS: dict[
     JsonSpec
     | TextSpec
     | ValueSpec
+    | ValuesSpec
     | DocumentTextSpec
     | DocumentJsonSpec
     | MergedTomlSpec
@@ -590,15 +645,20 @@ RENDERERS: dict[
     "claude": JsonSpec(render_claude),
     "claude-hooks": ValueSpec(render_claude_hooks),
     "codex-hooks": ValueSpec(render_codex_hooks),
+    "droid-hooks": ValueSpec(render_droid_hooks),
     "opencode-hooks": DocumentTextSpec(render_opencode_adapter),
     "pi-hooks": DocumentTextSpec(render_pi_adapter),
     "claude-plugins": ValueSpec(render_claude_plugins),
+    "droid-plugins": ValuesSpec(
+        render_droid_plugins, owns=frozenset({"enabledPlugins", "extraKnownMarketplaces"})
+    ),
     "codex-plugins": MergedTomlSpec(
         render_codex_plugins_merged, frozenset({"plugins", "marketplaces"})
     ),
     "pi-plugins": ValueSpec(render_pi_plugins),
     "claude-mcp-permissions": JsonSpec(render_claude_mcp, ensure_ascii=True, owns_whole_file=True),
     "codex": TextSpec(render_codex),
+    "droid": JsonSpec(render_droid),
     "codex-mcp-permissions": TextSpec(render_codex_mcp),
     "pi": JsonSpec(render_pi, owns_whole_file=True),
     "opencode": JsonSpec(render_opencode),
@@ -606,6 +666,7 @@ RENDERERS: dict[
     "pi-project": JsonSpec(render_pi_project, owns_whole_file=True),
     "claude-project": JsonSpec(render_claude_project),
     "claude-project-servers": DocumentJsonSpec(render_claude_project_servers),
+    "droid-servers": DocumentJsonSpec(render_droid_servers),
     "opencode-servers": ValueSpec(render_opencode_servers),
     "claude-servers": MergedJsonSpec(render_claude_global_servers, frozenset({"mcpServers"})),
     "codex-servers": DocumentTextSpec(render_codex_servers),

@@ -143,11 +143,12 @@ deny = ["docs/delete"]
 - `allow`, `ask`, and `deny` are lists; omitted lists are empty.
 - The strictest decision wins when the same entry appears in several tiers.
 - An omitted shell default casts no vote in composition. An explicitly stated default does.
-- `[shell] default` is rendered for OpenCode and Pi. Other agents' defaults use native settings.
+- `[shell] default` is rendered for OpenCode and Pi. Claude and Codex use native settings;
+  Droid uses session autonomy.
 - A bare `"*"` shell entry is invalid. Use the `default` key for a catch-all.
 
 Trailing shell globs can be represented by Claude, OpenCode, and Pi. Loadout skips them for
-Codex's literal prefix rules. Different matching behavior remains visible in the
+Codex's literal prefix rules and Droid's literal permission lists. Different matching behavior remains visible in the
 [harness reference](harnesses.md#permission-portability).
 
 ### Harness-specific entries

@@ -2,11 +2,16 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
+from loadout.errors import LoadoutError
 from loadout.hooks import (
     CLAUDE_EVENTS,
     CODEX_EVENTS,
+    DROID_EVENTS,
     render_claude_hooks,
     render_codex_hooks,
+    render_droid_hooks,
     unrecognised_events,
 )
 
@@ -33,6 +38,41 @@ def test_codex_wraps_the_document_under_a_hooks_key() -> None:
     """Codex's file is `{"hooks": {...}}`; Claude's is the map itself."""
     document = {"PostToolUse": [entry("notify.sh")]}
     assert render_codex_hooks(document) == document
+
+
+def test_droid_render_is_the_abi_document_itself() -> None:
+    document = {"PostToolUse": [entry("notify.sh")]}
+    assert render_droid_hooks(document) == document
+
+
+def test_droid_accepts_both_native_variable_namespaces() -> None:
+    document = {
+        "PreToolUse": [
+            entry('"$FACTORY_PROJECT_DIR"/guard.sh'),
+            entry('"$DROID_PROJECT_DIR"/guard.sh'),
+        ]
+    }
+    assert render_droid_hooks(document) == document
+
+
+def test_droid_rejects_a_foreign_harness_variable() -> None:
+    document = {"PreToolUse": [entry('"$CLAUDE_PROJECT_DIR"/guard.sh')]}
+    with pytest.raises(LoadoutError, match="droid does not define"):
+        render_droid_hooks(document)
+
+
+def test_droid_documented_event_set_has_nine_events() -> None:
+    """The count restates the constant, so it catches a deletion and nothing else.
+    What the set is *for* is the test below it."""
+    assert len(DROID_EVENTS) == 9
+    assert {"PreToolUse", "SessionStart", "SessionEnd"} <= DROID_EVENTS
+
+
+def test_an_event_outside_droids_set_is_reported_and_one_inside_it_is_not() -> None:
+    """The behaviour the event names exist to drive, which the count above cannot
+    reach: renaming an entry keeps `len` at nine and breaks only this."""
+    document = {"WorktreeCreate": [entry("a.sh")], "PreCompact": [entry("b.sh")]}
+    assert unrecognised_events(document, DROID_EVENTS) == ("WorktreeCreate",)
 
 
 def test_event_order_is_preserved_for_both() -> None:

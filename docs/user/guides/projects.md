@@ -65,7 +65,7 @@ loadout sync
 ```
 
 All selected agents use one project instruction order. Claude receives `CLAUDE.md`; Codex,
-OpenCode, and Pi share `AGENTS.md`.
+Factory Droid, OpenCode, and Pi share `AGENTS.md`.
 
 ## Add personal permissions
 

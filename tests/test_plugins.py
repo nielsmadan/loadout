@@ -18,6 +18,7 @@ from loadout.plugins import (
     plugins,
     render_claude_plugins,
     render_codex_plugins,
+    render_droid_plugins,
     render_pi_plugins,
     unaddressable,
     unregistered_marketplaces,
@@ -77,6 +78,28 @@ def test_claude_skips_a_reference_with_no_marketplace() -> None:
 
 def test_claude_renders_nothing_from_an_empty_fragment() -> None:
     assert render_claude_plugins({}) == {}
+
+
+# --- droid ------------------------------------------------------------------
+
+
+def test_droid_renders_enablement_and_declared_marketplaces() -> None:
+    rendered = render_droid_plugins(FRAGMENT)
+    assert rendered["enabledPlugins"] == render_claude_plugins(FRAGMENT)
+    assert rendered["extraKnownMarketplaces"] == {
+        "nolabs-ai": {"source_type": "local", "source": "/marketplaces/nolabs-ai"}
+    }
+
+
+def test_droid_omits_an_unused_marketplace() -> None:
+    fragment = {
+        "marketplaces": {"unused": {"source": {"source": "github", "repo": "x/y"}}},
+        "plugins": {"x": {"source": "npm:x"}},
+    }
+    assert render_droid_plugins(fragment) == {
+        "enabledPlugins": {},
+        "extraKnownMarketplaces": {},
+    }
 
 
 # --- pi ----------------------------------------------------------------------
@@ -174,6 +197,7 @@ def test_the_codex_banner_states_a_consequence_rather_than_a_prohibition() -> No
 def test_unaddressable_names_the_key_each_harness_needs() -> None:
     assert unaddressable(FRAGMENT, "claude") == ("source-only: no marketplace",)
     assert unaddressable(FRAGMENT, "codex") == ("source-only: no marketplace",)
+    assert unaddressable(FRAGMENT, "droid") == ("source-only: no marketplace",)
     assert unaddressable(FRAGMENT, "pi") == ("market-only: no source",)
 
 
@@ -231,9 +255,10 @@ def test_both_sections_are_optional() -> None:
 
 def test_a_renderer_does_not_mutate_the_fragment_it_was_handed() -> None:
     """ADR 0001's other half: a renderer is pure, and the fragment is composed
-    once and handed to three of them."""
+    once and handed to four of them."""
     before = repr(FRAGMENT)
     render_claude_plugins(FRAGMENT)
     render_codex_plugins(FRAGMENT)
+    render_droid_plugins(FRAGMENT)
     render_pi_plugins(FRAGMENT)
     assert repr(FRAGMENT) == before

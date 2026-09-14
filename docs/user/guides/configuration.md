@@ -46,7 +46,8 @@ The project version is `loadout/permissions.toml`. Personal project rules go in
 `loadout/permissions.local.toml`.
 
 `[shell] default = "ask"` specifies the fallback decision for OpenCode and Pi. Claude's
-default mode is a native setting; Codex's approval policy is a separate setting.
+default mode is a native setting; Codex's approval policy is separate; Droid uses session
+autonomy.
 A bare `"*"` permission entry is rejected. See the
 [permissions syntax](../reference/configuration.md#permission-rules).
 
@@ -77,7 +78,8 @@ Use the OpenCode-specific workflow here.
 ```
 
 Keep supporting files in the same tree. They travel with the skill. Project skills are currently
-rendered for Claude, OpenCode, and Pi; the Loadout project preset has no Codex skill output.
+rendered for Claude, Factory Droid, OpenCode, and Pi; the Loadout project preset has no Codex
+skill output.
 
 For the bundled configuration skill, see [global setup](global.md#configure-through-your-agent).
 
@@ -101,8 +103,8 @@ args = ["--stdio"]
 Use your actual server URL or command. `auth_env_var` is the environment variable's name,
 not the secret value.
 
-At project scope, the file is `loadout/mcp.toml`. Claude receives `.mcp.json` and OpenCode
-receives its `mcp` configuration key. Pi's MCP adapter can read the shared `.mcp.json`
+At project scope, the file is `loadout/mcp.toml`. Claude receives `.mcp.json`, Droid receives
+`.factory/mcp.json`, and OpenCode receives its `mcp` configuration key. Pi's MCP adapter can read the shared `.mcp.json`
 when Claude is also selected. A Pi-only project does not get a separate MCP output.
 
 At global scope, Loadout writes the selected harness's server configuration, including Claude's
@@ -127,8 +129,8 @@ Select the fragment:
 settings = "claude"
 ```
 
-Claude and OpenCode carry native settings alongside rendered slices. Codex top-level settings
-use a separate, explicitly selected `defaults` slice:
+Claude, Droid, and OpenCode carry native settings alongside rendered slices. Codex top-level
+settings use a separate, explicitly selected `defaults` slice:
 
 ```json title="defaults/codex.json"
 {
@@ -174,7 +176,7 @@ A fragment uses event names and hook definitions:
 }
 ```
 
-Claude and Codex receive native hook configuration. OpenCode and Pi receive generated adapters
+Claude, Codex, and Droid receive native hook configuration. OpenCode and Pi receive generated adapters
 for supported command hooks. Event mapping and payload differences matter, so test hooks in
 each agent you enable. Hook scripts can travel through module configuration.
 
@@ -204,7 +206,7 @@ plugins = "tools"
 plugins = "tools"
 ```
 
-Claude and Codex render marketplace-based enablement. Pi renders package references.
+Claude, Codex, and Droid render marketplace-based enablement. Pi renders package references.
 Installing packages and registering Claude marketplaces remain part of your harness setup.
 
 OpenCode plugin files go through module configuration rather than this enablement slice.
@@ -223,5 +225,5 @@ module-config/
 Loadout copies it beneath the corresponding global agent directory, preserving bytes and
 executable permissions. The consuming module determines the filename.
 
-The slice is automatic for Claude, OpenCode, and Pi; opt out with `module-config = false`.
+The slice is automatic for Claude, Droid, OpenCode, and Pi; opt out with `module-config = false`.
 Files must not collide with another slice's output.

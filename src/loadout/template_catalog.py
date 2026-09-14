@@ -123,6 +123,8 @@ def contribution_paths(
         "instructions": "instructions.md",
         "permissions": "permissions.toml",
         "mcp": "mcp.toml",
+        "hooks": "hooks.json",
+        "plugins": "plugins.json",
         "skills": "skills",
     }
     for template in templates:

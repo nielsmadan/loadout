@@ -37,6 +37,7 @@ from .project import load_project_config
 
 RUNTIME_KEYS = {
     "codex": frozenset({"projects", "trust"}),
+    "droid": frozenset({"trustedFolders"}),
     "pi": frozenset({"lastChangelogVersion"}),
 }
 OWNERS: dict[str, dict[str, tuple[str, ...]]] = {
@@ -46,6 +47,10 @@ OWNERS: dict[str, dict[str, tuple[str, ...]]] = {
         "plugins": ("enabledPlugins", "extraKnownMarketplaces"),
     },
     "codex": {"mcp": ("mcp_servers",), "plugins": ("plugins", "marketplaces")},
+    "droid": {
+        "permissions": ("commandAllowlist", "commandDenylist", "commandBlocklist"),
+        "plugins": ("enabledPlugins", "extraKnownMarketplaces"),
+    },
     "opencode": {"permissions": ("permission",), "mcp": ("mcp",), "plugins": ("plugin",)},
     "pi": {"plugins": ("packages",)},
 }
@@ -128,6 +133,7 @@ def _partial(candidate: Candidate) -> bool:
     return (
         (candidate.agents[0] == "claude" and candidate.document_name == ".claude.json")
         or (candidate.agents[0] == "codex" and candidate.document_name == "config.toml")
+        or (candidate.agents[0] == "droid" and candidate.document_name == "settings.json")
         or (candidate.agents[0] == "pi" and candidate.document_name == "settings.json")
     )
 
@@ -671,6 +677,8 @@ def _permission_renderer(candidate: Candidate, project: bool) -> str | None:
         return "claude-project" if project else "claude"
     if agent == "codex" and candidate.path.suffix == ".rules":
         return "codex-project" if project else "codex"
+    if agent == "droid":
+        return "droid"
     if agent == "pi":
         return "pi-project" if project else "pi"
     return "opencode" if agent == "opencode" else None

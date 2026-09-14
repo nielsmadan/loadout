@@ -15,6 +15,9 @@ EXPECTED = Path(__file__).parent / "fixtures" / "expected" / "project"
 OUTPUTS = (
     ".claude/settings.json",
     ".codex/rules/permissions.rules",
+    ".factory/settings.json",
+    ".factory/hooks.json",
+    ".factory/mcp.json",
     "opencode.json",
     ".pi/extensions/pi-permission-system/config.json",
     ".claude/mcp-permissions.json",
@@ -26,7 +29,12 @@ OUTPUTS = (
 # Every harness that has a skills slice gets its own directory, because
 # `render_skill` varies its output by harness. Codex has none — verified negative,
 # see reference/config.md.
-SKILL_DIRS = {"claude": ".claude/skills", "opencode": ".opencode/skills", "pi": ".pi/skills"}
+SKILL_DIRS = {
+    "claude": ".claude/skills",
+    "droid": ".factory/skills",
+    "opencode": ".opencode/skills",
+    "pi": ".pi/skills",
+}
 SKILL_FILES = ("from-template/SKILL.md", "probe/SKILL.md", "probe/reference.md")
 
 
@@ -59,7 +67,7 @@ def test_only_enabled_harnesses_are_rendered(project: Path) -> None:
     config = project / "loadout" / "config.toml"
     config.write_text(
         config.read_text(encoding="utf-8").replace(
-            '"claude", "codex", "opencode", "pi"', '"claude"'
+            '"claude", "codex", "droid", "opencode", "pi"', '"claude"'
         ),
         encoding="utf-8",
     )
@@ -351,7 +359,7 @@ def _fragment(bare_project: Path, name: str, body: str) -> None:
 
 
 def test_the_two_instruction_documents_are_byte_identical(project: Path) -> None:
-    """Codex, OpenCode and Pi share one repo-root AGENTS.md, so a per-agent order
+    """Codex, Droid, OpenCode and Pi share one repo-root AGENTS.md, so a per-agent order
     could not be honoured. One order is what makes the two documents equal by
     construction rather than by luck."""
     rendered = render_project(project)
@@ -379,6 +387,9 @@ def test_a_project_declaring_no_instructions_generates_neither_document(
         ".claude/mcp-permissions.json",
         ".mcp.json",
         ".codex/rules/permissions.rules",
+        ".factory/settings.json",
+        ".factory/hooks.json",
+        ".factory/mcp.json",
         "opencode.json",
         ".pi/extensions/pi-permission-system/config.json",
     } | {
@@ -423,7 +434,7 @@ def test_codex_gets_no_project_skills(project: Path) -> None:
 def test_each_harness_gets_its_own_flavour_of_a_skill(project: Path) -> None:
     """The reason skills cannot share a directory the way instructions do:
     `render_skill` takes a harness and varies its output by it. Asserting all
-    three differ from each other — and that each carries its own marker — is what
+    four differ from each other — and that each carries its own marker — is what
     a pairwise-inequality check alone would not give."""
     rendered = render_project(project)
     bodies = {
@@ -431,9 +442,10 @@ def test_each_harness_gets_its_own_flavour_of_a_skill(project: Path) -> None:
         for harness, directory in SKILL_DIRS.items()
     }
     assert "Claude-only" in bodies["claude"]
+    assert "Droid-only" in bodies["droid"]
     assert "OpenCode-only" in bodies["opencode"]
     assert "Pi-only" in bodies["pi"]
-    assert len({*bodies.values()}) == 3
+    assert len({*bodies.values()}) == 4
 
 
 def test_a_project_skill_beats_a_template_skill_of_the_same_name(project: Path) -> None:
@@ -498,3 +510,23 @@ def test_the_shared_instruction_document_is_still_allowed(project: Path) -> None
     designed case, and claiming it would have broken the render outright."""
     rendered = render_project(project)
     assert rendered[project / "AGENTS.md"] == rendered[project / "CLAUDE.md"]
+
+
+def test_removing_the_plugins_fragment_retires_the_keys_it_wrote(project: Path) -> None:
+    """The co-owner of `.factory/settings.json` runs with `preserve_foreign`, so a
+    skipped plugins slice used to leave its keys behind for that read to pick up
+    as foreign — enablement that no source asked for, surviving every later render
+    (ADR 0001). The foreign key must still survive, and the three command lists
+    must keep their positions: retiring is not the same as rebuilding the file.
+    """
+    path = project / ".factory" / "settings.json"
+    before = json.loads(render_project(project)[path])
+    assert before["enabledPlugins"], "the fixture must enable a plugin for this to test removal"
+
+    (project / "loadout" / "plugins.json").unlink()
+    after = json.loads(render_project(project)[path])
+
+    assert "enabledPlugins" not in after
+    assert "extraKnownMarketplaces" not in after
+    assert after["model"] == before["model"]
+    assert list(after) == ["model", "commandAllowlist", "commandDenylist", "commandBlocklist"]

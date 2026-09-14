@@ -157,6 +157,15 @@ def test_pi_global_writes_its_own_mcp_json(tmp_path: Path) -> None:
     assert document == {"mcpServers": {"jina": {"url": "https://mcp.jina.ai/v1"}}}
 
 
+def test_droid_writes_global_mcp_json(tmp_path: Path) -> None:
+    root = build_global(tmp_path, "\n[droid]\npermissions = false\n")
+    rendered = render_global(root)
+    written = next(p for p in rendered if str(p).endswith("/.factory/mcp.json"))
+    assert json.loads(rendered[written]) == {
+        "mcpServers": {"jina": {"type": "http", "url": "https://mcp.jina.ai/v1"}}
+    }
+
+
 def test_opencode_global_composes_the_mcp_key_with_permission(tmp_path: Path) -> None:
     """opencode-servers is a ValueSpec sharing opencode.json with the
     permissions slice — the same composing shape project scope already proves,

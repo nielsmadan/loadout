@@ -12,7 +12,7 @@ from .errors import LoadoutError
 PROJECT_DIR = "loadout"
 PROJECT_CONFIG_NAME = "config.toml"
 
-KNOWN_HARNESSES = frozenset({"claude", "codex", "opencode", "pi"})
+KNOWN_HARNESSES = frozenset({"claude", "codex", "droid", "opencode", "pi"})
 
 
 @dataclass(frozen=True)
@@ -28,9 +28,9 @@ class ProjectConfig:
     the dataclass is frozen and a mapping is not hashable.
 
     `instructions` is **one order for the whole project, not one per harness**,
-    and that is forced by the harnesses rather than chosen: Codex, OpenCode and
-    Pi all read a repo-root `AGENTS.md` (reference/config.md), so one path would
-    have to hold three orders. With a single order the two generated documents
+    and that is forced by the harnesses rather than chosen: Codex, Droid,
+    OpenCode and Pi all read a repo-root `AGENTS.md` (reference/config.md), so
+    one path would have to hold four orders. With a single order the two generated documents
     are byte-identical by construction — `composition.render` takes no agent
     argument — rather than by an assertion that could fail open.
     """
@@ -200,6 +200,25 @@ PROJECT_PRESET: dict[str, dict[str, SliceOutput]] = {
         # No mcp entry either: whether [mcp_servers.*] survives Codex's
         # project-config filter is unverified, and its own warning says
         # unsupported project-local keys are ignored. See docs/reference/servers.md.
+    },
+    "droid": {
+        "permissions": SliceOutput(
+            renderer="droid", output=".factory/settings.json", preserve_foreign=True
+        ),
+        "hooks": SliceOutput(
+            renderer="droid-hooks",
+            output=".factory/hooks.json",
+            source_slice="hooks",
+            owned_key="hooks",
+        ),
+        "plugins": SliceOutput(
+            renderer="droid-plugins",
+            output=".factory/settings.json",
+            source_slice="plugins",
+        ),
+        "mcp": SliceOutput(renderer="droid-servers", output=".factory/mcp.json"),
+        "instructions": SliceOutput(output="AGENTS.md"),
+        "skills": SliceOutput(output=".factory/skills"),
     },
     "opencode": {
         "permissions": SliceOutput(

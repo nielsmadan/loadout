@@ -52,6 +52,7 @@ from .notices import (
     opencode_skills_race,
     unpermitted_servers,
     unreached_catch_all,
+    unsupported_shell_globs,
 )
 from .permissions.merge import merge_rules
 from .permissions.renderers import (
@@ -63,6 +64,7 @@ from .permissions.renderers import (
     MergedTomlSpec,
     TextSpec,
     ValueSpec,
+    ValuesSpec,
 )
 from .permissions.rules import EMPTY_RULES, Rules, parse_rules
 from .plugins import marketplaces
@@ -87,6 +89,7 @@ from .toml_paths import overlapping_keys
 PERMISSIONS_SOURCE = ("permissions.toml",)
 PROJECT_SOURCE = "permissions.toml"
 PROJECT_LOCAL_SOURCE = "permissions.local.toml"
+PROJECT_DOCUMENTS = {"hooks": "hooks.json", "plugins": "plugins.json"}
 __all__ = ["Copied", "Merged", "Output"]
 
 
@@ -167,6 +170,7 @@ def _resolve_renderer(
     JsonSpec
     | TextSpec
     | ValueSpec
+    | ValuesSpec
     | DocumentTextSpec
     | DocumentJsonSpec
     | MergedTomlSpec
@@ -330,6 +334,29 @@ def _compose_merged(
     return Merged(frozenset(owned), concat_documents(tuple(fragments)))
 
 
+def _apply_value_renderer(
+    spec: ValueSpec | ValuesSpec,
+    target: PermissionTarget,
+    content: dict[str, Any],
+    document: dict[str, Any],
+    label: str,
+) -> None:
+    if isinstance(spec, ValueSpec):
+        if target.owned_key is None:
+            raise LoadoutError(
+                f"{label}: its renderer produces one key's value, but the preset "
+                f"names no owned_key for it to be written under"
+            )
+        document[target.owned_key] = spec.fn(content)
+        return
+    if target.owned_key is not None:
+        raise LoadoutError(
+            f"{label}: its renderer produces several keys, but the preset "
+            f"names owned_key {target.owned_key!r}"
+        )
+    document.update(spec.fn(content))
+
+
 def _attach_records(
     document: str | Merged,
     contributors: list[tuple[PermissionTarget, dict[str, Any], dict[str, Any]]],
@@ -430,13 +457,8 @@ def compose_permission_document(
         owned_key = target.owned_key
         preserve += target.preserve
 
-        if isinstance(target_spec, ValueSpec):
-            if owned_key is None:
-                raise LoadoutError(
-                    f"{label}: its renderer produces one key's value, but the preset "
-                    f"names no owned_key for it to be written under"
-                )
-            document[owned_key] = target_spec.fn(content)
+        if isinstance(target_spec, ValueSpec | ValuesSpec):
+            _apply_value_renderer(target_spec, target, content, document, label)
             continue
         if owned_key is not None:
             raise LoadoutError(
@@ -450,6 +472,7 @@ def compose_permission_document(
             raise LoadoutError(
                 f"{label}: a whole-file renderer cannot compose with another slice writing {path}"
             )
+        assert isinstance(target_spec, JsonSpec)
         if len(contributors) > 1 and target_spec.owns_whole_file:
             raise LoadoutError(
                 f"{label}: its renderer builds {path} from scratch, so that file has one "
@@ -615,8 +638,8 @@ def _global_skill_race(manifest: Manifest, environ: Mapping[str, str]) -> tuple[
     )
 
 
-def _unreached_catch_all(manifest: Manifest, profile: str) -> tuple[Notice, ...]:
-    """Every selected target a stated `[shell] default` does not reach.
+def _permission_notices(manifest: Manifest, profile: str) -> tuple[Notice, ...]:
+    """Every selected target whose permission renderer carries less than the source.
 
     Reads the same tiers `render_global` merges, so the verdict named is the one
     that actually rendered. Silent when no source states the key — a notice that
@@ -629,9 +652,7 @@ def _unreached_catch_all(manifest: Manifest, profile: str) -> tuple[Notice, ...]
         parse_rules(source.path.joinpath(*PERMISSIONS_SOURCE))
         for source in permission_sources(manifest)
     ]
-    verdict = merge_rules(*tiers).default
-    if verdict is None:
-        return ()
+    rules = merge_rules(*tiers)
     found: list[Notice] = []
     for target in selected:
         # `rules = []` deselects the whole source, not this key in particular —
@@ -640,7 +661,10 @@ def _unreached_catch_all(manifest: Manifest, profile: str) -> tuple[Notice, ...]
         # labelled by the renderer it declared.
         if not target.select_all:
             continue
-        found.extend(unreached_catch_all(target.agent or target.renderer, target.renderer, verdict))
+        agent = target.agent or target.renderer
+        if rules.default is not None:
+            found.extend(unreached_catch_all(agent, target.renderer, rules.default))
+        found.extend(unsupported_shell_globs(agent, target.renderer, rules))
     return tuple(dict.fromkeys(found))
 
 
@@ -682,7 +706,7 @@ def collect_notices(root: Path, profile: str = "default") -> tuple[Notice, ...]:
         return tuple(found)
     manifest = load_profile(root, profile)
     found.extend(_global_skill_race(manifest, os.environ))
-    found.extend(_unreached_catch_all(manifest, profile))
+    found.extend(_permission_notices(manifest, profile))
     found.extend(_unpermitted_servers(manifest))
     for target in manifest.permissions:
         # A legacy `[permissions.*]` target names no agent and carries no slice
@@ -706,33 +730,71 @@ def collect_notices(root: Path, profile: str = "default") -> tuple[Notice, ...]:
 
 
 def project_notices(root: Path, environ: Mapping[str, str]) -> tuple[Notice, ...]:
-    """What project scope rendered while depending on setup it does not control.
+    """What project scope rendered while doing less than its source says.
 
-    The variable matters on the machine OpenCode *runs* on, and this reads the
-    machine loadout is *rendering* on — the same box, because generated project
+    Three kinds: a permission rule the selected renderer cannot carry, a slice
+    document naming something the harness will not act on, and setup on the
+    rendering machine that OpenCode needs at run time.
+
+    Driven by `PROJECT_PRESET` rather than by harness name, for the reason
+    `_permission_notices` is at global scope: a renderer that loses a catch-all or
+    a glob should report it whoever selected it, and a sixth harness should not
+    need an edit here to be heard.
+
+    The OpenCode variable matters on the machine OpenCode *runs* on, and this reads
+    the machine loadout is *rendering* on — the same box, because generated project
     files are never committed and adoption is all-or-nothing, so everyone working
-    in a repo syncs it themselves. CI is the exception, where this is one
-    advisory line in a log and cannot touch an exit code.
+    in a repo syncs it themselves. CI is the exception, where this is one advisory
+    line in a log and cannot touch an exit code.
     """
     path = project_config_path(root)
     if not path.is_file():
         return ()
     config = load_project_config(path)
-    if "opencode" not in config.harnesses or not project_skill_trees(root, config):
-        return ()
-    if not opencode_skills_race(environ):
-        return ()
-    return (
-        Notice(
-            agent="opencode",
-            slice="skills",
-            message=(
-                f"none of {' or '.join(OPENCODE_SKILL_FLAGS)} is set, so OpenCode also "
-                f"scans .claude/skills and picks between the two copies of each skill at "
-                f"random — export one of them; see docs/reference/opencode.md"
-            ),
-        ),
-    )
+    found: list[Notice] = []
+    # Only the preset path merges permission tiers. A `presets = false` project
+    # renders from artifacts and never needs permissions.toml, so reading it
+    # unconditionally failed a check that had nothing wrong with it.
+    if config.presets:
+        templates = tuple(resolve_template(name, root).path for name in config.templates)
+        catalogs = load_catalogs(templates)
+        if (root / PROJECT_DIR / PROJECT_SOURCE).is_file():
+            rules = _project_rules(root, config, catalogs)
+            for agent, slice_name, spec in project_slices(config.harnesses):
+                if slice_name != "permissions" or not spec.renderer:
+                    continue
+                if rules.default is not None:
+                    found.extend(unreached_catch_all(agent, spec.renderer, rules.default))
+                found.extend(unsupported_shell_globs(agent, spec.renderer, rules))
+        # The same fragment reported at global scope was silent here: project
+        # hooks and plugins reach a destination without passing notices_for.
+        for agent, slice_name, _ in project_slices(config.harnesses):
+            if slice_name not in PROJECT_DOCUMENTS:
+                continue
+            document, contributed = project_slice_document(
+                root, config, slice_name, catalogs=catalogs
+            )
+            if not contributed:
+                continue
+            known = _known_marketplaces(agent, document) if slice_name == "plugins" else frozenset()
+            found.extend(notices_for(agent, slice_name, document, known))
+    if (
+        "opencode" in config.harnesses
+        and project_skill_trees(root, config)
+        and opencode_skills_race(environ)
+    ):
+        found.append(
+            Notice(
+                agent="opencode",
+                slice="skills",
+                message=(
+                    f"none of {' or '.join(OPENCODE_SKILL_FLAGS)} is set, so OpenCode also "
+                    f"scans .claude/skills and picks between the two copies of each skill at "
+                    f"random — export one of them; see docs/reference/opencode.md"
+                ),
+            )
+        )
+    return tuple(found)
 
 
 def _owns_its_file(target: PermissionTarget) -> bool:
@@ -1017,28 +1079,77 @@ def render_project(root: Path) -> dict[Path, Output]:
     )
 
 
-def _render_project_presets(root: Path, config: ProjectConfig) -> dict[Path, Output]:
+def _project_rules(root: Path, config: ProjectConfig, catalogs: Mapping[Path, Catalog]) -> Rules:
+    """The permission tiers project scope merges, lowest first.
+
+    Templates are the lowest tier, in declared order: a template describes a kind
+    of work, and anything the project itself says outranks it. A template offering
+    no permissions contributes no tier rather than failing — its `use` already says
+    which slices it offers, and one slice is a legitimate template.
+
+    Shared with `project_notices` so the verdict a notice names is the one that
+    actually rendered, the way `permission_sources` guarantees it at global scope.
+    """
     project_dir = root / PROJECT_DIR
-
-    # Templates are the lowest tier, in declared order: a template describes a
-    # kind of work, and anything the project itself says outranks it. A template
-    # offering no permissions contributes no tier rather than failing — its `use`
-    # already says which slices it offers, and one slice is a legitimate template.
-    tiers: list[Rules] = []
     templates = tuple(resolve_template(name, root).path for name in config.templates)
-    catalogs = load_catalogs(templates)
-    for contributed in contribution_paths(templates, "permissions", catalogs=catalogs):
-        tiers.append(parse_rules(contributed))
-
+    tiers: list[Rules] = [
+        parse_rules(contributed)
+        for contributed in contribution_paths(templates, "permissions", catalogs=catalogs)
+    ]
     tiers.append(parse_rules(project_dir / PROJECT_SOURCE))
     local_path = project_dir / PROJECT_LOCAL_SOURCE
     if local_path.is_file():
         tiers.append(parse_rules(local_path))
-    rules = merge_rules(*tiers)
+    return merge_rules(*tiers)
+
+
+def _retired_keys(
+    root: Path, config: ProjectConfig, contributes: Callable[[str], bool]
+) -> dict[Path, set[str]]:
+    """Keys a slice owns but will not write this time, by path.
+
+    A co-owner of the same path runs with `preserve_foreign`, so anything left
+    behind is read back as foreign and survives every later render — delete the
+    fragment and its keys stay forever, which is the ADR 0001 feed-back shape
+    `render_global` already guards against. Retiring them is what makes a removal
+    take effect. Keys of slices that *do* run are deliberately absent: rewriting
+    them in the base keeps their position, and key order is load-bearing.
+    """
+    retired: dict[Path, set[str]] = {}
+    for _agent, slice_name, spec in project_slices(config.harnesses):
+        if spec.output is None or contributes(slice_name):
+            continue
+        keys = retired.setdefault(root / spec.output, set())
+        if spec.owned_key:
+            keys.add(spec.owned_key)
+        renderer = RENDERERS.get(spec.renderer or "")
+        if isinstance(renderer, ValuesSpec):
+            keys.update(renderer.owns)
+    return retired
+
+
+def _render_project_presets(root: Path, config: ProjectConfig) -> dict[Path, Output]:
+    templates = tuple(resolve_template(name, root).path for name in config.templates)
+    catalogs = load_catalogs(templates)
+    rules = _project_rules(root, config, catalogs)
 
     instructions = project_instructions(root, config, catalogs=catalogs)
     trees = project_skill_trees(root, config, catalogs=catalogs)
     servers = project_servers(root, config, catalogs=catalogs)
+    project_documents = {
+        name: project_slice_document(root, config, name, catalogs=catalogs)
+        for name in PROJECT_DOCUMENTS
+    }
+
+    def _contributes(slice_name: str) -> bool:
+        """Whether this slice has anything to write this time."""
+        if slice_name == "mcp":
+            return bool(servers)
+        if slice_name in project_documents:
+            return project_documents[slice_name][1]
+        return True
+
+    retired = _retired_keys(root, config, _contributes)
 
     outputs: dict[Path, Output] = {}
     # Project scope claims its paths for the same reason global scope does, and
@@ -1073,9 +1184,10 @@ def _render_project_presets(root: Path, config: ProjectConfig) -> dict[Path, Out
             if instructions is not None:
                 outputs[path] = instructions
             continue
-        if slice_name == "mcp" and not servers:
+        if not _contributes(slice_name):
             # A source offering no mcp.toml contributes no tier, the same as a
-            # template offering no permissions.toml — nothing to write.
+            # template offering no permissions.toml — nothing to write. The keys
+            # it owns were retired above rather than left in the co-owner's base.
             continue
         owner = f"{agent}.{slice_name}"
         contributor = PermissionTarget(
@@ -1087,7 +1199,15 @@ def _render_project_presets(root: Path, config: ProjectConfig) -> dict[Path, Out
             content_slice=spec.source_slice,
         )
         residual = _load_existing(path) if spec.preserve_foreign else {}
-        content = dict(servers) if slice_name == "mcp" else {}
+        if drop := retired.get(path):
+            residual = {key: value for key, value in residual.items() if key not in drop}
+        content = (
+            dict(servers)
+            if slice_name == "mcp"
+            else project_documents[slice_name][0]
+            if slice_name in project_documents
+            else {}
+        )
         group = groups.setdefault(path, [])
         if group:
             _require_same_owner(group[0][0], contributor, path)
@@ -1106,6 +1226,21 @@ def _render_project_presets(root: Path, config: ProjectConfig) -> dict[Path, Out
         occupied=claimed,
         source_inputs=_project_source_inputs(root, config),
     )
+
+
+def project_slice_document(
+    root: Path,
+    config: ProjectConfig,
+    slice_name: str,
+    *,
+    catalogs: Mapping[Path, Catalog] | None = None,
+) -> tuple[dict[str, Any], bool]:
+    templates = tuple(resolve_template(name, root).path for name in config.templates)
+    paths = list(contribution_paths(templates, slice_name, catalogs=catalogs))
+    local = root / PROJECT_DIR / PROJECT_DOCUMENTS[slice_name]
+    if local.is_file():
+        paths.append(local)
+    return merge_documents(*(_load_base(path) for path in paths)), bool(paths)
 
 
 def project_skill_trees(

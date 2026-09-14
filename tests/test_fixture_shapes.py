@@ -10,6 +10,7 @@ Matcher semantics are not tested here; tests/test_permissions_renderers.py owns 
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from fixture_root import PROJECT_INSTRUCTIONS
@@ -167,3 +168,31 @@ def test_the_project_fixture_template_contributes_instructions() -> None:
 def test_every_declared_instruction_fragment_exists() -> None:
     for name in PROJECT_INSTRUCTIONS:
         assert (PROJECT_FIXTURES / "instructions" / f"{name}.md").is_file(), name
+
+
+def test_the_project_plugins_fragment_declares_a_marketplace_and_an_addressable_plugin() -> None:
+    """The project-scope plugins fragment is what proves a `ValuesSpec` composes
+    into a document another slice co-owns. Trimmed to `{}` it renders two empty
+    maps, every comparison still passes, and both the composition and the
+    used-marketplace filter go untested."""
+    document = json.loads((PROJECT_FIXTURES / "plugins.json").read_text(encoding="utf-8"))
+    assert document["marketplaces"], "no marketplace to declare"
+    plugins = document["plugins"]
+    assert plugins, "no plugin to enable"
+    assert [
+        entry for entry in plugins.values() if entry.get("marketplace") in document["marketplaces"]
+    ], "no plugin reaches a declared marketplace, so nothing is addressable"
+
+
+def test_the_project_hooks_fragment_declares_an_event_with_a_command() -> None:
+    """`.factory/hooks.json` is generated from this alone. An empty document
+    renders an empty file that matches its expected copy exactly."""
+    document = json.loads((PROJECT_FIXTURES / "hooks.json").read_text(encoding="utf-8"))
+    assert document, "no event to render"
+    assert [
+        hook
+        for entries in document.values()
+        for entry in entries
+        for hook in entry.get("hooks", ())
+        if hook.get("command")
+    ], "no event carries a command"

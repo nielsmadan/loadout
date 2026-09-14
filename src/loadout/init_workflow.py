@@ -26,6 +26,7 @@ from .migration_transaction import (
     recover_migration,
     resume_migration,
 )
+from .project import KNOWN_HARNESSES
 
 
 class _Cancelled(Exception):
@@ -76,7 +77,8 @@ def _resolve(options: InitOptions) -> tuple[InitOptions, MigrationPlan]:
     plan = _plan(options)
     if any(i.code == "agents-required" for i in plan.issues):
         answer = _answer(
-            "Configured harnesses (comma-separated: claude,codex,opencode,pi; empty cancels): "
+            "Configured harnesses (comma-separated: "
+            f"{','.join(sorted(KNOWN_HARNESSES))}; empty cancels): "
         )
         if not answer:
             return options, plan

@@ -89,12 +89,12 @@ Legacy preset routes only; check declared native producers first.
 | `mcp-permissions` | `loadout/permissions.local.toml` | `loadout/permissions.toml` | MCP policy from selected `permissions.toml` sources |
 | `mcp` | unsupported | `loadout/mcp.toml` | `mcp.toml` from selected sources |
 | `instructions` | unsupported | `loadout/config.toml` and `loadout/instructions/*.md` | manifest selection and `instructions/*.md` fragments |
-| `skills` | unsupported | supported for `claude`, `opencode`, `pi` via `loadout/skills/<name>/`; Codex unsupported | `skills/<name>/` trees from selected sources |
-| `settings` | unsupported | unsupported | supported for `claude`, `opencode` via `settings/<name>.json` fragments; Codex uses `defaults`; Pi unsupported |
+| `skills` | unsupported | supported for `claude`, `droid`, `opencode`, `pi` via `loadout/skills/<name>/`; Codex unsupported | `skills/<name>/` trees from selected sources |
+| `settings` | unsupported | unsupported | supported for `claude`, `droid`, `opencode` via `settings/<name>.json` fragments; Codex uses `defaults`; Pi unsupported |
 | `defaults` | unsupported | unsupported | Codex top-level and nested settings via `defaults/<name>.json` fragments |
-| `hooks` | unsupported | unsupported | `hooks/<name>.json` fragments selected by agents offering hooks |
-| `plugins` | unsupported | unsupported | `plugins/<name>.json` fragments selected by agents offering plugins |
-| `module-config` | unsupported | unsupported | supported for `claude`, `opencode`, `pi` via `module-config/<agent>/<relative path>`; Codex unsupported |
+| `hooks` | unsupported | Droid via `loadout/hooks.json` | `hooks/<name>.json` fragments selected by agents offering hooks |
+| `plugins` | unsupported | Droid via `loadout/plugins.json` | `plugins/<name>.json` fragments selected by agents offering plugins |
+| `module-config` | unsupported | unsupported | supported for `claude`, `droid`, `opencode`, `pi` via `module-config/<agent>/<relative path>`; Codex unsupported |
 | `templates` | unsupported | declarations and vendored copies under `loadout/templates/` | definitions under `templates/<name>/` in declared sources |
 | `harnesses` | unsupported | `harnesses` in `loadout/config.toml` | declared agent blocks or legacy targets |
 | `profiles` | unsupported | unsupported | `loadout.toml` plus `<profile>.toml` files |
@@ -113,8 +113,8 @@ cannot bypass a scope-widening confirmation.
 For personal and project requests, read `harnesses` from `<repo>/loadout/config.toml`. The personal
 permission tier uses the same configured harness list as project scope.
 
-For global requests, prefer top-level agent blocks named `[claude]`, `[codex]`, `[opencode]`, and
-`[pi]` in the selected profile after inheritance. `[all]` supplies defaults but never declares an
+For global requests, prefer top-level agent blocks named `[claude]`, `[codex]`, `[droid]`,
+`[opencode]`, and `[pi]` in the selected profile after inheritance. `[all]` supplies defaults but never declares an
 agent. During the legacy transition, also recognize explicit `[instructions.<name>]` and
 `[permissions.<name>]` targets by their renderer and destination. If a legacy target's arbitrary
 name, renderer, and destination do not establish one harness unambiguously, ask rather than
@@ -128,7 +128,7 @@ agent covers only that agent. Never enable a new harness as a side effect. Parti
 apply the supported mappings and report each exclusion; it is a question only when two valid
 mappings have materially different effects.
 
-For legacy presets, global settings fragments reach Claude and OpenCode because their document renderers preserve the
+For legacy presets, global settings fragments reach Claude, Droid and OpenCode because their document renderers preserve the
 settings residual. Codex settings use the separate `defaults` slice and
 `defaults/<name>.json` fragments, including nested settings. For the available-skills catalog
 budget, use `{"skills": {"max_context_tokens": 10000}}`, not a dotted JSON key. Loadout owns
@@ -139,13 +139,13 @@ ownership. `$remove` entries use TOML key paths, such as `"skills.max_context_to
 Pi's permission document does not preserve a settings residual, so report Pi as unsupported instead
 of editing its harness-owned settings file.
 
-For legacy presets, project MCP server definitions reach Claude and OpenCode directly. Pi reads Claude's `.mcp.json`
-when that shared destination is present; a Pi-only project has no MCP output. Codex has no verified
-project MCP destination. Global MCP server definitions render for all four configured agents;
-Claude's output is staged for a separate `claude mcp add-json` step rather than written into its
-runtime state, so report that remaining application step.
+For legacy presets, project MCP server definitions reach Claude, Droid, and OpenCode directly.
+Pi reads Claude's `.mcp.json` when that shared destination is present; a Pi-only project has no
+MCP output. Codex has no verified project MCP destination. Global MCP server definitions render
+for all five configured agents. Claude's output owns only `mcpServers` in `.claude.json`; Droid
+writes `.factory/mcp.json`.
 
-For legacy presets, project skills reach Claude, OpenCode, and Pi. Codex has no verified project skills directory, so
+For legacy presets, project skills reach Claude, Droid, OpenCode, and Pi. Codex has no verified project skills directory, so
 report it as unsupported for a Codex-only or Codex-specific project skill request.
 
 ## Source rules
@@ -161,8 +161,8 @@ request and a tool-approval request therefore change different source files even
 the same server.
 
 Global module configuration is copied byte-for-byte from
-`module-config/<agent>/<relative path>` to that agent's configuration directory. Claude, OpenCode
-and Pi offer this slice; Codex does not. The relative path is authored by the module and must not
+`module-config/<agent>/<relative path>` to that agent's configuration directory. Claude, Droid,
+OpenCode and Pi offer this slice; Codex does not. The relative path is authored by the module and must not
 be derived from its package name. An OpenCode plugin's `.ts` file belongs here rather than under
 `plugins`, which renders enablement OpenCode has no list for.
 

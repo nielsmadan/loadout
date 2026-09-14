@@ -25,9 +25,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from .adapters import OPENCODE_MAPPINGS, PI_MAPPINGS
-from .hooks import CLAUDE_EVENTS, CODEX_EVENTS, unrecognised_events
+from .hooks import CLAUDE_EVENTS, CODEX_EVENTS, DROID_EVENTS, unrecognised_events
 from .permissions.renderers import CATCH_ALL_RENDERERS
-from .permissions.rules import Rules
+from .permissions.rules import Rules, is_glob
 from .plugins import ADDRESSED_BY, unaddressable, unregistered_marketplaces
 from .servers import Server
 
@@ -38,6 +38,7 @@ __all__ = [
     "opencode_skills_race",
     "unpermitted_servers",
     "unreached_catch_all",
+    "unsupported_shell_globs",
 ]
 
 # Where each shell-carrying renderer that is *not* a catch-all carrier keeps its
@@ -50,6 +51,7 @@ CATCH_ALL_ELSEWHERE = {
     "claude-project": "Claude's is permissions.defaultMode, hand-maintained through the settings slice",
     "codex": "Codex's is approval_policy in config.toml, which loadout does not write",
     "codex-project": "Codex's is approval_policy in config.toml, which loadout does not write",
+    "droid": "Droid's unmatched-command behavior comes from the session autonomy level",
     "pi-project": "Pi emits no catch-all at project scope",
 }
 
@@ -107,6 +109,8 @@ def known_events(agent: str) -> frozenset[str]:
         return CLAUDE_EVENTS
     if agent == "codex":
         return CODEX_EVENTS
+    if agent == "droid":
+        return DROID_EVENTS
     return _ADAPTED.get(agent, frozenset())
 
 
@@ -131,6 +135,28 @@ def unreached_catch_all(agent: str, renderer: str, verdict: str) -> tuple[Notice
                 f"see docs/reference/README.md#the-catch-all-default"
             ),
         ),
+    )
+
+
+def unsupported_shell_globs(agent: str, renderer: str, rules: Rules) -> tuple[Notice, ...]:
+    if renderer != "droid":
+        return ()
+    return tuple(
+        Notice(
+            agent=agent,
+            slice="permissions",
+            message=(
+                f"{category} glob {entry!r} is not rendered because Droid treats "
+                "permission-list metacharacters literally"
+            ),
+        )
+        # `deny` is absent deliberately: a glob there is refused at render rather
+        # than dropped, because Droid's blocklist has no fallback and a silently
+        # narrower one is wider than the source asked for. Reporting it here would
+        # describe a render that never happens.
+        for category in ("allow", "ask")
+        for entry in rules.shell(category)
+        if is_glob(entry)
     )
 
 

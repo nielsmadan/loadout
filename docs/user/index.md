@@ -9,7 +9,7 @@ hide:
   <img class="loadout-logo-dark" src="assets/logo.svg" alt="Loadout backpack" width="140" height="140">
   <img class="loadout-logo-light" src="assets/logo-light.svg" alt="Loadout backpack" width="140" height="140">
   <h1>Switch agents.<br>Keep your setup.</h1>
-  <p>One source for your agent configuration, rendered for Claude Code, Codex, OpenCode, and Pi.</p>
+  <p>One source for your agent configuration, rendered for Claude Code, Codex, Factory Droid, OpenCode, and Pi.</p>
 </div>
 
 <div class="loadout-actions" markdown>

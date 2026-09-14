@@ -68,7 +68,7 @@ loadout harness add opencode
 loadout harness add pi --root /path/to/repository
 ```
 
-The accepted names are `claude`, `codex`, `opencode`, and `pi`.
+The accepted names are `claude`, `codex`, `droid`, `opencode`, and `pi`.
 Run `loadout sync` after changing the enabled set.
 
 ## Inspect a fragment

@@ -49,11 +49,17 @@ schema, so the harness decides. (Validation invented from one machine's files is
 |---|---|---|
 | Claude | `~/.claude/settings.json` → `enabledPlugins` | `"<name>@<marketplace>": true` |
 | Codex | `~/.codex/config.toml` → `plugins`, `marketplaces` | `[plugins."<name>@<marketplace>"]`, `[marketplaces.<name>]` |
+| Droid | `~/.factory/settings.json` → `enabledPlugins`, `extraKnownMarketplaces` | enablement plus each used marketplace registration |
 | Pi | `~/.pi/agent/settings.json` → `packages` | the source, or an object carrying its filters |
 | OpenCode | — | nothing; the file goes through module-config, see below |
 
 **Claude's is the fourth slice landing in `settings.json`**, after settings, permissions and
 hooks. It owns one key and nothing else in the file.
+
+**Droid contributes two top-level keys to `settings.json`.** `enabledPlugins` uses the same
+`<name>@<marketplace>` addresses as Claude. `extraKnownMarketplaces` contains only declared
+marketplaces reached by an enabled plugin. Settings and command-policy keys remain separate
+owners in the same document.
 
 **Codex writes `config.toml` directly, owning two keys of it.** Enablement and marketplace
 registration both live there, alongside `[projects.…]` Codex writes itself and everything else
@@ -139,6 +145,7 @@ Per-harness losses, since each document states only the half it addresses by. Fu
 |---|---|---|
 | `claude-plugins` | name, marketplace | `source`, `pi` |
 | `codex-plugins` | name, marketplace, the registrations its plugins reach | `source`, `pi`, a marketplace no plugin names |
+| `droid-plugins` | name, marketplace, the registrations its plugins reach | `source`, `pi`, a marketplace no plugin names |
 | `pi-plugins` | source, `pi` | `marketplace`, **the name**, and the object form of an unfiltered entry |
 
 Pi's is the interesting one: a package is a source and nothing else, so the key a reference is
@@ -185,4 +192,5 @@ Each is a real gap, not a judgement that the feature is absent:
   installs register differently from local ones, the Codex half of
   [0015](../decisions/0015-enablement-is-rendered-installation-is-reported.md) may be
   incomplete.
-- Project scope, on all four harnesses.
+- Project scope outside Droid. Droid's legacy project preset renders plugin declarations to
+  `.factory/settings.json`; the other harnesses have no project plugin declaration route.

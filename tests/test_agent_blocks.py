@@ -200,6 +200,10 @@ def test_a_contributor_writes_one_key_and_the_residual_survives(tmp_path: Path) 
     GLOBAL_PRESET["opencode"]["hooks"] = SliceOutput(
         renderer="hooks-test",
         destination=GLOBAL_PRESET["opencode"]["permissions"].destination,
+        # Declared, the way the real settings-sharing slices declare it: this
+        # stands in for `claude.hooks`, which contributes one key to the same
+        # document the settings residual supplies.
+        takes_settings=True,
         source_slice="hooks",
         owned_key="hooks",
     )

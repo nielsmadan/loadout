@@ -1,6 +1,6 @@
 ---
 name: loadout
-description: Use when adopting existing agent configuration into Loadout, setting up Loadout in a project or global source, or changing Claude, Codex, OpenCode or Pi configuration. Handles onboarding, permissions, instructions, skills, settings, hooks, plugins and MCP through their authoritative sources.
+description: Use when adopting existing agent configuration into Loadout, setting up Loadout in a project or global source, or changing Claude, Codex, Droid, OpenCode or Pi configuration. Handles onboarding, permissions, instructions, skills, settings, hooks, plugins and MCP through their authoritative sources.
 ---
 
 # Loadout

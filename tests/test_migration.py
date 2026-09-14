@@ -202,6 +202,7 @@ def test_global_live_roots_honor_relocation_and_partial_runtime_ownership(
     source.mkdir()
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(fake_home / "custom-claude"))
     monkeypatch.setenv("CODEX_HOME", str(fake_home / "custom-codex"))
+    monkeypatch.setenv("FACTORY_HOME_OVERRIDE", str(fake_home / "custom-droid-home"))
     monkeypatch.setenv("PI_CODING_AGENT_DIR", str(fake_home / "custom-pi"))
     claude = write(
         fake_home,
@@ -213,14 +214,28 @@ def test_global_live_roots_honor_relocation_and_partial_runtime_ownership(
         "custom-codex/config.toml",
         'model = "test"\n[projects."/private/project"]\ntrust_level = "trusted"\n',
     )
+    droid = write(
+        fake_home,
+        "custom-droid-home/.factory/settings.json",
+        '{"model":"test","commandAllowlist":["ls"],"enabledPlugins":{"review@official":true},'
+        '"trustedFolders":{"/workspace":{"trustedAt":"fixture"}}}',
+    )
     pi = write(
         fake_home, "custom-pi/settings.json", '{"defaultModel":"test","lastChangelogVersion":"1"}'
     )
-    inventory = discover(source, scope="global", agents=("claude", "codex", "pi"))
+    inventory = discover(source, scope="global", agents=("claude", "codex", "droid", "pi"))
     plan = plan_migration(inventory)
-    assert plan.complete, plan.preview()
+    assert plan.complete, [(issue.code, issue.message) for issue in plan.issues]
     assert json.loads(generated(plan, claude)) == {"mcpServers": {"search": {"command": "search"}}}
     assert tomllib.loads(generated(plan, codex).decode()) == {"model": "test"}
+    assert json.loads(generated(plan, droid)) == {
+        "model": "test",
+        "commandAllowlist": ["ls"],
+        "enabledPlugins": {"review@official": True},
+    }
+    assert "trustedFolders" not in "".join(
+        write.content.decode(errors="replace") for write in plan.source_writes
+    )
     assert json.loads(generated(plan, pi)) == {"defaultModel": "test"}
     assert "runtime-secret" not in "".join(
         w.content.decode(errors="replace") for w in plan.source_writes
@@ -245,6 +260,9 @@ def test_live_roots_expand_using_supplied_home() -> None:
     )
     assert roots[0].source == Path("/isolated/home/custom")
     assert any(m.source == Path("/isolated/home/custom/.claude.json") for m in roots)
+    assert any(m.source == Path("/isolated/home/.factory") for m in roots)
+    relocated = live_roots(Path("/isolated/home"), {"FACTORY_HOME_OVERRIDE": "~/factory-home"})
+    assert any(m.source == Path("/isolated/home/factory-home/.factory") for m in relocated)
     assert any(m.source == Path("/isolated/home/xdg/mcp/mcp.json") for m in roots)
 
 

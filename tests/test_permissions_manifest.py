@@ -16,9 +16,9 @@ def write(tmp_path: Path, body: str) -> Path:
     return path
 
 
-def test_fixture_manifest_declares_seven_permission_targets() -> None:
+def test_fixture_manifest_declares_eight_permission_targets() -> None:
     manifest = load_manifest(FIXTURES / "loadout.toml")
-    assert len(manifest.permissions) == 7
+    assert len(manifest.permissions) == 8
 
 
 def test_permission_target_fields(tmp_path: Path) -> None:
@@ -157,3 +157,27 @@ def test_preserve_must_be_a_list_of_strings(tmp_path: Path) -> None:
     )
     with pytest.raises(LoadoutError, match="preserve"):
         load_manifest(path)
+
+
+def test_a_settings_fragment_reaches_only_the_slices_whose_renderer_reads_one(
+    tmp_path: Path,
+) -> None:
+    """`settings` is the residual document a renderer writes its own keys into, so
+    which slices take one is a property of the renderer — declared on the preset,
+    not read off the destination's filename.
+
+    The filename spelling matched any `settings.json`/`opencode.json`/`config.toml`
+    sibling, which is how a whole settings document became the *base* of
+    `hooks.json` for the two harnesses whose hooks file sits beside one. The
+    assertion names the loser: `droid.hooks` must carry no settings fragment while
+    `droid.permissions`, in the same manifest, carries it.
+    """
+    (tmp_path / "settings").mkdir()
+    (tmp_path / "settings" / "main.json").write_text('{"model": "x"}', encoding="utf-8")
+    (tmp_path / "hooks").mkdir()
+    (tmp_path / "hooks" / "main.json").write_text("{}", encoding="utf-8")
+    path = write(tmp_path, '[droid]\nsettings = ["main"]\nhooks = ["main"]\npermissions = true\n')
+
+    by_name = {t.name: t for t in load_manifest(path).permissions}
+    assert by_name["droid"].settings == ("main",)
+    assert by_name["droid-hooks"].settings == ()

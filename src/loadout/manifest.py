@@ -5,7 +5,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from .agents import GLOBAL_PRESET, known_agents
+from .agents import GLOBAL_PRESET, SliceOutput, known_agents
 from .artifacts import Artifacts, artifact_reference
 from .destinations import resolve_destination
 from .errors import LoadoutError
@@ -445,6 +445,29 @@ def _agent_slice_names(agent: str, block: dict[str, object]) -> list[str]:
     return named + automatic
 
 
+def _settings_must_reach_a_slice(
+    agent: str, declared: dict[str, object], offered: dict[str, SliceOutput]
+) -> None:
+    """A `settings` fragment has to reach a slice whose renderer reads one.
+
+    Which slices those are is declared by the preset, not inferred from the
+    destination's filename: writing into a residual is a property of the renderer,
+    and a filename match silently dropped the fragment for every other slice —
+    including, before this, leaking a whole settings document into `hooks.json` for
+    the two harnesses whose hooks file sits beside a `settings.json`.
+
+    Raised rather than ignored, because silently discarding declared configuration
+    is the wrong default for a tool whose output governs command execution.
+    """
+    if declared.get("settings") is None or any(spec.takes_settings for spec in offered.values()):
+        return
+    raise LoadoutError(
+        f"{agent}: `settings` names a fragment, but no slice this agent offers reads one "
+        f"(slices that do: "
+        f"{', '.join(sorted(n for n, s in offered.items() if s.takes_settings)) or 'none'})"
+    )
+
+
 def _parse_agents(
     data: dict[str, object], path: Path, claimed: set[PurePosixPath]
 ) -> tuple[
@@ -498,6 +521,7 @@ def _parse_agents(
                 f"(this agent offers: {', '.join(sorted(offered))})"
             )
         block = {k: v for k, v in block.items() if k in offered or k in extras}
+        _settings_must_reach_a_slice(agent, declared, offered)
         for slice_name in _agent_slice_names(agent, block):
             spec = offered[slice_name]
             label = f"{agent}.{slice_name}"
@@ -538,7 +562,11 @@ def _parse_agents(
                     name=agent if slice_name == "permissions" else f"{agent}-{slice_name}",
                     path=out,
                     renderer=spec.renderer or "",
-                    settings=_parse_settings(block.get("settings"), label, None),
+                    settings=(
+                        _parse_settings(block.get("settings"), label, None)
+                        if spec.takes_settings
+                        else ()
+                    ),
                     content=(
                         _parse_settings(block.get(spec.source_slice), label, None)
                         if spec.source_slice is not None

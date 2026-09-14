@@ -25,7 +25,7 @@ args = ["-y", "@upstash/context7-mcp"]
 ```
 
 `transport` is `"http"` or `"stdio"`; anything else is refused at parse time, not render time —
-four renderers would each fail differently, and three of them only when that harness is enabled.
+five renderers would each fail differently, and four of them only when that harness is enabled.
 
 - **http** needs `url`. `auth_env_var` is optional and names an environment variable, never a
   value — [0008](../decisions/0008-generated-files-carry-no-machine-state.md) forbids a secret
@@ -63,23 +63,26 @@ the way they vote on which decision is stricter. One section holding both would 
 rules keyed by which field is being read — the kind of thing that reads fine when written and
 produces a defect later.
 
-## Eight destinations, six built
+## Ten destinations, eight built
 
-Four harnesses, two scopes:
+Five harnesses, two scopes:
 
 | harness | global | project |
 |---|---|---|
-| Claude | staged `claude/mcp-servers.generated.json` | `.mcp.json` |
+| Claude | `${CLAUDE_CONFIG_DIR:-~}/.claude.json` → `mcpServers` | `.mcp.json` |
 | Codex | `~/.codex/config.toml` → `[mcp_servers.*]` | **none — open question** |
+| Droid | `${FACTORY_HOME_OVERRIDE:-~}/.factory/mcp.json` | `.factory/mcp.json` |
 | OpenCode | `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` → `mcp` | `opencode.json` → `mcp` |
 | Pi | `${PI_CODING_AGENT_DIR:-~/.pi/agent}/mcp.json` | **none — `.mcp.json` already serves it** |
 
 Renderers, keyed the way `RENDERERS` in `permissions/renderers.py` names them: `claude-servers`
-(global — a flat `{name: entry}` map, staged), `claude-project-servers` (project — the same
+(global — a flat `{name: entry}` map), `claude-project-servers` (project — the same
 per-entry shape wrapped in `{"mcpServers": …}`, owning `.mcp.json` outright),
 `codex-servers` (TOML text; the function is scope-agnostic and no preset entry uses it now that
-`codex-config` renders definitions and policy together — it stays registered for extraction), `opencode-servers` (one `ValueSpec` used at both scopes, contributing the `mcp`
-key to `opencode.json` — the same document `permissions` also writes), `pi-servers` (`DocumentJsonSpec`,
+`codex-config` renders definitions and policy together — it stays registered for extraction),
+`droid-servers` (the `{"mcpServers": …}` document at both scopes), `opencode-servers` (one
+`ValueSpec` used at both scopes, contributing the `mcp` key to `opencode.json` — the same
+document `permissions` also writes), `pi-servers` (`DocumentJsonSpec`,
 global only).
 
 ### Pi has no project destination
@@ -186,7 +189,8 @@ reason, rather than being silently missing.
 
 Every other definition renderer's inverse is registered in `VALUE_EXTRACTORS`:
 `claude-project-servers` → `extract_claude_servers`, `claude-servers` (global) →
-`extract_claude_global_servers`, `opencode-servers` → `extract_opencode_servers`, `pi-servers` →
+`extract_claude_global_servers`, `droid-servers` → `extract_droid_servers`,
+`opencode-servers` → `extract_opencode_servers`, `pi-servers` →
 `extract_pi_servers`.
 
 ## Reading it back
@@ -194,7 +198,8 @@ Every other definition renderer's inverse is registered in `VALUE_EXTRACTORS`:
 | renderer | recovers | loses |
 |---|---|---|
 | `claude-project-servers` (`.mcp.json`) | every field; a stray top-level key or unknown `type` is reported | — |
-| `claude-servers` (staged global) | every field, from the flat `{name: entry}` map with no `mcpServers` wrapper | — |
+| `claude-servers` (global) | every field, from the flat `{name: entry}` map with no `mcpServers` wrapper | — |
+| `droid-servers` | every field from the `mcpServers` wrapper | — |
 | `opencode-servers` | every field; nothing is noted about the rest of `opencode.json`, since `permission` has its own owner | — |
 | `pi-servers` | every field, including `bearerTokenEnv`; a stray top-level key is reported | — |
 | `codex-servers` | every field, parsed from `[mcp_servers.*]` text with `tomllib` | not registered — see above |
@@ -212,5 +217,5 @@ environment variable name from an opaque header string.
 ## Not verified
 
 - **Whether `[mcp_servers.*]` survives Codex's project-config filter** — the open question above.
-  It blocks nothing: project scope already serves Claude, Pi (through `.mcp.json`) and OpenCode,
-  and Codex's project destination is the fourth, added when the probe answers.
+  It blocks nothing: project scope already serves Claude, Droid, Pi (through `.mcp.json`) and
+  OpenCode. Codex's project destination is the remaining one, added when the probe answers.
