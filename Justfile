@@ -7,6 +7,7 @@ git_cliff := "git-cliff@2.13.1"
 # Prepare this checkout for work: dependencies, hooks, then verify.
 setup:
     @uv sync
+    @lefthook install
     @just doctor
 
 # Verify the tools and checkout state this repo needs.
