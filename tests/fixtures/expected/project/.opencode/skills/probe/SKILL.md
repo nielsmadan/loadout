@@ -10,6 +10,7 @@ description: Provokes the per-harness shapes the project skills output has to pr
 Shared prose every harness gets.
 
 
+
 OpenCode-only paragraph.
 
 

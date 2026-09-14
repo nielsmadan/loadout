@@ -13,4 +13,5 @@ Claude-only paragraph.
 
 
 
+
 Declared by the project, so it must beat the template's skill of the same name.

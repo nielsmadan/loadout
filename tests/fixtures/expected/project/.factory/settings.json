@@ -1,0 +1,28 @@
+{
+  "model": "custom-model",
+  "commandAllowlist": [
+    "omicron build",
+    "alpha",
+    "beta sub",
+    "kappa only-here"
+  ],
+  "commandDenylist": [
+    "theta check"
+  ],
+  "commandBlocklist": [
+    "omicron publish",
+    "iota push",
+    "zeta"
+  ],
+  "enabledPlugins": {
+    "review@official": true
+  },
+  "extraKnownMarketplaces": {
+    "official": {
+      "source": {
+        "source": "github",
+        "repo": "Factory-AI/factory-marketplace"
+      }
+    }
+  }
+}

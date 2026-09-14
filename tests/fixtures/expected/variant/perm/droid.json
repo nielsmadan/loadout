@@ -1,0 +1,22 @@
+{
+  "$schema": "https://example.invalid/schema.json",
+  "beforeKey": "stays ahead of permissions",
+  "permissions": {
+    "defaultMode": "hand-maintained, must survive after the owned lists"
+  },
+  "afterKey": {
+    "nested": true
+  },
+  "commandAllowlist": [
+    "alpha",
+    "beta sub",
+    "eta"
+  ],
+  "commandDenylist": [
+    "theta check"
+  ],
+  "commandBlocklist": [
+    "zeta",
+    "iota push"
+  ]
+}
