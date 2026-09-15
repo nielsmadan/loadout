@@ -19,12 +19,16 @@ class Loadout < Formula
   test do
     assert_match "loadout", shell_output("#{bin}/loadout --help")
     ENV["XDG_CONFIG_HOME"] = (testpath/"config").to_s
-    system bin/"loadout", "init", "--project", "--harness", "claude",
+    # Homebrew points HOME at testpath, and loadout refuses to create a migration
+    # repository at HOME itself, so the project needs its own directory.
+    project = testpath/"project"
+    project.mkpath
+    system bin/"loadout", "init", "--project", "--root", project, "--harness", "claude",
            "--harness", "codex", "--starter", "backend", "--yes"
-    system bin/"loadout", "sync"
-    system bin/"loadout", "check"
-    instructions = (testpath/"loadout/templates/backend/instructions.md").read.strip
-    assert_match instructions, (testpath/"CLAUDE.md").read
-    assert_match instructions, (testpath/"AGENTS.md").read
+    system bin/"loadout", "sync", "--root", project
+    system bin/"loadout", "check", "--root", project
+    instructions = (project/"loadout/templates/backend/instructions.md").read.strip
+    assert_match instructions, (project/"CLAUDE.md").read
+    assert_match instructions, (project/"AGENTS.md").read
   end
 end
