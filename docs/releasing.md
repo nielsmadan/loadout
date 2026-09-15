@@ -34,7 +34,7 @@ just release 0.1.0
 ```
 
 The dry run inspects Git state and prints the proposal without running checks or changing
-files. A normal release runs `just check` and `just docs-build`, then shows the proposed
+files. A normal release runs `just check` and `just build-docs`, then shows the proposed
 version, files and publication steps. Enter `y` to proceed, another version or bump to revise
 the proposal, or Enter to cancel. `--yes` explicitly bypasses the prompt for automation.
 
