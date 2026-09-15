@@ -34,6 +34,13 @@ def test_version_is_exposed() -> None:
     assert loadout.__version__
 
 
+def test_version_flag_prints_the_package_version(capsys) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        loadout.main(["--version"])
+    assert exit_info.value.code == 0
+    assert capsys.readouterr().out.strip() == f"loadout {loadout.__version__}"
+
+
 def test_no_args_prints_usage_and_returns_2(capsys) -> None:
     assert loadout.main([]) == 2
     assert "usage" in capsys.readouterr().err.lower()

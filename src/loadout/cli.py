@@ -6,6 +6,7 @@ import sys
 import traceback
 from pathlib import Path
 
+from . import __version__
 from .commands import (
     cmd_check,
     cmd_explain,
@@ -31,6 +32,7 @@ from .staged import check_staged
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="loadout")
+    parser.add_argument("--version", action="version", version=f"loadout {__version__}")
     subparsers = parser.add_subparsers(dest="command")
 
     def add_root(sub: argparse.ArgumentParser, *, allow_global: bool = False) -> None:
@@ -159,14 +161,19 @@ def build_parser() -> argparse.ArgumentParser:
             template_sub.add_argument("name", help="template name")
         add_root(template_sub)
 
-    skill = subparsers.add_parser("skill", help="manage the bundled loadout skill")
-    skill_subparsers = skill.add_subparsers(dest="skill_command")
+    _add_skill(subparsers.add_parser("skill", help="manage the bundled loadout skill"))
+
+    return parser
+
+
+def _add_skill(parser: argparse.ArgumentParser) -> None:
+    commands = parser.add_subparsers(dest="skill_command")
     for sub_name, sub_help in (
         ("install", "vendor the bundled skill into a global loadout source and sync"),
         ("status", "show the bundled skill's global source state"),
         ("uninstall", "remove the owned source copy and its generated outputs"),
     ):
-        skill_sub = skill_subparsers.add_parser(sub_name, help=sub_help)
+        skill_sub = commands.add_parser(sub_name, help=sub_help)
         skill_sub.add_argument(
             "--profile",
             default=None,
@@ -183,8 +190,6 @@ def build_parser() -> argparse.ArgumentParser:
                 action="store_true",
                 help="apply the displayed source change without confirmation",
             )
-
-    return parser
 
 
 def _resolve_root_and_profile(args: argparse.Namespace) -> tuple[Path, str]:
