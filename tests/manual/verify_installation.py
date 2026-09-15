@@ -91,13 +91,30 @@ run("missing global config", ["check", "--global"], work, 3)
 
 project = work / "project with spaces ü"
 project.mkdir()
+# Project init routes only configuration that already exists, so adopt a setup rather
+# than an empty directory: an empty one yields `artifact = []` and nothing to render.
+for relative, body in {
+    "CLAUDE.md": "# Project\n",
+    "AGENTS.md": "# Project\n",
+    ".codex/rules/permissions.rules": 'prefix_rule(pattern=["ls"], decision="allow")\n',
+    ".claude/settings.json": '{"permissions": {"allow": ["Bash(ls:*)"]}}\n',
+    "opencode.json": '{"permission": {"bash": {"ls*": "allow"}}}\n',
+    ".pi/extensions/pi-permission-system/config.json": (
+        '{"permission": {"bash": {"ls*": "allow"}}}\n'
+    ),
+    ".claude/skills/install-seed/SKILL.md": (
+        "---\nname: install-seed\ndescription: Seed skill.\n---\nSeed body.\n"
+    ),
+}.items():
+    put(project / relative, body)
+adopted = outputs(project)
 harnesses = [
     value for agent in ("claude", "codex", "opencode", "pi") for value in ("--harness", agent)
 ]
 init = ["init", "--project", *harnesses]
 preview = json.loads(run("fresh init preview", [*init, "--dry-run", "--json"], project).stdout)
 assert preview["complete"] and preview["validated"] and preview["issues"] == []
-assert list(project.iterdir()) == []
+assert outputs(project) == adopted
 applied = json.loads(run("fresh init", [*init, "--yes", "--json"], project).stdout)
 assert applied["status"] == "complete"
 configuration = project / "loadout"
