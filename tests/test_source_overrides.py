@@ -7,6 +7,8 @@ from loadout.errors import LoadoutError
 from loadout.manifest import Manifest
 from loadout.sources import parse_sources
 
+pytestmark = pytest.mark.integration
+
 
 def write(root: Path, name: str, body: str) -> Path:
     path = root / name

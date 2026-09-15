@@ -28,6 +28,8 @@ from loadout.migration_transaction import (
 from loadout.staged import check_staged
 from test_codex_defaults import build
 
+pytestmark = pytest.mark.migration_integration
+
 
 def _git(root, *args, check=True, env=None):
     result = subprocess.run(

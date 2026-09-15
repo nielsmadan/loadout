@@ -4,10 +4,14 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
+
 import loadout
 from loadout.commands import _DIFF_LIMIT
 from loadout.written import normalise as _normalise
 from loadout.written import written_state_path
+
+pytestmark = pytest.mark.integration
 
 
 def _git(root: Path, *args: str) -> None:

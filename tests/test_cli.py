@@ -10,6 +10,8 @@ import pytest
 import loadout
 from loadout.errors import LoadoutError
 
+pytestmark = pytest.mark.integration
+
 
 def _init_repo(root: Path) -> None:
     subprocess.run(["git", "init", "-q", str(root)], check=True)

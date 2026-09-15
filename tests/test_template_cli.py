@@ -8,6 +8,8 @@ from loadout.cli import main
 from loadout.project import load_project_config, project_config_path
 from loadout.templates import tree_hash
 
+pytestmark = pytest.mark.integration
+
 
 def _upstream(fake_home: Path, monkeypatch: pytest.MonkeyPatch, name: str, text: str) -> Path:
     """A template offered by this machine's global source, resolvable by name."""

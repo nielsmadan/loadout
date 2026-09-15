@@ -13,6 +13,8 @@ from loadout import migration_transaction
 from loadout.errors import LoadoutError
 from loadout.machine import machine_config_path
 
+pytestmark = pytest.mark.migration_integration
+
 
 def _git(root: Path, *args: str) -> str:
     return subprocess.run(

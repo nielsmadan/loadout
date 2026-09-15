@@ -21,6 +21,8 @@ import pytest
 
 from loadout.adapters import render_opencode_adapter, render_pi_adapter
 
+pytestmark = pytest.mark.integration
+
 node = pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
 
 DOCUMENT: dict[str, Any] = {

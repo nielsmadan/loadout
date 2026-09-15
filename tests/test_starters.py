@@ -32,6 +32,8 @@ from loadout.migration_transaction import (
 from loadout.project import load_project_config, project_config_path
 from loadout.templates import VENDORED, resolve_template, tree_hash, vendored_path
 
+pytestmark = pytest.mark.integration
+
 ROOT = Path(__file__).parents[1]
 
 
@@ -446,6 +448,7 @@ def _upstream_privacy_rules(
         for phase in ("prepare", "finish")
     ],
 )
+@pytest.mark.migration_integration
 def test_starter_upstream_privacy_remains_guarded(
     tmp_path: Path,
     fake_home: Path,
@@ -501,6 +504,7 @@ def test_starter_upstream_privacy_remains_guarded(
 
 @pytest.mark.parametrize("phase", ("prepare", "apply", "checkpoint"))
 @pytest.mark.parametrize("addition", ("file", "nested-file", "empty-directory"))
+@pytest.mark.migration_integration
 def test_starter_inventory_additions_invalidate_approval(
     tmp_path: Path,
     fake_home: Path,
@@ -623,6 +627,7 @@ def test_native_template_sync_rejects_symlinks_before_content_reads(
 
 
 @pytest.mark.parametrize("starter", STARTERS)
+@pytest.mark.migration_integration
 def test_cli_starter_is_staged_reconstructs_and_allows_first_source_edits(
     tmp_path: Path, starter: str, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -668,6 +673,7 @@ def test_cli_starter_is_staged_reconstructs_and_allows_first_source_edits(
     assert (clone / "CLAUDE.md").read_bytes() == (tmp_path / "CLAUDE.md").read_bytes()
 
 
+@pytest.mark.migration_integration
 def test_repeat_init_reports_usable_template_command_and_safe_sync(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -692,6 +698,7 @@ def test_repeat_init_reports_usable_template_command_and_safe_sync(
     assert (tmp_path / "CLAUDE.md").read_text() == "Local template edits\n\n"
 
 
+@pytest.mark.migration_integration
 def test_native_template_sync_refuses_unsupported_upstream_without_changes(
     tmp_path: Path, fake_home: Path
 ) -> None:
@@ -753,6 +760,7 @@ def test_interactive_starter_then_cancel_never_writes(
 
 
 @pytest.mark.parametrize("action", ["resume", "recover"])
+@pytest.mark.migration_integration
 def test_starter_source_and_output_participate_in_resume_and_recovery(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], action: str
 ) -> None:

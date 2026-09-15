@@ -22,6 +22,8 @@ from run_init_corpus import expected_outputs
 from test_migration import generated, index, migration, write
 from test_migration_transaction import git, interrupted_completion, repository
 
+pytestmark = pytest.mark.migration_integration
+
 
 @pytest.mark.parametrize(
     "agent,name,content",

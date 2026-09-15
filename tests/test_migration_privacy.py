@@ -11,6 +11,8 @@ from loadout.errors import LoadoutError
 from loadout.migration_journal import Journal
 from test_migration_transaction import git, repository, write
 
+pytestmark = pytest.mark.migration_integration
+
 
 def test_privacy_policy_resolves_each_logical_parent_once(tmp_path, monkeypatch):
     repository(tmp_path)

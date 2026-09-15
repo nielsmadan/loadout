@@ -17,6 +17,8 @@ import pytest
 from loadout.emit import Copied, render_global, write_all
 from loadout.errors import LoadoutError
 
+pytestmark = pytest.mark.integration
+
 SOURCE = """
 [[source]]
 name = "test"

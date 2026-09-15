@@ -16,6 +16,8 @@ from loadout.migration import plan_migration
 from loadout.migration_transaction import apply_migration, prepare_migration, recover_migration
 from test_migration_transaction import interrupted_completion
 
+pytestmark = pytest.mark.migration_integration
+
 
 def git(root: Path, *args: str) -> bytes:
     return subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True).stdout

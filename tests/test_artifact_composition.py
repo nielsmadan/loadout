@@ -12,6 +12,8 @@ from loadout.extract import extract_codex
 from test_artifacts import document_record, project, write
 from test_deployment import cli
 
+pytestmark = pytest.mark.integration
+
 LAYERS = 'sources = [{source = "base.json"}, {source = "local.json", optional = true}]'
 
 

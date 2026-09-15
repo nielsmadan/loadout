@@ -11,8 +11,12 @@ Codex, Factory Droid, OpenCode and Pi. Antigravity (`agy`) was dropped — see
     just install      # install or replace the current-source snapshot on PATH
     just install-editable  # link the installed command to this checkout
     just uninstall    # remove the installed CLI, preserving configuration
-    just check        # ruff check + ruff format --check + mypy --strict + pytest — run before every commit
-    just test         # pytest only
+    just check        # lint + format check + mypy --strict + unit tests — run before every commit
+    just test         # unit tests only
+    just test-unit    # unit tests explicitly
+    just test-integration  # CLI, subprocess, packaging and transactional integration tests
+    just test-migration  # Git-backed migration integration tests
+    just test-all     # every pytest test
 
 ## Constraints that silently corrupt output if violated
 

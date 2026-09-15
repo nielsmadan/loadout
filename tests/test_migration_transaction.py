@@ -23,6 +23,8 @@ from loadout.migration_transaction import (
     resume_migration,
 )
 
+pytestmark = pytest.mark.migration_integration
+
 
 def write(root: Path, name: str, text: str, mode: int = 0o644) -> Path:
     path = root / name

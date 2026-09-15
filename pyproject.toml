@@ -42,6 +42,11 @@ strict = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "--strict-markers"
+markers = [
+    "integration: exercises multiple components, a CLI/subprocess, packaging, or a transactional workflow",
+    "migration_integration: exercises real Git migration, checkpoint, resume, or recovery flows",
+]
 
 [tool.coverage.run]
 source = ["loadout"]

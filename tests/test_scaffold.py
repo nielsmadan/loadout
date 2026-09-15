@@ -12,6 +12,8 @@ from loadout.machine import load_machine_config
 from loadout.project import load_project_config, project_config_path
 from loadout.scaffold import add_harness, init_global, init_project
 
+pytestmark = pytest.mark.integration
+
 
 def git_repo(tmp_path: Path) -> Path:
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)

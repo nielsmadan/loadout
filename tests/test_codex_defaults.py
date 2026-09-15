@@ -11,6 +11,8 @@ from loadout.emit import check_all, collect_notices, write_all
 from loadout.errors import LoadoutError
 from loadout.record import read_record, render_record
 
+pytestmark = pytest.mark.integration
+
 FRAGMENT = {"model": "gpt-5.6-sol", "model_reasoning_effort": "max"}
 
 EXISTING = """# hand-written

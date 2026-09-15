@@ -18,6 +18,8 @@ from loadout.native_documents import parse_document
 from loadout.permissions.renderers import render_codex_project, render_opencode
 from loadout.permissions.rules import Rules
 
+pytestmark = pytest.mark.integration
+
 
 def write(root: Path, relative: str, content: str | bytes, mode: int = 0o644) -> Path:
     path = root / relative

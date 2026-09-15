@@ -20,6 +20,8 @@ from loadout.migration_transaction import (
 from test_migration_corpus_regressions import git, migrated_journal, repository
 from test_migration_transaction import interrupted_completion
 
+pytestmark = pytest.mark.migration_integration
+
 
 def payloads(journal: Journal) -> dict[str, bytes]:
     return {path.name: path.read_bytes() for path in journal.path.parent.glob("payload-*.json")}

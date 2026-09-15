@@ -23,6 +23,8 @@ from loadout.staged import check_staged
 from loadout.template_catalog import load_catalog
 from loadout.templates import resolve_template, template_divergence, tree_hash, vendored_path
 
+pytestmark = pytest.mark.integration
+
 
 def _write(path: Path, text: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -339,6 +341,7 @@ def test_manifest_and_directory_same_name_are_ambiguous(tmp_path: Path, catalog:
         resolve_template("nextjs", tmp_path)
 
 
+@pytest.mark.migration_integration
 def test_catalog_starter_import_freezes_all_referenced_parts(tmp_path: Path, catalog: Path) -> None:
     _write(catalog / "frontend.toml", (catalog / "nextjs.toml").read_text())
     plan = plan_migration(

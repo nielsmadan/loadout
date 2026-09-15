@@ -9,6 +9,8 @@ import pytest
 from loadout.bundled_skill import bundled_skill_path
 from loadout.errors import LoadoutError
 
+pytestmark = pytest.mark.integration
+
 ROOT = Path(__file__).parents[1]
 
 

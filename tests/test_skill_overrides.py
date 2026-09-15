@@ -10,6 +10,8 @@ from loadout.emit import write_all
 from test_cli import _global_skill_root, _write_machine_config
 from test_skill_installation import _bundle
 
+pytestmark = pytest.mark.integration
+
 
 def _use_bundle(monkeypatch: pytest.MonkeyPatch, bundle: Path) -> None:
     monkeypatch.setattr("loadout.commands.bundled_skill_path", lambda: bundle)

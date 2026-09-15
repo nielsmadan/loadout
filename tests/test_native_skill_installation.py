@@ -14,6 +14,8 @@ from loadout.machine import machine_config_path
 from loadout.native_skill_installation import change_native_targets, inspect_native_targets
 from loadout.skill_installation import OWNER_MARKER, SourceSkillState
 
+pytestmark = pytest.mark.integration
+
 
 def _root(tmp_path: Path, *, shared: bool = False) -> Path:
     root = tmp_path / "global"

@@ -15,6 +15,8 @@ from loadout.skill_installation import (
 )
 from loadout.skills import discover_skills
 
+pytestmark = pytest.mark.integration
+
 
 def _bundle(path: Path, body: str = "v1\n") -> Path:
     path.mkdir(parents=True)

@@ -11,6 +11,8 @@ from loadout.errors import LoadoutError
 from loadout.migration_journal import Journal
 from test_migration_recovery import repeated_path_journal
 
+pytestmark = pytest.mark.migration_integration
+
 
 def test_payload_replacement_keeps_the_previous_cursor_readable_until_published(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -18,6 +18,8 @@ from loadout.native_documents import apply_document, key_fingerprints
 from test_artifacts import document_record, project, write
 from test_sync_guard import _commit_source
 
+pytestmark = pytest.mark.integration
+
 
 def copy_record(output: str = "CLAUDE.md", source: str = "instructions.md") -> str:
     return (

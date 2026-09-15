@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 import loadout
+
+pytestmark = pytest.mark.integration
 
 
 def _snapshot(*roots: Path) -> dict[str, bytes]:

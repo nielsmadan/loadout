@@ -18,6 +18,8 @@ import loadout
 from loadout.emit import collect_notices
 from loadout.notices import OPENCODE_SKILL_FLAGS
 
+pytestmark = pytest.mark.integration
+
 
 def _root_with_hooks(tmp_path: Path, document: dict[str, object]) -> Path:
     """A minimal agent-keyed source with one hooks fragment.

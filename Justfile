@@ -36,6 +36,18 @@ uninstall:
     @uv tool uninstall loadout
 
 test:
+    @uv run pytest -q -m "not integration and not migration_integration"
+
+test-unit:
+    @uv run pytest -q -m "not integration and not migration_integration"
+
+test-integration:
+    @uv run pytest -q -m "integration and not migration_integration"
+
+test-migration:
+    @uv run pytest -q -m migration_integration
+
+test-all:
     @uv run pytest -q
 
 lint:
@@ -63,9 +75,9 @@ changelog:
 release *args:
     python3 scripts/release.py "$@"
 
-# Everything CI runs.
+# Unit checks for local work.
 check:
     @uv run ruff check
     @uv run ruff format --check
     @uv run mypy
-    @uv run pytest -q
+    @uv run pytest -q -m "not integration and not migration_integration"
