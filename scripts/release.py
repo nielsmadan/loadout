@@ -4,7 +4,6 @@ import re
 import shutil
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 SEMVER_PARTS = 3
@@ -218,79 +217,18 @@ def prepare(root, config, version):
         clean(root)
 
 
-def publication(root, config, tag, revision):
+def report_publication(config, tag):
     if not config.get("workflow"):
-        print(f"Published {tag}. {config['publication']}")
+        print(f"Pushed {tag}. {config['publication']}")
         return
-    deadline = time.monotonic() + 120
-    while time.monotonic() < deadline:
-        runs = json.loads(
-            run(
-                root,
-                "gh",
-                "run",
-                "list",
-                "--repo",
-                config["repository"],
-                "--workflow",
-                config["workflow"],
-                "--event",
-                "push",
-                "--commit",
-                revision,
-                "--json",
-                "databaseId,headBranch,url",
-                "--limit",
-                "20",
-            )
-        )
-        matches = [item for item in runs if item["headBranch"] == tag]
-        if matches:
-            workflow_run = matches[0]
-            break
-        time.sleep(3)
+    url = f"https://github.com/{config['repository']}"
+    print(f"Pushed {tag}. GitHub publication runs asynchronously.")
+    print(f"Workflow: {url}/actions/workflows/{config['workflow']}")
+    if config.get("draft", False):
+        print(f"Draft releases (when ready): {url}/releases")
+        print("Review and publish the draft manually.")
     else:
-        raise ReleaseError(
-            f"{tag} was pushed, but its release workflow has not appeared. Check GitHub Actions."
-        )
-    print("Publication: " + workflow_run["url"], flush=True)
-    deadline = time.monotonic() + 7200
-    while time.monotonic() < deadline:
-        result = json.loads(
-            run(
-                root,
-                "gh",
-                "run",
-                "view",
-                str(workflow_run["databaseId"]),
-                "--repo",
-                config["repository"],
-                "--json",
-                "status,conclusion",
-            )
-        )
-        if result["status"] == "completed":
-            if result["conclusion"] != "success":
-                raise ReleaseError(
-                    f"Publication finished with {result['conclusion']}: {workflow_run['url']}"
-                )
-            url = run(
-                root,
-                "gh",
-                "release",
-                "view",
-                tag,
-                "--repo",
-                config["repository"],
-                "--json",
-                "url",
-                "--jq",
-                ".url",
-            )
-            print("Released: " + url)
-            return
-        time.sleep(5)
-    raise ReleaseError("Publication is still running: " + workflow_run["url"])
+        print(f"Release (when ready): {url}/releases/tag/{tag}")
 
 
 def proposal(root, config, state, override):
@@ -305,12 +243,6 @@ def proposal(root, config, state, override):
     if override:
         version = select_version(override, state, config)
     return version, counts
-
-
-def require_tools(config):
-    for tool in config["tools"]:
-        if not shutil.which(tool):
-            raise ReleaseError(f"Required release tool is missing: {tool}")
 
 
 def main():
@@ -329,10 +261,10 @@ def main():
         raise ReleaseError(
             "Interactive confirmation needs a terminal; use --dry-run or explicit --yes."
         )
-    require_tools(config)
+    for tool in config["tools"]:
+        if not shutil.which(tool):
+            raise ReleaseError(f"Required release tool is missing: {tool}")
     state = inspect(root, config)
-    if config.get("workflow") and not args.dry_run:
-        run(root, "gh", "repo", "view", config["repository"], "--json", "nameWithOwner")
     version, counts = proposal(root, config, state, args.version)
     if args.dry_run:
         preview(config, state, version, counts)
@@ -371,7 +303,7 @@ def main():
         "refs/tags/" + tag,
         capture=False,
     )
-    publication(root, config, tag, run(root, "git", "rev-parse", "HEAD"))
+    report_publication(config, tag)
 
 
 if __name__ == "__main__":

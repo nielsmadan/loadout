@@ -23,8 +23,9 @@ The tap repository itself must exist and allow the token to push to `main`.
 ## Preview and release
 
 Use a clean `main` checkout with complete Git history and local tags matching origin. The
-checkout must include all origin commits. Python 3.13+, Git, Just, uv/uvx and authenticated
-`gh` are required. Run a release only when publication is intended.
+checkout must include all origin commits. Python 3.13+, Git, Just and uv/uvx are required. The
+release runs on Git alone and needs no GitHub CLI or API access. Run a release only when
+publication is intended.
 
 ```sh
 just release --dry-run
@@ -44,7 +45,8 @@ bump, `fix` a patch, and breaking changes a minor bump while the version is `0.x
 After confirmation, the script updates both version fields, refreshes `uv.lock`, generates
 `CHANGELOG.md`, commits those files, creates an annotated `vVERSION` tag and atomically pushes
 the branch and that tag. Existing local commits are included and counted in the preview.
-The command waits for the matching release workflow and reports its outcome.
+The command returns once the push succeeds and prints the workflow and release URLs; publication
+then runs asynchronously on GitHub. A successful command confirms the push, not the publication.
 
 `CHANGELOG.md` is generated from commit history through `cliff.toml`; do not edit it by hand.
 Use `just changelog` to regenerate it. Update the lockfile before committing the version.
