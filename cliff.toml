@@ -32,24 +32,20 @@ footer = """
     {% if release.version -%}
         {% if release.previous.version -%}
             [{{ release.version | trim_start_matches(pat="v") }}]: \
-                https://github.com/{{ remote.github.owner }}/{{ remote.github.repo }}\
+                https://github.com/nielsmadan/loadout\
                     /compare/{{ release.previous.version }}..{{ release.version }}
         {% else -%}
             [{{ release.version | trim_start_matches(pat="v") }}]: \
-                https://github.com/{{ remote.github.owner }}/{{ remote.github.repo }}\
+                https://github.com/nielsmadan/loadout\
                     /tree/{{ release.version }}
         {% endif -%}
     {% else -%}
-        [unreleased]: https://github.com/{{ remote.github.owner }}/{{ remote.github.repo }}\
+        [unreleased]: https://github.com/nielsmadan/loadout\
             /compare/{{ release.previous.version }}..HEAD
     {% endif -%}
 {% endfor %}
 """
 trim = true
-
-[remote.github]
-owner = "nielsmadan"
-repo = "loadout"
 
 [git]
 conventional_commits = true
