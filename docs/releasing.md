@@ -51,6 +51,23 @@ then runs asynchronously on GitHub. A successful command confirms the push, not 
 `CHANGELOG.md` is generated from commit history through `cliff.toml`; do not edit it by hand.
 Use `just changelog` to regenerate it. Update the lockfile before committing the version.
 
+## Packaging is checked before a tag exists
+
+`.github/workflows/prerelease.yml` runs the packaging steps against `main`, pull requests, and
+on demand. It builds the wheel, exercises it with the installation checker, renders the
+Homebrew formula, installs and tests it through a temporary tap, and generates release notes —
+the same work the tagged `package` job does.
+
+It differs in one way. The formula's `url` points at a tag archive that does not exist yet, so
+the workflow builds an equivalent archive from `HEAD` with `git archive --prefix=`, which is
+the shape GitHub serves for a tag, and rewrites the rendered formula's `url` to that file.
+Nothing else is substituted.
+
+This exists because the `package` job only runs on a tag push. Releases 0.9.0 through 0.9.2
+each failed inside it — a stale installation checker, a formula test colliding with Homebrew's
+`HOME`, and changelog generation calling the GitHub API — and every failure spent a public
+version number. Those three are the failures this workflow would have caught on `main`.
+
 ## What GitHub verifies and publishes
 
 1. Run lint, formatting, strict type checks, the full test suite with Node available, and a

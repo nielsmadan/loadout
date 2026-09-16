@@ -22,3 +22,7 @@ htmlcov/
 # every clone.
 .claude/worktrees/
 .worktrees/
+
+# Rendered at the repository root by the release and prerelease packaging steps.
+/loadout.rb
+/release-notes.md

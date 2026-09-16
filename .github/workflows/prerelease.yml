@@ -1,0 +1,88 @@
+name: Prerelease
+
+# The package job in release.yml only runs on a tag push, so every failure in it
+# costs a public version number. These steps are the same checks against the
+# current commit, with the tagged archive replaced by one built from HEAD.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: loadout-prerelease-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: "0.8.10"
+          python-version: "3.13"
+      - name: Check tap configuration
+        # Fork pull requests receive no secrets, so an empty value there is not a finding.
+        if: github.event_name != 'pull_request'
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -z "$HOMEBREW_TAP_TOKEN" ]; then
+            echo "Set HOMEBREW_TAP_TOKEN in this repository's Actions secrets before releasing."
+            exit 1
+          fi
+      - name: Verify the lockfile
+        run: uv lock --check
+      - name: Build source archive and wheel
+        run: uv build
+      - name: Exercise the installed wheel
+        env:
+          UV_TOOL_DIR: ${{ runner.temp }}/loadout-tool/tools
+          UV_TOOL_BIN_DIR: ${{ runner.temp }}/loadout-tool/bin
+        run: |
+          uv tool install --python 3.13 dist/*.whl
+          "$UV_TOOL_DIR/loadout/bin/python" tests/manual/verify_installation.py \
+            "$RUNNER_TEMP/loadout-tool" "$RUNNER_TEMP/loadout-install-check"
+      - name: Prepare Homebrew formula
+        run: |
+          version=$(python3 -c 'import tomllib,pathlib; print(tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"])')
+          archive="$RUNNER_TEMP/loadout-source.tar.gz"
+          git archive --format=tar.gz --prefix="loadout-${version}/" -o "$archive" HEAD
+          source_sha=$(shasum -a 256 "$archive" | cut -d' ' -f1)
+          python3 scripts/homebrew.py "$version" "$source_sha" loadout.rb
+          # No tag exists yet, so build from the archive this commit produces.
+          python3 - "$archive" <<'PY'
+          import pathlib
+          import sys
+
+          formula = pathlib.Path("loadout.rb")
+          lines = formula.read_text().splitlines(keepends=True)
+          for index, line in enumerate(lines):
+              if line.startswith("  url "):
+                  lines[index] = f'  url "file://{sys.argv[1]}"\n'
+                  break
+          else:
+              raise SystemExit("no url line in the rendered formula")
+          formula.write_text("".join(lines))
+          PY
+      - name: Install and test through Homebrew
+        run: |
+          brew tap-new --no-git nielsmadan/loadout-prerelease-test
+          cp loadout.rb "$(brew --repository nielsmadan/loadout-prerelease-test)/Formula/loadout.rb"
+          brew install --build-from-source nielsmadan/loadout-prerelease-test/loadout
+          brew test nielsmadan/loadout-prerelease-test/loadout
+      - name: Generate release notes
+        run: |
+          uvx git-cliff@2.13.1 --unreleased --strip all --output "$RUNNER_TEMP/release-notes.md"
+          sed '/^## \[/d' "$RUNNER_TEMP/release-notes.md" > release-notes.md
