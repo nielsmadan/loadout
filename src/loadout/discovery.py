@@ -13,10 +13,10 @@ from pathlib import Path
 from .artifacts import CATEGORIES, ArtifactScope
 from .errors import LoadoutError
 from .git_privacy import ignored_paths
+from .harnesses import KNOWN_HARNESSES
 from .migration_models import Candidate, EntryState, Inventory, Issue, RootMapping
 from .migration_paths import DestinationLayout
 from .native_documents import parse_document
-from .project import KNOWN_HARNESSES
 
 GLOBAL_ROOTS = {
     "claude": ("CLAUDE_CONFIG_DIR", ".claude"),
@@ -231,6 +231,11 @@ def project_root(path: Path) -> Path:
         if (parent / "loadout/config.toml").is_file() or (parent / ".git").exists():
             return parent
     return path
+
+
+def initialized_project_path(path: Path) -> Path | None:
+    config = project_root(path) / "loadout/config.toml"
+    return config if config.is_file() else None
 
 
 def _home_path(value: str, home: Path) -> Path:
@@ -639,8 +644,9 @@ def discover(
         raise LoadoutError("agents must be distinct supported harness names")
     root = root.absolute() if scope == "global" else project_root(root)
     mappings = _validate_mappings(mappings)
+    project = initialized_project_path(root) if scope != "global" else None
     existing = [
-        ("project", root / "loadout/config.toml"),
+        *((("project", project),) if project is not None else ()),
         ("global", root / "loadout.toml"),
         ("global", root / "loadout/loadout.toml"),
     ]

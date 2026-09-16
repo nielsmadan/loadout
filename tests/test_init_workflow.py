@@ -10,6 +10,7 @@ import pytest
 
 import loadout
 from loadout import migration_transaction
+from loadout.discovery import discover
 from loadout.errors import LoadoutError
 from loadout.machine import machine_config_path
 
@@ -66,11 +67,140 @@ def test_global_defaults_to_cwd_and_registers_actual_manifest(tmp_path, monkeypa
     monkeypatch.chdir(tmp_path)
     assert loadout.main(["init", "--global", "--harness", "pi", "--yes"]) == 0
     data = tomllib.loads(machine_config_path().read_text())
-    assert data == {"source": str(tmp_path / "loadout")}
+    assert data == {"source": str(tmp_path / "loadout"), "harnesses": ["pi"]}
     assert loadout.main(["check", "--global"]) == 0
     capsys.readouterr()
     assert loadout.main(["init", "--global", "--yes", "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["already_initialized"]
+
+
+def test_project_init_uses_machine_harness_defaults(tmp_path, fake_home, capsys):
+    source = fake_home / "global"
+    source.mkdir()
+    machine = machine_config_path()
+    machine.parent.mkdir(parents=True)
+    machine.write_text(f'source = "{source}"\nharnesses = ["claude", "droid"]\n')
+
+    assert loadout.main(["init", "--project", "--root", str(tmp_path), "--dry-run", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["agents"] == ["claude", "droid"]
+
+
+def test_machine_harness_defaults_take_precedence_over_project_discovery(
+    tmp_path, fake_home, capsys
+):
+    settings = tmp_path / ".claude/settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text("{}\n")
+    assert discover(tmp_path, scope="project").agents == ("claude",)
+
+    source = fake_home / "global"
+    source.mkdir()
+    machine = machine_config_path()
+    machine.parent.mkdir(parents=True)
+    machine.write_text(f'source = "{source}"\nharnesses = ["droid"]\n')
+
+    assert loadout.main(["init", "--project", "--root", str(tmp_path), "--dry-run", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["agents"] == ["droid"]
+
+
+def test_stale_global_source_does_not_block_machine_harness_defaults(tmp_path, capsys):
+    machine = machine_config_path()
+    machine.parent.mkdir(parents=True)
+    machine.write_text('source = "/nope/missing"\nharnesses = ["droid"]\n')
+
+    assert loadout.main(["init", "--project", "--root", str(tmp_path), "--dry-run", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["agents"] == ["droid"]
+
+
+def test_explicit_project_harnesses_override_machine_defaults(tmp_path, fake_home, capsys):
+    source = fake_home / "global"
+    source.mkdir()
+    machine = machine_config_path()
+    machine.parent.mkdir(parents=True)
+    machine.write_text(f'source = "{source}"\nharnesses = ["droid"]\n')
+
+    assert (
+        loadout.main(
+            [
+                "init",
+                "--project",
+                "--root",
+                str(tmp_path),
+                "--harness",
+                "claude",
+                "--dry-run",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    assert json.loads(capsys.readouterr().out)["agents"] == ["claude"]
+
+
+def test_initialized_project_ignores_machine_harness_defaults(tmp_path, fake_home, capsys):
+    _repo(tmp_path)
+    assert (
+        loadout.main(
+            [
+                "init",
+                "--project",
+                "--root",
+                str(tmp_path),
+                "--harness",
+                "claude",
+                "--yes",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    source = fake_home / "global"
+    source.mkdir()
+    machine = machine_config_path()
+    machine.parent.mkdir(parents=True, exist_ok=True)
+    machine.write_text(f'source = "{source}"\nharnesses = ["droid"]\n')
+    capsys.readouterr()
+
+    assert loadout.main(["init", "--project", "--root", str(tmp_path), "--dry-run", "--json"]) == 0
+    preview = json.loads(capsys.readouterr().out)
+    assert preview["agents"] == ["claude"]
+    assert preview["already_initialized"]
+
+
+def test_repeat_global_init_saves_defaults_and_preserves_machine_config(
+    tmp_path, monkeypatch, capsys
+):
+    _repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    assert loadout.main(["init", "--global", "--harness", "pi", "--yes"]) == 0
+    machine = machine_config_path()
+    source = tmp_path / "loadout"
+    machine.write_text(
+        f'# selected here\nsource = "{source}"\nprofile = "autonomous"\nharnesses = ["claude"]\n',
+        encoding="utf-8",
+    )
+    capsys.readouterr()
+
+    assert loadout.main(["init", "--global", "--yes", "--json"]) == 0
+    assert machine.read_text(encoding="utf-8") == (
+        f'# selected here\nsource = "{source}"\nprofile = "autonomous"\nharnesses = ["pi"]\n'
+    )
+
+
+def test_matching_registration_keep_preserves_harness_defaults(tmp_path, monkeypatch, capsys):
+    _repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    assert loadout.main(["init", "--global", "--harness", "pi", "--yes"]) == 0
+    machine = machine_config_path()
+    source = tmp_path / "loadout"
+    machine.write_text(
+        f'source = "{source}"\nharnesses = ["claude"]\n',
+        encoding="utf-8",
+    )
+    capsys.readouterr()
+
+    assert loadout.main(["init", "--global", "--registration", "keep", "--yes", "--json"]) == 0
+    assert tomllib.loads(machine.read_text(encoding="utf-8"))["harnesses"] == ["claude"]
 
 
 def test_global_copy_conflict_requires_selection_even_with_yes(tmp_path, fake_home, capsys):

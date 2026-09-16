@@ -43,10 +43,12 @@ directory.
 
 **A machine config says where that source is.** `$XDG_CONFIG_HOME/loadout/config.toml`, or
 `~/.config/loadout/config.toml`, names the directory holding the global `loadout.toml` and
-optionally the profile this machine runs. `loadout sync --global` and `loadout check --global`
-read it; `loadout init --global` writes it. Absent means "no global scope on this machine",
-which is a legitimate state, not an error — see
-[0010](decisions/0010-a-machine-config-locates-the-global-source.md).
+optionally the profile this machine runs and the default harnesses for fresh project init.
+`loadout sync --global` and `loadout check --global` read it; `loadout init --global` writes it
+with the resolved harness list. Absent means "no global scope on this machine", which is a
+legitimate state, not an error — see
+[0010](decisions/0010-a-machine-config-locates-the-global-source.md) and
+[0021](decisions/0021-global-init-records-project-harness-defaults.md).
 
 Everything the global scope owns lives under one directory it wholly owns, the same shape
 project scope already uses:

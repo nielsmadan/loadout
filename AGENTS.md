@@ -193,10 +193,11 @@ careful. `record.py` holds the other half for a slice whose key names are the us
 a set loadout could enumerate: the union of what was written last time and what is written now
 is what gets stripped, which is the only reason *removing* a key removes it. See
 [0017](docs/decisions/0017-ownership-may-be-declared-instead-of-derived.md).
-`machine.py` resolves `$XDG_CONFIG_HOME/loadout/` — where machine state is *stored*: the
-config `--global` reads, and what `--global` resolves the root and profile from. It is not the only machine
-state that is *read*: `manifest.py:resolve_destination` expands `${VAR}` in a destination
-against the environment, per [0011](docs/decisions/0011-a-destination-follows-a-relocated-harness.md).
+`machine.py` resolves `$XDG_CONFIG_HOME/loadout/` — where machine state is *stored*: the config
+`--global` reads, what `--global` resolves the root and profile from, and the harness defaults a
+fresh project init uses. It is not the only machine state that is *read*:
+`manifest.py:resolve_destination` expands `${VAR}` in a destination against the environment, per
+[0011](docs/decisions/0011-a-destination-follows-a-relocated-harness.md).
 `written.py` stores the other half beside that config: what `sync` last wrote at each
 destination, which is the third variant the modified-outside-loadout guard compares against and
 the sidecar [0008](docs/decisions/0008-generated-files-carry-no-machine-state.md) deferred for

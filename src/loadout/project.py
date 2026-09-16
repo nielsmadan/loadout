@@ -8,11 +8,10 @@ from pathlib import Path
 from .agents import SliceOutput
 from .artifacts import Artifacts, artifact_reference
 from .errors import LoadoutError
+from .harnesses import KNOWN_HARNESSES
 
 PROJECT_DIR = "loadout"
 PROJECT_CONFIG_NAME = "config.toml"
-
-KNOWN_HARNESSES = frozenset({"claude", "codex", "droid", "opencode", "pi"})
 
 
 @dataclass(frozen=True)

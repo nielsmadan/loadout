@@ -10,9 +10,10 @@ from typing import Any
 
 import tomlkit
 
-from .discovery import discover
+from .discovery import discover, initialized_project_path
 from .errors import LoadoutError, UsageError
 from .git_hooks import HookPlan, plan_hooks, show_hooks
+from .harnesses import KNOWN_HARNESSES
 from .init_options import InitOptions, parse_mapping, parse_selection
 from .machine import load_machine_config, machine_config_path
 from .migration import plan_migration
@@ -26,7 +27,6 @@ from .migration_transaction import (
     recover_migration,
     resume_migration,
 )
-from .project import KNOWN_HARNESSES
 
 
 class _Cancelled(Exception):
@@ -58,7 +58,19 @@ def _plan(options: InitOptions) -> MigrationPlan:
     )
 
 
+def _project_harness_defaults(options: InitOptions) -> InitOptions:
+    if options.scope != "project" or options.agents:
+        return options
+    if initialized_project_path(options.root) is not None:
+        return options
+    machine = load_machine_config(machine_config_path(), require_source=False)
+    if machine is None or not machine.harnesses:
+        return options
+    return replace(options, agents=machine.harnesses)
+
+
 def _resolve(options: InitOptions) -> tuple[InitOptions, MigrationPlan]:
+    options = _project_harness_defaults(options)
     plan = _plan(options)
     if options.dry_run or options.json or not sys.stdin.isatty():
         return options, plan
@@ -69,6 +81,7 @@ def _resolve(options: InitOptions) -> tuple[InitOptions, MigrationPlan]:
         if scope not in {"project", "global"}:
             return options, plan
         options = replace(options, scope="project" if scope == "project" else "global")
+        options = _project_harness_defaults(options)
     if options.scope == "global" and options.source is None:
         answer = _answer(f"Directory to hold the global source [{options.root}]: ")
         options = replace(
@@ -119,6 +132,15 @@ def _resolution(options: InitOptions, answer: str) -> InitOptions:
     return replace(options, selections=(*previous, selection))
 
 
+def _updated_registration(path: Path, text: str, agents: tuple[str, ...]) -> SourceWrite | None:
+    if not agents:
+        return None
+    document = tomlkit.parse(text)
+    document["harnesses"] = list(agents)
+    content = tomlkit.dumps(document).encode()
+    return None if content == text.encode() else SourceWrite(path, content, 0o600, True)
+
+
 def _registration(
     options: InitOptions, plan: MigrationPlan
 ) -> tuple[SourceWrite | None, Issue | None]:
@@ -126,17 +148,19 @@ def _registration(
         return None, None
     path = machine_config_path().absolute()
     source = plan.inventory.source_root.resolve()
+    existing_text: str | None = None
     if path.exists() or path.is_symlink():
         same = False
         if not path.is_symlink() and path.is_file():
             try:
-                data = tomllib.loads(path.read_text(encoding="utf-8"))
+                existing_text = path.read_text(encoding="utf-8")
+                data = tomllib.loads(existing_text)
                 raw = data.get("source")
                 same = isinstance(raw, str) and Path(raw).expanduser().resolve() == source
             except (ValueError, OSError):
                 pass
         if same:
-            return None, None
+            return _updated_registration(path, existing_text or "", plan.inventory.agents), None
         choice = options.registration
         if choice is None and sys.stdin.isatty() and not (options.dry_run or options.json):
             choice = _answer(
@@ -150,7 +174,10 @@ def _registration(
                 (path,),
                 "Choose --registration replace or --registration keep; --yes does not choose ownership.",
             )
-    return SourceWrite(path, tomlkit.dumps({"source": str(source)}).encode(), 0o600, True), None
+    registration: dict[str, object] = {"source": str(source)}
+    if plan.inventory.agents:
+        registration["harnesses"] = list(plan.inventory.agents)
+    return SourceWrite(path, tomlkit.dumps(registration).encode(), 0o600, True), None
 
 
 def _show(preview: dict[str, Any], *, as_json: bool) -> None:

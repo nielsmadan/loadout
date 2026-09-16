@@ -97,10 +97,13 @@ slice directories belong under the selected source paths.
 ```toml title="~/.config/loadout/config.toml"
 source = "~/agent-config/loadout"
 profile = "default"
+harnesses = ["claude", "codex"]
 ```
 
 When XDG_CONFIG_HOME is set, the location is `$XDG_CONFIG_HOME/loadout/config.toml`.
-`source` is required; `profile` is optional. Other keys are rejected.
+`source` is required. `profile` and `harnesses` are optional. The harness list supplies defaults
+for fresh project init when no `--harness` option is given. It must be non-empty, contain no
+duplicates, and use supported harness names. Other keys are rejected.
 
 ## Project configuration
 

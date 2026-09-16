@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .errors import LoadoutError
-from .project import KNOWN_HARNESSES
+from .harnesses import KNOWN_HARNESSES
 
 SKILL_DOCUMENT = "SKILL.md"
 

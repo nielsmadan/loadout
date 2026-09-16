@@ -24,7 +24,9 @@ project config is `<repo>/loadout/config.toml`. For global scope, first resolve 
 `XDG_CONFIG_HOME` environment value: when it is non-empty, inspect only
 `$XDG_CONFIG_HOME/loadout/config.toml`; when it is unset or empty, inspect only
 `~/.config/loadout/config.toml`. Never probe both. The machine config names the global source
-directory and optionally the active profile.
+directory, optionally the active profile, and optionally the default harnesses for fresh project
+init. Explicit `--harness` selections override that default; initialized projects keep their own
+configured harnesses.
 
 If the scope is absent, use the onboarding reference when setup is requested. An ordinary settings
 change does not itself authorize migration and its Git checkpoint; report the missing setup.

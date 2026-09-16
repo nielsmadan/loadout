@@ -49,14 +49,17 @@ loadout init --global --source ~/agent-config
 
 | Option | Meaning |
 | --- | --- |
-| `--harness NAME` | Enable a project harness; repeat for several |
+| `--harness NAME` | Select a harness; repeat for several |
 | `--root PATH` | Project directory to initialise |
 | `--global` | Initialise or adopt a global source and write the machine configuration |
 | `--source PATH` | Existing global source, or directory in which to scaffold a new one |
 | `--force` | With `--global`, overwrite an existing machine configuration |
 
-Project initialisation requires at least one `--harness`. Global initialisation cannot be
-combined with `--harness`. In a non-interactive shell, supply `--source` for global setup.
+Fresh project initialisation uses explicit `--harness` options, then the machine configuration's
+`harnesses` default, then discovered project configuration. If none establishes membership, it
+requires a selection. Global initialisation accepts `--harness` and automatically records its
+resolved harness list as the project default. In a non-interactive shell, supply `--source` for
+global setup.
 
 Re-running project initialisation with the same harness set preserves its configuration and
 extends the generated paths in `.gitignore`.

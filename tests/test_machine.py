@@ -39,6 +39,7 @@ def test_source_is_expanded_and_resolved(tmp_path: Path) -> None:
     assert config is not None
     assert config.source == target
     assert config.profile is None
+    assert config.harnesses == ()
 
 
 def test_profile_is_read(tmp_path: Path) -> None:
@@ -48,6 +49,33 @@ def test_profile_is_read(tmp_path: Path) -> None:
     config = load_machine_config(path)
     assert config is not None
     assert config.profile == "autonomous"
+
+
+def test_harness_defaults_are_read(tmp_path: Path) -> None:
+    target = tmp_path / "src"
+    target.mkdir()
+    path = write(tmp_path, f'source = "{target}"\nharnesses = ["claude", "droid"]\n')
+    config = load_machine_config(path)
+    assert config is not None
+    assert config.harnesses == ("claude", "droid")
+
+
+@pytest.mark.parametrize(
+    "value",
+    (
+        "[]",
+        '"claude"',
+        '["claude", 1]',
+        '["claude", "claude"]',
+        '["emacs"]',
+    ),
+)
+def test_invalid_harness_defaults_are_rejected(tmp_path: Path, value: str) -> None:
+    target = tmp_path / "src"
+    target.mkdir()
+    path = write(tmp_path, f'source = "{target}"\nharnesses = {value}\n')
+    with pytest.raises(LoadoutError, match="harness"):
+        load_machine_config(path)
 
 
 def test_missing_source_is_an_error(tmp_path: Path) -> None:
@@ -61,6 +89,13 @@ def test_source_that_does_not_exist_names_the_config(tmp_path: Path) -> None:
     with pytest.raises(LoadoutError) as caught:
         load_machine_config(path)
     assert str(caught.value).startswith(f"{path}: ")
+
+
+def test_harness_defaults_can_be_read_from_a_stale_global_registration(tmp_path: Path) -> None:
+    path = write(tmp_path, 'source = "/nope/missing"\nharnesses = ["droid"]\n')
+    config = load_machine_config(path, require_source=False)
+    assert config is not None
+    assert config.harnesses == ("droid",)
 
 
 def test_unknown_key_is_an_error_not_ignored(tmp_path: Path) -> None:

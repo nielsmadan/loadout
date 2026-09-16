@@ -121,14 +121,18 @@ config** says where its source lives:
 
 ```toml
 # $XDG_CONFIG_HOME/loadout/config.toml, or ~/.config/loadout/config.toml
-source  = "~/ac"            # directory holding loadout.toml; ~ expanded; must exist
-profile = "autonomous"      # optional; the active profile (default: "default")
+source    = "~/ac"                    # directory holding loadout.toml; must exist
+profile   = "autonomous"              # optional; active profile, default "default"
+harnesses = ["claude", "codex", "pi"] # optional; defaults for fresh project init
 ```
 
-`source` and `profile` are the only accepted keys — anything else is an error, so a typo fails
-loudly. The file is machine state: never version-controlled, never generated, and the only
-place loadout *stores* state that is not part of a source (see
-[0010](docs/decisions/0010-a-machine-config-locates-the-global-source.md) and
+`source`, `profile`, and `harnesses` are the only accepted keys — anything else is an error, so a
+typo fails loudly. An explicit `--harness` selection overrides the machine default. Existing
+projects keep the harnesses in their own config. The file is machine state: never
+version-controlled, never generated, and the only place loadout *stores* state that is not part
+of a source (see
+[0010](docs/decisions/0010-a-machine-config-locates-the-global-source.md),
+[0021](docs/decisions/0021-global-init-records-project-harness-defaults.md), and
 [0008](docs/decisions/0008-generated-files-carry-no-machine-state.md)). It is not the only
 machine state loadout *reads*: a destination template resolves environment variables at render
 time, per [0011](docs/decisions/0011-a-destination-follows-a-relocated-harness.md).
@@ -138,8 +142,10 @@ time, per [0011](docs/decisions/0011-a-destination-follows-a-relocated-harness.m
 
 Global init discovers existing configuration in live harness roots and the selected directory,
 which defaults to cwd. It migrates into `<source>/loadout/`, with explicit native category routes
-and private sources where required, and registers that actual manifest directory. An existing
-Loadout manifest is recognized as source and left intact; repeat init reports no migration.
+and private sources where required, and registers that actual manifest directory and resolved
+harness list. That list becomes the default for fresh project init. An existing Loadout manifest
+is recognized as source and left intact; repeat init reports no migration while refreshing the
+saved harness default.
 A conflicting machine registration requires `--registration replace` or `--registration keep`.
 `--force` remains an alias for registration replacement only. `--yes` approves resolved operations;
 it never chooses between conflicting sources.

@@ -7,16 +7,18 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .errors import LoadoutError
+from .harnesses import KNOWN_HARNESSES
 
 MACHINE_CONFIG_NAME = "config.toml"
 
 
 @dataclass(frozen=True)
 class MachineConfig:
-    """Where this machine's global source lives, and which profile it runs."""
+    """This machine's global source, active profile and project harness defaults."""
 
     source: Path
     profile: str | None = None
+    harnesses: tuple[str, ...] = ()
 
 
 def machine_state_dir(env: Mapping[str, str] | None = None) -> Path:
@@ -36,7 +38,7 @@ def machine_config_path(env: Mapping[str, str] | None = None) -> Path:
     return machine_state_dir(env) / MACHINE_CONFIG_NAME
 
 
-def load_machine_config(path: Path) -> MachineConfig | None:
+def load_machine_config(path: Path, *, require_source: bool = True) -> MachineConfig | None:
     if not path.is_file():
         return None
     try:
@@ -45,7 +47,7 @@ def load_machine_config(path: Path) -> MachineConfig | None:
     except tomllib.TOMLDecodeError as error:
         raise LoadoutError(f"{path}: invalid TOML: {error}") from error
 
-    unknown = sorted(set(data) - {"source", "profile"})
+    unknown = sorted(set(data) - {"source", "profile", "harnesses"})
     if unknown:
         raise LoadoutError(f"{path}: unknown key(s) {', '.join(unknown)}")
 
@@ -54,11 +56,31 @@ def load_machine_config(path: Path) -> MachineConfig | None:
         raise LoadoutError(f"{path}: source must be a non-empty string naming a directory")
 
     source = Path(raw_source).expanduser()
-    if not source.is_dir():
+    if require_source and not source.is_dir():
         raise LoadoutError(f"{path}: source {raw_source!r} is not a directory")
 
     profile = data.get("profile")
     if profile is not None and (not isinstance(profile, str) or not profile):
         raise LoadoutError(f"{path}: profile must be a non-empty string")
 
-    return MachineConfig(source=source.resolve(), profile=profile)
+    raw_harnesses = data.get("harnesses")
+    if raw_harnesses is None:
+        harnesses: tuple[str, ...] = ()
+    else:
+        if (
+            not isinstance(raw_harnesses, list)
+            or not raw_harnesses
+            or not all(isinstance(harness, str) for harness in raw_harnesses)
+        ):
+            raise LoadoutError(f"{path}: harnesses must be a non-empty list of strings")
+        harnesses = tuple(raw_harnesses)
+        if len(set(harnesses)) != len(harnesses):
+            raise LoadoutError(f"{path}: harnesses contains duplicate entries")
+        unknown_harnesses = sorted(set(harnesses) - KNOWN_HARNESSES)
+        if unknown_harnesses:
+            known = ", ".join(sorted(KNOWN_HARNESSES))
+            raise LoadoutError(
+                f"{path}: unknown harness(es) {', '.join(unknown_harnesses)} (known: {known})"
+            )
+
+    return MachineConfig(source=source.resolve(), profile=profile, harnesses=harnesses)

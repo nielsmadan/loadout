@@ -86,7 +86,7 @@ def build_parser() -> argparse.ArgumentParser:
         dest="harnesses",
         action="append",
         default=None,
-        help="configured harness (repeatable); otherwise detect configured roots",
+        help="configured harness (repeatable); otherwise use machine defaults, then detection",
     )
     scope = init.add_mutually_exclusive_group()
     scope.add_argument("--project", action="store_true", help="adopt project configuration")

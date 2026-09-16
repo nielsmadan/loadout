@@ -6,9 +6,9 @@ from dataclasses import replace
 from pathlib import Path
 
 from .errors import LoadoutError
+from .harnesses import KNOWN_HARNESSES
 from .manifest import MANIFEST_NAME
 from .project import (
-    KNOWN_HARNESSES,
     ProjectConfig,
     load_project_config,
     project_config_path,

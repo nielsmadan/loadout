@@ -55,7 +55,8 @@ CLI integration is covered in `tests/test_init_workflow.py` and `tests/test_cli.
 |---|---|
 | metadata-only unresolved preview, explicit scope and approval | `test_unresolved_json_preview_does_not_mutate`, `test_noninteractive_apply_requires_explicit_approval`, `test_explicit_project_scope_does_not_adopt_global_live_state` |
 | project adoption, checkpoint/staging and nested repeat no-op | `test_project_preview_and_apply_adopt_and_stage` |
-| global cwd default, actual source registration and explicit replacement | `test_global_defaults_to_cwd_and_registers_actual_manifest`, `test_existing_source_registration_is_an_explicit_transaction` |
+| global cwd default, source and harness-default registration, matching-config preservation and explicit replacement | `test_global_defaults_to_cwd_and_registers_actual_manifest`, `test_repeat_global_init_saves_defaults_and_preserves_machine_config`, `test_matching_registration_keep_preserves_harness_defaults`, `test_existing_source_registration_is_an_explicit_transaction` |
+| project harness precedence: explicit selection, machine default, discovery, initialized project and stale global source | `test_explicit_project_harnesses_override_machine_defaults`, `test_project_init_uses_machine_harness_defaults`, `test_machine_harness_defaults_take_precedence_over_project_discovery`, `test_initialized_project_ignores_machine_harness_defaults`, `test_stale_global_source_does_not_block_machine_harness_defaults` |
 | duplicate source choices are independent of approval | `test_global_copy_conflict_requires_selection_even_with_yes` |
 | interactive choice/decline and cancellation before mutation | `test_interactive_scope_and_agent_choices_then_decline`, `test_global_prompt_cancellation_with_yes_does_not_mutate` |
 | preview values stay private; malformed mapping shapes are usage errors | `test_preview_never_prints_secret_values`, `test_invalid_mapping_shape_is_usage_error` |

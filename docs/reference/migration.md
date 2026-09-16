@@ -19,9 +19,11 @@ loadout init --global --source /work/dotfiles --harness pi --yes
 Interactive init asks only unresolved scope/agent/mapping choices and confirms the prepared
 transaction before mutation. Global source selection defaults to cwd. Explicit `--project` or
 `--global` wins; absent flags allow existing scope detection. `--harness` is repeatable in both
-scopes. Noninteractive callers supply unresolved choices and `--yes` approval. Dry-run and JSON
-previews never prompt or modify the selected directory, Git, machine registration or outputs.
-Preview JSON contains metadata only and remains parseable on incomplete plans (exit 2).
+scopes. For a fresh project with no explicit selection, the machine config's `harnesses` list
+supplies the selection before discovery; an initialized project always keeps its own list.
+Noninteractive callers supply unresolved choices and `--yes` approval. Dry-run and JSON previews
+never prompt or modify the selected directory, Git, machine registration or outputs. Preview JSON
+contains metadata only and remains parseable on incomplete plans (exit 2).
 
 `--starter none|frontend|backend` selects optional project advice; `none` is the default.
 Interactive fresh-project init offers the same choice before approval unless `--yes` accepts the
@@ -50,8 +52,10 @@ not choose conflicting originals or machine registrations. Registration conflict
 `--registration keep` or `--registration replace` (`--force` aliases replace). Registration uses
 the active XDG machine-config location, writes the actual `source` manifest directory, and is part
 of transaction recovery even when the existing source needs no migration. Matching registration
-keeps its profile. Existing initialized sources get a clear no-migration result, with normal
-check/sync as the next operation; repeat init does not reinterpret generated files as originals.
+keeps its profile and comments. Global init also writes its resolved harness list there as the
+default for fresh projects. Existing initialized sources get a clear no-migration result, with
+normal check/sync as the next operation; repeat init does not reinterpret generated files as
+originals.
 
 Resume with `loadout init --resume /path/to/journal.json --yes`; recover with
 `loadout init --recover /path/to/journal.json --yes`. Add `--json` for machine-readable results.
