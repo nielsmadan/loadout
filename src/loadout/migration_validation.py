@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-from . import artifacts
+from . import artifacts, emit
 from .artifacts import Copied, FrozenFile, Merged
 from .destinations import resolve_destination
 from .discovery import digest
@@ -164,7 +164,10 @@ def _worker() -> None:
         return Path(destinations[template])
 
     try:
-        with patch.object(artifacts, "resolve_destination", isolated_destination):
+        with (
+            patch.object(artifacts, "resolve_destination", isolated_destination),
+            patch.object(emit, "resolve_destination", isolated_destination),
+        ):
             outputs = render_all(Path(request["root"]))
         result: list[dict[str, Any]] = []
         for path, output in outputs.items():

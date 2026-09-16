@@ -110,8 +110,8 @@ def test_capability_matrix_pins_every_scope_mapping() -> None:
         ),
         "skills": (
             "unsupported",
-            "supported for `claude`, `droid`, `opencode`, `pi` via `loadout/skills/<name>/`; Codex unsupported",
-            "`skills/<name>/` trees from selected sources",
+            "supported for `claude`, `codex`, `droid`, `opencode`, `pi` via `loadout/skills/<name>.md` or `<name>/SKILL.md`",
+            "`skills/<name>.md` or `<name>/SKILL.md` from selected sources",
         ),
         "settings": (
             "unsupported",
@@ -185,5 +185,5 @@ def test_project_skill_capability_names_only_agents_with_a_destination() -> None
     documented = {
         agent for agent in PROJECT_PRESET if f"`{agent}`" in _capability_matrix()["skills"][1]
     }
-    assert actual == {"claude", "droid", "opencode", "pi"}
+    assert actual == {"claude", "codex", "droid", "opencode", "pi"}
     assert documented == actual

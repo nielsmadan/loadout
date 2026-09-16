@@ -9,6 +9,7 @@ from .agents import SliceOutput
 from .artifacts import Artifacts, artifact_reference
 from .errors import LoadoutError
 from .harnesses import KNOWN_HARNESSES
+from .skill_policy import SkillPolicy, parse_skill_policies
 
 PROJECT_DIR = "loadout"
 PROJECT_CONFIG_NAME = "config.toml"
@@ -38,6 +39,7 @@ class ProjectConfig:
     templates: tuple[str, ...] = ()
     vendored: tuple[tuple[str, str], ...] = ()
     instructions: tuple[str, ...] = ()
+    skill_policies: tuple[SkillPolicy, ...] = ()
     artifacts: Artifacts | None = None
     presets: bool = True
 
@@ -66,6 +68,7 @@ class ProjectConfig:
             raise LoadoutError("duplicate template in the list")
         if len(set(self.instructions)) != len(self.instructions):
             raise LoadoutError("duplicate instruction fragment in the list")
+        _validate_skill_policies(self.skill_policies, self.harnesses)
         orphan = sorted({name for name, _ in self.vendored} - set(self.templates))
         if orphan:
             raise LoadoutError(
@@ -78,6 +81,15 @@ class ProjectConfig:
             if recorded == name:
                 return digest
         return None
+
+
+def _validate_skill_policies(policies: tuple[SkillPolicy, ...], harnesses: tuple[str, ...]) -> None:
+    for policy in policies:
+        extra = set(policy.agents) - set(harnesses)
+        if extra:
+            raise LoadoutError(
+                f"skills.{policy.name} names unconfigured agent(s) {', '.join(sorted(extra))}"
+            )
 
 
 def project_config_path(root: Path) -> Path:
@@ -94,12 +106,21 @@ def load_project_config(path: Path) -> ProjectConfig:
         raise LoadoutError(f"{path}: invalid TOML: {error}") from error
 
     unknown = sorted(
-        set(data) - {"harnesses", "templates", "template", "instructions", "artifacts", "presets"}
+        set(data)
+        - {
+            "harnesses",
+            "templates",
+            "template",
+            "instructions",
+            "skills",
+            "artifacts",
+            "presets",
+        }
     )
     if unknown:
         raise LoadoutError(
             f"{path}: unrecognised key(s) {', '.join(unknown)}; 'harnesses', "
-            f"'templates', 'instructions', 'artifacts', 'presets' and [template.<name>] are the keys this "
+            f"'templates', 'instructions', 'skills', 'artifacts', 'presets' and [template.<name>] are the keys this "
             f"file accepts"
         )
 
@@ -125,6 +146,7 @@ def load_project_config(path: Path) -> ProjectConfig:
             templates=tuple(raw_templates),
             vendored=_parse_provenance(data.get("template", {}), path),
             instructions=tuple(raw_instructions),
+            skill_policies=parse_skill_policies(data.get("skills")),
             artifacts=artifact_reference(data["artifacts"], path, "project")
             if "artifacts" in data
             else None,
@@ -192,10 +214,7 @@ PROJECT_PRESET: dict[str, dict[str, SliceOutput]] = {
             renderer="codex-project", output=".codex/rules/permissions.rules"
         ),
         "instructions": SliceOutput(output="AGENTS.md"),
-        # No skills entry: Codex has no project skills directory — verified
-        # negative against the 0.147.0 binary, recorded in reference/config.md.
-        # Its extra-roots mechanism is a setting in `.codex/config.toml`, which
-        # loadout does not own, rather than a convention directory.
+        "skills": SliceOutput(output=".agents/skills"),
         # No mcp entry either: whether [mcp_servers.*] survives Codex's
         # project-config filter is unverified, and its own warning says
         # unsupported project-local keys are ignored. See docs/reference/servers.md.

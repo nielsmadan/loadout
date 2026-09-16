@@ -39,6 +39,7 @@ class Catalog:
             Skill(
                 path.name,
                 path / SKILL_DOCUMENT,
+                path,
                 tuple(
                     p.relative_to(path)
                     for p in self.content

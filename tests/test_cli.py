@@ -682,7 +682,7 @@ def test_init_without_scope_reports_unresolved_choices(tmp_path: Path, monkeypat
     assert "scope-required" in capsys.readouterr().err
 
 
-def test_init_global_round_trips_with_dormant_native_routes(
+def test_init_global_round_trips_with_canonical_skills_catalog(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
@@ -700,9 +700,9 @@ def test_init_global_round_trips_with_dormant_native_routes(
 
     assert loadout.main(["sync", "--global"]) == 0
     assert loadout.main(["check", "--global"]) == 0
-    artifact_file = source_parent / "loadout" / "artifacts.toml"
-    assert 'category = "skills"' in artifact_file.read_text()
-    assert 'format = "tree"' in artifact_file.read_text()
+    source = source_parent / "loadout"
+    assert (source / "skills/.gitkeep").is_file()
+    assert "[claude]" in (source / "loadout.toml").read_text()
 
 
 def test_init_notes_a_missing_machine_config(tmp_path: Path, monkeypatch, capsys) -> None:

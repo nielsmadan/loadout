@@ -1062,9 +1062,10 @@ def _retirement_outputs(plan: MigrationPlan) -> dict[str, list[str]]:
     replacements: dict[str, set[str]] = {}
     for original in plan.originals:
         if original.action == "retire" and original.destination is not None:
-            replacements.setdefault(str(entry_path(original.path)), set()).add(
-                str(layout.normalize(original.destination))
-            )
+            path = entry_path(original.path)
+            destination = layout.normalize(original.destination)
+            if path != destination:
+                replacements.setdefault(str(path), set()).add(str(destination))
     return {path: sorted(outputs) for path, outputs in replacements.items()}
 
 

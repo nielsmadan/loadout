@@ -9,6 +9,7 @@ from typing import Any, Literal
 
 import tomlkit
 
+from .agents import GLOBAL_PRESET
 from .artifacts import CATEGORIES, _toml_item
 from .discovery import PROJECT_ROOTS, credential_material, digest, path_preconditions
 from .errors import LoadoutError
@@ -33,7 +34,8 @@ from .migration_validation import validate_plan
 from .native_documents import key_fingerprints, parse_document
 from .permissions.renderers import RENDERERS, JsonSpec, TextSpec
 from .permissions.rules import Rules, parse_rules
-from .project import load_project_config
+from .project import PROJECT_PRESET, load_project_config
+from .skills import SKILL_DOCUMENT
 
 RUNTIME_KEYS = {
     "codex": frozenset({"projects", "trust"}),
@@ -224,6 +226,8 @@ def _choose(
 
 
 def _destination_template(inventory: Inventory, destination: Path) -> str:
+    if inventory.scope == "project" and destination.is_relative_to(inventory.root):
+        return destination.relative_to(inventory.root).as_posix()
     for mapping in sorted(inventory.mappings, key=lambda m: len(m.destination.parts), reverse=True):
         if mapping.destination_template is None:
             continue
@@ -243,6 +247,9 @@ class _PlanBuilder:
         self.records: dict[Path, dict[str, Any]] = {}
         self.writes: dict[Path, SourceWrite] = {}
         self.expected: dict[Path, ExpectedOutput] = {}
+        self.skill_policies: dict[str, dict[str, Any]] = {}
+        self.private_skill_names: set[str] = set()
+        self.catalog_routes: dict[str, Path] = {}
         self.issues: list[Issue] = []
         self.notes: list[str] = []
         self.selected: tuple[Candidate, ...] = ()
@@ -501,6 +508,65 @@ class _PlanBuilder:
             record["optional"] = True
         self.records[destination] = record
 
+    def catalog_skill_tree(
+        self,
+        destination: Path,
+        agents: tuple[str, ...],
+        candidates: tuple[Candidate, ...],
+    ) -> None:
+        if not candidates:
+            return
+        assert candidates[0].destination is not None
+        relative = candidates[0].destination.relative_to(destination)
+        name = relative.parts[0]
+        if any(
+            candidate.destination is None
+            or candidate.destination.relative_to(destination).parts[0] != name
+            for candidate in candidates
+        ):
+            raise LoadoutError("canonical skill migration requires one named skill tree")
+        private = any(candidate.private for candidate in candidates)
+        if private:
+            self.private_skill_names.add(name)
+        suffix = ".local" if private else ""
+        document = next(
+            (
+                candidate
+                for candidate in candidates
+                if candidate.destination == destination / name / "SKILL.md"
+            ),
+            None,
+        )
+        if document is None:
+            raise LoadoutError("canonical skill migration requires SKILL.md")
+        source_document = Path("skills") / f"{name}{suffix}.md"
+        source_support = Path("skills") / f"{name}{suffix}"
+        self.write(
+            source_document,
+            document.content,
+            mode=document.mode,
+            private=private,
+        )
+        self.expect(document)
+        for candidate in candidates:
+            if candidate is document:
+                continue
+            assert candidate.destination is not None
+            relative_support = candidate.destination.relative_to(destination / name)
+            self.write(
+                source_support / relative_support,
+                candidate.content,
+                mode=candidate.mode,
+                private=private,
+            )
+            self.expect(candidate)
+        policy = self.skill_policies.setdefault(name, {"agents": [], "render": False})
+        policy["agents"] = list(dict.fromkeys((*policy["agents"], *agents)))
+        if self.inventory.scope == "project":
+            self.project_skill_route(destination, agents)
+        else:
+            self.catalog_routes[_destination_template(self.inventory, destination)] = destination
+
     def originals(self, candidates: tuple[Candidate, ...]) -> None:
         self.selected = candidates
         remaining = {c.destination: c for c in candidates}
@@ -517,7 +583,7 @@ class _PlanBuilder:
                 if not entries or any(c.format != "copy" for c in entries):
                     continue
                 agents = tuple(dict.fromkeys(a for c in entries for a in c.agents))
-                self.tree(target, agents, category, entries)
+                self.original_tree(target, agents, category, entries)
                 for candidate in entries:
                     remaining.pop(candidate.destination)
         for candidate in remaining.values():
@@ -525,6 +591,33 @@ class _PlanBuilder:
                 self.document(candidate)
             else:
                 self.opaque(candidate)
+
+    def original_tree(
+        self,
+        target: Path,
+        agents: tuple[str, ...],
+        category: str,
+        entries: tuple[Candidate, ...],
+    ) -> None:
+        if category != "skills":
+            self.tree(target, agents, category, entries)
+            return
+        by_name: dict[str, list[Candidate]] = {}
+        for candidate in entries:
+            assert candidate.destination is not None
+            relative = candidate.destination.relative_to(target)
+            by_name.setdefault(relative.parts[0], []).append(candidate)
+        for name, grouped in by_name.items():
+            candidates = tuple(grouped)
+            if any(
+                candidate.destination is not None and candidate.destination.name == SKILL_DOCUMENT
+                for candidate in candidates
+            ):
+                self.catalog_skill_tree(target, agents, candidates)
+                continue
+            destination = target / name
+            self.tree(destination, agents, category, candidates)
+            self.records[destination]["template_parts"] = False
 
     def dormant(
         self, destination: Path, agents: tuple[str, ...], category: str, format_name: str = "copy"
@@ -552,11 +645,21 @@ class _PlanBuilder:
             format=format_name,
         )
         if format_name == "tree":
-            self.tree(destination, agents, category, ())
+            if self.inventory.scope == "project" and category == "skills":
+                self.project_skill_route(destination, agents)
+            else:
+                self.tree(destination, agents, category, ())
         elif format_name in {"json", "toml"}:
             self.document(candidate, existing=False)
         else:
             self.opaque(candidate, existing=False)
+
+    def project_skill_route(self, destination: Path, agents: tuple[str, ...]) -> None:
+        source = Path("skills/.routes")
+        self.write(source / ".gitkeep", b"")
+        record = self.record(destination, agents, "tree")
+        record.update(category="skills", source=source.as_posix())
+        self.records[destination] = record
 
     def starters(self) -> None:
         project = self.inventory.scope == "project"
@@ -594,14 +697,8 @@ class _PlanBuilder:
                 else (agent,)
             )
             self.dormant(instruction, consumers, "instructions")
-            shared_skills = project and "codex" in self.inventory.agents and agent != "claude"
-            skills = self.inventory.root / ".agents/skills" if shared_skills else root / "skills"
-            skill_agents = (
-                tuple(a for a in self.inventory.agents if a != "claude")
-                if shared_skills
-                else (agent,)
-            )
-            self.dormant(skills, skill_agents, "skills", "tree")
+            self.available_categories.add((agent, "skills"))
+            self.starter_skill_route(agent, project)
             if agent == "claude":
                 self.dormant(root / "hooks", (agent,), "hooks", "tree")
                 if not project:
@@ -667,6 +764,17 @@ class _PlanBuilder:
                     b"templates require an explicit selection before their contents become active.\n"
                 ),
             )
+
+    def starter_skill_route(self, agent: str, project: bool) -> None:
+        if not project or (skill_spec := PROJECT_PRESET[agent].get("skills")) is None:
+            return
+        assert skill_spec.output is not None
+        self.dormant(
+            self.inventory.root / skill_spec.output,
+            (agent,),
+            "skills",
+            "tree",
+        )
 
 
 def _permission_renderer(candidate: Candidate, project: bool) -> str | None:
@@ -777,11 +885,31 @@ def _plan_migration(
                 ),
             ),
         )
-    config = (
-        {"harnesses": list(inventory.agents), "presets": False, "artifacts": "artifacts.toml"}
-        if inventory.scope == "project"
-        else {"artifacts": "artifacts.toml"}
-    )
+    if inventory.scope == "project":
+        config = {
+            "harnesses": list(inventory.agents),
+            "presets": False,
+            "artifacts": "artifacts.toml",
+        }
+    else:
+        config = {
+            "artifacts": "artifacts.toml",
+            "source": [{"name": "migrated", "path": ".", "use": ["skills"]}],
+        }
+        for agent in inventory.agents:
+            config[agent] = {
+                slice_name: slice_name == "skills"
+                for slice_name in (
+                    "permissions",
+                    "mcp-permissions",
+                    "mcp",
+                    "skills",
+                    "module-config",
+                )
+                if slice_name in GLOBAL_PRESET[agent]
+            }
+    if builder.skill_policies:
+        config["skills"] = builder.skill_policies
     builder.write(
         Path("config.toml" if inventory.scope == "project" else "loadout.toml"),
         tomlkit.dumps(config).encode(),
@@ -808,9 +936,19 @@ def _plan_migration(
         )
     private_namespaces = tuple(
         dict.fromkeys(
-            inventory.source_root / w.path.relative_to(inventory.source_root).parts[0] / "local"
-            for w in builder.writes.values()
-            if w.private
+            (
+                *(
+                    inventory.source_root
+                    / w.path.relative_to(inventory.source_root).parts[0]
+                    / "local"
+                    for w in builder.writes.values()
+                    if w.private and w.path.relative_to(inventory.source_root).parts[0] != "skills"
+                ),
+                *(
+                    inventory.source_root / "skills" / f"{name}.local"
+                    for name in sorted(builder.private_skill_names)
+                ),
+            )
         )
     )
     private_paths = tuple(
@@ -876,9 +1014,12 @@ def _plan_migration(
         checkpoint_paths=checkpoint,
         preconditions=tuple(states.values()),
         categories=categories,
-        artifact_routes=tuple(
-            (record.get("destination", record.get("output", "")), path)
-            for path, record in builder.records.items()
+        artifact_routes=(
+            *(
+                (record.get("destination", record.get("output", "")), path)
+                for path, record in builder.records.items()
+            ),
+            *builder.catalog_routes.items(),
         ),
         notes=(
             "Native documents may be reformatted; ordered keys, literal values and opaque bytes/modes are validated.",
@@ -960,6 +1101,16 @@ def _readiness(builder: _PlanBuilder) -> tuple[CategoryReadiness, ...]:
             )
             if paths:
                 result.append(CategoryReadiness(category, (agent,), paths, "routed"))
+            elif category == "skills" and (agent, category) in builder.available_categories:
+                result.append(
+                    CategoryReadiness(
+                        category,
+                        (agent,),
+                        (builder.inventory.source_root / "skills",),
+                        "routed",
+                        "Canonical skills default to every configured agent.",
+                    )
+                )
             elif (
                 category == "hooks"
                 and agent == "opencode"

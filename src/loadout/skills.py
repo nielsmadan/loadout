@@ -78,8 +78,9 @@ CONCEPTS: dict[str, Concept] = {}
 class Skill:
     name: str
     document: Path
+    supporting_root: Path
     supporting: tuple[Path, ...]
-    """Paths relative to the skill directory, sorted, excluding SKILL.md."""
+    """Paths relative to supporting_root, sorted, excluding SKILL.md."""
 
 
 def _excluded(path: Path, relative: Path) -> bool:
@@ -88,31 +89,52 @@ def _excluded(path: Path, relative: Path) -> bool:
     return path.name in EXCLUDED_NAMES or path.suffix in EXCLUDED_SUFFIXES
 
 
-def discover_skills(skills_root: Path) -> tuple[Skill, ...]:
-    """Every directory holding a SKILL.md, in sorted order.
+def _supporting(root: Path, document: Path) -> tuple[Path, ...]:
+    if not root.is_dir():
+        return ()
+    return tuple(
+        sorted(
+            item.relative_to(root)
+            for item in root.rglob("*")
+            if item.is_file() and item != document and not _excluded(item, item.relative_to(root))
+        )
+    )
 
-    A directory is the declaration: no manifest entry, no marker (spec 1 §4). A
-    subdirectory without SKILL.md is not a skill and is skipped rather than
-    reported, so a stray directory cannot fail a sync.
-    """
+
+def discover_skills(skills_root: Path) -> tuple[Skill, ...]:
+    """Every canonical or directory-form skill, with local variants winning."""
     if not skills_root.is_dir():
         return ()
-    skills: list[Skill] = []
+    public: dict[str, Skill] = {}
+    local: dict[str, Skill] = {}
+
     for entry in sorted(skills_root.iterdir()):
-        document = entry / SKILL_DOCUMENT
-        if not entry.is_dir() or not document.is_file():
+        if not entry.is_dir():
             continue
-        supporting = tuple(
-            sorted(
-                item.relative_to(entry)
-                for item in entry.rglob("*")
-                if item.is_file()
-                and item != document
-                and not _excluded(item, item.relative_to(entry))
-            )
+        document = entry / SKILL_DOCUMENT
+        if not document.is_file():
+            continue
+        is_local = entry.name.endswith(".local")
+        name = entry.name.removesuffix(".local") if is_local else entry.name
+        target = local if is_local else public
+        target[name] = Skill(name, document, entry, _supporting(entry, document))
+
+    for document in sorted(skills_root.glob("*.md")):
+        is_local = document.name.endswith(".local.md")
+        name = (
+            document.name.removesuffix(".local.md")
+            if is_local
+            else document.name.removesuffix(".md")
         )
-        skills.append(Skill(name=entry.name, document=document, supporting=supporting))
-    return tuple(skills)
+        support = skills_root / (name + ".local" if is_local else name)
+        target = local if is_local else public
+        if name in target:
+            raise LoadoutError(
+                f"{skills_root}: skill {name!r} has both a flat document and a directory SKILL.md"
+            )
+        target[name] = Skill(name, document, support, _supporting(support, document))
+
+    return tuple((local.get(name) or public[name]) for name in sorted(public.keys() | local.keys()))
 
 
 def split_frontmatter(text: str) -> tuple[list[str] | None, str]:

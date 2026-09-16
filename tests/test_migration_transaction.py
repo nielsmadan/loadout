@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import subprocess
-import tomllib
 from dataclasses import replace
 from pathlib import Path
 
@@ -476,12 +475,11 @@ def test_first_skill_entry_edit_and_last_deletion_use_adopted_receipt(tmp_path: 
     repository(tmp_path)
     destination = write(tmp_path, ".claude/skills/first/SKILL.md", "original\n")
     apply_migration(prepare_migration(plan(tmp_path)))
-    records = tomllib.loads((tmp_path / "loadout/artifacts.toml").read_text())["artifact"]
-    skills = next(record for record in records if record.get("category") == "skills")
-    (tmp_path / "loadout" / skills["source"] / "first/SKILL.md").unlink()
+    source = tmp_path / "loadout/skills/first.md"
+    source.unlink()
     assert cmd_sync(tmp_path) == 0
     assert not destination.exists()
-    source = write(tmp_path / "loadout" / skills["source"], "first/SKILL.md", "first\n")
+    source.write_text("first\n")
     assert cmd_sync(tmp_path) == 0
     assert destination.read_text() == "first\n"
     source.write_text("edited\n")

@@ -517,14 +517,17 @@ source rather than generated output. See [templates](templates.md) and
 | `p-fixture-unsorted` | the fixture declares its fragments out of sorted order, or the ordering test would pass against a render that sorted | `test_the_project_fixture_declares_instructions_out_of_sorted_order` |
 | `p-no-order-no-file` | a repo declaring no instructions generates neither document, so a permissions-only adopter keeps its own `CLAUDE.md` | `test_a_project_declaring_no_instructions_generates_neither_document` |
 | `p-unknown-fragment` | an undeclared fragment name fails the render rather than rendering a short document | `test_an_unknown_instruction_fragment_fails_the_render` |
-| `p-skills-per-harness` | each harness gets its own skills directory, because `render_skill` varies output by harness — the opposite answer to instructions, for a reason in the renderer signatures | `test_each_harness_gets_its_own_flavour_of_a_skill` |
-| `p-skills-no-codex` | Codex gets no skills entry — verified negative, not an omission | `test_codex_gets_no_project_skills` |
+| `p-skills-per-harness` | every harness gets its rendered variant; byte-identical Codex, OpenCode and Pi variants may share `.agents/skills` | `test_each_harness_gets_its_own_flavour_of_a_skill`, `test_identical_convention_variants_share_the_agents_directory` |
+| `p-skills-codex` | Codex receives project skills through `.agents/skills` | `test_codex_gets_project_skills_through_the_agents_convention` |
 | `p-skills-tier` | a project skill replaces a template's of the same name, and the template's other skills still arrive | `test_a_project_skill_beats_a_template_skill_of_the_same_name` |
 | `p-skills-copied` | a supporting file is named rather than decoded, so a mode survives | `test_a_supporting_file_is_copied_rather_than_rendered` |
+| `p-skills-policy` | a skill targets every configured agent by default and may name a subset | `test_a_skill_policy_selects_only_its_named_agents` |
+| `p-skills-unrendered` | migration's unrendered policy shares opaque document bytes without decoding them | `test_an_unrendered_skill_shares_opaque_document_bytes` |
 | `p-opencode-race` | `check` reports the skills race when neither disabling variable is set, without moving the exit code | `test_check_reports_the_opencode_skills_race_without_failing`, `test_a_project_without_opencode_is_not_told_about_its_flag` |
 | `p-opencode-both-flags` | the report reads both names, since OpenCode's flag is `broad \|\| direct` — a one-name check false-alarms at whoever set the broad switch | `test_either_flag_stops_the_opencode_skills_report` |
+| `p-opencode-agents-race` | differing Codex and OpenCode variants require disabling OpenCode's external skill scan or narrowing the skill policy | `test_check_reports_the_codex_opencode_skill_race` |
 | `p-opencode-off-is-off` | an explicit `=0` still reports, because the user has said the opposite of what silence would imply | `test_an_explicit_off_is_not_mistaken_for_on` |
-| `p-claim` | two preset entries naming one path is an error at project scope as it is at global — `.agents/skills` is the edit the convention table invites and `opencode.md` forbids | `test_two_agents_may_not_share_one_skills_directory`, `test_two_agents_may_not_share_one_document` |
+| `p-claim` | two unrelated preset entries naming one document fail instead of silently overwriting each other | `test_two_agents_may_not_share_one_document` |
 | `p-claim-exempts-instructions` | the shared `AGENTS.md` survives the guard, since its content is agent-independent by construction | `test_the_shared_instruction_document_is_still_allowed` |
 
 ## Generated hook adapters

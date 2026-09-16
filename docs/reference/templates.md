@@ -186,10 +186,11 @@ contents for hashes or refusal diffs.
 This prevents template data from being silently ignored or overlaying native producers.
 
 Catalog manifests additionally compose skills, MCP and portable permissions through existing
-native routes. Fresh init supplies these routes for all five agents. With Codex configured,
-fresh projects use one `.agents/skills` collection shared by configured Codex, OpenCode and Pi
-consumers. A shared route refuses a skill whose rendered variants differ between its agents.
-Existing routes retain their authored destinations and ownership receipts.
+native routes. Fresh init supplies skill routes for all five agents. Their shared internal
+`skills/.routes` source keeps authored skills in the canonical `loadout/skills/` catalog while
+retaining native ownership receipts and modes. Configured Codex, OpenCode, and Pi consumers use
+one `.agents/skills` route when their variants are byte-identical; a shared route refuses
+variants that differ. Existing routes retain their authored destinations and ownership receipts.
 
 A catalog needs one compatible consumer route per agent and category. Set `template_parts =
 false` on routes that should not receive catalog skills, MCP or permissions; this is useful

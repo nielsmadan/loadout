@@ -565,19 +565,18 @@ def test_skill_tree_first_entry_edit_rename_and_delete(tmp_path: Path) -> None:
     plan = migration(origin)
     fresh = tmp_path / "fresh"
     materialize_sources(plan, fresh)
-    record = next(r for r in index(plan)["artifact"] if r.get("category") == "skills")
-    source_root = fresh / "loadout" / record["source"]
-    (source_root / "first/SKILL.md").unlink()
+    source_root = fresh / "loadout/skills"
+    (source_root / "first.md").unlink()
     assert render_all(fresh) == {}
-    path = write(source_root, "first/SKILL.md", "first skill\n")
+    path = write(source_root, "first.md", "first skill\n")
     output = render_all(fresh)[fresh / ".claude/skills/first/SKILL.md"]
     assert isinstance(output, Copied)
     assert output.source.read_text() == "first skill\n"
     path.write_text("changed skill\n")
-    renamed = path.with_name("changed.md")
+    renamed = path.with_name("second.md")
     path.rename(renamed)
     outputs = render_all(fresh)
-    assert tuple(outputs) == (fresh / ".claude/skills/first/changed.md",)
+    assert tuple(outputs) == (fresh / ".claude/skills/second/SKILL.md",)
     renamed.unlink()
     assert render_all(fresh) == {}
     clone = tmp_path / "clone"
@@ -660,10 +659,12 @@ def test_unmapped_external_hook_dependency_blocks_completion(tmp_path: Path) -> 
 
 def test_shared_agents_tree_keeps_its_actual_consumers(tmp_path: Path) -> None:
     path = write(tmp_path, ".agents/skills/shared/SKILL.md", "shared skill\n")
-    plan = migration(tmp_path, ("claude", "codex", "opencode", "pi"))
+    plan = migration(tmp_path, ("claude", "codex", "droid", "opencode", "pi"))
     assert generated(plan, path) == b"shared skill\n"
-    record = next(r for r in index(plan)["artifact"] if r["output"] == ".agents/skills")
-    assert record["agents"] == ["codex", "opencode", "pi"]
+    policy = tomllib.loads(
+        next(w.content.decode() for w in plan.source_writes if w.path.name == "config.toml")
+    )["skills"]["shared"]
+    assert policy["agents"] == ["codex", "opencode", "pi"]
 
 
 def test_directory_precondition_detects_a_new_authored_input(tmp_path: Path) -> None:
@@ -772,13 +773,11 @@ def test_private_instruction_excludes_canonical_original_and_aliases(tmp_path: P
 def test_private_tree_namespace_ignores_future_entries(tmp_path: Path) -> None:
     write(tmp_path, ".claude/skills/one/SKILL.md", "api_key=literal-review-secret\n")
     plan = migration(tmp_path)
-    record = next(r for r in index(plan)["artifact"] if r.get("category") == "skills")
-    assert record["optional"] is True
-    namespace = tmp_path / "loadout/skills/local"
+    namespace = tmp_path / "loadout/skills/one.local"
     assert namespace in plan.private_paths
-    assert "/loadout/skills/local/" in plan.ignores
+    assert "/loadout/skills/one.local/" in plan.ignores
     materialize_sources(plan, tmp_path)
-    added = write(tmp_path / "loadout" / record["source"], "two/SKILL.md", "private future skill")
+    added = write(namespace, "scripts/future.sh", "private future support")
     write(tmp_path, ".gitignore", "\n".join(plan.ignores) + "\n")
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     result = subprocess.run(

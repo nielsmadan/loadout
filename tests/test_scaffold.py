@@ -42,6 +42,8 @@ def test_gitignores_the_personal_source_and_every_output(tmp_path: Path) -> None
     init_project(root, ("claude", "pi"))
     ignored = (root / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert "loadout/permissions.local.toml" in ignored
+    assert "loadout/skills/*.local.md" in ignored
+    assert "loadout/skills/*.local/" in ignored
     assert ".claude/settings.json" in ignored
     assert ".claude/mcp-permissions.json" in ignored
     assert ".pi/extensions/pi-permission-system/config.json" in ignored

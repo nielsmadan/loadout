@@ -430,9 +430,24 @@ Codex scans `.agents/skills` from the current directory through the repository r
 reads the user-scoped `~/.agents/skills`. Verified against the
 [official skills reference](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills),
 2026-09-08. This supersedes the earlier binary-based claim that no project convention exists.
-The legacy global destination remains installed on this machine. Fresh loadout project init
-uses a shared `.agents/skills` route and records configured Codex, OpenCode and Pi consumers;
-the legacy Codex project preset remains unchanged.
+The legacy global destination remains installed on this machine. The project preset and fresh
+native projects both route Codex through `.agents/skills`.
+
+Loadout authors project skills in one canonical catalog:
+
+```text
+loadout/skills/review.md
+loadout/skills/review/reference.md
+```
+
+The matching directory holds optional supporting files. Existing
+`loadout/skills/review/SKILL.md` trees remain valid. A skill targets every configured harness by
+default; `[skills.review] agents = ["claude", "droid"]` restricts it. A private
+`review.local.md` plus optional `review.local/` directory replaces the complete public skill.
+The same forms apply to global source catalogs without the `loadout/` prefix.
+
+Codex, OpenCode, and Pi can share `.agents/skills` only when their rendered documents are
+byte-identical. Harness-specific sections and concept expansion still run before that decision.
 
 **The OpenCode row was previously two blanks and both were wrong.** Its project cell was empty
 and its global cell omitted `~/.claude/skills/`. Source: upstream `https://opencode.ai/docs/skills/`,

@@ -61,6 +61,33 @@ def test_an_empty_agent_block_still_renders_its_automatic_slices(tmp_path: Path)
     assert any("pi-permission-system" in p for p in rendered(root))
 
 
+def test_skills_default_to_every_configured_agent(tmp_path: Path) -> None:
+    root = build(tmp_path, "\n[claude]\n\n[droid]\n")
+    skills = root / "skills"
+    skills.mkdir()
+    (skills / "review.md").write_text("# Review\n", encoding="utf-8")
+
+    paths = rendered(root)
+
+    assert any(path.endswith(".claude/skills/review/SKILL.md") for path in paths)
+    assert any(path.endswith(".factory/skills/review/SKILL.md") for path in paths)
+
+
+def test_a_global_skill_policy_selects_named_agents(tmp_path: Path) -> None:
+    root = build(
+        tmp_path,
+        '\n[claude]\n\n[droid]\n\n[skills.review]\nagents = ["droid"]\n',
+    )
+    skills = root / "skills"
+    skills.mkdir()
+    (skills / "review.md").write_text("# Review\n", encoding="utf-8")
+
+    paths = rendered(root)
+
+    assert any(path.endswith(".factory/skills/review/SKILL.md") for path in paths)
+    assert not any(path.endswith(".claude/skills/review/SKILL.md") for path in paths)
+
+
 def test_instructions_are_not_automatic_because_they_need_an_order(tmp_path: Path) -> None:
     root = build(tmp_path, "\n[pi]\n")
     assert not any(p.endswith("AGENTS.md") for p in rendered(root))

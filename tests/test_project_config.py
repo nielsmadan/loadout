@@ -90,6 +90,37 @@ def test_templates_defaults_to_empty(tmp_path: Path) -> None:
     assert load_project_config(path).templates == ()
 
 
+def test_skill_policies_select_configured_agents(tmp_path: Path) -> None:
+    path = write(
+        tmp_path,
+        'harnesses = ["claude", "droid"]\n\n[skills.review]\nagents = ["droid"]\n',
+    )
+
+    config = load_project_config(path)
+
+    assert config.skill_policies[0].name == "review"
+    assert config.skill_policies[0].agents == ("droid",)
+
+
+def test_skill_policy_rejects_an_unconfigured_agent(tmp_path: Path) -> None:
+    path = write(
+        tmp_path,
+        'harnesses = ["claude"]\n\n[skills.review]\nagents = ["droid"]\n',
+    )
+
+    with pytest.raises(LoadoutError, match="unconfigured"):
+        load_project_config(path)
+
+
+def test_skill_policy_can_preserve_native_bytes(tmp_path: Path) -> None:
+    path = write(
+        tmp_path,
+        'harnesses = ["claude"]\n\n[skills.review]\nagents = ["claude"]\nrender = false\n',
+    )
+
+    assert load_project_config(path).skill_policies[0].render is False
+
+
 def test_a_recorded_hash_is_read_back(tmp_path: Path) -> None:
     path = write(
         tmp_path,

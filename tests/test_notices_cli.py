@@ -140,6 +140,7 @@ def test_a_project_only_repo_reports_nothing_rather_than_failing(
     that *do* come back are all project-scope ones.
     """
     monkeypatch.setenv("OPENCODE_DISABLE_CLAUDE_CODE_SKILLS", "1")
+    monkeypatch.setenv("OPENCODE_DISABLE_EXTERNAL_SKILLS", "1")
     messages = [f"{n.agent}.{n.slice}: {n.message}" for n in collect_notices(project)]
 
     # OpenCode authors its own catch-all at project scope, so it is the one
@@ -163,6 +164,19 @@ def test_check_reports_the_opencode_skills_race_without_failing(
     assert loadout.main(["check", "--root", str(project)]) == 0
 
     assert "opencode.skills" in capsys.readouterr().out
+
+
+def test_check_reports_the_codex_opencode_skill_race(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OPENCODE_DISABLE_CLAUDE_CODE_SKILLS", "1")
+    monkeypatch.delenv("OPENCODE_DISABLE_EXTERNAL_SKILLS", raising=False)
+
+    messages = [notice.message for notice in collect_notices(project)]
+
+    assert any(
+        "Codex's" in message and "restrict the skill's agents" in message for message in messages
+    )
 
 
 def test_a_project_without_opencode_is_not_told_about_its_flag(
@@ -194,7 +208,8 @@ def _root_with_skills(tmp_path: Path) -> Path:
     )
     (root / "permissions.toml").write_text("[shell]\nallow = ['ls']\n", encoding="utf-8")
     (root / "loadout.toml").write_text(
-        '[[source]]\nname = "test"\npath = "."\n\n[opencode]\n', encoding="utf-8"
+        '[[source]]\nname = "test"\npath = "."\n\n[claude]\n[opencode]\n',
+        encoding="utf-8",
     )
     return root
 

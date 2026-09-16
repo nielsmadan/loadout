@@ -115,7 +115,11 @@ def init_project(
                 "recreated loadout/permissions.local.toml (was missing, personal, gitignored)"
             )
 
-    entries = ["loadout/permissions.local.toml"]
+    entries = [
+        "loadout/permissions.local.toml",
+        "loadout/skills/*.local.md",
+        "loadout/skills/*.local/",
+    ]
     # The on-disk config, not the one built from the arguments: re-running `init`
     # on a project that has since declared an instruction order is what extends
     # .gitignore to cover the documents that order now generates.

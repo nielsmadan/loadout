@@ -158,10 +158,11 @@ Two consequences worth stating because they look inconsistent side by side:
   so one path would have to hold four orders. One order makes `CLAUDE.md` and `AGENTS.md`
   byte-identical by construction — `composition.render` takes no agent argument — rather than by
   a check that would pass whenever nothing was rendered.
-- **Skills cannot share a path the same way.** `render_skill` takes a harness and varies its
-  output by it: `::: <harness>` sections are kept or dropped and `:concept[…]` expands per
-  harness. Two harnesses pointed at one skills directory would need different bytes there. Same
-  shape of problem, opposite answer, and the reason is in the two renderers' signatures.
+- **Skills share a source catalog, not necessarily rendered bytes.** `render_skill` takes a
+  harness: `::: <harness>` sections are kept or dropped and `:concept[…]` expands per harness.
+  Loadout therefore renders each selected harness separately. Codex, OpenCode, and Pi share
+  `.agents/skills` only when their variants are byte-identical; otherwise their verified
+  destinations remain distinct.
 
   **This is why OpenCode needs `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1`.** It scans Claude's
   skills directories as well as its own, so writing a per-harness flavour to each makes every
@@ -179,9 +180,8 @@ Two consequences worth stating because they look inconsistent side by side:
   [reference/config.md](reference/config.md#instructions) records from the instructions document,
   and it would make `::: opencode` dead code for the harness it names.
 
-  **Codex gets no skills entry**, a verified negative rather than an omission — no
-  project-relative skills path exists in the 0.147.0 binary, and its extra-roots mechanism is a
-  setting in `.codex/config.toml`, a file loadout does not own.
+  **Codex reads project `.agents/skills`.** The official skills reference supersedes the earlier
+  binary-only negative; the project preset now includes that destination.
 
 **Hooks and plugins at project scope are a `PROJECT_PRESET` entry away, not a project.**
 `compose_permission_document` is scope-agnostic — it takes a contributor list and knows nothing

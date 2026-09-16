@@ -195,12 +195,12 @@ def test_rename_and_last_route_removal_retire_only_receipted_files(tmp_path: Pat
 def test_tree_deletion_and_last_file_cleanup(tmp_path: Path) -> None:
     project(
         tmp_path,
-        copy_record(".claude/skills/probe", "skills/probe").replace(
+        copy_record(".claude/skills/probe", "artifacts/skills/probe").replace(
             'format = "copy"', 'format = "tree"'
         ),
     )
-    first = write(tmp_path, "loadout/skills/probe/SKILL.md", "skill\n")
-    second = write(tmp_path, "loadout/skills/probe/run.sh", "script\n")
+    first = write(tmp_path, "loadout/artifacts/skills/probe/SKILL.md", "skill\n")
+    second = write(tmp_path, "loadout/artifacts/skills/probe/run.sh", "script\n")
     write_all(tmp_path)
     write(tmp_path, ".claude/skills/probe/foreign.txt", "foreign\n")
     first.unlink()

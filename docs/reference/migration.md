@@ -151,9 +151,12 @@ machine-config write. Project init creates only sources for existing configurati
 needed by an explicitly selected starter. Without either, it writes `config.toml` and an empty
 `artifacts.toml`; ignores cover only Loadout's managed-state and recovery directories.
 Global init scaffolds every artifact category. Explicit routes preserve agent membership,
-nested instruction paths, rules, commands, skills, module files and relative
-support subtrees. Tree routes discover first additions, edits, renames and removals; their
-`.gitkeep` keeps an empty source usable after reconstruction from Git.
+nested instruction paths, rules, commands, module files and relative support subtrees. Skills
+are adopted into the canonical `skills/<name>.md` catalog with optional
+`skills/<name>/` support directories; private variants use `.local.md` and `.local/`.
+Their generated policy records the discovered consumers and disables semantic rendering so
+reconstruction preserves migrated bytes. Tree routes discover first additions, edits, renames
+and removals; their `.gitkeep` keeps an empty source usable after reconstruction from Git.
 
 Native composite documents split settings, permissions, hooks, plugins and MCP into separately
 owned fragments. Project init omits fragments for absent sections; an existing empty document

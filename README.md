@@ -221,6 +221,14 @@ an item that this source offers and an earlier source also offers when the colle
 undeclared collisions remain errors. Module paths include the harness name. An override category
 must participate in that source's `use`. See [composition rules](docs/reference/composition.md).
 
+Global skills target every configured agent that consumes the source by default. A manifest policy
+can narrow one skill:
+
+```toml
+[skills.review]
+agents = ["claude", "droid"]
+```
+
 Merging is union with **deny wins**: a deny in any source beats an allow in any other, whichever
 order they appear in. Order still matters for *emission* — OpenCode and Pi resolve last-match-wins
 — so entries from earlier sources are emitted first.
@@ -601,7 +609,7 @@ Legacy preset harnesses and their outputs (native routes can preserve additional
 | harness | generates |
 | --- | --- |
 | `claude` | `.claude/settings.json`, `.claude/mcp-permissions.json`, `.mcp.json`, `CLAUDE.md`, `.claude/skills/` |
-| `codex` | `.codex/rules/permissions.rules`, `AGENTS.md` |
+| `codex` | `.codex/rules/permissions.rules`, `AGENTS.md`, `.agents/skills/` |
 | `droid` | `.factory/settings.json`, `.factory/hooks.json`, `.factory/mcp.json`, `AGENTS.md`, `.factory/skills/` |
 | `opencode` | `opencode.json`, `AGENTS.md`, `.opencode/skills/` |
 | `pi` | `.pi/extensions/pi-permission-system/config.json`, `AGENTS.md`, `.pi/skills/` |
@@ -639,23 +647,44 @@ a blank document.
 `.claude/settings.local.json` itself when you choose "don't ask again", and merges both at
 startup. A generator that owned `.local.json` would delete those grants on every sync.
 
-### Legacy project skills
+### Project skills
 
-This directory convention applies to legacy presets. Native projects use the skill-tree sources
-declared in `loadout/artifacts.toml`; an unreferenced `loadout/skills/<name>/` does not deploy.
+Put each authored skill document directly in `loadout/skills/`:
 
-Drop a skill tree into `loadout/skills/<name>/` and it renders to every enabled harness that has
-a project skills directory. No config entry — the directory is the declaration.
+```text
+loadout/skills/review.md
+loadout/skills/review/reference.md
+```
 
-Each harness gets **its own** directory, because a skill's content varies by harness: `::: opencode`
-sections are kept or dropped and `:concept[…]` expands per harness. The legacy Codex preset
-does not emit project skills. Fresh native projects use `.agents/skills`; see
-[config.md](docs/reference/config.md#skills).
+The matching directory is optional and holds supporting files. The directory form
+`loadout/skills/review/SKILL.md` remains supported for existing catalogs.
+
+A skill reaches every configured harness by default. Restrict one in `loadout/config.toml`:
+
+```toml
+[skills.review]
+agents = ["claude", "droid"]
+```
+
+Use `review.local.md` and, when needed, `review.local/` for a private replacement of the complete
+`review` skill. Project scaffolding ignores both forms. A local replacement is not an overlay:
+its document and supporting files replace the public variant together.
+
+Loadout renders `::: <harness>` sections and `:concept[…]` separately for each selected harness.
+It writes Claude to `.claude/skills`, Codex to `.agents/skills`, Droid to `.factory/skills`,
+OpenCode to `.opencode/skills`, and Pi to `.pi/skills`. Byte-identical Codex, OpenCode, and Pi
+variants may share the `.agents/skills` convention.
+
+Native projects use the same catalog. Their internal skill routes keep template deployment,
+ownership receipts, explicit modes, and unusual native layouts available; the canonical
+`loadout/skills/` catalog is the normal authoring interface.
 
 **OpenCode needs `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1` in your shell**, or it also scans
 `.claude/skills/` and picks between the two copies of each skill at random. `loadout check` says
 so when neither that variable nor `OPENCODE_DISABLE_CLAUDE_CODE` is set — advisory, never an exit
 code. See [opencode.md](docs/reference/opencode.md#required-setup-opencode_disable_claude_code_skills).
+When Codex and OpenCode need different variants of the same skill, also set
+`OPENCODE_DISABLE_EXTERNAL_SKILLS=1` so OpenCode does not scan Codex's `.agents/skills` copy.
 
 A template contributes `skills/` the same way it contributes `instructions.md`: a tier beneath the
 project, so a skill the project defines under the same name replaces the template's.

@@ -46,9 +46,11 @@ from .module_config import MODULE_CONFIG_SUBDIR, discover_module_config
 from .native_documents import apply_document
 from .native_templates import render_native_templates
 from .notices import (
+    OPENCODE_EXTERNAL_SKILL_FLAG,
     OPENCODE_SKILL_FLAGS,
     Notice,
     notices_for,
+    opencode_external_skills_race,
     opencode_skills_race,
     unpermitted_servers,
     unreached_catch_all,
@@ -71,6 +73,7 @@ from .plugins import marketplaces
 from .project import (
     PROJECT_CONFIG_NAME,
     PROJECT_DIR,
+    PROJECT_PRESET,
     ProjectConfig,
     load_project_config,
     project_config_path,
@@ -79,6 +82,7 @@ from .project import (
 from .record import read_record, render_record
 from .resolve import INSTRUCTIONS, SETTINGS, json_slice, resolve_item
 from .servers import SERVERS_SOURCE, Server, parse_servers
+from .skill_policy import render_skill_for, selected_skill_agents
 from .skills import SKILL_DOCUMENT, Skill, discover_skills, render_skill
 from .sources import Source, select_overrides
 from .surgery import apply_json, apply_toml, concat_documents
@@ -621,9 +625,16 @@ def _global_skill_race(manifest: Manifest, environ: Mapping[str, str]) -> tuple[
     Silent until then, which is why the condition is the manifest rather than the
     slice — a source with no skills has no colliding name to lose.
     """
-    if not any(t.agent == "opencode" for t in manifest.skills):
+    available = tuple(target.agent for target in manifest.skills)
+    if "opencode" not in available:
         return ()
-    if not skill_trees(manifest) or not opencode_skills_race(environ):
+    races = any(
+        {"claude", "opencode"}.issubset(
+            selected_skill_agents(skill.name, available, manifest.skill_policies)
+        )
+        for skill in skill_trees(manifest)
+    )
+    if not races or not opencode_skills_race(environ):
         return ()
     return (
         Notice(
@@ -778,11 +789,14 @@ def project_notices(root: Path, environ: Mapping[str, str]) -> tuple[Notice, ...
                 continue
             known = _known_marketplaces(agent, document) if slice_name == "plugins" else frozenset()
             found.extend(notices_for(agent, slice_name, document, known))
-    if (
-        "opencode" in config.harnesses
-        and project_skill_trees(root, config)
-        and opencode_skills_race(environ)
-    ):
+    trees = project_skill_trees(root, config)
+    claude_collision = any(
+        {"claude", "opencode"}.issubset(
+            selected_skill_agents(skill.name, config.harnesses, config.skill_policies)
+        )
+        for skill in trees
+    )
+    if claude_collision and opencode_skills_race(environ):
         found.append(
             Notice(
                 agent="opencode",
@@ -794,6 +808,27 @@ def project_notices(root: Path, environ: Mapping[str, str]) -> tuple[Notice, ...
                 ),
             )
         )
+    if "opencode" in config.harnesses and opencode_external_skills_race(environ):
+        differing = any(
+            {"codex", "opencode"}.issubset(
+                selected_skill_agents(skill.name, config.harnesses, config.skill_policies)
+            )
+            and render_skill_for(skill.name, config.skill_policies)
+            and render_skill(skill, "codex") != render_skill(skill, "opencode")
+            for skill in trees
+        )
+        if differing:
+            found.append(
+                Notice(
+                    agent="opencode",
+                    slice="skills",
+                    message=(
+                        f"{OPENCODE_EXTERNAL_SKILL_FLAG} is not set, so OpenCode also scans "
+                        ".agents/skills and picks between its variant and Codex's at random; "
+                        "export it or restrict the skill's agents; see docs/reference/opencode.md"
+                    ),
+                )
+            )
     return tuple(found)
 
 
@@ -901,14 +936,23 @@ def _expand_skills(
     for destination in target.destinations:
         base = resolve_destination(str(destination), f"{target.agent}.skills")
         for skill in trees:
+            available = tuple(item.agent for item in manifest.skills)
+            if target.agent not in selected_skill_agents(
+                skill.name, available, manifest.skill_policies
+            ):
+                continue
             directory = base / skill.name
             document = directory / SKILL_DOCUMENT
             _claim(document, f"{target.agent}.skills", claimed)
-            outputs[document] = render_skill(skill, target.agent)
+            outputs[document] = (
+                render_skill(skill, target.agent)
+                if render_skill_for(skill.name, manifest.skill_policies)
+                else Copied(skill.document)
+            )
             for relative in skill.supporting:
                 path = directory / relative
                 _claim(path, f"{target.agent}.skills", claimed)
-                outputs[path] = Copied(source=skill.document.parent / relative)
+                outputs[path] = Copied(source=skill.supporting_root / relative)
 
 
 def module_config_files(manifest: Manifest, agent: str) -> tuple[tuple[PurePosixPath, Path], ...]:
@@ -1074,9 +1118,37 @@ def render_project(root: Path) -> dict[Path, Output]:
     if config.presets:
         return _render_project_presets(root, config)
     templates = tuple(resolve_template(name, root) for name in config.templates)
-    return render_native_templates(
+    outputs = render_native_templates(
         root, config, templates, source_inputs=_project_source_inputs(root, config)
     )
+    routed = (
+        {
+            agent
+            for artifact in config.artifacts.records
+            if any(part.category == "skills" for part in artifact.parts)
+            for agent in artifact.agents
+        }
+        if config.artifacts is not None
+        else set()
+    )
+    available = tuple(agent for agent in config.harnesses if agent not in routed)
+    trees = project_skill_trees(root, config) if available else ()
+    catalog: dict[Path, Output] = {}
+    claimed: dict[Path, str] = {}
+    _expand_project_catalog(
+        root,
+        config,
+        trees,
+        (catalog, claimed),
+        available=available,
+    )
+    collisions = sorted(str(path) for path in catalog if path in outputs)
+    if collisions:
+        raise LoadoutError(
+            f"canonical skills collide with native artifact outputs: {', '.join(collisions)}"
+        )
+    outputs.update(catalog)
+    return outputs
 
 
 def _project_rules(root: Path, config: ProjectConfig, catalogs: Mapping[Path, Catalog]) -> Rules:
@@ -1164,17 +1236,12 @@ def _render_project_presets(root: Path, config: ProjectConfig) -> dict[Path, Out
     # slice writes "permission" into, so both must reach compose_permission_document
     # together rather than each overwriting the other's call.
     groups: dict[Path, list[tuple[PermissionTarget, dict[str, Any], dict[str, Any]]]] = {}
+    _expand_project_catalog(root, config, trees, (outputs, claimed))
     for agent, slice_name, spec in project_slices(config.harnesses):
         if spec.output is None:
             continue
         path = root / spec.output
         if slice_name == "skills":
-            # Each harness gets its own directory because `render_skill` varies
-            # by harness — the same reason instructions can share a path and
-            # these cannot. The directory is claimed rather than the files in it,
-            # so the error names the thing the preset names.
-            _claim(path, f"{agent}.{slice_name}", claimed)
-            _expand_project_skills(agent, path, trees, outputs)
             continue
         if slice_name == "instructions":
             # Several agents name one document and that is not a collision here:
@@ -1282,14 +1349,56 @@ def project_servers(
     return collected
 
 
-def _expand_project_skills(
-    agent: str, base: Path, trees: tuple[Skill, ...], outputs: dict[Path, Output]
+def _write_project_skill(
+    skill: Skill,
+    agent: str,
+    base: Path,
+    state: tuple[dict[Path, Output], dict[Path, str]],
+    *,
+    render: bool = True,
 ) -> None:
+    outputs, claimed = state
+    directory = base / skill.name
+    document = directory / SKILL_DOCUMENT
+    _claim(document, f"{agent}.skills", claimed)
+    outputs[document] = render_skill(skill, agent) if render else Copied(skill.document)
+    for relative in skill.supporting:
+        path = directory / relative
+        _claim(path, f"{agent}.skills", claimed)
+        outputs[path] = Copied(source=skill.supporting_root / relative)
+
+
+def _expand_project_catalog(
+    root: Path,
+    config: ProjectConfig,
+    trees: tuple[Skill, ...],
+    state: tuple[dict[Path, Output], dict[Path, str]],
+    *,
+    available: tuple[str, ...] | None = None,
+) -> None:
+    available = tuple(
+        agent
+        for agent in (config.harnesses if available is None else available)
+        if "skills" in PROJECT_PRESET[agent]
+    )
     for skill in trees:
-        directory = base / skill.name
-        outputs[directory / SKILL_DOCUMENT] = render_skill(skill, agent)
-        for relative in skill.supporting:
-            outputs[directory / relative] = Copied(source=skill.document.parent / relative)
+        selected = selected_skill_agents(skill.name, available, config.skill_policies)
+        should_render = render_skill_for(skill.name, config.skill_policies)
+        remaining = list(selected)
+        convention = frozenset({"codex", "opencode", "pi"})
+        if "codex" in selected:
+            shared = convention.intersection(selected)
+            variants = {
+                agent: render_skill(skill, agent) if should_render else skill.document.read_bytes()
+                for agent in shared
+            }
+            if len(variants) > 1 and len(set(variants.values())) == 1:
+                remaining = [agent for agent in remaining if agent not in convention]
+                remaining.insert(0, "codex")
+        for agent in remaining:
+            spec = PROJECT_PRESET[agent]["skills"]
+            assert spec.output is not None
+            _write_project_skill(skill, agent, root / spec.output, state, render=should_render)
 
 
 def project_instructions(

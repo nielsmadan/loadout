@@ -44,7 +44,8 @@ from .servers import (
     render_claude_project_servers,
     render_opencode_servers,
 )
-from .skills import SKILL_DOCUMENT, Skill, render_skill
+from .skill_policy import render_skill_for, selected_skill_agents
+from .skills import SKILL_DOCUMENT, Skill, discover_skills, render_skill
 from .template_catalog import Catalog, contribution_paths, load_catalog, load_catalogs
 from .templates import resolve_template, template_files
 
@@ -314,7 +315,11 @@ def _consume(consumed: dict[str, set[str]], category: str, artifact: Artifact) -
 
 
 def _skill_outputs(
-    artifact: Artifact, source: Path, destination: Path, skills: dict[str, Skill]
+    artifact: Artifact,
+    source: Path,
+    destination: Path,
+    skills: dict[str, Skill],
+    config: ProjectConfig,
 ) -> dict[Path, Output]:
     if artifact.format != "tree":
         raise LoadoutError(f"{artifact.label}: template skills require a skills tree route")
@@ -325,6 +330,10 @@ def _skill_outputs(
     outputs: dict[Path, Output] = {}
     modes = dict(artifact.modes)
     for name, skill in skills.items():
+        selected = selected_skill_agents(name, config.harnesses, config.skill_policies)
+        consumers = tuple(agent for agent in artifact.agents if agent in selected)
+        if not consumers:
+            continue
         if (source / name / SKILL_DOCUMENT).is_file():
             continue
         if (source / name).exists() and (
@@ -333,18 +342,26 @@ def _skill_outputs(
             raise LoadoutError(
                 f"{artifact.label}: project skill {name!r} has content but no SKILL.md"
             )
-        variants = [render_skill(skill, agent) for agent in artifact.agents]
-        if any(v != variants[0] for v in variants[1:]):
-            raise LoadoutError(
-                f"{artifact.label}: skill {name!r} differs between agents; use separate routes"
-            )
+        should_render = render_skill_for(name, config.skill_policies)
         mode = modes.get(PurePosixPath(name, SKILL_DOCUMENT))
-        outputs[destination / name / SKILL_DOCUMENT] = (
-            variants[0] if mode is None else FrozenFile(variants[0].encode(), mode)
-        )
+        if should_render:
+            variants = [render_skill(skill, agent) for agent in consumers]
+            if any(variant != variants[0] for variant in variants[1:]):
+                raise LoadoutError(
+                    f"{artifact.label}: skill {name!r} differs between agents; use separate routes"
+                )
+            outputs[destination / name / SKILL_DOCUMENT] = (
+                variants[0] if mode is None else FrozenFile(variants[0].encode(), mode)
+            )
+        else:
+            outputs[destination / name / SKILL_DOCUMENT] = (
+                Copied(skill.document)
+                if mode is None
+                else FrozenFile(skill.document.read_bytes(), mode)
+            )
         for relative in skill.supporting:
             outputs[destination / name / relative] = Copied(
-                skill.document.parent / relative, mode=modes.get(PurePosixPath(name) / relative)
+                skill.supporting_root / relative, mode=modes.get(PurePosixPath(name) / relative)
             )
     return outputs
 
@@ -388,13 +405,14 @@ def render_native_templates(
     for path in mcp:
         servers.update(parsed_servers[path])
     skills = {s.name: s for path in paths for s in catalogs[path].skills()}
+    skills.update({skill.name: skill for skill in discover_skills(root / "loadout/skills")})
     consumed: dict[str, set[str]] = {
         category: set() for category in ("permissions", "mcp", "mcp-permissions", "skills")
     }
     artifacts = config.artifacts
     if artifacts is None:
         return {}
-    if not catalogs:
+    if not catalogs and not skills:
         return render_artifacts(
             artifacts,
             project_root=root,
@@ -415,7 +433,7 @@ def render_native_templates(
         elif artifact.parts[0].category == "skills" and skills:
             outputs.update(render_artifact(artifacts, artifact, destination, prefix))
             source = artifacts.source_root / artifact.parts[0].source
-            outputs.update(_skill_outputs(artifact, source, destination, skills))
+            outputs.update(_skill_outputs(artifact, source, destination, skills, config))
             _consume(consumed, "skills", artifact)
         elif artifact.parts[0].category == "permissions" and rules != EMPTY_RULES:
             outputs[destination] = _text_permissions(artifacts, artifact, rules)
@@ -426,7 +444,6 @@ def render_native_templates(
         ("permissions", rules != EMPTY_RULES),
         ("mcp", bool(servers)),
         ("mcp-permissions", _has_mcp(rules)),
-        ("skills", bool(skills)),
     ):
         missing = set(config.harnesses) - consumed[category]
         if present and missing:

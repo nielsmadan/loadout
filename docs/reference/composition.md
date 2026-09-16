@@ -14,6 +14,7 @@ rules describe different operations.
 | native instruction `sources` with `merge = "concat"` | optional missing input contributes nothing | UTF-8 prose joins with blank lines | invalid UTF-8 fails with its input path |
 | global named fragments | search participating sources | source qualification selects exactly one item | duplicate unqualified names fail |
 | global skills/module files | collect offered items | whole item replacement through `source.overrides` | undeclared duplicate names/paths fail |
+| skill catalog variants | public skill targets configured consumers | `.local.md` and `.local/` replace the whole skill; `agents` narrows consumers | duplicate flat/directory forms fail |
 | skill frontmatter harness block | inherit shared keys | harness value replaces the shared value | all harness blocks are stripped after selection |
 | MCP server definitions | keep other servers | later source replaces the whole same-named server | source order determines the winner |
 | project template skills/MCP | keep other entries | later template, then project, replaces the whole named entry | project declarations supply the highest tier |
@@ -55,9 +56,8 @@ layer deleting a key does not surrender that part's claim: every input key remai
 Explicit `keys` constrain each input individually. This rule also governs partial runtime
 documents, so removal reaches the deployed document without touching foreign fields.
 
-Native receipts manage retirement. Legacy skill/module selection changes the generated item
-set; it retains the existing legacy lifecycle, including manual cleanup of previously generated
-files that leave that set. The override operator does not introduce general orphan removal.
+Native receipts manage retirement. Skill and module selection changes the generated item set.
+The override operator does not introduce general orphan removal outside native receipt scopes.
 
 Bundled-skill commands use the same declared skill winner as rendering. Uninstall removes the
 owned copy and its `loadout` override entry together, preserving other overrides and the manifest's

@@ -81,6 +81,43 @@ def test_supporting_files_are_found_and_sorted(tmp_path: Path) -> None:
     )
 
 
+def test_a_flat_document_and_sibling_support_directory_form_one_skill(tmp_path: Path) -> None:
+    (tmp_path / "pdf.md").write_text(PLAIN, encoding="utf-8")
+    support = tmp_path / "pdf" / "scripts"
+    support.mkdir(parents=True)
+    (support / "run.py").write_text("print()", encoding="utf-8")
+
+    (skill,) = discover_skills(tmp_path)
+
+    assert skill.name == "pdf"
+    assert skill.document == tmp_path / "pdf.md"
+    assert skill.supporting_root == tmp_path / "pdf"
+    assert skill.supporting == (Path("scripts/run.py"),)
+
+
+def test_a_local_document_and_tree_replace_the_public_skill(tmp_path: Path) -> None:
+    (tmp_path / "review.md").write_text("public\n", encoding="utf-8")
+    (tmp_path / "review").mkdir()
+    (tmp_path / "review" / "public.txt").write_text("public\n", encoding="utf-8")
+    (tmp_path / "review.local.md").write_text("local\n", encoding="utf-8")
+    (tmp_path / "review.local").mkdir()
+    (tmp_path / "review.local" / "private.txt").write_text("private\n", encoding="utf-8")
+
+    (skill,) = discover_skills(tmp_path)
+
+    assert skill.name == "review"
+    assert skill.document == tmp_path / "review.local.md"
+    assert skill.supporting == (Path("private.txt"),)
+
+
+def test_flat_and_directory_documents_for_one_variant_are_ambiguous(tmp_path: Path) -> None:
+    (tmp_path / "review.md").write_text("flat\n", encoding="utf-8")
+    _write(tmp_path, "review", "directory\n")
+
+    with pytest.raises(LoadoutError, match="both a flat document"):
+        discover_skills(tmp_path)
+
+
 def test_build_artifacts_are_not_skill_content(tmp_path: Path) -> None:
     """A tree carries __pycache__ in the live source today; copying stale
     bytecode into five harnesses is a bug waiting to be filed."""

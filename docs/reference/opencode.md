@@ -132,14 +132,12 @@ the flag is `broad || direct`, so anything *checking* whether the collision is
 disabled has to read both names or it reports a false alarm at whoever set the
 broad one.
 
-**Do not reach for `OPENCODE_DISABLE_EXTERNAL_SKILLS`.** It is the bigger hammer
-and removes `.agents` as well as `.claude`, which costs you your own `.agents`
-skills for nothing — loadout writes none.
-
-`.agents/skills` is scanned unconditionally and neither flag removes it. That is
-safe here only because **loadout writes nothing to `.agents/`** — a fact about
-loadout, not about OpenCode. Adding an `.agents/skills` destination would
-recreate the race in a place no flag can disable.
+`OPENCODE_DISABLE_EXTERNAL_SKILLS=1` removes `.agents` from OpenCode's scan.
+Loadout writes Codex project skills there. No extra flag is needed when the
+Codex and OpenCode variants are byte-identical, because Loadout emits one shared
+copy. When their variants differ, Loadout emits `.agents/skills` for Codex and
+`.opencode/skills` for OpenCode; `loadout check` reports the resulting duplicate
+unless this flag is set or the skill's `agents` policy selects only one of them.
 
 **Why the race and not an ordering.** The duplicate branch warns and does not
 return, so the assignment after it runs anyway:

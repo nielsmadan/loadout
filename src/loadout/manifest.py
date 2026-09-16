@@ -9,6 +9,7 @@ from .agents import GLOBAL_PRESET, SliceOutput, known_agents
 from .artifacts import Artifacts, artifact_reference
 from .destinations import resolve_destination
 from .errors import LoadoutError
+from .skill_policy import SkillPolicy, parse_skill_policies
 from .sources import Source, parse_sources
 from .toml_paths import contains, key_path
 
@@ -126,6 +127,7 @@ class Manifest:
     targets: tuple[InstructionTarget, ...]
     permissions: tuple[PermissionTarget, ...] = ()
     skills: tuple[SkillsTarget, ...] = ()
+    skill_policies: tuple[SkillPolicy, ...] = ()
     module_config: tuple[ModuleConfigTarget, ...] = ()
     artifacts: Artifacts | None = None
     config_paths: tuple[Path, ...] = ()
@@ -383,7 +385,7 @@ def _resolve_extends(path: Path) -> tuple[dict[str, object], tuple[Path, ...]]:
             if key in {"extends", "remove"}:
                 continue
             existing = merged.get(key)
-            if key in {"instructions", "permissions"} and isinstance(value, dict):
+            if key in {"instructions", "permissions", "skills"} and isinstance(value, dict):
                 targets = dict(existing) if isinstance(existing, dict) else {}
                 for name, fields in value.items():
                     targets[name] = _inherit_fields(targets.get(name), fields)
@@ -416,7 +418,16 @@ def load_manifest(path: Path) -> Manifest:
 COMMON_BLOCK = "all"
 
 RESERVED_KEYS = frozenset(
-    {"source", "instructions", "permissions", "extends", "remove", "artifacts", COMMON_BLOCK}
+    {
+        "source",
+        "instructions",
+        "permissions",
+        "skills",
+        "extends",
+        "remove",
+        "artifacts",
+        COMMON_BLOCK,
+    }
 )
 
 # permissions, mcp-permissions, skills and module-config render with no authoring
@@ -613,11 +624,22 @@ def _build_manifest(
         raise LoadoutError(
             f"{path}: no [<agent>], [instructions.<agent>] or [permissions.<name>] targets declared"
         )
+    skill_policies = parse_skill_policies(data.get("skills"))
+    configured_skill_agents = {target.agent for target in agent_skills}
+    for policy in skill_policies:
+        extra = set(policy.agents) - configured_skill_agents
+        if extra:
+            raise LoadoutError(
+                f"skills.{policy.name} names agent(s) without an active skills slice: "
+                f"{', '.join(sorted(extra))}"
+            )
+
     return Manifest(
         sources=sources,
         targets=targets,
         permissions=permissions,
         skills=agent_skills,
+        skill_policies=skill_policies,
         module_config=agent_module_config,
         artifacts=artifacts,
         config_paths=config_paths or (path,),

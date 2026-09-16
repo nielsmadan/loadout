@@ -64,6 +64,7 @@ CATCH_ALL_ELSEWHERE = {
 # `OPENCODE_DISABLE_EXTERNAL_SKILLS` also works and is deliberately not accepted
 # here: it drops `.agents` too, which loadout does not write and the user may.
 OPENCODE_SKILL_FLAGS = ("OPENCODE_DISABLE_CLAUDE_CODE_SKILLS", "OPENCODE_DISABLE_CLAUDE_CODE")
+OPENCODE_EXTERNAL_SKILL_FLAG = "OPENCODE_DISABLE_EXTERNAL_SKILLS"
 
 # Effect's `Config.boolean` parses these; its full accepted set could not be
 # verified from the checkout (no node_modules), so an unusual spelling costs one
@@ -80,6 +81,10 @@ def opencode_skills_race(environ: Mapping[str, str]) -> bool:
     return not any(
         environ.get(flag, "").strip().lower() in _TRUTHY for flag in OPENCODE_SKILL_FLAGS
     )
+
+
+def opencode_external_skills_race(environ: Mapping[str, str]) -> bool:
+    return environ.get(OPENCODE_EXTERNAL_SKILL_FLAG, "").strip().lower() not in _TRUTHY
 
 
 @dataclass(frozen=True)

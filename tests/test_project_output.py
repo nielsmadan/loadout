@@ -26,11 +26,9 @@ OUTPUTS = (
     "AGENTS.md",
 )
 
-# Every harness that has a skills slice gets its own directory, because
-# `render_skill` varies its output by harness. Codex has none — verified negative,
-# see reference/config.md.
 SKILL_DIRS = {
     "claude": ".claude/skills",
+    "codex": ".agents/skills",
     "droid": ".factory/skills",
     "opencode": ".opencode/skills",
     "pi": ".pi/skills",
@@ -39,7 +37,11 @@ SKILL_FILES = ("from-template/SKILL.md", "probe/SKILL.md", "probe/reference.md")
 
 
 def skill_outputs(*harnesses: str) -> set[str]:
-    return {f"{SKILL_DIRS[h]}/{f}" for h in harnesses for f in SKILL_FILES}
+    outputs = {f"{SKILL_DIRS[h]}/{f}" for h in harnesses for f in SKILL_FILES}
+    if "codex" in harnesses:
+        for harness in {"opencode", "pi"}.intersection(harnesses):
+            outputs.discard(f"{SKILL_DIRS[harness]}/from-template/SKILL.md")
+    return outputs
 
 
 def test_every_project_output_matches_the_expected_output(project: Path) -> None:
@@ -422,12 +424,9 @@ def test_an_unknown_instruction_fragment_fails_the_render(bare_project: Path) ->
         render_project(bare_project)
 
 
-def test_codex_gets_no_project_skills(project: Path) -> None:
-    """A verified negative, not an omission: the 0.147.0 binary has no
-    project-relative skills path, and its extra-roots mechanism is a setting in
-    `.codex/config.toml`, which loadout does not own."""
+def test_codex_gets_project_skills_through_the_agents_convention(project: Path) -> None:
     rendered = {str(p.relative_to(project)) for p in render_project(project)}
-    assert not [p for p in rendered if p.startswith(".codex/") and "skills" in p]
+    assert ".agents/skills/probe/SKILL.md" in rendered
     assert ".codex/rules/permissions.rules" in rendered
 
 
@@ -442,10 +441,44 @@ def test_each_harness_gets_its_own_flavour_of_a_skill(project: Path) -> None:
         for harness, directory in SKILL_DIRS.items()
     }
     assert "Claude-only" in bodies["claude"]
+    assert "Shared prose" in bodies["codex"]
     assert "Droid-only" in bodies["droid"]
     assert "OpenCode-only" in bodies["opencode"]
     assert "Pi-only" in bodies["pi"]
-    assert len({*bodies.values()}) == 4
+    assert len({*bodies.values()}) == 5
+
+
+def test_identical_convention_variants_share_the_agents_directory(project: Path) -> None:
+    rendered = set()
+    for path in render_project(project):
+        relative = path.relative_to(project)
+        if (
+            path.name == "SKILL.md"
+            and path.parent.name == "from-template"
+            and relative.parts[0] in {".agents", ".opencode", ".pi"}
+        ):
+            rendered.add(relative.as_posix())
+
+    assert rendered == {".agents/skills/from-template/SKILL.md"}
+
+
+def test_an_unrendered_skill_shares_opaque_document_bytes(project: Path) -> None:
+    document = project / "loadout/skills/probe/SKILL.md"
+    document.write_bytes(b"\xffopaque\n")
+    (project / "loadout/config.toml").write_text(
+        'harnesses = ["codex", "opencode"]\n'
+        "\n"
+        "[skills.probe]\n"
+        'agents = ["codex", "opencode"]\n'
+        "render = false\n",
+        encoding="utf-8",
+    )
+
+    rendered = render_project(project)
+
+    skill = rendered[project / ".agents/skills/probe/SKILL.md"]
+    assert isinstance(skill, Copied)
+    assert skill.read_bytes() == b"\xffopaque\n"
 
 
 def test_a_project_skill_beats_a_template_skill_of_the_same_name(project: Path) -> None:
@@ -468,27 +501,19 @@ def test_a_supporting_file_is_copied_rather_than_rendered(project: Path) -> None
     assert carried.source.read_text(encoding="utf-8").startswith("Supporting file")
 
 
-def test_two_agents_may_not_share_one_skills_directory(
-    project: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """`render_skill` varies by harness, so one directory cannot hold both — and
-    the `.agents/` convention table invites exactly this edit, because serving two
-    harnesses from one write is right for instructions and wrong here.
+def test_a_skill_policy_selects_only_its_named_agents(project: Path) -> None:
+    config = project / "loadout/config.toml"
+    config.write_text(
+        config.read_text(encoding="utf-8") + '\n[skills.probe]\nagents = ["claude", "droid"]\n',
+        encoding="utf-8",
+    )
 
-    Before the claim the render simply succeeded and whichever agent sorted last
-    silently won, so asserting the error names both owners is what distinguishes
-    a guard from a crash."""
-    shared = SliceOutput(output=".agents/skills")
-    monkeypatch.setitem(PROJECT_PRESET["opencode"], "skills", shared)
-    monkeypatch.setitem(PROJECT_PRESET["pi"], "skills", shared)
+    rendered = {str(path.relative_to(project)) for path in render_project(project)}
 
-    with pytest.raises(LoadoutError) as raised:
-        render_project(project)
-
-    message = str(raised.value)
-    assert "opencode.skills" in message
-    assert "pi.skills" in message
-    assert ".agents/skills" in message
+    assert ".claude/skills/probe/SKILL.md" in rendered
+    assert ".factory/skills/probe/SKILL.md" in rendered
+    assert ".agents/skills/from-template/SKILL.md" in rendered
+    assert ".agents/skills/probe/SKILL.md" not in rendered
 
 
 def test_two_agents_may_not_share_one_document(
