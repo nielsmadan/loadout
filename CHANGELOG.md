@@ -4,6 +4,12 @@ All notable user-facing changes to loadout. While the project is on `0.x` it fol
 [Semantic Versioning](https://semver.org) loosely: breaking changes may land in a minor
 release and are called out under **Breaking Changes**.
 
+## [0.9.3] - 2026-09-16
+
+### Bug Fixes
+
+- Generate release notes without the GitHub API
+
 ## [0.9.2] - 2026-09-15
 
 ### Bug Fixes
@@ -156,6 +162,7 @@ release and are called out under **Breaking Changes**.
 - Point release checks at the renamed docs recipe
 - Drop the GitHub CLI from the release flow
 
+[0.9.3]: https://github.com/nielsmadan/loadout/compare/v0.9.2..v0.9.3
 [0.9.2]: https://github.com/nielsmadan/loadout/compare/v0.9.1..v0.9.2
 [0.9.1]: https://github.com/nielsmadan/loadout/compare/v0.9.0..v0.9.1
 [0.9.0]: https://github.com/nielsmadan/loadout/tree/v0.9.0
