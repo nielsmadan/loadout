@@ -505,7 +505,9 @@ def prepare_deployment(
             if change.after is not None:
                 entries.append(_new_entry(scope, route, change, output))
         for path, baseline_list in prior.items():
-            if path in active:
+            # `active` covers outputs a route claimed. A path this run writes is not
+            # retired even when no route claimed it, as for a global catalog skill.
+            if path in active or path in outputs:
                 continue
             if any(
                 path == current or path.is_relative_to(current) or current.is_relative_to(path)

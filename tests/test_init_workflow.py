@@ -466,3 +466,24 @@ def test_existing_mixed_manifest_includes_legacy_skill_membership(tmp_path, caps
     preview = json.loads(capsys.readouterr().out)
     assert preview["agents"] == ["pi"]
     assert preview["already_initialized"]
+
+
+def test_global_init_with_an_existing_skill_leaves_sync_working(tmp_path, fake_home, capsys):
+    """Adopting a skill records a receipt for a path no artifact route covers.
+
+    Regression: the catalog receipt made sync treat the file it was writing as a
+    retired deployment, so the first sync after `init --global` failed with exit 3.
+    """
+    _repo(tmp_path)
+    skill = fake_home / ".claude/skills/code-review"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text(
+        "---\nname: code-review\ndescription: Review changes.\n---\n\nBody.\n", encoding="utf-8"
+    )
+    (fake_home / ".claude/CLAUDE.md").write_text("# Instructions\n", encoding="utf-8")
+
+    assert loadout.main(["init", "--global", "--source", str(tmp_path), "--yes"]) == 0
+    capsys.readouterr()
+    assert loadout.main(["sync", "--global"]) == 0
+    assert (fake_home / ".claude/skills/code-review/SKILL.md").is_file()
+    assert loadout.main(["check", "--global"]) == 0
