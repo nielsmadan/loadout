@@ -71,13 +71,9 @@ Check the name against the selected source's directory:
 - Source paths are resolved relative to the manifest directory.
 - A source's `use` list may exclude the requested slice.
 
-For global instructions, inspect resolution with:
-
-```sh
-loadout explain workflow --root ~/agent-config/loadout
-```
-
-If several sources offer the same name, qualify it as `personal/workflow`.
+If several sources offer the same name, loadout does not pick one: it refuses the unqualified
+name and lists the candidates it found. Qualify it as `personal/workflow` to choose. A command for
+inspecting resolution directly is not available in 1.0.
 
 ## A template cannot be found
 

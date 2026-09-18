@@ -106,14 +106,16 @@ profile = "focused"
 Create `focused.toml` beside `loadout.toml` before selecting it. See
 [profiles](composition.md#profiles).
 
-## Inspect a fragment
+## Disambiguate a fragment name
 
-```sh
-loadout explain workflow --root ~/agent-config/loadout
+If several sources offer the same fragment name, loadout does not pick one: it refuses the
+unqualified name and lists the candidates. Qualify it with the source that should win:
+
+```toml
+instructions = ["personal/workflow"]
 ```
 
-This reports the source and consumers of the fragment. If multiple sources offer the same name,
-qualify it as `personal/workflow`.
+A command for inspecting resolution directly is not available in 1.0.
 
 ## Configure through your agent
 

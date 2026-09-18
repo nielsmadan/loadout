@@ -581,7 +581,7 @@ def test_the_target_holds_the_template_and_resolution_happens_per_render(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Keeping the template on the target is what lets a later render pick up a
-    changed variable, and what lets `explain` show what the manifest actually says."""
+    changed variable, rather than freezing one machine's expansion into the manifest."""
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/opt/claude")
     root = env_root(tmp_path, "${CLAUDE_CONFIG_DIR}/CLAUDE.md")
 

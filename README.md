@@ -31,7 +31,6 @@ Use `just install-editable` to have source edits take effect without reinstallin
     loadout check                 # exit 1 if any generated file has drifted
     loadout check --global        # check drift in this machine's global configuration
     loadout check --profile NAME  # check drift under a specific active profile
-    loadout explain <name>        # show which source a fragment resolves from, and which targets use it
 
 ## Bundled skill
 
@@ -74,9 +73,9 @@ or `--global` for machine-wide configuration. The skill edits Loadout sources, a
 requests to configured agents that support them, and runs the matching sync command. Restart an
 already-running agent session after first installation so it refreshes its skill catalog.
 
-`explain` takes a fragment name, optionally qualified as `source/name` to disambiguate when more
-than one source declares a fragment with the same name. `explain` is global scope only —
-instruction fragments are not part of project scope (see below).
+A fragment name may be qualified as `source/name`. Loadout refuses an unqualified name that more
+than one source declares, naming the candidates so you can pick one. Instruction fragments are
+global scope only — they are not part of project scope (see below).
 
 ### Files modified outside loadout
 

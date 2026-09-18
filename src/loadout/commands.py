@@ -27,7 +27,6 @@ from .emit import (
 )
 from .errors import LoadoutError, UsageError
 from .machine import machine_config_path
-from .manifest import MANIFEST_NAME, InstructionTarget, load_manifest, manifest_path
 from .native_skill_installation import SkillCommand, run_native_skill
 from .native_templates import validate_template_change, validate_template_tree
 from .project import (
@@ -36,7 +35,6 @@ from .project import (
     load_project_config,
     project_config_path,
 )
-from .resolve import resolve_fragment
 from .scaffold import add_harness, init_global, init_project
 from .skill_installation import (
     SkillSourceLocation,
@@ -670,49 +668,4 @@ def cmd_template_sync(root: Path, name: str) -> int:
         f"updated {name} from source, {sum(1 for c in changed if c.startswith('---'))} file(s) changed"
     )
     _report_diff(changed)
-    return 0
-
-
-def cmd_explain(root: Path, name: str) -> int:
-    root_manifest = manifest_path(root)
-    if not root_manifest.is_file() and project_config_path(root).is_file():
-        raise LoadoutError(
-            f"explain covers instruction fragments, which are global scope only "
-            f"({MANIFEST_NAME}); this repo has project scope only "
-            f"({PROJECT_DIR}/{PROJECT_CONFIG_NAME})."
-        )
-    manifest = load_manifest(root_manifest)
-    item = resolve_fragment(manifest.sources, name)
-
-    def label(target: InstructionTarget) -> str:
-        if target.path is not None:
-            return str(target.path)
-        return f"destinations={', '.join(str(d) for d in target.destinations)}"
-
-    users: list[str] = []
-    unresolved: list[str] = []
-    for target in manifest.targets:
-        matched = False
-        for fragment in target.fragments:
-            try:
-                if resolve_fragment(manifest.sources, fragment).path == item.path:
-                    matched = True
-            except LoadoutError:
-                unresolved.append(f"{label(target)}: {fragment}")
-        if matched:
-            users.append(label(target))
-
-    print(f"{item.name}")
-    print(f"  source: {item.source}")
-    print(f"  file:   {item.path}")
-    if users:
-        print("  used by:")
-        for target_path in users:
-            print(f"    {target_path}")
-    else:
-        print("  used by: (no target lists it)")
-    if unresolved:
-        print("  warning: other fragments in this manifest do not resolve:", file=sys.stderr)
-        for entry in unresolved:
-            print(f"    {entry}", file=sys.stderr)
     return 0

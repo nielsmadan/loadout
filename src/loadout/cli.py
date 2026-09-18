@@ -9,7 +9,6 @@ from pathlib import Path
 from . import __version__
 from .commands import (
     cmd_check,
-    cmd_explain,
     cmd_harness_add,
     cmd_skill_install,
     cmd_skill_status,
@@ -73,10 +72,6 @@ def build_parser() -> argparse.ArgumentParser:
             sub.add_argument(
                 "--staged", action="store_true", help="validate the isolated Git index"
             )
-
-    explain = subparsers.add_parser("explain", help="show where a fragment comes from")
-    explain.add_argument("name", help="fragment name, optionally qualified as source/name")
-    add_root(explain)
 
     init = subparsers.add_parser(
         "init", help="adopt existing agent configuration into editable loadout source"
@@ -313,8 +308,6 @@ def _dispatch_skill(args: argparse.Namespace) -> int:
 def _dispatch(args: argparse.Namespace) -> int:
     if args.command == "git-hooks":
         return _dispatch_git_hooks(args)
-    if args.command == "explain":
-        return cmd_explain(args.root.resolve(), args.name)
     if args.command == "init":
         return _dispatch_init(args)
     if args.command == "harness":

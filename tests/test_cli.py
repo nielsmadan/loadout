@@ -271,43 +271,12 @@ def test_loadout_error_still_returns_3(root: Path, monkeypatch, capsys) -> None:
     assert "deliberate failure" in capsys.readouterr().err
 
 
-def test_explain_reports_the_source_and_path(root: Path, capsys) -> None:
-    assert loadout.main(["explain", "shared", "--root", str(root)]) == 0
-    out = capsys.readouterr().out
-    assert "shared" in out
-    assert "source: test" in out
-
-
-def test_explain_lists_targets_that_use_the_fragment(root: Path, capsys) -> None:
-    assert loadout.main(["explain", "policy", "--root", str(root)]) == 0
-    out = capsys.readouterr().out
-    assert "out/primary.md" in out
-    # instructions.primary-variant composes policy.variant, not policy
-    assert "PRIMARY.md" not in out
-
-
-def test_explain_survives_an_unrelated_unresolvable_fragment(root: Path, capsys) -> None:
-    manifest = root / "loadout.toml"
-    manifest.write_text(
-        manifest.read_text(encoding="utf-8").replace('"closing"', '"no-such-fragment"', 1),
-        encoding="utf-8",
-    )
-    assert loadout.main(["explain", "policy", "--root", str(root)]) == 0
-    captured = capsys.readouterr()
-    assert "used by:" in captured.out
-    assert "no-such-fragment" in captured.err
-
-
-def test_explain_finds_users_when_queried_by_qualified_name(root: Path, capsys) -> None:
-    assert loadout.main(["explain", "test/policy", "--root", str(root)]) == 0
-    out = capsys.readouterr().out
-    assert "out/primary.md" in out
-    assert "no target lists it" not in out
-
-
-def test_explain_on_unknown_name_returns_3(root: Path, capsys) -> None:
-    assert loadout.main(["explain", "nope", "--root", str(root)]) == 3
-    assert "nope" in capsys.readouterr().err
+def test_explain_is_not_a_command(root: Path, capsys) -> None:
+    """Removed for 1.0: it resolved one slice of nine and nothing after `init --global`."""
+    with pytest.raises(SystemExit) as exit_info:
+        loadout.main(["explain", "shared", "--root", str(root)])
+    assert exit_info.value.code == 2
+    assert "invalid choice: 'explain'" in capsys.readouterr().err
 
 
 def test_sync_with_unknown_fragment_returns_3(root: Path, capsys) -> None:
@@ -495,17 +464,6 @@ def test_init_rejects_duplicate_harnesses(tmp_path: Path, capsys) -> None:
     )
     assert "distinct" in capsys.readouterr().err
     assert not (tmp_path / "loadout" / "config.toml").exists()
-
-
-def test_explain_in_a_project_only_repo_names_both_manifests(tmp_path: Path, capsys) -> None:
-    _init_repo(tmp_path)
-    loadout.main(["init", "--project", "--yes", "--harness", "claude", "--root", str(tmp_path)])
-    capsys.readouterr()
-
-    assert loadout.main(["explain", "foo", "--root", str(tmp_path)]) == 3
-    err = capsys.readouterr().err
-    assert "loadout.toml" in err
-    assert "loadout/config.toml" in err
 
 
 def test_check_returns_1_when_a_project_output_has_drifted(tmp_path: Path, capsys) -> None:

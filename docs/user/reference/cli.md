@@ -74,16 +74,6 @@ loadout harness add pi --root /path/to/repository
 The accepted names are `claude`, `codex`, `droid`, `opencode`, and `pi`.
 Run `loadout sync` after changing the enabled set.
 
-## Inspect a fragment
-
-```sh
-loadout explain workflow --root ~/agent-config/loadout
-loadout explain personal/workflow --root ~/agent-config/loadout
-```
-
-`explain` reports global instruction-fragment resolution and consumers.
-It accepts `--root`, not `--global`. A qualified name disambiguates sources.
-
 ## Templates
 
 ```sh
