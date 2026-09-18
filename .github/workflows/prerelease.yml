@@ -62,15 +62,17 @@ jobs:
           source_sha=$(shasum -a 256 "$archive" | cut -d' ' -f1)
           python3 scripts/homebrew.py "$version" "$source_sha" loadout.rb
           # No tag exists yet, so build from the archive this commit produces.
-          python3 - "$archive" <<'PY'
+          python3 - "$archive" "$version" <<'PY'
           import pathlib
           import sys
 
+          # Homebrew reads the version out of a tag-archive URL. A local file has none,
+          # so state it rather than leaving validate_attributes! with version (nil).
           formula = pathlib.Path("loadout.rb")
           lines = formula.read_text().splitlines(keepends=True)
           for index, line in enumerate(lines):
               if line.startswith("  url "):
-                  lines[index] = f'  url "file://{sys.argv[1]}"\n'
+                  lines[index] = f'  url "file://{sys.argv[1]}"\n  version "{sys.argv[2]}"\n'
                   break
           else:
               raise SystemExit("no url line in the rendered formula")
