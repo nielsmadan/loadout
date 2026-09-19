@@ -222,16 +222,16 @@ for agent in ("claude", "codex", "opencode", "pi"):
     )
 put(global_source / "artifacts.toml", "\n".join(blocks))
 put(work / "config/loadout/config.toml", f"source = {json.dumps(str(global_source))}\n")
-run("install packaged skill for four agents", ["skill", "install", "--yes"], work)
+run("install packaged skill for four agents", ["integrate", "skill", "install", "--yes"], work)
 for destination in destinations:
     for relative in ("SKILL.md", "references/configuration.md", "references/onboarding.md"):
         assert (destination / "loadout" / relative).stat().st_size > 0
-run("packaged skill status", ["skill", "status"], work)
-run("packaged skill reinstall", ["skill", "install", "--yes"], work)
+run("packaged skill status", ["integrate", "skill", "status"], work)
+run("packaged skill reinstall", ["integrate", "skill", "install", "--yes"], work)
 run("global check", ["check", "--global"], work)
 sentinel = destinations[0] / "notes.txt"
 sentinel.write_text("Keep this unrelated file.\n")
-run("uninstall packaged skill", ["skill", "uninstall", "--yes"], work)
+run("uninstall packaged skill", ["integrate", "skill", "uninstall", "--yes"], work)
 assert sentinel.read_text() == "Keep this unrelated file.\n"
 assert all(not (destination / "loadout/SKILL.md").exists() for destination in destinations)
 run("global check after uninstall", ["check", "--global"], work)
