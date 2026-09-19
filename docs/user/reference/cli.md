@@ -131,9 +131,8 @@ All three accept `--root` and `--profile NAME`. `install` also accepts `--dry-ru
 
 `uninstall` removes only hooks loadout wrote, identified by the marker on the second line of
 the generated script rather than by the command they invoke. A hook without that marker is
-never touched, whoever wrote it. `--yes` skips the confirmation prompt.
-
-See [Git integration](../../reference/git-integration.md) for the ownership rules.
+never touched, whoever wrote it. A hook that loadout wrote for a different source in the same
+repository is left alone too. `--yes` skips the confirmation prompt.
 
 ## Exit codes
 
