@@ -11,7 +11,6 @@ from . import migration_git
 from .errors import LoadoutError, UsageError
 
 EVENTS = ("pre-commit", "post-checkout", "post-merge")
-HOOK_MODE = 0o755
 # Identity lives in this marker, never in the command the hook invokes, so renaming
 # the command does not orphan the hooks already on disk. Match the prefix so a v2 resolves.
 SENTINEL = b"# loadout Git hook v"
@@ -53,18 +52,10 @@ def hook_content(event: str, source: Path, profile: str) -> bytes:
     ).encode()
 
 
-def hooks_directory(repository: Path, *, existing: bool = True) -> Path:
-    if existing:
-        raw = migration_git.git(
-            repository, "rev-parse", "--path-format=absolute", "--git-path", "hooks"
-        ).stdout
-    else:
-        configured = migration_git.git(
-            repository, "config", "--path", "--get", "core.hooksPath", check=False
-        )
-        if configured.returncode not in {0, 1}:
-            raise LoadoutError("could not inspect effective core.hooksPath")
-        raw = configured.stdout if configured.returncode == 0 else b".git/hooks"
+def hooks_directory(repository: Path) -> Path:
+    raw = migration_git.git(
+        repository, "rev-parse", "--path-format=absolute", "--git-path", "hooks"
+    ).stdout
     return (repository / os.fsdecode(raw).strip()).absolute()
 
 
@@ -88,7 +79,7 @@ def _repository_storage(repository: Path) -> list[Path]:
     return paths
 
 
-def placement(repository: Path, directory: Path, *, existing: bool = True) -> str:
+def placement(repository: Path, directory: Path) -> str:
     """Why the directory is or is not ours alone: "local", "shared" or "external".
 
     install refuses the last two alike, because the hook body hard-codes this worktree's
@@ -96,9 +87,8 @@ def placement(repository: Path, directory: Path, *, existing: bool = True) -> st
     but a repo-local directory shared between worktrees still holds loadout's own hook.
     """
     inside = directory.is_relative_to(repository) and directory.resolve().is_relative_to(repository)
-    if not inside and not (
-        existing
-        and any(directory.resolve().is_relative_to(p) for p in _repository_storage(repository))
+    if not inside and not any(
+        directory.resolve().is_relative_to(p) for p in _repository_storage(repository)
     ):
         return "external"
     if not all(
@@ -107,21 +97,20 @@ def placement(repository: Path, directory: Path, *, existing: bool = True) -> st
         if path.is_relative_to(repository)
     ):
         return "external"
-    if existing:
-        entries = migration_git.git(repository, "worktree", "list", "--porcelain", "-z").stdout
-        for entry in entries.split(b"\0"):
-            if not entry.startswith(b"worktree "):
-                continue
-            worktree = Path(os.fsdecode(entry.removeprefix(b"worktree ")))
-            if worktree.resolve() == repository.resolve():
-                continue
-            if not worktree.is_dir() or hooks_directory(worktree).resolve() == directory.resolve():
-                return "shared"
+    entries = migration_git.git(repository, "worktree", "list", "--porcelain", "-z").stdout
+    for entry in entries.split(b"\0"):
+        if not entry.startswith(b"worktree "):
+            continue
+        worktree = Path(os.fsdecode(entry.removeprefix(b"worktree ")))
+        if worktree.resolve() == repository.resolve():
+            continue
+        if not worktree.is_dir() or hooks_directory(worktree).resolve() == directory.resolve():
+            return "shared"
     return "local"
 
 
-def local_directory(repository: Path, directory: Path, *, existing: bool = True) -> bool:
-    return placement(repository, directory, existing=existing) == "local"
+def local_directory(repository: Path, directory: Path) -> bool:
+    return placement(repository, directory) == "local"
 
 
 @dataclass(frozen=True)
@@ -155,27 +144,17 @@ class HookPlan:
         }
 
 
-def plan_hooks(
-    root: Path,
-    *,
-    regenerate: bool = False,
-    profile: str = "default",
-    initialize: Path | None = None,
-) -> HookPlan:
+def plan_hooks(root: Path, *, regenerate: bool = False, profile: str = "default") -> HookPlan:
     root = root.resolve()
     probe = root
     while not probe.is_dir():
         probe = probe.parent
-    repository = (
-        initialize.resolve()
-        if initialize is not None
-        else Path(
-            os.fsdecode(migration_git.git(probe, "rev-parse", "--show-toplevel").stdout).strip()
-        ).resolve()
-    )
+    repository = Path(
+        os.fsdecode(migration_git.git(probe, "rev-parse", "--show-toplevel").stdout).strip()
+    ).resolve()
     source = root.relative_to(repository)
-    directory = hooks_directory(repository, existing=initialize is None)
-    where = placement(repository, directory, existing=initialize is None)
+    directory = hooks_directory(repository)
+    where = placement(repository, directory)
     hooks = []
     for event in EVENTS if regenerate else EVENTS[:1]:
         path = directory / event

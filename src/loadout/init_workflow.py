@@ -12,12 +12,10 @@ import tomlkit
 
 from .discovery import discover, initialized_project_path
 from .errors import LoadoutError, UsageError
-from .git_hooks import HookPlan, plan_hooks, show_hooks
 from .harnesses import KNOWN_HARNESSES
 from .init_options import InitOptions, parse_mapping, parse_selection
 from .machine import load_machine_config, machine_config_path
 from .migration import plan_migration
-from .migration_git import git
 from .migration_models import Issue, MigrationPlan, SourceWrite
 from .migration_transaction import (
     MigrationFailure,
@@ -212,8 +210,6 @@ def _show(preview: dict[str, Any], *, as_json: bool) -> None:
         print(f"{original['action']}: {original['path']} ({original['reason']})")
     if preview.get("registration"):
         print(f"Register global source: {preview['registration']}")
-    if preview.get("git_hooks"):
-        show_hooks(preview["git_hooks"])
     for issue in preview["issues"]:
         print(f"{issue['code']}: {issue['message']}", file=sys.stderr)
         for path in issue["paths"]:
@@ -257,8 +253,7 @@ def _run_init(options: InitOptions) -> int:
     if not plan.complete:
         _show(plan.preview(), as_json=options.json)
         return 2
-    hooks = _hooks(options, plan)
-    prepared = prepare_migration(plan, machine_write=machine, hooks=hooks)
+    prepared = prepare_migration(plan, machine_write=machine)
     preview = {**prepared.preview(), "registration": str(machine.path) if machine else None}
     if options.dry_run or not options.json:
         _show(preview, as_json=options.json)
@@ -273,9 +268,12 @@ def _run_init(options: InitOptions) -> int:
             print("declined; no changes made")
             return 0
     try:
-        _result(apply_migration(prepared), as_json=options.json)
+        result = apply_migration(prepared)
     except MigrationFailure as error:
         return report_failure(error, as_json=options.json)
+    _result(result, as_json=options.json)
+    if not options.json and not result.already_initialized:
+        print(_hook_hint(plan))
     if (
         plan.inventory.scope == "project"
         and not options.json
@@ -285,25 +283,11 @@ def _run_init(options: InitOptions) -> int:
     return 0
 
 
-def _hooks(options: InitOptions, plan: MigrationPlan) -> HookPlan | None:
-    if options.git_hooks not in {None, "none", "check", "regenerate"}:
-        raise UsageError("--git-hooks must be none, check or regenerate")
-    if options.git_hooks not in {"check", "regenerate"}:
-        return None
+def _hook_hint(plan: MigrationPlan) -> str:
     root = plan.inventory.source_root if plan.inventory.scope == "global" else plan.inventory.root
-    initialize = (
-        git(plan.inventory.root, "rev-parse", "--show-toplevel", check=False).returncode != 0
-    )
-    profile = "default"
-    if plan.inventory.scope == "global" and plan.already_initialized:
-        machine = load_machine_config(machine_config_path())
-        if machine is not None and machine.source == root.resolve():
-            profile = machine.profile or "default"
-    return plan_hooks(
-        root,
-        regenerate=options.git_hooks == "regenerate",
-        profile=profile,
-        initialize=plan.inventory.root if initialize else None,
+    return (
+        "To run loadout from that repository's Git hooks: "
+        f"loadout integrate git-hooks install --root {shlex.quote(str(root))}"
     )
 
 

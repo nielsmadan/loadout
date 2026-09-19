@@ -28,12 +28,13 @@ original body bytes and modes survive. Other populated template categories requi
 native source edits before selection. Follow the exact template command reported for an already
 initialized source, then sync its managed outputs.
 
-Offer optional Git integration using `--git-hooks none|check|regenerate`, default `none`.
-`check` validates the staged dependency snapshot at pre-commit; `regenerate` also runs guarded
-sync after checkout/merge. Show preview paths and source/profile, preserving occupied or shared
-hooks and reporting the exact integration commands. A clone needs explicit
-`loadout integrate git-hooks install --root <source-root> [--profile <name>] [--regenerate]`. Templates must be vendored and
-staged, required dependencies must be in the repository, and optional private sources may be
+Init installs no Git hooks. Offer them separately, after init, with
+`loadout integrate git-hooks install --root <source-root> [--profile <name>] [--regenerate]`.
+Installation validates the staged dependency snapshot at pre-commit; `--regenerate` also runs
+guarded sync after checkout/merge. Show preview paths and source/profile, preserving occupied or
+shared hooks and reporting the exact integration commands. A clone needs the same command.
+Templates must be vendored and staged, required dependencies must be in the repository, and
+optional private sources may be
 absent. A post-hook failure leaves Git's completed operation in place; resolve the reported
 output conflict and retry normal sync, without adding `--force`.
 

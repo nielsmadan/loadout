@@ -238,7 +238,12 @@ def _add_git_hooks(parser: argparse.ArgumentParser) -> None:
             default=Path.cwd(),
             help="repository root holding loadout.toml (default: cwd)",
         )
-        command.add_argument("--profile", default="default", help="active profile to render")
+        command.add_argument(
+            "--profile",
+            default=None,
+            help="active profile to render (default: the machine config's profile when it "
+            "registers this source, otherwise 'default')",
+        )
 
 
 def _resolve_global(profile: str | None) -> tuple[Path, str]:
@@ -267,11 +272,6 @@ def _add_init_choices(init: argparse.ArgumentParser) -> None:
         help="optional project template to vendor; default: none",
     )
     init.add_argument(
-        "--git-hooks",
-        choices=("none", "check", "regenerate"),
-        help="opt into pre-commit validation, optionally with post-checkout/post-merge sync",
-    )
-    init.add_argument(
         "--registration",
         choices=("keep", "replace"),
         help="resolve a conflicting global machine registration",
@@ -298,7 +298,6 @@ def _dispatch_init(args: argparse.Namespace) -> int:
             or args.registration
             or args.force
             or args.starter
-            or args.git_hooks
         ):
             raise UsageError("--resume/--recover accept only --yes and --json")
         return run_recovery(
@@ -319,7 +318,6 @@ def _dispatch_init(args: argparse.Namespace) -> int:
             json=args.json,
             yes=args.yes,
             starter=args.starter,
-            git_hooks=args.git_hooks,
         )
     )
 
@@ -351,18 +349,33 @@ def _dispatch(args: argparse.Namespace) -> int:
     return _dispatch_outputs(args)
 
 
+def _hook_profile(root: Path, explicit: str | None) -> str:
+    """Same precedence as sync/check: explicit > the machine config's > 'default'."""
+    if explicit:
+        return explicit
+    try:
+        config = load_machine_config(machine_config_path())
+    except LoadoutError:
+        # Hooks are repository-local; an unusable global config must not block them.
+        return "default"
+    if config is not None and config.source.resolve() == root:
+        return config.profile or "default"
+    return "default"
+
+
 def _dispatch_git_hooks(args: argparse.Namespace) -> int:
     root = args.root.resolve()
+    profile = _hook_profile(root, args.profile)
     if args.git_hook_command == "install":
         return install_hooks(
             root,
             regenerate=args.regenerate,
-            profile=args.profile,
+            profile=profile,
             dry_run=args.dry_run,
         )
     if args.git_hook_command == "status":
-        return status_hooks(root, profile=args.profile)
-    return uninstall_hooks(root, profile=args.profile, yes=args.yes)
+        return status_hooks(root, profile=profile)
+    return uninstall_hooks(root, profile=profile, yes=args.yes)
 
 
 def _dispatch_outputs(args: argparse.Namespace) -> int:

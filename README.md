@@ -558,10 +558,10 @@ package and work offline. They add no dependencies, permission grants, models or
 Starter selection, provenance and outputs participate in the migration checkpoint/staging and
 recovery workflow. Global init does not activate project starters.
 
-Optional `--git-hooks check` installs staged-source validation at pre-commit. `--git-hooks
-regenerate` also runs guarded sync after checkout/merge. Hook choices and exact integration
-commands appear in the preview; existing/shared hooks are preserved. On a new clone, use
-`loadout integrate git-hooks install --root . [--regenerate]`. Manual validation is
+Git hooks are not part of adopting configuration: install them with
+`loadout integrate git-hooks install --root . [--regenerate]`, which reports exact integration
+commands and preserves existing or shared hooks. `--regenerate` also runs guarded sync after
+checkout and merge. A new clone needs that command explicitly. Manual validation is
 `loadout check --staged`.
 See [Git integration](docs/reference/git-integration.md) for dependencies, alternate indexes,
 worktrees, profiles and post-hook failure behavior.

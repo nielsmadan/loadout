@@ -4,26 +4,19 @@ import json
 import os
 import subprocess
 import sys
-from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 import loadout
 from loadout import migration_transaction
-from loadout.discovery import discover
 from loadout.emit import check_all, render_all, write_all
 from loadout.errors import LoadoutError
 from loadout.git_hooks import install_hooks, plan_hooks, uninstall_hooks
 from loadout.machine import machine_config_path
-from loadout.migration import plan_migration
 from loadout.migration_journal import Journal
 from loadout.migration_transaction import (
-    MigrationFailure,
-    apply_migration,
-    prepare_migration,
     recover_migration,
-    resume_migration,
 )
 from loadout.staged import check_staged
 from test_codex_defaults import build
@@ -517,45 +510,8 @@ def test_standalone_install_rechecks_hook_sharing_after_preview(
     assert not (repo / ".git/hooks/pre-commit").exists()
 
 
-@pytest.mark.parametrize("boundary", ["apply", "resume", "recovery"])
-def test_migration_rechecks_hook_sharing_at_mutation_boundaries(
-    repo, tmp_path_factory, monkeypatch, boundary
-):
-    _project(repo)
-    _commit(repo, "loadout")
-    plan = plan_migration(discover(repo, scope="project", agents=("codex",)))
-    prepared = prepare_migration(plan, hooks=plan_hooks(repo, regenerate=True))
-    assert [hook.status for hook in prepared.hooks.hooks] == ["install"] * 3
-    path = None
-    if boundary != "apply":
-        original = Journal.step
-
-        def interrupt(self):
-            if self.operations[self.next].path.name == "post-checkout":
-                raise OSError("fixture interruption before second hook")
-            original(self)
-
-        monkeypatch.setattr(Journal, "step", interrupt)
-        with pytest.raises(MigrationFailure, match="fixture interruption") as error:
-            apply_migration(prepared)
-        path = error.value.journal
-        monkeypatch.setattr(Journal, "step", original)
-        assert (repo / ".git/hooks/pre-commit").read_bytes() == prepared.hooks.hooks[0].content
-    linked = tmp_path_factory.mktemp("migration-sharing") / "linked"
-    _git(repo, "worktree", "add", "--no-checkout", "-qb", "linked", str(linked))
-    before = {p.name: p.read_bytes() for p in (repo / ".git/hooks").iterdir()}
-    with pytest.raises(LoadoutError, match=r"[Gg]it hook.*(changed|installation plan)"):
-        if boundary == "apply":
-            apply_migration(prepared)
-        elif boundary == "resume":
-            resume_migration(path)
-        else:
-            recover_migration(path)
-    assert {p.name: p.read_bytes() for p in (repo / ".git/hooks").iterdir()} == before
-
-
 @pytest.mark.parametrize("interrupted", [False, True])
-def test_init_hook_preview_and_new_git_metadata_are_transactional(
+def test_init_installs_no_hook_and_new_git_metadata_is_transactional(
     repo, tmp_path_factory, capsys, monkeypatch, interrupted
 ):
     new = tmp_path_factory.mktemp("new-repository")
@@ -572,12 +528,11 @@ def test_init_hook_preview_and_new_git_metadata_are_transactional(
         "codex",
         "--root",
         str(new),
-        "--git-hooks",
-        "regenerate",
     ]
     assert loadout.main([*args, "--dry-run", "--json"]) == 0
     preview = json.loads(capsys.readouterr().out)
-    assert {h["status"] for h in preview["git_hooks"]["hooks"]} == {"install"}
+    assert preview["operations"]
+    assert "git_hooks" not in preview
     assert not (new / ".git").exists()
 
     def fail(journal):
@@ -590,7 +545,7 @@ def test_init_hook_preview_and_new_git_metadata_are_transactional(
     assert _git(new, "show", "HEAD:AGENTS.md").stdout == "initial\n"
     if not interrupted:
         assert result["journal"] is None
-        assert "loadout hook-event pre-commit" in (new / ".git/hooks/pre-commit").read_text()
+        assert not (new / ".git/hooks/pre-commit").exists()
         assert list((new / ".loadout-state/migrations").iterdir()) == []
         return
     journal = Path(result["journal"])
@@ -600,45 +555,11 @@ def test_init_hook_preview_and_new_git_metadata_are_transactional(
     assert recovered.conflicts == ()
     assert _git(new, "rev-parse", "HEAD").stdout == baseline
     assert (new / "AGENTS.md").read_text() == "initial\n"
-    assert all(
-        not (new / ".git/hooks" / event).exists()
-        for event in ("pre-commit", "post-checkout", "post-merge")
-    )
 
 
-@pytest.mark.parametrize("action", ["resume", "recover"])
-def test_hook_failure_can_resume_and_external_hook_is_preserved_by_recovery(
-    repo, monkeypatch, action
+def test_global_init_installs_no_hook_and_the_standalone_command_takes_a_profile(
+    repo, fake_home, capsys
 ):
-    (repo / "AGENTS.md").write_text("initial\n")
-    plan = plan_migration(discover(repo, scope="project", agents=("codex",)))
-    prepared = prepare_migration(plan, hooks=plan_hooks(repo, regenerate=True))
-    original = Journal.step
-
-    def fail(self):
-        if self.operations[self.next].path.name == "post-checkout":
-            raise OSError("fixture interruption")
-        original(self)
-
-    monkeypatch.setattr(Journal, "step", fail)
-    with pytest.raises(MigrationFailure) as error:
-        apply_migration(prepared)
-    journal = error.value.journal
-    assert (repo / ".git/hooks/pre-commit").is_file()
-    monkeypatch.setattr(Journal, "step", original)
-    if action == "resume":
-        assert resume_migration(journal).journal is None
-        assert (repo / ".git/hooks/post-merge").is_file()
-        assert not journal.parent.exists()
-        return
-    hook = repo / ".git/hooks/pre-commit"
-    hook.write_text("external edit\n")
-    recovered = recover_migration(journal)
-    assert recovered.conflicts == (hook,)
-    assert hook.read_text() == "external edit\n"
-
-
-def test_global_init_hooks_keep_selected_source_and_registered_profile(repo, fake_home, capsys):
     assert (
         loadout.main(["init", "--global", "--source", str(repo), "--harness", "codex", "--yes"])
         == 0
@@ -647,24 +568,18 @@ def test_global_init_hooks_keep_selected_source_and_registered_profile(repo, fak
     machine.write_text(f'source="{repo / "loadout"}"\nprofile="focused"\n')
     (repo / "loadout/focused.toml").write_text('extends="default"\n')
     capsys.readouterr()
+    assert loadout.main(["init", "--global", "--source", str(repo), "--yes", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["already_initialized"]
+    assert not (repo / ".git/hooks/pre-commit").exists()
+
     assert (
         loadout.main(
-            [
-                "init",
-                "--global",
-                "--source",
-                str(repo),
-                "--git-hooks",
-                "regenerate",
-                "--yes",
-                "--json",
-            ]
+            ["integrate", "git-hooks", "install", "--root", str(repo / "loadout"), "--regenerate"]
         )
         == 0
     )
     assert "--profile focused" in (repo / ".git/hooks/post-checkout").read_text()
     assert "loadout hook-event pre-commit" in (repo / ".git/hooks/pre-commit").read_text()
-    assert json.loads(capsys.readouterr().out)["already_initialized"]
 
 
 def test_actual_checkout_and_merge_regenerate_or_preserve_edits_after_git_completed(repo):
@@ -721,40 +636,6 @@ def test_missing_loadout_on_path_explains_completed_checkout(repo, tmp_path_fact
     assert result.returncode != 0
     assert "Git checkout already completed; loadout is missing from PATH" in result.stderr
     assert _git(repo, "branch", "--show-current").stdout == "other\n"
-
-
-def test_hook_journal_rejects_tampered_script_and_recovers_before_git_init(
-    repo, tmp_path_factory, monkeypatch
-):
-    new = tmp_path_factory.mktemp("init-failure")
-    (new / "AGENTS.md").write_text("initial\n")
-    plan = plan_migration(discover(new, scope="project", agents=("codex",)))
-    prepared = prepare_migration(plan, hooks=plan_hooks(new, initialize=new))
-
-    def failure(*args):
-        raise OSError("Git init fixture failure")
-
-    monkeypatch.setattr("loadout.migration_git.checkpoint", failure)
-    with pytest.raises(MigrationFailure) as error:
-        apply_migration(prepared)
-    path = error.value.journal
-    assert not (new / ".git").exists()
-    journal = Journal.load(path)
-    original = journal.operations
-    journal.operations = tuple(
-        replace(operation, after=replace(operation.after, content=b"evil\n"))
-        if operation.phase == "git-hook"
-        else operation
-        for operation in original
-    )
-    journal.save()
-    with pytest.raises(LoadoutError, match="journal Git hook escapes"):
-        Journal.load(path)
-    journal.operations = original
-    journal.save()
-    assert recover_migration(path).conflicts == ()
-    assert not (new / ".git").exists()
-    assert (new / "AGENTS.md").read_text() == "initial\n"
 
 
 def test_uninstall_removes_loadout_hooks_and_leaves_a_foreign_one(repo, capsys):
@@ -860,3 +741,37 @@ def test_uninstall_leaves_a_hook_belonging_to_another_loadout_source(repo):
     assert hook.read_bytes() == written
     assert uninstall_hooks(repo, yes=True) == 0
     assert not hook.exists()
+
+
+def test_an_unregistered_source_still_installs_hooks_for_the_default_profile(
+    repo, fake_home, tmp_path_factory
+):
+    """The machine profile applies to the source it registers, not to every repository."""
+    _project(repo)
+    _commit(repo, "loadout")
+    other = tmp_path_factory.mktemp("registered-elsewhere")
+    machine_config_path().parent.mkdir(parents=True, exist_ok=True)
+    machine_config_path().write_text(f'source="{other}"\nprofile="focused"\n')
+
+    assert loadout.main(["integrate", "git-hooks", "install", "--root", str(repo)]) == 0
+    assert "--profile default" in (repo / ".git/hooks/pre-commit").read_text()
+
+
+def test_an_unusable_machine_config_does_not_block_a_repository_hook(repo, fake_home):
+    _project(repo)
+    _commit(repo, "loadout")
+    machine_config_path().parent.mkdir(parents=True, exist_ok=True)
+    machine_config_path().write_text('source="/nowhere/loadout"\n')
+
+    assert loadout.main(["integrate", "git-hooks", "install", "--root", str(repo)]) == 0
+    assert "--profile default" in (repo / ".git/hooks/pre-commit").read_text()
+
+
+def test_init_names_the_source_root_when_it_points_at_git_hooks(repo, capsys):
+    """The printed command defaults --root to the cwd, so it has to carry the real root."""
+    (repo / "AGENTS.md").write_text("initial\n")
+    assert (
+        loadout.main(["init", "--project", "--harness", "codex", "--root", str(repo), "--yes"]) == 0
+    )
+    out = capsys.readouterr().out
+    assert f"loadout integrate git-hooks install --root {repo}" in out

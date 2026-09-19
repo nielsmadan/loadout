@@ -57,19 +57,20 @@ Normal template resolution is unchanged; init already vendors selected starters.
 ## Installing hooks
 
 ```sh
-loadout init --project --git-hooks check --dry-run
-loadout init --project --git-hooks check --yes
 loadout integrate git-hooks install --root . --dry-run
 loadout integrate git-hooks install --root . --regenerate
 loadout integrate git-hooks status --root .
 loadout integrate git-hooks uninstall --root . --yes
 ```
 
-Hooks are opt-in. Init accepts `--git-hooks none|check|regenerate`; omission means none. `check`
-selects pre-commit; `regenerate` also selects post-checkout and post-merge. Selection, exact paths,
-source, profile, installation decisions and integration commands appear in the migration preview.
-Existing global init uses the active profile when machine registration names that same source;
-otherwise it records `default`. Standalone installation accepts `--profile <name>` explicitly.
+Hooks are opt-in and `init` does not install them: adopting configuration and wiring a repository
+to run loadout are separate steps, so a fresh `init` writes no hook. Installation selects
+pre-commit alone, or adds post-checkout and post-merge with `--regenerate`. Exact paths, source,
+profile and installation decisions are printed before anything is written; `--dry-run` stops
+there. The profile follows the same precedence as `sync` and `check`: an explicit
+`--profile <name>`, otherwise the machine config's profile when it registers this very
+source, otherwise `default`. An unusable machine config never blocks a repository-local
+install.
 
 Installation uses `git rev-parse --git-path hooks`. It creates only absent hooks in a repository-
 local effective directory, including local custom `core.hooksPath` directories. It preserves
@@ -129,14 +130,11 @@ manager or install a dispatcher over an existing script.
 
 Installed scripts invoke `loadout` on PATH and contain no interpreter or checkout-specific
 absolute paths. Install the package on each machine and explicitly run
-`loadout integrate git-hooks install` in a new clone. Hook files are local installation state and are not added to the index by init.
-Init writes selected hooks after its baseline commit and migrated outputs, so its original
-checkpoint cannot run a newly selected hook against half-migrated source. Hook files participate
-in guarded resume/recovery. Git-created metadata and a successful baseline remain in place;
-empty local hook directories can remain after recovery.
-The effective path and sharing are rechecked before standalone installation and migration
-apply/resume/recovery. A path that becomes shared is preserved and requires a new integration
-decision before those hook operations can continue.
+`loadout integrate git-hooks install` in a new clone. Hook files are local installation state
+and are never added to the index.
+The effective path and sharing are rechecked between preview and installation. A path that
+becomes shared in that window is preserved, and installation refuses so the integration decision
+can be made again.
 
 ## Regeneration after Git events
 

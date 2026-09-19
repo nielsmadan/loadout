@@ -197,14 +197,16 @@ The contract is [git-integration.md](git-integration.md). These cases run in
 | local custom paths, exact managed identity, other-source/occupied/shared preservation | `test_hook_installation_preserves_occupied_shared_and_other_source_hooks` |
 | linked worktree index and local hooks are independent; common hooks are preserved | `test_linked_worktree_validates_supplied_index_and_preserves_common_hooks` |
 | main checkout preserves default and absolute custom hooks shared with linked worktrees; exclusive paths still install | `test_main_checkout_preserves_hooks_shared_with_linked_worktrees` |
-| sharing is checked again after standalone preview and at migration apply/resume/recovery boundaries | `test_standalone_install_rechecks_hook_sharing_after_preview`, `test_migration_rechecks_hook_sharing_at_mutation_boundaries` |
-| explicit init preview, baseline before hooks and recovery retain Git metadata | `test_init_hook_preview_and_new_git_metadata_are_transactional` |
-| hook write interruption resumes, external hook edits survive recovery | `test_hook_failure_can_resume_and_external_hook_is_preserved_by_recovery` |
-| global init records matching registered source/profile | `test_global_init_hooks_keep_selected_source_and_registered_profile` |
+| sharing is checked again after standalone preview | `test_standalone_install_rechecks_hook_sharing_after_preview` |
+| a hook loadout wrote is removed; one without the marker, or serving another source, is preserved | `test_uninstall_removes_loadout_hooks_and_leaves_a_foreign_one`, `test_uninstall_leaves_a_hook_belonging_to_another_loadout_source` |
+| a hook stays removable after a worktree makes its directory shared; an external directory refuses | `test_uninstall_still_removes_a_hook_after_a_worktree_is_added`, `test_uninstall_refuses_a_hooks_directory_outside_the_repository` |
+| status reports each event and who owns it | `test_status_reports_each_event_and_who_owns_it` |
+| init installs no hook; new Git metadata is still transactional | `test_init_installs_no_hook_and_new_git_metadata_is_transactional` |
+| global init installs no hook; the standalone command takes a profile | `test_global_init_installs_no_hook_and_the_standalone_command_takes_a_profile` |
 | checkout/merge regenerate with receipts and explain failure after Git completed | `test_actual_checkout_and_merge_regenerate_or_preserve_edits_after_git_completed` |
 | file checkout does not regenerate | `test_post_checkout_file_event_does_not_regenerate` |
 | missing installed CLI explains that checkout already completed | `test_missing_loadout_on_path_explains_completed_checkout` |
-| modified hook journal bytes and pre-init failure are recoverable without hook execution | `test_hook_journal_rejects_tampered_script_and_recovers_before_git_init` |
+| the generated hook runs the hidden event command, carrying source and profile | `test_a_generated_hook_runs_the_hidden_event_command` |
 
 ## Cross-cutting
 

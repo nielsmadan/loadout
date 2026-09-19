@@ -26,7 +26,6 @@ from .deployment import (
 )
 from .discovery import entry_state, path_preconditions
 from .errors import LoadoutError
-from .git_hooks import HookPlan, hooks_directory, local_directory
 from .migration_journal import Image, Journal, Operation, protected, snapshot
 from .migration_models import EntryState, MigrationPlan, SourceWrite
 from .migration_paths import DestinationLayout, entry_path
@@ -51,13 +50,11 @@ class MigrationPreparation:
     removals: tuple[str, ...] = ()
     staged_ignore: tuple[str, bytes] | None = field(default=None, repr=False)
     deployment: DeploymentPlan | None = field(default=None, repr=False)
-    hooks: HookPlan | None = None
 
     def preview(self) -> dict[str, Any]:
         return {
             **self.plan.preview(),
             "git": self.git.preview() if self.git else None,
-            "git_hooks": self.hooks.preview() if self.hooks else None,
             "stage_paths": list(self.additions),
             "unstage_paths": list(self.removals),
             "operations": [
@@ -402,13 +399,13 @@ def _filesystem_plan(
 
 
 def prepare_migration(
-    plan: MigrationPlan, *, machine_write: SourceWrite | None = None, hooks: HookPlan | None = None
+    plan: MigrationPlan, *, machine_write: SourceWrite | None = None
 ) -> MigrationPreparation:
     if not plan.complete:
         raise LoadoutError("migration requires a fully resolved, validated plan")
     _verify_environment(plan)
     _verify(plan.preconditions)
-    if plan.already_initialized and machine_write is None and not hooks:
+    if plan.already_initialized and machine_write is None:
         return MigrationPreparation(plan, None, (), plan.preconditions, ())
     if not plan.already_initialized:
         validated = validate_plan(plan)
@@ -435,10 +432,6 @@ def prepare_migration(
             "ignore",
         )
         additions, removals, staged_ignore = _staging(plan, git_prepared, patterns)
-    if hooks is not None:
-        for hook in hooks.hooks:
-            if hook.status == "install":
-                builder.put(hook.path, Image("file", hook.content, 0o755), "git-hook")
     states = _operation_preconditions(plan, git_prepared, builder.operations)
     protected(plan.inventory.root.resolve() / ".loadout-state")
     ignored = plan.inventory.root.resolve() / ".loadout-state/.gitignore"
@@ -461,7 +454,6 @@ def prepare_migration(
         removals,
         staged_ignore,
         deployment,
-        hooks,
     )
 
 
@@ -479,7 +471,7 @@ def _operation_preconditions(
                 prepared is not None
                 and not prepared.existing
                 and state.kind == "absent"
-                and state.path in {prepared.root / ".git", prepared.root / ".git/hooks"}
+                and state.path == prepared.root / ".git"
             ):
                 continue
             states.setdefault(state.path, state)
@@ -546,7 +538,6 @@ def _create_journal(prepared: MigrationPreparation) -> Journal:
         {
             "root": str(root),
             "git": _git_document(prepared.git),
-            "git_hooks": prepared.hooks.preview() if prepared.hooks else None,
             "privacy_policy": prepared.git.privacy_policy if prepared.git else (),
             "baseline": prepared.git.head if prepared.git else None,
             "expected_index": _bytes(prepared.git.original_index) if prepared.git else None,
@@ -721,7 +712,6 @@ def _guard_git(journal: Journal, executor: Executor | None = None) -> None:
 
 
 def _guard_git_state(journal: Journal) -> None:
-    _guard_hooks(journal)
     raw = journal.metadata["git"]
     if raw is None:
         return
@@ -862,17 +852,6 @@ def _result(journal: Journal) -> MigrationResult:
 def apply_migration(prepared: MigrationPreparation) -> MigrationResult:
     _verify_environment(prepared.plan)
     _verify(prepared.preconditions)
-    if prepared.hooks is not None:
-        existing = prepared.git is None or prepared.git.existing
-        if hooks_directory(
-            prepared.hooks.repository, existing=existing
-        ) != prepared.hooks.directory or (
-            any(hook.status == "install" for hook in prepared.hooks.hooks)
-            and not local_directory(
-                prepared.hooks.repository, prepared.hooks.directory, existing=existing
-            )
-        ):
-            raise LoadoutError("effective Git hook directory changed after preview")
     if prepared.git is not None:
         migration_git.verify_git(prepared.git)
         if (
@@ -887,9 +866,10 @@ def apply_migration(prepared: MigrationPreparation) -> MigrationResult:
         _checkpoint(journal)
         _verify_after_checkpoint(prepared)
         _guard_git(journal)
-        while journal.next < len(journal.operations) and journal.operations[
-            journal.next
-        ].phase not in {"deploy", "git-hook"}:
+        while (
+            journal.next < len(journal.operations)
+            and journal.operations[journal.next].phase != "deploy"
+        ):
             journal.step()
         if prepared.deployment is not None:
             _guard_completed(journal)
@@ -1126,27 +1106,16 @@ def _run_remaining(journal: Journal) -> None:
     with ThreadPoolExecutor(max_workers=4) as executor:
         while journal.next < len(journal.operations):
             operation = journal.operations[journal.next]
-            if operation.phase in {"retire", "git-hook"}:
+            if operation.phase == "retire":
                 _guard_git(journal, executor)
-                if retirement_guard is None or operation.phase == "git-hook":
+                if retirement_guard is None:
                     _guard_completed(journal)
                     _guard_outputs(journal)
                     retirement_guard = _RetirementGuard(journal)
                 retirement_guard.check(operation)
-            if operation.phase == "git-hook":
-                operation.path.parent.mkdir(parents=True, exist_ok=True)
             journal.step()
             if retirement_guard is not None and operation.phase == "retire":
                 retirement_guard.completed(operation)
-
-
-def _guard_hooks(journal: Journal) -> None:
-    hooks = journal.metadata.get("git_hooks")
-    if hooks is None or not any(h["status"] == "install" for h in hooks["hooks"]):
-        return
-    repository, directory = Path(hooks["repository"]), Path(hooks["directory"])
-    if hooks_directory(repository) != directory or not local_directory(repository, directory):
-        raise LoadoutError("effective Git hook directory changed; preserve hooks and rediscover")
 
 
 def _verify_environment(plan: MigrationPlan) -> None:
