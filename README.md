@@ -36,10 +36,10 @@ Use `just install-editable` to have source edits take effect without reinstallin
 
 Install the version-matched `loadout` skill into the configured global Loadout source:
 
-    loadout skill install          # show the source path and confirm
-    loadout skill install --yes    # non-interactive
-    loadout skill status
-    loadout skill uninstall        # remove the owned source copy and generated outputs
+    loadout integrate skill install          # show the source path and confirm
+    loadout integrate skill install --yes    # non-interactive
+    loadout integrate skill status
+    loadout integrate skill uninstall        # remove the owned source copy and generated outputs
 
 The command reads the machine config and active profile. Legacy manifests vendor a normal
 `skills/loadout/` source. An existing copy is selected using the same declared overrides as
@@ -561,7 +561,8 @@ recovery workflow. Global init does not activate project starters.
 Optional `--git-hooks check` installs staged-source validation at pre-commit. `--git-hooks
 regenerate` also runs guarded sync after checkout/merge. Hook choices and exact integration
 commands appear in the preview; existing/shared hooks are preserved. On a new clone, use
-`loadout git-hooks install --root . [--regenerate]`. Manual validation is `loadout check --staged`.
+`loadout integrate git-hooks install --root . [--regenerate]`. Manual validation is
+`loadout check --staged`.
 See [Git integration](docs/reference/git-integration.md) for dependencies, alternate indexes,
 worktrees, profiles and post-hook failure behavior.
 

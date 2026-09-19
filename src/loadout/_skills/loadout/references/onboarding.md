@@ -31,8 +31,8 @@ initialized source, then sync its managed outputs.
 Offer optional Git integration using `--git-hooks none|check|regenerate`, default `none`.
 `check` validates the staged dependency snapshot at pre-commit; `regenerate` also runs guarded
 sync after checkout/merge. Show preview paths and source/profile, preserving occupied or shared
-hooks and reporting the exact integration commands. A clone needs explicit `loadout git-hooks
-install --root <source-root> [--profile <name>] [--regenerate]`. Templates must be vendored and
+hooks and reporting the exact integration commands. A clone needs explicit
+`loadout integrate git-hooks install --root <source-root> [--profile <name>] [--regenerate]`. Templates must be vendored and
 staged, required dependencies must be in the repository, and optional private sources may be
 absent. A post-hook failure leaves Git's completed operation in place; resolve the reported
 output conflict and retry normal sync, without adding `--force`.
@@ -84,7 +84,7 @@ and conflict-free recovery delete the transaction's recovery data and return `jo
 The deployment receipt remains for sync. Retain journals from unfinished transactions. Keep recovery data
 private and never paste its content into the conversation. Report the journal path and status.
 
-The same skill handles later configuration using the configuration reference. `loadout skill
-install` installs this bundled skill into actual global skill source routes, deduplicating shared
-trees. It asks before source changes; `--yes` approves them. Status identifies every source and its
+The same skill handles later configuration using the configuration reference.
+`loadout integrate skill install` installs this bundled skill into actual global skill source
+routes, deduplicating shared trees. It asks before source changes; `--yes` approves them. Status identifies every source and its
 agents. Reinstall updates unchanged copies; uninstall removes only owned, unchanged content.

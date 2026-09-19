@@ -66,7 +66,7 @@ def _global_skill_root(tmp_path: Path, monkeypatch, *, sources: tuple[str, ...] 
 
 
 def test_skill_without_a_subcommand_is_a_usage_error(capsys) -> None:
-    assert loadout.main(["skill"]) == 2
+    assert loadout.main(["integrate", "skill"]) == 2
     assert "usage" in capsys.readouterr().err.lower()
 
 
@@ -74,7 +74,7 @@ def test_skill_install_vendors_into_the_global_source_and_syncs(
     tmp_path: Path, monkeypatch, fake_home: Path, capsys
 ) -> None:
     root = _global_skill_root(tmp_path, monkeypatch)
-    assert loadout.main(["skill", "install", "--yes"]) == 0
+    assert loadout.main(["integrate", "skill", "install", "--yes"]) == 0
     out = capsys.readouterr().out
     assert str(root / "main" / "skills" / "loadout") in out
     assert "claude, codex" in out
@@ -87,9 +87,9 @@ def test_skill_status_reports_the_source_copy_and_configured_agents(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     _global_skill_root(tmp_path, monkeypatch)
-    assert loadout.main(["skill", "install", "--yes"]) == 0
+    assert loadout.main(["integrate", "skill", "install", "--yes"]) == 0
     capsys.readouterr()
-    assert loadout.main(["skill", "status"]) == 0
+    assert loadout.main(["integrate", "skill", "status"]) == 0
     out = capsys.readouterr().out
     assert "installed" in out
     assert "claude, codex" in out
@@ -100,7 +100,7 @@ def test_skill_install_asks_before_writing_the_named_source(
 ) -> None:
     root = _global_skill_root(tmp_path, monkeypatch)
     monkeypatch.setattr("builtins.input", lambda prompt: "n")
-    assert loadout.main(["skill", "install"]) == 0
+    assert loadout.main(["integrate", "skill", "install"]) == 0
     out = capsys.readouterr().out
     assert str(root / "main" / "skills" / "loadout") in out
     assert "declined" in out
@@ -116,7 +116,7 @@ def test_skill_install_requires_yes_without_interactive_input(
         raise EOFError
 
     monkeypatch.setattr("builtins.input", no_input)
-    assert loadout.main(["skill", "install"]) == 2
+    assert loadout.main(["integrate", "skill", "install"]) == 2
     assert "--yes" in capsys.readouterr().err
 
 
@@ -124,9 +124,9 @@ def test_skill_install_requires_source_when_the_manifest_has_several(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     root = _global_skill_root(tmp_path, monkeypatch, sources=("one", "two"))
-    assert loadout.main(["skill", "install", "--yes"]) == 3
+    assert loadout.main(["integrate", "skill", "install", "--yes"]) == 3
     assert "--source" in capsys.readouterr().err
-    assert loadout.main(["skill", "install", "--source", "two", "--yes"]) == 0
+    assert loadout.main(["integrate", "skill", "install", "--source", "two", "--yes"]) == 0
     assert (root / "two" / "skills" / "loadout" / "SKILL.md").is_file()
 
 
@@ -142,7 +142,7 @@ def test_skill_install_with_no_configured_agents_does_not_choose_or_change_a_sou
         ),
         encoding="utf-8",
     )
-    assert loadout.main(["skill", "install", "--yes"]) == 0
+    assert loadout.main(["integrate", "skill", "install", "--yes"]) == 0
     assert "no configured agents" in capsys.readouterr().out
     assert not (root / "one" / "skills" / "loadout").exists()
     assert not (root / "two" / "skills" / "loadout").exists()
@@ -155,7 +155,7 @@ def test_skill_install_conflict_is_reported_without_overwriting_or_syncing(
     skill = root / "main" / "skills" / "loadout"
     skill.mkdir(parents=True)
     (skill / "SKILL.md").write_text("mine\n", encoding="utf-8")
-    assert loadout.main(["skill", "install", "--yes"]) == 1
+    assert loadout.main(["integrate", "skill", "install", "--yes"]) == 1
     captured = capsys.readouterr()
     assert "not owned" in captured.err
     assert "wrote " not in captured.out
@@ -166,9 +166,9 @@ def test_skill_uninstall_removes_source_and_synced_outputs(
     tmp_path: Path, monkeypatch, fake_home: Path, capsys
 ) -> None:
     root = _global_skill_root(tmp_path, monkeypatch)
-    assert loadout.main(["skill", "install", "--yes"]) == 0
+    assert loadout.main(["integrate", "skill", "install", "--yes"]) == 0
     capsys.readouterr()
-    assert loadout.main(["skill", "uninstall", "--yes"]) == 0
+    assert loadout.main(["integrate", "skill", "uninstall", "--yes"]) == 0
     out = capsys.readouterr().out
     assert "uninstalled" in out
     assert not (root / "main" / "skills" / "loadout").exists()

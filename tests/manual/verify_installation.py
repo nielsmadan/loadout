@@ -78,10 +78,12 @@ for args in [
     ["template", "list", "--help"],
     ["template", "vendor", "--help"],
     ["template", "sync", "--help"],
-    ["skill", "install", "--help"],
-    ["skill", "status", "--help"],
-    ["skill", "uninstall", "--help"],
-    ["git-hooks", "install", "--help"],
+    ["integrate", "skill", "install", "--help"],
+    ["integrate", "skill", "status", "--help"],
+    ["integrate", "skill", "uninstall", "--help"],
+    ["integrate", "git-hooks", "install", "--help"],
+    ["integrate", "git-hooks", "status", "--help"],
+    ["integrate", "git-hooks", "uninstall", "--help"],
 ]:
     run("help " + " ".join(args[:-1]), args, work)
 run("invalid command", ["not-a-command"], work, 2)

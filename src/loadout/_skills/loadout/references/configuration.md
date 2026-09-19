@@ -188,7 +188,8 @@ an earlier source when consumed, and the category must be included in `use`. A s
 the whole tree; a module file replaces complete bytes and mode. Do not merge supporting files
 from both skill contenders. Undeclared duplicates remain errors.
 
-`loadout skill status`, `install` and `uninstall` select the declared winning `loadout` skill;
+`loadout integrate skill status`, `install` and `uninstall` select the declared winning
+`loadout` skill;
 an explicit `--source` must name that winner. Uninstall removes its override entry with the owned
 copy, then sync deploys the earlier source's skill. The entry is changed in the manifest that
 declares the source list, including an inherited parent shared by several profiles.

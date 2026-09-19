@@ -14,7 +14,7 @@ from loadout import migration_transaction
 from loadout.discovery import discover
 from loadout.emit import check_all, render_all, write_all
 from loadout.errors import LoadoutError
-from loadout.git_hooks import install_hooks, plan_hooks
+from loadout.git_hooks import install_hooks, plan_hooks, uninstall_hooks
 from loadout.machine import machine_config_path
 from loadout.migration import plan_migration
 from loadout.migration_journal import Journal
@@ -449,7 +449,7 @@ def test_hook_installation_preserves_occupied_shared_and_other_source_hooks(repo
     assert hook.read_text() == "#!/bin/sh\nexit 0\n"
     shared = tmp_path_factory.mktemp("shared-hooks")
     _git(repo, "config", "core.hooksPath", str(shared))
-    assert plan_hooks(repo).hooks[0].status == "shared-or-external"
+    assert plan_hooks(repo).hooks[0].status == "external"
     install_hooks(repo)
     assert list(shared.iterdir()) == []
 
@@ -461,7 +461,7 @@ def test_linked_worktree_validates_supplied_index_and_preserves_common_hooks(
     _commit(repo, "loadout")
     linked = tmp_path_factory.mktemp("linked-parent") / "worktree"
     _git(repo, "worktree", "add", "-qb", "linked", str(linked))
-    assert plan_hooks(linked).hooks[0].status == "shared-or-external"
+    assert plan_hooks(linked).hooks[0].status == "shared"
     assert check_staged(linked) == 0
     _git(linked, "config", "extensions.worktreeConfig", "true")
     _git(linked, "config", "--worktree", "core.hooksPath", ".local-hooks")
@@ -485,8 +485,8 @@ def test_main_checkout_preserves_hooks_shared_with_linked_worktrees(
     _git(repo, "worktree", "add", "--no-checkout", "-qb", "linked", str(linked))
     main_plan, linked_plan = plan_hooks(repo), plan_hooks(linked)
     assert main_plan.directory == linked_plan.directory == directory
-    assert main_plan.hooks[0].status == "shared-or-external"
-    assert linked_plan.hooks[0].status == "shared-or-external"
+    assert main_plan.hooks[0].status == "shared"
+    assert linked_plan.hooks[0].status == "shared"
     install_hooks(repo)
     diagnostic = capsys.readouterr().out
     assert main_plan.hooks[0].command in diagnostic
@@ -590,7 +590,7 @@ def test_init_hook_preview_and_new_git_metadata_are_transactional(
     assert _git(new, "show", "HEAD:AGENTS.md").stdout == "initial\n"
     if not interrupted:
         assert result["journal"] is None
-        assert (new / ".git/hooks/pre-commit").is_file()
+        assert "loadout hook-event pre-commit" in (new / ".git/hooks/pre-commit").read_text()
         assert list((new / ".loadout-state/migrations").iterdir()) == []
         return
     journal = Path(result["journal"])
@@ -663,7 +663,7 @@ def test_global_init_hooks_keep_selected_source_and_registered_profile(repo, fak
         == 0
     )
     assert "--profile focused" in (repo / ".git/hooks/post-checkout").read_text()
-    assert '"$repo"/loadout' in (repo / ".git/hooks/pre-commit").read_text()
+    assert "loadout hook-event pre-commit" in (repo / ".git/hooks/pre-commit").read_text()
     assert json.loads(capsys.readouterr().out)["already_initialized"]
 
 
@@ -755,3 +755,108 @@ def test_hook_journal_rejects_tampered_script_and_recovers_before_git_init(
     assert recover_migration(path).conflicts == ()
     assert not (new / ".git").exists()
     assert (new / "AGENTS.md").read_text() == "initial\n"
+
+
+def test_uninstall_removes_loadout_hooks_and_leaves_a_foreign_one(repo, capsys):
+    """`uninstall` deletes on the strength of the sentinel, so it must earn each delete."""
+    _project(repo)
+    _commit(repo, "loadout")
+    install_hooks(repo)
+    managed = repo / ".git/hooks/pre-commit"
+    stale = repo / ".git/hooks/post-checkout"
+    stale.write_bytes(managed.read_bytes().replace(b"pre-commit", b"post-checkout") + b"# edit\n")
+    stale.chmod(0o755)
+    foreign = repo / ".git/hooks/post-merge"
+    foreign.write_text("#!/bin/sh\necho mine\n")
+    foreign.chmod(0o755)
+
+    statuses = {h.event: h.status for h in plan_hooks(repo, regenerate=True).hooks}
+    assert statuses == {
+        "pre-commit": "managed",
+        "post-checkout": "stale",
+        "post-merge": "occupied",
+    }
+
+    assert loadout.main(["integrate", "git-hooks", "uninstall", "--root", str(repo), "--yes"]) == 0
+    assert not managed.exists()
+    assert not stale.exists()
+    assert foreign.read_text() == "#!/bin/sh\necho mine\n"
+    assert "post-merge" not in capsys.readouterr().out
+
+
+def test_uninstall_still_removes_a_hook_after_a_worktree_is_added(repo, tmp_path_factory):
+    """Sharing arrives after installation: .git/hooks is common to every worktree, so a
+    hook loadout wrote reclassifies with nothing touching it."""
+    _project(repo)
+    _commit(repo, "loadout")
+    install_hooks(repo)
+    hook = repo / ".git/hooks/pre-commit"
+    written = hook.read_bytes()
+
+    linked = tmp_path_factory.mktemp("added-later") / "linked"
+    _git(repo, "worktree", "add", "--no-checkout", "-qb", "linked", str(linked))
+    planned = plan_hooks(repo).hooks[0]
+    assert (planned.status, planned.owned) == ("shared", True)
+    assert hook.read_bytes() == written
+
+    assert uninstall_hooks(repo, yes=True) == 0
+    assert not hook.exists()
+
+
+def test_uninstall_refuses_a_hooks_directory_outside_the_repository(repo, tmp_path_factory):
+    _project(repo)
+    _commit(repo, "loadout")
+    outside = tmp_path_factory.mktemp("external-hooks")
+    (outside / "pre-commit").write_text("#!/bin/sh\nexit 0\n")
+    _git(repo, "config", "core.hooksPath", str(outside))
+
+    assert plan_hooks(repo).hooks[0].status == "external"
+    with pytest.raises(LoadoutError, match="outside this repository"):
+        uninstall_hooks(repo, yes=True)
+    assert (outside / "pre-commit").read_text() == "#!/bin/sh\nexit 0\n"
+
+
+def test_status_reports_each_event_and_who_owns_it(repo, capsys):
+    _project(repo)
+    _commit(repo, "loadout")
+    install_hooks(repo)
+    (repo / ".git/hooks/post-merge").write_text("#!/bin/sh\necho mine\n")
+
+    assert loadout.main(["integrate", "git-hooks", "status", "--root", str(repo)]) == 0
+    out = capsys.readouterr().out
+    assert "pre-commit: installed by loadout" in out
+    assert "post-checkout: not installed" in out
+    assert "post-merge: present, not loadout's" in out
+
+
+def test_a_generated_hook_runs_the_hidden_event_command(repo):
+    """The command line is what fires at commit time; a hook file existing proves nothing."""
+    _project(repo)
+    _commit(repo, "loadout")
+    install_hooks(repo, regenerate=True, profile="focused")
+
+    for event in ("pre-commit", "post-checkout", "post-merge"):
+        body = (repo / ".git/hooks" / event).read_text()
+        assert f"exec loadout hook-event {event} " in body
+        assert "--profile focused" in body
+        assert "git-hooks run" not in body
+
+
+def test_uninstall_leaves_a_hook_belonging_to_another_loadout_source(repo):
+    """One repository can hold several loadout sources but only one hook file. The
+    sentinel alone says "loadout wrote this", not "this source owns it"."""
+    _project(repo)
+    _commit(repo, "loadout")
+    install_hooks(repo)
+    hook = repo / ".git/hooks/pre-commit"
+    written = hook.read_bytes()
+
+    nested = repo / "nested"
+    _project(nested)
+    planned = plan_hooks(nested).hooks[0]
+    assert (planned.status, planned.owned) == ("occupied", False)
+
+    assert uninstall_hooks(nested, yes=True) == 0
+    assert hook.read_bytes() == written
+    assert uninstall_hooks(repo, yes=True) == 0
+    assert not hook.exists()

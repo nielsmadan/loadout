@@ -122,8 +122,8 @@ A command for inspecting resolution directly is not available in 1.0.
 Loadout ships a version-matched skill:
 
 ```sh
-loadout skill install
-loadout skill status
+loadout integrate skill install
+loadout integrate skill status
 ```
 
 Installation shows the destination and asks for confirmation. Add `--yes` for non-interactive

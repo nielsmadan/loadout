@@ -262,7 +262,7 @@ def test_global_runtime_fields_and_source_managed_skill(tmp_path, fake_home, evi
     pi.write_text(json.dumps({"defaultModel": "qa-model", "lastChangelogVersion": "qa-runtime-2"}))
     evidence.cli(root, "sync", "--global")
     assert json.loads(pi.read_text())["lastChangelogVersion"] == "qa-runtime-2"
-    evidence.cli(root, "skill", "install", "--yes")
+    evidence.cli(root, "integrate", "skill", "install", "--yes")
     installed = [
         fake_home / ".claude/skills/loadout/SKILL.md",
         fake_home / ".codex/skills/loadout/SKILL.md",
@@ -274,11 +274,11 @@ def test_global_runtime_fields_and_source_managed_skill(tmp_path, fake_home, evi
     authored = list((source / "skills").rglob("loadout/SKILL.md"))
     assert authored
     assert all(path.read_bytes() == bundled.read_bytes() for path in authored)
-    evidence.cli(root, "skill", "status")
-    evidence.cli(root, "skill", "install", "--yes")
+    evidence.cli(root, "integrate", "skill", "status")
+    evidence.cli(root, "integrate", "skill", "install", "--yes")
     evidence.cli(root, "check", "--global")
     assert json.loads(pi.read_text())["lastChangelogVersion"] == "qa-runtime-2"
-    evidence.cli(root, "skill", "uninstall", "--yes")
+    evidence.cli(root, "integrate", "skill", "uninstall", "--yes")
     assert all(not path.exists() for path in installed)
     evidence.cli(root, "check", "--global")
     evidence.save(

@@ -22,7 +22,7 @@ from .commands import (
 from .discovery import project_root
 from .errors import LoadoutError, UsageError
 from .git_hook_commands import run_hook
-from .git_hooks import EVENTS, install_hooks
+from .git_hooks import EVENTS, install_hooks, status_hooks, uninstall_hooks
 from .init_options import InitOptions, parse_mapping, parse_selection
 from .init_workflow import run_init, run_recovery
 from .machine import load_machine_config, machine_config_path
@@ -131,10 +131,6 @@ def build_parser() -> argparse.ArgumentParser:
     _add_init_choices(init)
     add_root(init)
 
-    _add_git_hooks(
-        subparsers.add_parser("git-hooks", help="optional repository-local Git integration")
-    )
-
     harness = subparsers.add_parser("harness", help="manage this project's enabled harnesses")
     harness_subparsers = harness.add_subparsers(dest="harness_command")
     harness_add = harness_subparsers.add_parser(
@@ -156,7 +152,28 @@ def build_parser() -> argparse.ArgumentParser:
             template_sub.add_argument("name", help="template name")
         add_root(template_sub)
 
-    _add_skill(subparsers.add_parser("skill", help="manage the bundled loadout skill"))
+    integrate = subparsers.add_parser(
+        "integrate", help="wire loadout into another system so it runs automatically"
+    )
+    integrate_subparsers = integrate.add_subparsers(dest="integrate_command")
+    _add_skill(integrate_subparsers.add_parser("skill", help="manage the bundled loadout skill"))
+    _add_git_hooks(
+        integrate_subparsers.add_parser(
+            "git-hooks", help="optional repository-local Git integration"
+        )
+    )
+
+    # The generated hook scripts invoke this; nobody types it. Passing help=SUPPRESS
+    # renders a literal "==SUPPRESS==" row, so omit help to drop the row and set the
+    # metavar to keep the name out of the command list as well.
+    hook_event = subparsers.add_parser("hook-event")
+    hook_event.add_argument("event", choices=EVENTS)
+    hook_event.add_argument("git_arguments", nargs="*")
+    hook_event.add_argument(
+        "--root", type=Path, default=Path.cwd(), help="Loadout source root the hook runs against"
+    )
+    hook_event.add_argument("--profile", default="default", help="active profile to render")
+    subparsers.metavar = "{" + ",".join(n for n in subparsers.choices if n != "hook-event") + "}"
 
     return parser
 
@@ -203,14 +220,25 @@ def _resolve_root_and_profile(args: argparse.Namespace) -> tuple[Path, str]:
 def _add_git_hooks(parser: argparse.ArgumentParser) -> None:
     commands = parser.add_subparsers(dest="git_hook_command", required=True)
     install = commands.add_parser("install", help="install only safely absent local hooks")
-    install.add_argument("--regenerate", action="store_true")
-    install.add_argument("--dry-run", action="store_true")
-    run = commands.add_parser("run", help="integrate Loadout into an existing Git hook")
-    run.add_argument("event", choices=EVENTS)
-    run.add_argument("git_arguments", nargs="*")
-    for command in (install, run):
-        command.add_argument("--root", type=Path, default=Path.cwd())
-        command.add_argument("--profile", default="default")
+    install.add_argument(
+        "--regenerate",
+        action="store_true",
+        help="also install the post-checkout and post-merge sync hooks",
+    )
+    install.add_argument("--dry-run", action="store_true", help="preview without writing any hook")
+    status = commands.add_parser("status", help="show which hooks are installed and whose they are")
+    uninstall = commands.add_parser("uninstall", help="remove only the hooks loadout wrote")
+    uninstall.add_argument(
+        "--yes", action="store_true", help="remove the displayed hooks without confirmation"
+    )
+    for command in (install, status, uninstall):
+        command.add_argument(
+            "--root",
+            type=Path,
+            default=Path.cwd(),
+            help="repository root holding loadout.toml (default: cwd)",
+        )
+        command.add_argument("--profile", default="default", help="active profile to render")
 
 
 def _resolve_global(profile: str | None) -> tuple[Path, str]:
@@ -306,26 +334,35 @@ def _dispatch_skill(args: argparse.Namespace) -> int:
 
 
 def _dispatch(args: argparse.Namespace) -> int:
-    if args.command == "git-hooks":
-        return _dispatch_git_hooks(args)
+    if args.command == "hook-event":
+        return run_hook(args.event, args.root.resolve(), args.profile, args.git_arguments)
+    if args.command == "integrate":
+        return (
+            _dispatch_git_hooks(args)
+            if args.integrate_command == "git-hooks"
+            else _dispatch_skill(args)
+        )
     if args.command == "init":
         return _dispatch_init(args)
     if args.command == "harness":
         return cmd_harness_add(project_root(args.root), args.name)
-    if args.command in {"skill", "template"}:
-        return _dispatch_skill(args) if args.command == "skill" else _dispatch_template(args)
+    if args.command == "template":
+        return _dispatch_template(args)
     return _dispatch_outputs(args)
 
 
 def _dispatch_git_hooks(args: argparse.Namespace) -> int:
+    root = args.root.resolve()
     if args.git_hook_command == "install":
         return install_hooks(
-            args.root.resolve(),
+            root,
             regenerate=args.regenerate,
             profile=args.profile,
             dry_run=args.dry_run,
         )
-    return run_hook(args.event, args.root.resolve(), args.profile, args.git_arguments)
+    if args.git_hook_command == "status":
+        return status_hooks(root, profile=args.profile)
+    return uninstall_hooks(root, profile=args.profile, yes=args.yes)
 
 
 def _dispatch_outputs(args: argparse.Namespace) -> int:
@@ -346,7 +383,12 @@ def main(argv: list[str] | None = None) -> int:
     if (
         (args.command == "harness" and args.harness_command != "add")
         or (args.command == "template" and args.template_command is None)
-        or (args.command == "skill" and args.skill_command is None)
+        or (args.command == "integrate" and args.integrate_command is None)
+        or (
+            args.command == "integrate"
+            and args.integrate_command == "skill"
+            and args.skill_command is None
+        )
     ):
         parser.print_usage(file=sys.stderr)
         return 2

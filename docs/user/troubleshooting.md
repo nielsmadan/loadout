@@ -101,8 +101,8 @@ failing solely for that reason.
 Removing a source or disabling an output does not currently remove every old destination.
 Inspect the obsolete output and remove it manually once you know nothing else owns it.
 
-The bundled `loadout skill uninstall` command has its own ownership-aware cleanup for the
-skill it installed.
+The bundled `loadout integrate skill uninstall` command has its own ownership-aware cleanup for
+the skill it installed.
 
 ## An agent misses part of the configuration
 

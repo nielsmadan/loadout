@@ -29,7 +29,7 @@ def _override_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, mixed: bo
             'source="native-skills"\ndestination="~/.native/skills"\n'
         )
     _use_bundle(monkeypatch, _bundle(tmp_path / "first", "version one\n"))
-    assert loadout.main(["skill", "install", "--source", "personal", "--yes"]) == 0
+    assert loadout.main(["integrate", "skill", "install", "--source", "personal", "--yes"]) == 0
     _bundle(root / "company/skills/loadout", "company version\n")
     for source in ("company", "personal"):
         review = root / source / "skills/review"
@@ -64,15 +64,15 @@ def test_skill_commands_manage_the_active_override(
         _write_machine_config(tmp_path / "xdg", root, "work")
     source_args = ["--source", "personal"] if explicit else []
     capsys.readouterr()
-    assert loadout.main(["skill", "status", *source_args]) == 0
+    assert loadout.main(["integrate", "skill", "status", *source_args]) == 0
     status = capsys.readouterr().out
     assert "source personal:" in status
     assert "(installed)" in status
     second = _bundle(tmp_path / "second", "version two\n")
     _use_bundle(monkeypatch, second)
-    assert loadout.main(["skill", "status", *source_args]) == 0
+    assert loadout.main(["integrate", "skill", "status", *source_args]) == 0
     assert "(update available)" in capsys.readouterr().out
-    assert loadout.main(["skill", "install", *source_args, "--yes"]) == 0
+    assert loadout.main(["integrate", "skill", "install", *source_args, "--yes"]) == 0
     winner = root / "personal/skills/loadout"
     assert (winner / "SKILL.md").read_bytes() == (second / "SKILL.md").read_bytes()
     output = fake_home / ".claude/skills/loadout/SKILL.md"
@@ -80,7 +80,7 @@ def test_skill_commands_manage_the_active_override(
     manifest = root / "loadout.toml"
     before = manifest.read_text()
     manifest.chmod(0o640)
-    assert loadout.main(["skill", "uninstall", *source_args, "--yes"]) == 0
+    assert loadout.main(["integrate", "skill", "uninstall", *source_args, "--yes"]) == 0
     assert not winner.exists()
     assert manifest.read_text() == before.replace('["loadout", "review"]', '["review"]')
     assert manifest.stat().st_mode & 0o777 == 0o640
@@ -122,7 +122,7 @@ def test_skill_override_preserves_source_ownership_guards(
     rendered = output.read_bytes()
     for action in ("install", "uninstall"):
         capsys.readouterr()
-        assert loadout.main(["skill", action, "--yes"]) == 1
+        assert loadout.main(["integrate", "skill", action, "--yes"]) == 1
         error = capsys.readouterr().err
         assert ("modified" if state == "modified" else "not owned") in error
         assert (winner / "SKILL.md").read_bytes() == source
@@ -136,7 +136,7 @@ def test_explicit_source_cannot_manage_a_shadowed_skill(
     root = _override_root(tmp_path, monkeypatch, mixed=False)
     for action in ("status", "install", "uninstall"):
         flags = [] if action == "status" else ["--yes"]
-        assert loadout.main(["skill", action, "--source", "company", *flags]) == 3
+        assert loadout.main(["integrate", "skill", action, "--source", "company", *flags]) == 3
         assert "does not select the active skill" in capsys.readouterr().err
     assert (root / "company/skills/loadout/SKILL.md").read_text().endswith("company version\n")
 
@@ -162,7 +162,7 @@ def test_override_uninstall_rolls_back_a_failed_manifest_write(
         original(path, content)
 
     monkeypatch.setattr(installer, "atomic_install", fail)
-    assert loadout.main(["skill", "uninstall", "--yes"]) == 4
+    assert loadout.main(["integrate", "skill", "uninstall", "--yes"]) == 4
     assert manifest.read_bytes() == before
     assert winner.read_bytes() == source
     assert output.read_bytes() == rendered

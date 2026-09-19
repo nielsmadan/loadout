@@ -95,13 +95,17 @@ All four accept `--root PATH`.
 Run the ordinary `loadout sync` to render the resulting project configuration.
 See [templates](../guides/templates.md) for the complete lifecycle.
 
-## Bundled skill
+## Integrations
+
+Commands that wire loadout into another system so it runs automatically.
+
+### Bundled skill
 
 ```sh
-loadout skill install
-loadout skill install --yes
-loadout skill status
-loadout skill uninstall
+loadout integrate skill install
+loadout integrate skill install --yes
+loadout integrate skill status
+loadout integrate skill uninstall
 ```
 
 All three commands accept `--profile NAME` and `--source NAME`. Here `--source` is a
@@ -112,6 +116,24 @@ They operate on the global source and synchronise the selected profile.
 
 Installation and removal protect edited skill copies. An unchanged installed copy can be
 upgraded or removed; a conflicting local edit is reported for review.
+
+### Git hooks
+
+```sh
+loadout integrate git-hooks install --root .
+loadout integrate git-hooks install --root . --regenerate
+loadout integrate git-hooks status --root .
+loadout integrate git-hooks uninstall --root . --yes
+```
+
+All three accept `--root` and `--profile NAME`. `install` also accepts `--dry-run`, and
+`--regenerate` to add the post-checkout and post-merge hooks alongside pre-commit.
+
+`uninstall` removes only hooks loadout wrote, identified by the marker on the second line of
+the generated script rather than by the command they invoke. A hook without that marker is
+never touched, whoever wrote it. `--yes` skips the confirmation prompt.
+
+See [Git integration](../../reference/git-integration.md) for the ownership rules.
 
 ## Exit codes
 

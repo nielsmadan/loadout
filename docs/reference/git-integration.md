@@ -59,8 +59,10 @@ Normal template resolution is unchanged; init already vendors selected starters.
 ```sh
 loadout init --project --git-hooks check --dry-run
 loadout init --project --git-hooks check --yes
-loadout git-hooks install --root . --dry-run
-loadout git-hooks install --root . --regenerate
+loadout integrate git-hooks install --root . --dry-run
+loadout integrate git-hooks install --root . --regenerate
+loadout integrate git-hooks status --root .
+loadout integrate git-hooks uninstall --root . --yes
 ```
 
 Hooks are opt-in. Init accepts `--git-hooks none|check|regenerate`; omission means none. `check`
@@ -78,7 +80,47 @@ absolute custom paths beneath the main checkout. A missing registered worktree p
 exclusive ownership, so its hooks are preserved until the worktree registration is reconciled.
 A local worktree-specific hooks path can be installed even when its directory does not yet exist.
 Existing exact managed bytes for the same source/profile are recognized as managed when local.
-A hook for another source, event or profile is occupied and stays untouched.
+For `install`, a hook for another source, event or profile is occupied and stays untouched: a
+hook generated under a different profile is someone's deliberate configuration, and install never
+overwrites it. `uninstall` differs on profile — see below.
+
+## Ownership and removal
+
+Every generated hook carries `# loadout Git hook v1` on its second line. That marker, not the
+command the script invokes, is what identifies a hook as loadout's — so renaming the command
+does not orphan hooks already installed. `status` and `uninstall` classify on it:
+
+| state | test | `uninstall` |
+| --- | --- | --- |
+| `managed` | marker present, serves this source, bytes match what loadout would write now | removed |
+| `stale` | marker present, serves this source, bytes differ | removed |
+| `occupied` | no marker, or the marker is loadout's but the hook serves another source | never touched |
+
+The marker answers *did loadout write this*; the `--root` argument in the generated command
+answers *which source does it serve*. One repository can hold several loadout sources but has
+only one hook file per event, so both questions have to be asked. The rename from
+`git-hooks run` to `hook-event` does not disturb `--root`, so a hook generated before it is
+still recognised.
+
+`uninstall` removes this source's hook whichever profile generated it. That differs from
+`install`, which treats a different-profile hook as occupied, and the difference is deliberate:
+asked to remove this source's hook, loadout should not make the user guess which profile wrote
+it, where a wrong guess would silently do nothing.
+
+The effective hooks directory is classified by why it is or is not this checkout's alone:
+
+| state | cause | `uninstall` |
+| --- | --- | --- |
+| `external` | outside the repository, or a symlink in its path | refused; loadout never wrote there |
+| `shared` | repository-local but common to other worktrees | a marked hook is removed, with a notice |
+
+`install` refuses both alike, because the generated script hard-codes this checkout's source
+path and another worktree would inherit it. `uninstall` carries no such risk, so it tells them
+apart. This asymmetry is deliberate. It matters because `.git/hooks` is common to every worktree:
+adding a worktree at any time after installation reclassifies an already-installed hook as
+`shared` without anything touching the file.
+
+`uninstall` requires `--yes` when input is not interactive.
 
 Preserved hooks get exact integration commands. Set `repo=$(git rev-parse --show-toplevel)` in the
 existing hook, then add the printed command at the appropriate point in its flow. Pass the Git
@@ -86,8 +128,8 @@ event's arguments through, and propagate a pre-commit failure. Loadout does not 
 manager or install a dispatcher over an existing script.
 
 Installed scripts invoke `loadout` on PATH and contain no interpreter or checkout-specific
-absolute paths. Install the package on each machine and explicitly run `loadout git-hooks install`
-in a new clone. Hook files are local installation state and are not added to the index by init.
+absolute paths. Install the package on each machine and explicitly run
+`loadout integrate git-hooks install` in a new clone. Hook files are local installation state and are not added to the index by init.
 Init writes selected hooks after its baseline commit and migrated outputs, so its original
 checkpoint cannot run a newly selected hook against half-migrated source. Hook files participate
 in guarded resume/recovery. Git-created metadata and a successful baseline remain in place;

@@ -179,13 +179,13 @@ def test_native_cli_reports_each_source_and_installs(tmp_path, capsys):
     config = machine_config_path()
     config.parent.mkdir(parents=True)
     config.write_text(f'source = "{root}"\n')
-    assert loadout.main(["skill", "install", "--yes"]) == 0
+    assert loadout.main(["integrate", "skill", "install", "--yes"]) == 0
     capsys.readouterr()
-    assert loadout.main(["skill", "status"]) == 0
+    assert loadout.main(["integrate", "skill", "status"]) == 0
     output = capsys.readouterr().out
     assert str(root / "skills/claude/loadout") in output
     assert str(root / "skills/codex/loadout") in output
-    assert loadout.main(["skill", "uninstall", "--yes"]) == 0
+    assert loadout.main(["integrate", "skill", "uninstall", "--yes"]) == 0
     assert check_all(root) == []
 
 
@@ -308,10 +308,10 @@ def test_native_cli_finishes_global_sync_for_pending_legacy_outputs(tmp_path, fa
     config = machine_config_path()
     config.parent.mkdir(parents=True)
     config.write_text(f'source = "{root}"\n')
-    assert loadout.main(["skill", "install", "--yes"]) == 0
+    assert loadout.main(["integrate", "skill", "install", "--yes"]) == 0
     assert check_all(root) == []
     permissions.write_text('[shell]\nallow = ["just build"]\n')
-    assert loadout.main(["skill", "install", "--yes"]) == 0
+    assert loadout.main(["integrate", "skill", "install", "--yes"]) == 0
     output = fake_home / ".pi/agent/extensions/pi-permission-system/config.json"
     assert "just build" in output.read_text()
     assert check_all(root) == []
