@@ -30,7 +30,11 @@ from .staged import check_staged
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="loadout")
+    parser = argparse.ArgumentParser(
+        prog="loadout",
+        description="Render one source of truth into configuration for your AI coding "
+        "harnesses, and keep the generated files in sync.",
+    )
     parser.add_argument("--version", action="version", version=f"loadout {__version__}")
     subparsers = parser.add_subparsers(dest="command")
 
