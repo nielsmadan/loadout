@@ -730,10 +730,10 @@ A template is shared configuration for a *kind* of project (`web`, `flutter`, `r
 repo opts into. It is a source, merged **beneath** both project tiers, so anything this repo
 declares outranks it.
 
-    loadout template add web       # declare it; it resolves from a source on every render
-    loadout template vendor web    # copy it into loadout/templates/web/ and record its hash
-    loadout template sync web      # update that vendored copy from its source
-    loadout template list          # every declared template, and how each resolves
+    loadout template add <name> --tracked    # declare it; it resolves from a source on every render
+    loadout template add <name> --vendored   # copy it into loadout/templates/<name>/ and record its hash
+    loadout template sync <name>             # update that vendored copy from its source
+    loadout template list                    # every declared template, its mode, and how each resolves
 
 This config example uses legacy presets. Native projects declare `templates` too, but bind their
 instruction producers through `artifacts.toml` as described below instead of using `instructions`.
@@ -744,7 +744,7 @@ harnesses = ["claude", "codex"]
 instructions = ["conventions", "testing"]
 templates = ["web", "railway"]
 
-[template.web]              # written by `template vendor`; only `vendored` is accepted
+[template.web]              # written by `template add --vendored`; only `vendored` is accepted
 vendored = "sha256:9f2a1c4e…"
 ```
 

@@ -172,8 +172,8 @@ Project instructions are named in `loadout/config.toml` and stored in
 supporting files under `loadout/skills/<name>/`; directory-form `<name>/SKILL.md` remains
 supported. `<name>.local.md` and `<name>.local/` replace the complete public skill privately.
 `[skills.<name>] agents = [...]` narrows the default set of configured consumers. Templates are
-declared by name; use `loadout template add`, `vendor`, or `sync` when that command exactly
-expresses the request.
+declared by name; use `loadout template add <name> --tracked`, `--vendored`, or
+`template sync <name>` when that command exactly expresses the request.
 
 Global fragments resolve through `[[source]]` entries. A bare fragment name must resolve uniquely;
 use `source/name` when two sources offer it. Reuse an existing selected fragment when ownership is

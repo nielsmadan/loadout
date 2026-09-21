@@ -75,7 +75,6 @@ for args in [
     ["init", "--help"],
     ["template", "add", "--help"],
     ["template", "list", "--help"],
-    ["template", "vendor", "--help"],
     ["template", "sync", "--help"],
     ["integrate", "skill", "install", "--help"],
     ["integrate", "skill", "status", "--help"],
@@ -178,8 +177,8 @@ config.write_bytes(original)
 repeat = json.loads(run("repeat init", [*init, "--yes", "--json"], project).stdout)
 assert repeat["already_initialized"]
 
-run("add bundled template", ["template", "add", "frontend"], project)
-run("vendor bundled template", ["template", "vendor", "frontend"], project)
+run("track bundled template", ["template", "add", "frontend", "--tracked"], project)
+run("vendor bundled template", ["template", "add", "frontend", "--vendored"], project)
 run("render template", ["sync"], project)
 run("check template", ["check"], project)
 listed = run("list template", ["template", "list"], project).stdout

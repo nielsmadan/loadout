@@ -56,7 +56,7 @@ Every file is optional. The template directory name is the name projects use.
 In an initialised project:
 
 ```sh
-loadout template add python
+loadout template add python --tracked
 loadout sync
 loadout template list
 ```
@@ -89,9 +89,15 @@ agent files, but they do not need the original template source just to use the v
 ## Vendor a copy
 
 ```sh
-loadout template vendor python
+loadout template add python --vendored
 loadout sync
 ```
+
+The mode is a property of the declaration. Running `add` with `--vendored` on an already
+declared template changes it from tracked to vendored; `--tracked` on a vendored one switches
+back once the source can still resolve the name. Bare `loadout template add` lists every
+template this machine can resolve and prompts for a name and a mode; without a terminal it
+requires both.
 
 Loadout copies the template to `loadout/templates/python/` and records its content hash in
 `loadout/config.toml`. Commit both the source copy and the manifest change through your normal

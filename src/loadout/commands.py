@@ -46,17 +46,20 @@ from .skill_installation import (
     install_skill_source,
     uninstall_skill_source,
 )
+from .template_discover import available_templates
 from .template_vendor import vendor_catalog
 from .templates import (
     VENDORED,
     copy_tree,
     declare,
     record_hash,
+    remove_vendored,
     resolve_template,
     resolve_upstream_template,
     template_divergence,
     template_files,
     tree_hash,
+    unrecord_hash,
     unverifiable_templates,
     vendored_path,
 )
@@ -455,7 +458,7 @@ def cmd_check(root: Path, profile: str = "default") -> int:
     for name in unverifiable_templates(root):
         print(
             f"note: the vendored template {name!r} has no recorded provenance, so nothing "
-            f"can tell your edits from its source — `loadout template vendor {name}` takes "
+            f"can tell your edits from its source — `loadout template add {name} --vendored` takes "
             f"the source wholesale and records one"
         )
     if not drift:
@@ -493,18 +496,18 @@ def cmd_check(root: Path, profile: str = "default") -> int:
 def _vendored_state(root: Path, name: str, recorded: str | None) -> str:
     """How a vendored copy stands against the hash recorded when it was vendored."""
     if recorded is None:
-        return "vendored, no recorded hash"
+        return "no recorded hash"
     if tree_hash(vendored_path(root, name)) == recorded:
-        return "vendored, clean"
-    return "vendored, modified"
+        return "clean"
+    return "modified"
 
 
 def cmd_template_list(root: Path) -> int:
     config = load_project_config(project_config_path(root))
     if not config.templates:
         print(
-            f"no templates declared — add one with `loadout template add <name>`, "
-            f"or list it in {PROJECT_DIR}/{PROJECT_CONFIG_NAME}"
+            f"no templates declared — add one with `loadout template add <name> --tracked` "
+            f"(or `--vendored`), or list it in {PROJECT_DIR}/{PROJECT_CONFIG_NAME}"
         )
         return 0
     for name in config.templates:
@@ -517,38 +520,110 @@ def cmd_template_list(root: Path) -> int:
             print(f"    {error}")
             continue
         if found.source == VENDORED:
-            print(f"{name}: {_vendored_state(root, name, config.vendored_hash(name))}")
+            print(f"{name}: vendored, {_vendored_state(root, name, config.vendored_hash(name))}")
         else:
             print(f"{name}: declared, from source {found.source}")
         print(f"    {_display(found.path, root)}")
     return 0
 
 
-def cmd_template_add(root: Path, name: str) -> int:
-    """Declare a template without copying it in — the other first-class mode.
+def cmd_template_add(root: Path, name: str | None, mode: str | None) -> int:
+    """Choose a template and how this project uses it.
 
-    Resolved before it is written so a name that cannot be found never reaches the
-    committed config, where it would fail every later render.
+    Bare `add` enumerates every resolvable template and prompts for a name and a
+    mode; with a name, `--tracked` or `--vendored` pins the mode for scripts.
+    Adding an already-declared template changes its mode — the one path a config
+    file edit cannot express, because vendoring copies a tree and records a hash.
     """
-    found = resolve_template(name, root)
-    validate_template_change(root, name, found)
-    if declare(root, name):
-        print(f"declared {name} in {PROJECT_DIR}/{PROJECT_CONFIG_NAME}")
-    else:
-        print(f"{name} is already declared")
-    origin = "the vendored copy" if found.source == VENDORED else f"source {found.source}"
-    print(f"resolves from {origin}: {_display(found.path, root)}")
-    return 0
-
-
-def cmd_template_vendor(root: Path, name: str) -> int:
-    local = vendored_path(root, name)
-    if local.is_dir():
+    if mode is None and not sys.stdin.isatty():
         raise LoadoutError(
-            f"{name} is already vendored at {_display(local, root)}; run "
-            f"`loadout template sync {name}` to update it"
+            "`template add` needs a mode when not attached to a terminal: "
+            f"`loadout template add {name or '<name>'} --tracked` or `--vendored`"
         )
+    if name is None:
+        name = _choose_template(root)
+    if mode is None:
+        mode = _choose_mode(root, name)
+
+    config = load_project_config(project_config_path(root))
+    local = vendored_path(root, name)
+    is_vendored = local.exists()
+    declared = name in config.templates
+
+    if mode == "tracked":
+        if declared and is_vendored:
+            return _make_tracked(root, name)
+        if is_vendored:
+            raise LoadoutError(
+                f"{name} has a vendored copy at {_display(local, root)} but is not "
+                f"declared; use `--vendored` to adopt it, or delete the copy first"
+            )
+        if declared:
+            found = resolve_template(name, root)
+            print(f"{name} is already tracked; resolves from source {found.source}")
+            print(f"    {_display(found.path, root)}")
+            return 0
+        found = resolve_template(name, root)
+        validate_template_change(root, name, found)
+        declare(root, name)
+        print(f"declared {name} in {PROJECT_DIR}/{PROJECT_CONFIG_NAME}")
+        print(f"resolves from source {found.source}: {_display(found.path, root)}")
+        return 0
+
+    if is_vendored:
+        if declared:
+            raise LoadoutError(
+                f"{name} is already vendored at {_display(local, root)}; run "
+                f"`loadout template sync {name}` to update it"
+            )
+        found = resolve_template(name, root)
+        validate_template_change(root, name, found)
+        declare(root, name)
+        if config.vendored_hash(name) is None:
+            record_hash(root, name, tree_hash(local))
+        print(f"adopted the existing vendored copy of {name} at {_display(local, root)}")
+        return 0
+    return _make_vendored(root, name)
+
+
+def _choose_template(root: Path) -> str:
+    options = available_templates(root)
+    if not options:
+        raise LoadoutError(
+            "no templates available: nothing is vendored here and no source this "
+            "machine declares offers one"
+        )
+    print("Available templates:")
+    for index, option in enumerate(options, 1):
+        print(f"  {index}. {option.name}  ({option.source})")
+    try:
+        choice = input(f"Template [1-{len(options)}]: ").strip()
+    except (EOFError, OSError):
+        choice = ""
+    if not choice:
+        return options[0].name
+    try:
+        index = int(choice)
+    except ValueError:
+        raise LoadoutError(f"choose a template by number, not {choice!r}") from None
+    if not 1 <= index <= len(options):
+        raise LoadoutError(f"no template {index}; choose 1-{len(options)}")
+    return options[index - 1].name
+
+
+def _choose_mode(root: Path, name: str) -> str:
+    try:
+        choice = input(f"Use {name} as tracked or vendored? [tracked/vendored] ").strip().lower()
+    except (EOFError, OSError):
+        choice = ""
+    if choice not in {"tracked", "vendored"}:
+        raise LoadoutError(f"choose tracked or vendored for {name}, not {choice!r}")
+    return choice
+
+
+def _make_vendored(root: Path, name: str) -> int:
     found = resolve_template(name, root)
+    local = vendored_path(root, name)
     if found.path.is_file():
         return vendor_catalog(root, name, found)
     validate_template_change(root, name, found)
@@ -558,6 +633,18 @@ def cmd_template_vendor(root: Path, name: str) -> int:
     print(f"vendored {name} from source {found.source} into {_display(local, root)}")
     for relative in template_files(local):
         print(f"    {relative}")
+    return 0
+
+
+def _make_tracked(root: Path, name: str) -> int:
+    """A vendored copy becomes tracked: drop the copy and its recorded hash once
+    the source can still resolve the name, so the switch never strands the project."""
+    found = resolve_upstream_template(name)
+    validate_template_change(root, name, found)
+    remove_vendored(root, name)
+    unrecord_hash(root, name)
+    print(f"changed {name} to tracked; resolves from source {found.source}")
+    print(f"    {_display(found.path, root)}")
     return 0
 
 
@@ -601,7 +688,7 @@ def cmd_template_sync(root: Path, name: str) -> int:
     if not local.is_dir():
         raise LoadoutError(
             f"{name} is not vendored, so there is nothing to sync — it resolves from a "
-            f"source on every render. Run `loadout template vendor {name}` to copy it in."
+            f"source on every render. Run `loadout template add {name} --vendored` to copy it in."
         )
 
     recorded = config.vendored_hash(name)
@@ -632,7 +719,7 @@ def cmd_template_sync(root: Path, name: str) -> int:
             f"\nSync refused — with no recorded hash, nothing can tell your edits from "
             f"the source's, so the '-' lines above may be either. Commit your copy first "
             f"if you want to keep them, or delete {_display(local, root)} and run "
-            f"`loadout template vendor {name}` to take the source wholesale.",
+            f"`loadout template add {name} --vendored` to take the source wholesale,",
             file=sys.stderr,
         )
         return 1
@@ -646,7 +733,7 @@ def cmd_template_sync(root: Path, name: str) -> int:
         print(
             f"\nSync refused — the '-' lines above exist only in your copy and would be "
             f"lost. Move them upstream, or delete {_display(local, root)} and run "
-            f"`loadout template vendor {name}` to take the upstream wholesale.",
+            f"`loadout template add {name} --vendored` to take the upstream wholesale.",
             file=sys.stderr,
         )
         return 1

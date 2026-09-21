@@ -262,7 +262,7 @@ def test_bare_templates_never_fall_back_to_machine_or_bundled_source(repo, fake_
     _git(repo, "add", "loadout")
     with pytest.raises(LoadoutError, match=f"template '{name}' is not staged") as error:
         check_staged(repo)
-    assert f"loadout template vendor {name}" in str(error.value)
+    assert f"loadout template add {name} --vendored" in str(error.value)
 
 
 def test_nested_global_snapshot_contains_sibling_sources_and_isolates_destinations(repo, fake_home):

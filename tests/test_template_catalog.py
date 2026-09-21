@@ -82,6 +82,10 @@ def _native(root: Path, agents: tuple[str, ...] = ("claude",)) -> None:
 
 
 def _template(root: Path, action: str, name: str) -> int:
+    if action == "vendored":
+        return main(["template", "add", name, "--vendored", "--root", str(root)])
+    if action == "tracked":
+        return main(["template", "add", name, "--tracked", "--root", str(root)])
     return main(["template", action, name, "--root", str(root)])
 
 
@@ -89,7 +93,7 @@ def test_two_templates_share_one_vendored_part_and_render_once(
     bare_project: Path, catalog: Path
 ) -> None:
     for name in ("nextjs", "react-native"):
-        assert _template(bare_project, "vendor", name) == 0
+        assert _template(bare_project, "vendored", name) == 0
     local = bare_project / "loadout/templates"
     assert list(local.rglob("SKILL.md")) == [local / "skills/review-typescript/SKILL.md"]
     machine_config_path().unlink()
@@ -107,7 +111,7 @@ def test_two_templates_share_one_vendored_part_and_render_once(
 
 def test_native_fresh_project_renders_all_catalog_parts(tmp_path: Path, catalog: Path) -> None:
     _native(tmp_path, ("claude", "codex", "opencode", "pi"))
-    assert _template(tmp_path, "vendor", "nextjs") == 0
+    assert _template(tmp_path, "vendored", "nextjs") == 0
     written = write_all(tmp_path)
     assert tmp_path / ".agents/skills/review-typescript/SKILL.md" in written
     assert "Shared TypeScript advice" in (tmp_path / "AGENTS.md").read_text()
@@ -126,7 +130,7 @@ def test_shared_update_prompts_for_all_affected_templates(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     for name in ("nextjs", "react-native"):
-        assert _template(bare_project, "vendor", name) == 0
+        assert _template(bare_project, "vendored", name) == 0
     path = catalog / "instructions/typescript.md"
     path.write_text("Updated shared advice\n")
     before = project_config_path(bare_project).read_bytes()
@@ -150,7 +154,7 @@ def test_shared_update_refuses_local_edits_in_other_affected_template(
     bare_project: Path, catalog: Path
 ) -> None:
     for name in ("nextjs", "react-native"):
-        assert _template(bare_project, "vendor", name) == 0
+        assert _template(bare_project, "vendored", name) == 0
     local = bare_project / "loadout/templates"
     (local / "react-native.toml").write_text('instructions = ["typescript"]\n')
     (catalog / "instructions/typescript.md").write_text("upstream\n")
@@ -166,7 +170,7 @@ def test_references_cannot_escape_catalog(catalog: Path, reference: str) -> None
 
 
 def test_qualified_catalog_name_vendors_valid_toml(bare_project: Path, catalog: Path) -> None:
-    assert _template(bare_project, "vendor", "ac/nextjs") == 0
+    assert _template(bare_project, "vendored", "ac/nextjs") == 0
     config = load_project_config(project_config_path(bare_project))
     assert config.templates == ("ac/nextjs",)
     assert (
@@ -178,7 +182,7 @@ def test_qualified_catalog_name_vendors_valid_toml(bare_project: Path, catalog: 
 def test_commented_template_list_remains_valid(bare_project: Path, catalog: Path) -> None:
     path = project_config_path(bare_project)
     path.write_text(path.read_text() + '"templates" = [] # keep this list\n')
-    assert _template(bare_project, "add", "nextjs") == 0
+    assert _template(bare_project, "tracked", "nextjs") == 0
     assert load_project_config(path).templates == ("nextjs",)
     assert "# keep this list" in path.read_text()
 
@@ -219,10 +223,10 @@ def test_catalog_parts_do_not_activate_global_outputs(catalog: Path) -> None:
 def test_adding_second_template_refuses_different_shared_bytes(
     bare_project: Path, catalog: Path
 ) -> None:
-    assert _template(bare_project, "vendor", "nextjs") == 0
+    assert _template(bare_project, "vendored", "nextjs") == 0
     before = project_config_path(bare_project).read_bytes()
     (catalog / "instructions/typescript.md").write_text("new upstream")
-    assert _template(bare_project, "vendor", "react-native") == 3
+    assert _template(bare_project, "vendored", "react-native") == 3
     assert project_config_path(bare_project).read_bytes() == before
 
 
@@ -232,7 +236,7 @@ def test_shared_skill_sync_removes_retired_support_file(
     support = _write(catalog / "skills/review-typescript/scripts/check", "old script")
     support.chmod(0o755)
     for name in ("nextjs", "react-native"):
-        assert _template(bare_project, "vendor", name) == 0
+        assert _template(bare_project, "vendored", name) == 0
     local = bare_project / "loadout/templates/skills/review-typescript/scripts/check"
     assert local.stat().st_mode & 0o777 == 0o755
     support.unlink()
@@ -247,7 +251,7 @@ def test_removing_reference_keeps_part_needed_by_other_template(
     bare_project: Path, catalog: Path
 ) -> None:
     for name in ("nextjs", "react-native"):
-        assert _template(bare_project, "vendor", name) == 0
+        assert _template(bare_project, "vendored", name) == 0
     (catalog / "nextjs.toml").write_text('instructions = ["nextjs"]\n')
     assert _template(bare_project, "sync", "nextjs") == 0
     assert (
@@ -260,7 +264,7 @@ def test_new_local_skill_file_during_confirmation_refuses_update(
     bare_project: Path, catalog: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     for name in ("nextjs", "react-native"):
-        assert _template(bare_project, "vendor", name) == 0
+        assert _template(bare_project, "vendored", name) == 0
     (catalog / "instructions/typescript.md").write_text("new upstream")
     before = project_config_path(bare_project).read_bytes()
 
@@ -295,7 +299,7 @@ def test_native_project_values_override_template_with_both_tiers_present(
         '[github]\ntransport = "stdio"\ncommand = "github-mcp"\n[extra]\ntransport = "stdio"\ncommand = "extra-mcp"\n',
     )
     _write(catalog / "permissions/node.toml", '[shell]\nallow = ["npm test", "npm run lint"]\n')
-    assert _template(tmp_path, "vendor", "nextjs") == 0
+    assert _template(tmp_path, "vendored", "nextjs") == 0
     write_all(tmp_path)
     servers = json.loads((tmp_path / ".mcp.json").read_text())["mcpServers"]
     assert servers == {
@@ -311,7 +315,7 @@ def test_native_retirement_preserves_edits_and_then_removes_clean_output(
     tmp_path: Path, catalog: Path
 ) -> None:
     _native(tmp_path)
-    assert _template(tmp_path, "vendor", "nextjs") == 0
+    assert _template(tmp_path, "vendored", "nextjs") == 0
     write_all(tmp_path)
     generated = tmp_path / ".claude/skills/review-typescript/SKILL.md"
     original = generated.read_bytes()
@@ -383,7 +387,7 @@ def test_permissions_only_starter_creates_codex_mcp_policy_route(
 
 def test_staged_catalog_renders_without_machine_source(tmp_path: Path, catalog: Path) -> None:
     _native(tmp_path)
-    assert _template(tmp_path, "vendor", "nextjs") == 0
+    assert _template(tmp_path, "vendored", "nextjs") == 0
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     subprocess.run(["git", "-C", str(tmp_path), "add", "loadout"], check=True)
     machine_config_path().unlink()
@@ -399,7 +403,7 @@ def test_native_unrepresentable_permission_refuses_without_mutation(
     part = next(p for a in config.artifacts.records for p in a.parts if p.category == "permissions")
     (config.artifacts.source_root / part.source).write_text('{"permission": "allow"}\n')
     before = project_config_path(tmp_path).read_bytes()
-    assert _template(tmp_path, "add", "nextjs") == 3
+    assert _template(tmp_path, "tracked", "nextjs") == 3
     assert project_config_path(tmp_path).read_bytes() == before
 
 
@@ -413,7 +417,7 @@ def test_native_routes_can_opt_out_of_catalog_parts(tmp_path: Path, catalog: Pat
         index.read_text()
         + '\n[[artifact]]\nagents = ["claude"]\noutput = "extra-mcp.json"\nformat = "json"\ntemplate_parts = false\n[artifact.parts]\nmcp = {source = "extra-mcp.json", keys = ["mcpServers"]}\n'
     )
-    assert _template(tmp_path, "vendor", "nextjs") == 0
+    assert _template(tmp_path, "vendored", "nextjs") == 0
     write_all(tmp_path)
     assert json.loads((tmp_path / "extra-mcp.json").read_text()) == {
         "mcpServers": {"private": {"command": "private-mcp"}}
@@ -438,7 +442,7 @@ def test_shared_update_rolls_back_a_write_failure(
     retired = _write(catalog / "skills/review-typescript/retired.sh", "retired script")
     retired.chmod(0o750)
     for name in ("nextjs", "react-native"):
-        assert _template(bare_project, "vendor", name) == 0
+        assert _template(bare_project, "vendored", name) == 0
     local = bare_project / "loadout/templates"
 
     def snapshot() -> dict[Path, tuple[bytes, int]]:
@@ -479,7 +483,7 @@ def test_native_project_skill_replaces_whole_template_tree(tmp_path: Path, catal
     _write(catalog / "skills/review-typescript/template.txt", "Template helper")
     _write(catalog / "skills/extra/SKILL.md", "Extra template skill")
     _write(catalog / "nextjs.toml", 'skills = ["review-typescript", "extra"]\n')
-    assert _template(tmp_path, "vendor", "nextjs") == 0
+    assert _template(tmp_path, "vendored", "nextjs") == 0
     output = render_project(tmp_path)
     skill_dir = tmp_path / ".claude/skills"
     assert {p.relative_to(skill_dir) for p in output if p.is_relative_to(skill_dir)} == {
@@ -516,7 +520,7 @@ def test_codex_catalog_mcp_policy_survives_sync(
         catalog / "permissions/policy.toml",
         '[mcp]\ndeny=["blocked/*", "github/write"]\nask=["github/read"]\nallow=["github/list"]\n',
     )
-    assert _template(tmp_path, "vendor", "policy") == 0
+    assert _template(tmp_path, "vendored", "policy") == 0
     write_all(tmp_path)
     expected = {
         "blocked": {"enabled": False},
@@ -540,7 +544,7 @@ def test_codex_catalog_server_names_are_literal(tmp_path: Path, catalog: Path, n
         catalog / "mcp/names.toml",
         f'[{json.dumps(name)}]\ntransport="stdio"\ncommand="search-mcp"\n',
     )
-    assert _template(tmp_path, "vendor", "names") == 0
+    assert _template(tmp_path, "vendored", "names") == 0
     write_all(tmp_path)
     assert tomllib.loads((tmp_path / ".codex/config.toml").read_text())["mcp_servers"] == {
         name: {"command": "search-mcp"}
@@ -555,7 +559,7 @@ def test_order_sensitive_native_permissions_refuse_before_template_selection(
         '{"permission":{"*":"allow","bash":{"*":"deny"}}}'
     )
     before = project_config_path(tmp_path).read_bytes()
-    assert _template(tmp_path, "add", "nextjs") == 3
+    assert _template(tmp_path, "tracked", "nextjs") == 3
     assert project_config_path(tmp_path).read_bytes() == before
 
 
@@ -567,7 +571,7 @@ def test_native_default_keeps_its_restriction(tmp_path: Path, catalog: Path, def
     )
     _write(catalog / "defaults.toml", 'permissions=["defaults"]\n')
     _write(catalog / "permissions/defaults.toml", '[shell]\ndefault="allow"\n')
-    assert _template(tmp_path, "vendor", "defaults") == 0
+    assert _template(tmp_path, "vendored", "defaults") == 0
     write_all(tmp_path)
     assert json.loads((tmp_path / "opencode.json").read_text())["permission"]["bash"] == {
         "*": default
@@ -589,7 +593,7 @@ def test_optional_codex_permissions_receive_catalog_rules(
         route["renderer"] = "codex-project"
     index.write_text(tomlkit.dumps(document))
     _part_source(tmp_path, "permissions").unlink()
-    assert _template(tmp_path, "vendor", "nextjs") == 0
+    assert _template(tmp_path, "vendored", "nextjs") == 0
     write_all(tmp_path)
     assert (
         'prefix_rule(pattern = ["npm", "test"], decision = "allow")'
@@ -605,7 +609,7 @@ def test_catalog_skills_honor_declared_modes(tmp_path: Path, catalog: Path) -> N
     route = next(r for r in document["artifact"] if r.get("category") == "skills")
     route["modes"] = {"review-typescript/SKILL.md": 0o640, "review-typescript/scripts/check": 0o750}
     index.write_text(tomlkit.dumps(document))
-    assert _template(tmp_path, "vendor", "nextjs") == 0
+    assert _template(tmp_path, "vendored", "nextjs") == 0
     assert main(["sync", "--root", str(tmp_path)]) == 0
     skill = tmp_path / ".claude/skills/review-typescript"
     assert (skill / "SKILL.md").stat().st_mode & 0o7777 == 0o640
@@ -650,7 +654,7 @@ def test_repeated_parts_keep_last_template_precedence(
             f'[opencode.extra]\nedit="{decision}"\n{extra}="ask"\n',
         )
     for name in ("a", "b", "c"):
-        assert _template(tmp_path, "vendor", name) == 0
+        assert _template(tmp_path, "vendored", name) == 0
     write_all(tmp_path)
     result = json.loads((tmp_path / "opencode.json").read_text())
     assert result["mcp"] == {
@@ -675,7 +679,7 @@ def test_each_agent_receives_every_catalog_slice(tmp_path: Path, catalog: Path, 
         '[mcp]\nallow=["github/list"]\nask=["github/read"]\ndeny=["github/write"]\n',
     )
     _write(catalog / "skills/review-typescript/reference.md", "Review reference\n")
-    assert _template(tmp_path, "vendor", "nextjs") == 0
+    assert _template(tmp_path, "vendored", "nextjs") == 0
     written = write_all(tmp_path)
     skill_root = tmp_path / (".agents" if agent == "codex" else f".{agent}") / "skills"
     assert "Review TypeScript." in (skill_root / "review-typescript/SKILL.md").read_text()
@@ -782,7 +786,7 @@ def test_codex_native_policy_and_settings_survive_template_removal(
         catalog / "permissions/policy.toml",
         '[mcp]\nallow=["github/*", "github/read", "github/write", "github/list"]\ndeny=["github/destroy"]\n',
     )
-    assert _template(tmp_path, "vendor", "policy") == 0
+    assert _template(tmp_path, "vendored", "policy") == 0
     write_all(tmp_path)
     combined = {
         **native,
@@ -816,7 +820,7 @@ def test_codex_unrepresentable_native_policy_refuses_before_selection(
     _write(catalog / "policy.toml", 'permissions=["policy"]\n')
     _write(catalog / "permissions/policy.toml", '[mcp]\nallow=["github/read"]\n')
     before = project_config_path(tmp_path).read_bytes()
-    assert _template(tmp_path, "add", "policy") == 3
+    assert _template(tmp_path, "tracked", "policy") == 3
     assert project_config_path(tmp_path).read_bytes() == before
 
 
@@ -830,7 +834,7 @@ def test_codex_mcp_policy_requires_its_own_consumer(tmp_path: Path, catalog: Pat
     _write(catalog / "policy.toml", 'permissions=["policy"]\n')
     _write(catalog / "permissions/policy.toml", '[mcp]\ndeny=["github/*"]\n')
     before = project_config_path(tmp_path).read_bytes()
-    assert _template(tmp_path, "add", "policy") == 3
+    assert _template(tmp_path, "tracked", "policy") == 3
     assert project_config_path(tmp_path).read_bytes() == before
 
 
@@ -838,7 +842,7 @@ def test_required_codex_permission_source_stays_required(tmp_path: Path, catalog
     _native(tmp_path, ("codex",))
     _part_source(tmp_path, "permissions").unlink()
     before = project_config_path(tmp_path).read_bytes()
-    assert _template(tmp_path, "vendor", "nextjs") == 3
+    assert _template(tmp_path, "vendored", "nextjs") == 3
     assert project_config_path(tmp_path).read_bytes() == before
     assert not (tmp_path / "loadout/templates/nextjs.toml").exists()
 
@@ -855,7 +859,7 @@ def test_portable_unstated_default_does_not_vote_against_template(
     _part_source(tmp_path, "permissions").write_text('[shell]\ndeny=["rm"]\n')
     _write(catalog / "node.toml", 'permissions=["node"]\n')
     _write(catalog / "permissions/node.toml", '[shell]\ndefault="allow"\nallow=["npm test"]\n')
-    assert _template(tmp_path, "vendor", "node") == 0
+    assert _template(tmp_path, "vendored", "node") == 0
     write_all(tmp_path)
     assert json.loads((tmp_path / "opencode.json").read_text())["permission"]["bash"] == {
         "*": "allow",
@@ -876,7 +880,7 @@ def test_catalog_validation_is_shared_per_render_only(
         _write(tmp_path / "loadout/config.toml", 'harnesses=["claude"]\n')
         _write(tmp_path / "loadout/permissions.toml", "")
     for name in ("nextjs", "react-native"):
-        assert _template(tmp_path, "vendor", name) == 0
+        assert _template(tmp_path, "vendored", name) == 0
     calls: Counter[Path] = Counter()
     original = template_catalog._validate_part
 
@@ -911,7 +915,7 @@ def test_native_catalog_reads_each_document_source_once(
     tmp_path: Path, catalog: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _native(tmp_path, ("claude", "codex", "opencode", "pi"))
-    assert _template(tmp_path, "vendor", "nextjs") == 0
+    assert _template(tmp_path, "vendored", "nextjs") == 0
     config = load_project_config(project_config_path(tmp_path))
     assert config.artifacts is not None
     expected = Counter(

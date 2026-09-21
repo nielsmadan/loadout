@@ -40,12 +40,12 @@ formats. Settings, hooks and plugins remain explicit per-agent artifact sources.
 Catalog presence never activates global output. A project must select the manifest:
 
 ```sh
-loadout template vendor nextjs
-loadout template vendor react-native
+loadout template add nextjs --vendored
+loadout template add react-native --vendored
 loadout sync
 ```
 
-Use `template add` instead of `vendor` to resolve from the machine source on each render.
+Use `template add <name> --tracked` to resolve from the machine source on each render.
 Shared parts are stored once. Instructions concatenate in first-reference order. Skills and
 MCP server names are replaced by later templates, then by the project's own entries;
 permissions use the existing deny-wins merge, with last-tier precedence for `opencode.extra`.
@@ -102,6 +102,12 @@ template reaches every project at once.
 
 **Vendored** — the template is copied into `loadout/templates/` and committed, so the repo
 stands alone. This is what an open-source project whose contributors do not install loadout needs.
+
+The mode is a property of the declaration. `template add <name> --vendored` on an already
+declared template changes it to vendored, copying the tree and recording its hash;
+`--tracked` on a vendored one switches back once the source can still resolve the name.
+Bare `template add` lists every template this machine can resolve and prompts for a name and
+a mode; without a terminal it requires both.
 
 Vendored template content stays under `loadout/templates/` and is **never merged into the
 project's own fragments**. If a template's content were mixed into yours, nothing could later distinguish
@@ -179,8 +185,8 @@ legacy `instructions = [...]` remains unsupported in this mode.
 Legacy directory templates in native projects compose instruction text only. Empty `permissions.toml`, `mcp.toml`
 and `.gitkeep` scaffolds are accepted. A populated permission, MCP, skill or other contribution
 is refused with its category/path and a remedy: place that content in an explicitly routed
-project source, then remove it from the template. `template add`, `vendor` and `sync` preflight
-these limits before changing configuration, copies or provenance. Source symlinks are refused.
+project source, then remove it from the template. `template add` in either mode and
+`template sync` preflight these limits before changing configuration, copies or provenance. Source symlinks are refused.
 Native `template sync` validates both vendored and upstream trees before reading template
 contents for hashes or refusal diffs.
 This prevents template data from being silently ignored or overlaying native producers.
@@ -215,11 +221,11 @@ key order; otherwise selection refuses and asks for an explicit portable source.
 native catch-all `ask` remains a restriction during merging, whereas an unstated portable
 default contributes no vote. Nonempty Codex rule text needs an explicit portable text renderer.
 An absent optional permission source contributes no native rules; required sources remain
-required. Unsupported or ambiguous routes fail before add/vendor/sync changes source.
+required. Unsupported or ambiguous routes fail before add/sync changes source.
 
 Catalog overrides of `frontend` and `backend` also work with `init project --starter`, including all
 referenced files in privacy checks, approval preconditions, expected outputs and staging.
-Other manifest names are selected with `template add` or `template vendor` after init.
+Other manifest names are selected with `template add --vendored` (or `--tracked`) after init.
 
 Init includes the selected template in preview metadata, source writes, output expectations,
 fresh-source validation, staging and recovery. Private/Git-ignored or credential-bearing template
@@ -232,9 +238,9 @@ policies are preserved through preparation, application and interrupted resume, 
 effective exclude-file targets. A policy change requires rediscovery even if it has not yet
 changed whether an existing template file is ignored.
 
-Repeat init with an explicit starter reports the exact `template vendor`/`template sync` and
-normal `sync` commands instead of discarding the choice. A vendored clone resolves before reading
-machine configuration and works independently of its original template source.
+Repeat init with an explicit starter reports the exact `template add --vendored`/`template sync`
+and normal `sync` commands instead of discarding the choice. A vendored clone resolves before
+reading machine configuration and works independently of its original template source.
 
 ## The content hash
 
@@ -250,7 +256,7 @@ That third state is not hypothetical. Until 2026-08-17, `loadout harness add` (a
 removed) rewrote `loadout/config.toml` from
 the harness list alone, destroying every `[template.<name>] vendored` block
 along with `templates` and `instructions`, so repos that ran it are in it today. The message to
-search for is **"has no recorded provenance"**. `template vendor <name>` takes the source
+search for is **"has no recorded provenance"**. `template add <name> --vendored` takes the source
 wholesale and records a hash again; so does `template sync` when the copy still matches the
 source, since matching *is* proof it is unmodified.
 
@@ -292,10 +298,10 @@ covers relative paths only.
 This section describes directory templates. Catalog manifests use the shared-update flow
 above: provenance and ownership errors exit 3; declining the shared update exits 1.
 
-    loadout template add web       # declare it; it resolves from a source on every render
-    loadout template vendor web    # copy it in, record the hash
-    loadout template sync web      # update the vendored copy from its source
-    loadout template list          # what this project uses, and how each resolves
+    loadout template add web --tracked    # declare it; it resolves from a source on every render
+    loadout template add web --vendored   # copy it in, record the hash
+    loadout template sync web             # update the vendored copy from its source
+    loadout template list                 # what this project uses, and how each resolves
 
 Two templates offering one skill name resolve last-declared-wins: `templates = ["a", "b"]`
 gives `b`'s copy. A skill the project itself defines beats both. Permission decisions use

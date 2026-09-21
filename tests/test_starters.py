@@ -260,9 +260,9 @@ def test_empty_project_starter_creates_only_instruction_routes(
     }
 
 
-@pytest.mark.parametrize("operation", ("add", "vendor"))
+@pytest.mark.parametrize("mode", ("tracked", "vendored"))
 def test_native_template_commands_refuse_missing_route_before_mutation(
-    tmp_path: Path, operation: str
+    tmp_path: Path, mode: str
 ) -> None:
     source = tmp_path / "loadout"
     source.mkdir()
@@ -270,7 +270,7 @@ def test_native_template_commands_refuse_missing_route_before_mutation(
     config.write_text('harnesses = ["claude"]\npresets = false\nartifacts = "artifacts.toml"\n')
     (source / "artifacts.toml").write_text("artifact = []\n")
     before = config.read_bytes()
-    assert main(["template", operation, "frontend", "--root", str(tmp_path)]) == 3
+    assert main(["template", "add", "frontend", "--" + mode, "--root", str(tmp_path)]) == 3
     assert config.read_bytes() == before
     assert not (source / "templates").exists()
 
@@ -352,9 +352,9 @@ def test_starter_has_an_explicit_instruction_route_for_each_agent(
     )
 
 
-@pytest.mark.parametrize("operation", ("add", "vendor"))
+@pytest.mark.parametrize("mode", ("tracked", "vendored"))
 def test_populated_native_template_command_preflights_before_mutation(
-    tmp_path: Path, fake_home: Path, operation: str
+    tmp_path: Path, fake_home: Path, mode: str
 ) -> None:
     plan = plan_migration(discover(tmp_path, scope="project", agents=("claude",)))
     assert plan.complete, plan.issues
@@ -362,7 +362,7 @@ def test_populated_native_template_command_preflights_before_mutation(
     (upstream,) = _source(fake_home, "company")
     (upstream / "permissions.toml").write_text('[shell]\nallow = ["npm"]\n')
     before = project_config_path(tmp_path).read_bytes()
-    assert main(["template", operation, "frontend", "--root", str(tmp_path)]) == 3
+    assert main(["template", "add", "frontend", "--" + mode, "--root", str(tmp_path)]) == 3
     assert project_config_path(tmp_path).read_bytes() == before
     assert not vendored_path(tmp_path, "frontend").exists()
 
@@ -685,9 +685,9 @@ def test_repeat_init_reports_usable_template_command_and_safe_sync(
     capsys.readouterr()
     assert main([*_init(tmp_path, "frontend"), "--yes", "--json"]) == 2
     preview = json.loads(capsys.readouterr().out)
-    assert "loadout template vendor frontend" in preview["issues"][0]["message"]
+    assert "loadout template add frontend --vendored" in preview["issues"][0]["message"]
     assert config.read_bytes() == before
-    assert main(["template", "vendor", "frontend", "--root", str(tmp_path)]) == 0
+    assert main(["template", "add", "frontend", "--vendored", "--root", str(tmp_path)]) == 0
     assert main(["sync", "--root", str(tmp_path)]) == 0
     assert main(["template", "sync", "frontend", "--root", str(tmp_path)]) == 0
     instructions = vendored_path(tmp_path, "frontend") / "instructions.md"

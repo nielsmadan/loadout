@@ -95,7 +95,15 @@ class Snapshot:
 
     def upstream(self, name: str, config_path: Path | None = None) -> ResolvedItem:
         command = shlex.join(
-            ["loadout", "template", "vendor", name, "--root", str(self.original / self.relative)]
+            [
+                "loadout",
+                "template",
+                "add",
+                name,
+                "--vendored",
+                "--root",
+                str(self.original / self.relative),
+            ]
         )
         raise LoadoutError(
             f"template {name!r} is not staged; run {command} and stage "

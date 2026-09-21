@@ -16,7 +16,6 @@ from .commands import (
     cmd_template_add,
     cmd_template_list,
     cmd_template_sync,
-    cmd_template_vendor,
 )
 from .errors import LoadoutError, UsageError
 from .git_hook_commands import run_hook
@@ -97,16 +96,36 @@ def build_parser() -> argparse.ArgumentParser:
 
     template = subparsers.add_parser("template", help="manage this project's templates")
     template_subparsers = template.add_subparsers(dest="template_command")
+    add_template = template_subparsers.add_parser(
+        "add", help="choose a template and how this project uses it"
+    )
+    add_template.add_argument(
+        "name", nargs="?", help="template name; choose interactively when omitted"
+    )
+    add_mode = add_template.add_mutually_exclusive_group()
+    add_mode.add_argument(
+        "--tracked",
+        dest="template_mode",
+        action="store_const",
+        const="tracked",
+        help="resolve the template from a source on every render",
+    )
+    add_mode.add_argument(
+        "--vendored",
+        dest="template_mode",
+        action="store_const",
+        const="vendored",
+        help="copy the template into this project and record its content hash",
+    )
+    add_root(add_template)
     for sub_name, sub_help in (
-        ("list", "show each declared template and how it resolves"),
-        ("add", "declare a template, leaving it to resolve from a source"),
-        ("vendor", "copy a template into this project and record its content hash"),
+        ("list", "show each declared template, its mode and how it resolves"),
         ("sync", "update the vendored copy from its source"),
     ):
         template_sub = template_subparsers.add_parser(sub_name, help=sub_help)
-        if sub_name != "list":
-            template_sub.add_argument("name", help="template name")
         add_root(template_sub)
+        if sub_name == "sync":
+            template_sub.add_argument("name", help="template name")
 
     integrate = subparsers.add_parser(
         "integrate", help="wire loadout into another system so it runs automatically"
@@ -215,9 +234,7 @@ def _dispatch_template(args: argparse.Namespace) -> int:
     if args.template_command == "list":
         return cmd_template_list(root)
     if args.template_command == "add":
-        return cmd_template_add(root, args.name)
-    if args.template_command == "vendor":
-        return cmd_template_vendor(root, args.name)
+        return cmd_template_add(root, args.name, args.template_mode)
     return cmd_template_sync(root, args.name)
 
 

@@ -85,8 +85,8 @@ only, so removing a harness from the list leaves its entry in place.
 ## Templates
 
 ```sh
-loadout template add python
-loadout template vendor python
+loadout template add python --tracked
+loadout template add python --vendored
 loadout template sync python
 loadout template list
 ```
@@ -95,10 +95,13 @@ All four accept `--root PATH`.
 
 | Command | Result |
 | --- | --- |
-| `add NAME` | Declare the template for the project |
-| `vendor NAME` | Copy its source into the project and record its content hash |
+| `add NAME --tracked` | Declare the template; it resolves from a source on every render |
+| `add NAME --vendored` | Copy the source into the project and record its content hash |
+| `add` (bare) | List every resolvable template and prompt for a name and a mode; refused without a terminal |
 | `sync NAME` | Update an unchanged vendored copy from the available upstream source |
-| `list` | Show declared templates and where each resolves |
+| `list` | Show declared templates, each one's mode, and where it resolves |
+
+Adding a template that is already declared changes its mode in either direction.
 
 Run the ordinary `loadout sync` to render the resulting project configuration.
 See [templates](../guides/templates.md) for the complete lifecycle.

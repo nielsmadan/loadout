@@ -8,6 +8,7 @@ from loadout.errors import LoadoutError
 from loadout.project import PROJECT_DIR, load_project_config, project_config_path
 from loadout.resolve import Slice, resolve_item
 from loadout.sources import ARTIFACT_TYPES, Source
+from loadout.template_discover import available_templates
 from loadout.templates import (
     HASH_PREFIX,
     VENDORED,
@@ -199,6 +200,31 @@ def test_a_vendored_copy_wins_and_stops_resolution(
     found = resolve_template("web", tmp_path)
     assert found.path == vendored
     assert found.source == VENDORED
+
+
+def test_available_templates_offer_vendored_copies_first_and_shadow_sources(
+    tmp_path: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _global_source(fake_home, monkeypatch, "web", "railway")
+    vendored = vendored_path(tmp_path, "web")
+    vendored.mkdir(parents=True)
+    options = available_templates(tmp_path)
+    assert [(option.name, option.source) for option in options] == [
+        ("web", VENDORED),
+        ("railway", "ac"),
+    ]
+
+
+def test_available_templates_without_machine_config_list_only_vendored(tmp_path: Path) -> None:
+    vendored = vendored_path(tmp_path, "web")
+    vendored.mkdir(parents=True)
+    assert [(option.name, option.source) for option in available_templates(tmp_path)] == [
+        ("web", VENDORED)
+    ]
+
+
+def test_available_templates_with_nothing_available_is_empty(tmp_path: Path) -> None:
+    assert available_templates(tmp_path) == ()
 
 
 def test_a_vendored_copy_resolves_with_no_machine_config_at_all(tmp_path: Path) -> None:

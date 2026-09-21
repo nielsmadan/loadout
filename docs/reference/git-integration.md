@@ -50,8 +50,9 @@ need an optional binding or a public replacement, not secret files added to Git.
 
 Every selected template must be vendored and staged, including bundled `frontend` and `backend`.
 A bare name can resolve to a machine override during normal sync, so silently substituting the
-package copy would validate a different producer. Run the exact `loadout template vendor <name>
---root <source-root>` command reported by the check, then stage the template tree and config.
+package copy would validate a different producer. Run the exact `loadout template add <name>
+--vendored --root <source-root>` command reported by the check, then stage the template tree
+and config.
 Normal template resolution is unchanged; init already vendors selected starters.
 
 ## Installing hooks

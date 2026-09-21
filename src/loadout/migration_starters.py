@@ -58,7 +58,7 @@ def select_starter(plan: MigrationPlan, name: str | None) -> MigrationPlan:
             "starter-existing-source",
             "Existing source is already initialized. Add any missing instruction sources and "
             "routes with template_instructions = true in artifacts.toml, then run "
-            f"`loadout template vendor {name} --root {root}` "
+            f"`loadout template add {name} --vendored --root {root}` "
             f"(or `loadout template sync {name} --root {root}` if already vendored), "
             f"then `loadout sync --root {root}`.",
         )

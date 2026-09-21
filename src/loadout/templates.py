@@ -39,12 +39,51 @@ TEMPLATES = Slice(use="templates", subdir=TEMPLATES_SUBDIR, suffix="", directory
 # with a real source name, which is a bare identifier.
 VENDORED = "(vendored)"
 
+# A `templates/` directory's shared-part collections, never templates themselves.
+PART_DIRECTORIES = frozenset({"instructions", "permissions", "mcp", "skills"})
+
 
 def vendored_root(root: Path) -> Path:
     """Vendored templates get a directory of their own, never merged into the
     project's own fragments — otherwise nothing could later tell template-owned
     content from content you wrote, and sync would be impossible."""
     return root / PROJECT_DIR / TEMPLATES_SUBDIR
+
+
+def vendored_names(root: Path) -> tuple[str, ...]:
+    """Names with a vendored copy in this project, discovered from the tree.
+
+    Shared-part folders are skipped; a directory holding catalog manifests
+    contributes qualified names rather than a name of its own.
+    """
+    base = vendored_root(root)
+    if not base.is_dir():
+        return ()
+    names: list[str] = []
+    for entry in sorted(base.iterdir()):
+        if entry.name in PART_DIRECTORIES and entry.is_dir():
+            continue
+        if entry.is_file() and entry.suffix == ".toml":
+            try:
+                load_catalog(entry)
+            except LoadoutError:
+                continue
+            names.append(entry.name.removesuffix(".toml"))
+            continue
+        if entry.is_dir():
+            qualified = []
+            for child in sorted(entry.iterdir()):
+                if child.is_file() and child.suffix == ".toml":
+                    try:
+                        load_catalog(child)
+                    except LoadoutError:
+                        continue
+                    qualified.append(f"{entry.name}/{child.name.removesuffix('.toml')}")
+            if qualified:
+                names.extend(qualified)
+            else:
+                names.append(entry.name)
+    return tuple(dict.fromkeys(names))
 
 
 def vendored_path(root: Path, name: str) -> Path:
@@ -165,6 +204,28 @@ def record_hash(root: Path, name: str, digest: str) -> None:
     document = f"[{key_name(('template', name))}]\nvendored = {json.dumps(digest)}\n"
     path.write_text(
         apply_paths(path.read_text(encoding="utf-8"), frozenset({key}), document), encoding="utf-8"
+    )
+
+
+def remove_vendored(root: Path, name: str) -> None:
+    """Delete a vendored copy: a directory wholesale, a catalog manifest alone.
+
+    A manifest's shared parts sit in the shared parts folder and may belong to
+    another template, so only the manifest is removed.
+    """
+    local = vendored_path(root, name)
+    if local.is_dir():
+        shutil.rmtree(local)
+        return
+    local.unlink()
+
+
+def unrecord_hash(root: Path, name: str) -> None:
+    """Drop the `[template.<name>]` block so the template resolves from a source."""
+    path = project_config_path(root)
+    key = key_name(("template", name))
+    path.write_text(
+        apply_paths(path.read_text(encoding="utf-8"), frozenset({key}), ""), encoding="utf-8"
     )
 
 

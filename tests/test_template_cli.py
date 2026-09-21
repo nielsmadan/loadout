@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -39,25 +40,25 @@ def test_list_reports_a_project_with_no_templates(
     assert "no templates" in capsys.readouterr().out
 
 
-def test_add_declares_without_copying_anything(
+def test_add_tracked_declares_without_copying_anything(
     bare_project: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
-    assert main(["template", "add", "web", "--root", str(bare_project)]) == 0
+    assert main(["template", "add", "web", "--tracked", "--root", str(bare_project)]) == 0
     assert load_project_config(_config(bare_project)).templates == ("web",)
     assert not (bare_project / "loadout" / "templates").exists()
 
 
 def test_add_refuses_a_name_that_does_not_resolve(bare_project: Path) -> None:
-    assert main(["template", "add", "web", "--root", str(bare_project)]) == 3
+    assert main(["template", "add", "web", "--tracked", "--root", str(bare_project)]) == 3
     assert load_project_config(_config(bare_project)).templates == ()
 
 
-def test_vendor_copies_the_tree_and_records_the_hash(
+def test_add_vendored_copies_the_tree_and_records_the_hash(
     bare_project: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
-    assert main(["template", "vendor", "web", "--root", str(bare_project)]) == 0
+    assert main(["template", "add", "web", "--vendored", "--root", str(bare_project)]) == 0
 
     vendored = bare_project / "loadout" / "templates" / "web"
     assert (vendored / "permissions.toml").read_text(encoding="utf-8") == (
@@ -68,12 +69,109 @@ def test_vendor_copies_the_tree_and_records_the_hash(
     assert config.vendored_hash("web") == tree_hash(vendored)
 
 
-def test_vendor_refuses_when_a_copy_is_already_there(
+def test_add_vendored_refuses_when_a_copy_is_already_there(
     bare_project: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
-    main(["template", "vendor", "web", "--root", str(bare_project)])
-    assert main(["template", "vendor", "web", "--root", str(bare_project)]) == 3
+    main(["template", "add", "web", "--vendored", "--root", str(bare_project)])
+    assert main(["template", "add", "web", "--vendored", "--root", str(bare_project)]) == 3
+
+
+def test_vendor_is_not_a_command(bare_project: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        main(["template", "vendor", "web", "--root", str(bare_project)])
+    assert exit_info.value.code == 2
+    assert "invalid choice: 'vendor'" in capsys.readouterr().err
+
+
+def test_bare_add_refuses_without_a_tty(
+    bare_project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
+    assert main(["template", "add", "--root", str(bare_project)]) == 3
+    assert "mode" in capsys.readouterr().err
+
+
+def test_named_add_without_mode_refuses_without_a_tty(
+    bare_project: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
+    _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
+    assert main(["template", "add", "web", "--root", str(bare_project)]) == 3
+    assert load_project_config(_config(bare_project)).templates == ()
+
+
+def test_bare_add_lists_available_templates_and_takes_a_tracked_choice(
+    bare_project: Path,
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The case `template list` cannot surface: a resolvable template that is
+    not declared yet."""
+    _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    answers = iter(("1", "tracked"))
+    monkeypatch.setattr("builtins.input", lambda _: next(answers))
+    assert main(["template", "add", "--root", str(bare_project)]) == 0
+    out = capsys.readouterr().out
+    assert "Available templates" in out
+    assert "web  (ac)" in out
+    assert load_project_config(_config(bare_project)).templates == ("web",)
+    assert not (bare_project / "loadout" / "templates").exists()
+
+
+def test_bare_add_can_take_a_vendored_choice(
+    bare_project: Path,
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    answers = iter(("1", "vendored"))
+    monkeypatch.setattr("builtins.input", lambda _: next(answers))
+    assert main(["template", "add", "--root", str(bare_project)]) == 0
+    vendored = bare_project / "loadout" / "templates" / "web"
+    assert vendored.is_dir()
+    assert load_project_config(_config(bare_project)).vendored_hash("web") == tree_hash(vendored)
+
+
+def test_bare_add_with_nothing_available_refuses(
+    bare_project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    assert main(["template", "add", "--root", str(bare_project)]) == 3
+    assert load_project_config(_config(bare_project)).templates == ()
+
+
+def test_add_changes_a_tracked_template_to_vendored(
+    bare_project: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
+    assert main(["template", "add", "web", "--tracked", "--root", str(bare_project)]) == 0
+    assert main(["template", "add", "web", "--vendored", "--root", str(bare_project)]) == 0
+    vendored = bare_project / "loadout" / "templates" / "web"
+    assert (vendored / "permissions.toml").is_file()
+    config = load_project_config(_config(bare_project))
+    assert config.templates == ("web",)
+    assert config.vendored_hash("web") == tree_hash(vendored)
+
+
+def test_add_changes_a_vendored_template_to_tracked(
+    bare_project: Path,
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
+    assert main(["template", "add", "web", "--vendored", "--root", str(bare_project)]) == 0
+    capsys.readouterr()
+    assert main(["template", "add", "web", "--tracked", "--root", str(bare_project)]) == 0
+    assert "changed web to tracked" in capsys.readouterr().out
+    assert not (bare_project / "loadout" / "templates" / "web").exists()
+    config = load_project_config(_config(bare_project))
+    assert config.templates == ("web",)
+    assert config.vendored_hash("web") is None
 
 
 def test_list_reports_a_vendored_template_as_clean(
@@ -83,7 +181,7 @@ def test_list_reports_a_vendored_template_as_clean(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
-    main(["template", "vendor", "web", "--root", str(bare_project)])
+    main(["template", "add", "web", "--vendored", "--root", str(bare_project)])
     capsys.readouterr()
     assert main(["template", "list", "--root", str(bare_project)]) == 0
     out = capsys.readouterr().out
@@ -98,7 +196,7 @@ def test_list_reports_a_modified_vendored_template(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
-    main(["template", "vendor", "web", "--root", str(bare_project)])
+    main(["template", "add", "web", "--vendored", "--root", str(bare_project)])
     (bare_project / "loadout" / "templates" / "web" / "permissions.toml").write_text(
         '[shell]\nallow = ["mine"]\n', encoding="utf-8"
     )
@@ -114,7 +212,7 @@ def test_list_reports_a_declared_template_and_the_source_it_came_from(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
-    main(["template", "add", "web", "--root", str(bare_project)])
+    main(["template", "add", "web", "--tracked", "--root", str(bare_project)])
     capsys.readouterr()
     assert main(["template", "list", "--root", str(bare_project)]) == 0
     out = capsys.readouterr().out
@@ -143,7 +241,7 @@ def test_sync_updates_an_unmodified_copy(
     bare_project: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     upstream = _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
-    main(["template", "vendor", "web", "--root", str(bare_project)])
+    main(["template", "add", "web", "--vendored", "--root", str(bare_project)])
     (upstream / "permissions.toml").write_text(
         '[shell]\nallow = ["vite", "esbuild"]\n', encoding="utf-8"
     )
@@ -156,7 +254,7 @@ def test_sync_rerecords_the_hash_so_the_copy_stays_clean(
     bare_project: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     upstream = _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
-    main(["template", "vendor", "web", "--root", str(bare_project)])
+    main(["template", "add", "web", "--vendored", "--root", str(bare_project)])
     (upstream / "permissions.toml").write_text('[shell]\nallow = ["esbuild"]\n', encoding="utf-8")
     main(["template", "sync", "web", "--root", str(bare_project)])
     config = load_project_config(_config(bare_project))
@@ -167,7 +265,7 @@ def test_sync_carries_a_file_the_upstream_added(
     bare_project: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     upstream = _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
-    main(["template", "vendor", "web", "--root", str(bare_project)])
+    main(["template", "add", "web", "--vendored", "--root", str(bare_project)])
     (upstream / "skills" / "s").mkdir(parents=True)
     (upstream / "skills" / "s" / "SKILL.md").write_text("---\nname: s\n---\n", encoding="utf-8")
     assert main(["template", "sync", "web", "--root", str(bare_project)]) == 0
@@ -179,7 +277,7 @@ def test_sync_drops_a_file_the_upstream_removed(
 ) -> None:
     upstream = _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
     (upstream / "extra.toml").write_text("[shell]\n", encoding="utf-8")
-    main(["template", "vendor", "web", "--root", str(bare_project)])
+    main(["template", "add", "web", "--vendored", "--root", str(bare_project)])
     (upstream / "extra.toml").unlink()
     assert main(["template", "sync", "web", "--root", str(bare_project)]) == 0
     assert not (bare_project / "loadout" / "templates" / "web" / "extra.toml").exists()
@@ -189,7 +287,7 @@ def test_sync_refuses_a_modified_copy_and_changes_nothing(
     bare_project: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     upstream = _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
-    main(["template", "vendor", "web", "--root", str(bare_project)])
+    main(["template", "add", "web", "--vendored", "--root", str(bare_project)])
     vendored = bare_project / "loadout" / "templates" / "web" / "permissions.toml"
     vendored.write_text('[shell]\nallow = ["vite", "mine"]\n', encoding="utf-8")
     (upstream / "permissions.toml").write_text('[shell]\nallow = ["esbuild"]\n', encoding="utf-8")
@@ -204,7 +302,7 @@ def test_sync_shows_the_diff_it_refused_to_apply(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     upstream = _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
-    main(["template", "vendor", "web", "--root", str(bare_project)])
+    main(["template", "add", "web", "--vendored", "--root", str(bare_project)])
     (bare_project / "loadout" / "templates" / "web" / "permissions.toml").write_text(
         '[shell]\nallow = ["mine"]\n', encoding="utf-8"
     )
@@ -223,7 +321,7 @@ def test_sync_reports_an_already_current_copy(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
-    main(["template", "vendor", "web", "--root", str(bare_project)])
+    main(["template", "add", "web", "--vendored", "--root", str(bare_project)])
     capsys.readouterr()
     assert main(["template", "sync", "web", "--root", str(bare_project)]) == 0
     assert "up to date" in capsys.readouterr().out
@@ -233,7 +331,7 @@ def test_sync_refuses_a_template_that_is_not_vendored(
     bare_project: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
-    main(["template", "add", "web", "--root", str(bare_project)])
+    main(["template", "add", "web", "--tracked", "--root", str(bare_project)])
     assert main(["template", "sync", "web", "--root", str(bare_project)]) == 3
 
 
@@ -245,7 +343,7 @@ def test_check_notes_a_modified_vendored_template_without_failing(
 ) -> None:
     """A vendored copy is source, so editing it is not drift — see ADR 0014."""
     _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
-    main(["template", "vendor", "web", "--root", str(bare_project)])
+    main(["template", "add", "web", "--vendored", "--root", str(bare_project)])
     (bare_project / "loadout" / "templates" / "web" / "permissions.toml").write_text(
         '[shell]\nallow = ["mine"]\n', encoding="utf-8"
     )
@@ -262,7 +360,7 @@ def test_check_is_silent_about_a_clean_vendored_template(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
-    main(["template", "vendor", "web", "--root", str(bare_project)])
+    main(["template", "add", "web", "--vendored", "--root", str(bare_project)])
     main(["sync", "--root", str(bare_project)])
     capsys.readouterr()
     assert main(["check", "--root", str(bare_project)]) == 0
@@ -274,7 +372,7 @@ def test_check_still_fails_on_real_drift_alongside_a_diverged_template(
 ) -> None:
     """The note must not swallow the exit code check exists to produce."""
     _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
-    main(["template", "vendor", "web", "--root", str(bare_project)])
+    main(["template", "add", "web", "--vendored", "--root", str(bare_project)])
     main(["sync", "--root", str(bare_project)])
     (bare_project / "loadout" / "templates" / "web" / "permissions.toml").write_text(
         '[shell]\nallow = ["mine"]\n', encoding="utf-8"
@@ -310,7 +408,7 @@ def test_sync_refuses_a_copy_with_no_recorded_provenance_and_changes_nothing(
     copied anyway would satisfy an exit-code check on its own.
     """
     upstream = _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
-    main(["template", "vendor", "web", "--root", str(bare_project)])
+    main(["template", "add", "web", "--vendored", "--root", str(bare_project)])
     vendored = bare_project / "loadout" / "templates" / "web" / "permissions.toml"
     vendored.write_text('[shell]\nallow = ["vite", "mine"]\n', encoding="utf-8")
     (upstream / "permissions.toml").write_text('[shell]\nallow = ["esbuild"]\n', encoding="utf-8")
@@ -333,7 +431,7 @@ def test_sync_still_self_heals_a_clean_copy_with_no_recorded_provenance(
     not reach a clean copy — it re-records the hash instead, which is the only way
     a repo in this state gets its provenance back."""
     _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
-    main(["template", "vendor", "web", "--root", str(bare_project)])
+    main(["template", "add", "web", "--vendored", "--root", str(bare_project)])
     vendored = bare_project / "loadout" / "templates" / "web"
     _strip_provenance(bare_project)
     assert load_project_config(_config(bare_project)).vendored_hash("web") is None
@@ -355,7 +453,7 @@ def test_check_reports_a_vendored_copy_with_no_recorded_provenance(
     missing hash read there as "no divergence" and check said nothing at all.
     Reported and not failed, for ADR 0014's reason: a vendored copy is source."""
     _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
-    main(["template", "vendor", "web", "--root", str(bare_project)])
+    main(["template", "add", "web", "--vendored", "--root", str(bare_project)])
     main(["sync", "--root", str(bare_project)])
     _strip_provenance(bare_project)
     capsys.readouterr()
