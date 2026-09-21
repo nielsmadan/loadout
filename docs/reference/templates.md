@@ -246,8 +246,9 @@ been modified since it was vendored?*
 - **no recorded hash at all** → unverifiable; nothing can tell the user's edits from the
   source's, so `sync` refuses and `check` reports it
 
-That third state is not hypothetical. `loadout harness add` rewrote `loadout/config.toml` from
-the harness list alone until 2026-08-17, destroying every `[template.<name>] vendored` block
+That third state is not hypothetical. Until 2026-08-17, `loadout harness add` (a command since
+removed) rewrote `loadout/config.toml` from
+the harness list alone, destroying every `[template.<name>] vendored` block
 along with `templates` and `instructions`, so repos that ran it are in it today. The message to
 search for is **"has no recorded provenance"**. `template vendor <name>` takes the source
 wholesale and records a hash again; so does `template sync` when the copy still matches the

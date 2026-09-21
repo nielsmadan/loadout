@@ -206,7 +206,7 @@ acceptance: no record means the guard behaves exactly as it did before one exist
 confuse it with `record.py`, which records owned key *names* beside a fragment in the source
 repo and is committed.
 `project.py` (harness preset) is project scope; `scaffold.py` holds both scopes' scaffolding
-(`init project`, `harness add`, `init global`).
+(`init project`, `init global`).
 `templates.py` resolves a template *name* — the project's vendored copy first, then the
 `templates/` directory of every source the machine's global manifest declares — and owns the tree
 hash `template sync` compares a vendored copy against. A template is a source, so it merges

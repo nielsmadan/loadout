@@ -62,7 +62,6 @@ CLI integration is covered in `tests/test_init_workflow.py` and `tests/test_cli.
 | interactive choice/decline and cancellation before mutation | `test_interactive_agent_and_starter_choices_then_decline`, `test_global_apply_cancellation_does_not_mutate` |
 | preview values stay private; malformed mapping shapes are usage errors | `test_preview_never_prints_secret_values`, `test_invalid_mapping_shape_is_usage_error` |
 | resume/recover JSON results and preserved recovery conflicts | `test_cli_resume_and_recover_use_the_reported_journal`, `test_cli_recovery_conflicts_report_paths_and_nonzero_status` |
-| native harness-add avoids false membership | `test_native_harness_add_refuses_without_creating_false_membership` |
 
 Native bundled-skill lifecycle is covered in `tests/test_native_skill_installation.py`:
 
@@ -532,6 +531,8 @@ source rather than generated output. See [templates](templates.md) and
 | `p-opencode-off-is-off` | an explicit `=0` still reports, because the user has said the opposite of what silence would imply | `test_an_explicit_off_is_not_mistaken_for_on` |
 | `p-claim` | two unrelated preset entries naming one document fail instead of silently overwriting each other | `test_two_agents_may_not_share_one_document` |
 | `p-claim-exempts-instructions` | the shared `AGENTS.md` survives the guard, since its content is agent-independent by construction | `test_the_shared_instruction_document_is_still_allowed` |
+| `p-gitignore-sync` | sync appends `.gitignore` entries for every configured harness's generated paths, idempotently on repeat syncs and without requiring a Git repository | `test_sync_extends_gitignore_when_a_harness_is_added_to_the_list`, `test_sync_maintains_gitignore_without_a_git_repository` in `tests/test_deployment.py` |
+| `p-gitignore-stale` | removing a harness from the list leaves its `.gitignore` entry in place; entries are appended, never retired | `test_sync_leaves_gitignore_entries_of_removed_harnesses_in_place` in `tests/test_deployment.py` |
 
 ## Generated hook adapters
 

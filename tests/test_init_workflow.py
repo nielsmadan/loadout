@@ -279,21 +279,6 @@ def test_noninteractive_apply_requires_explicit_approval(tmp_path, capsys):
     assert list(tmp_path.iterdir()) == []
 
 
-def test_native_harness_add_refuses_without_creating_false_membership(tmp_path, capsys):
-    _repo(tmp_path)
-    assert (
-        loadout.main(["init", "project", "--harness", "claude", "--root", str(tmp_path), "--yes"])
-        == 0
-    )
-    config = tmp_path / "loadout/config.toml"
-    before = config.read_bytes()
-    nested = tmp_path / "src"
-    nested.mkdir()
-    assert loadout.main(["harness", "add", "pi", "--root", str(nested)]) == 3
-    assert "explicit artifact routes" in capsys.readouterr().err
-    assert config.read_bytes() == before
-
-
 def test_preview_never_prints_secret_values(tmp_path, capsys):
     settings = tmp_path / ".claude/settings.json"
     settings.parent.mkdir()

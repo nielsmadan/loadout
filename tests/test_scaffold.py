@@ -9,8 +9,8 @@ import pytest
 from loadout import scaffold
 from loadout.errors import LoadoutError
 from loadout.machine import load_machine_config
-from loadout.project import load_project_config, project_config_path
-from loadout.scaffold import add_harness, init_global, init_project
+from loadout.project import project_config_path
+from loadout.scaffold import init_global, init_project
 
 pytestmark = pytest.mark.integration
 
@@ -181,43 +181,6 @@ def test_reports_every_action_taken(tmp_path: Path) -> None:
     assert any(".gitignore" in a for a in actions)
 
 
-def test_adds_the_harness_to_the_config(tmp_path: Path) -> None:
-    root = git_repo(tmp_path)
-    init_project(root, ("claude",))
-    add_harness(root, "codex")
-    assert (root / "loadout" / "config.toml").read_text(encoding="utf-8") == (
-        'harnesses = ["claude", "codex"]\n'
-    )
-
-
-def test_adds_the_new_harness_outputs_to_gitignore(tmp_path: Path) -> None:
-    root = git_repo(tmp_path)
-    init_project(root, ("claude",))
-    add_harness(root, "codex")
-    ignored = (root / ".gitignore").read_text(encoding="utf-8").splitlines()
-    assert ".codex/rules/permissions.rules" in ignored
-
-
-def test_adding_an_existing_harness_is_an_error(tmp_path: Path) -> None:
-    root = git_repo(tmp_path)
-    init_project(root, ("claude",))
-    with pytest.raises(LoadoutError, match="already enabled"):
-        add_harness(root, "claude")
-
-
-def test_adding_an_unknown_harness_is_an_error(tmp_path: Path) -> None:
-    root = git_repo(tmp_path)
-    init_project(root, ("claude",))
-    with pytest.raises(LoadoutError, match="emacs"):
-        add_harness(root, "emacs")
-
-
-def test_adding_before_init_is_an_error(tmp_path: Path) -> None:
-    root = git_repo(tmp_path)
-    with pytest.raises(LoadoutError, match="not found"):
-        add_harness(root, "codex")
-
-
 def test_init_global_creates_the_source_and_machine_config(tmp_path: Path) -> None:
     source_parent = tmp_path / "home"
     config_path = tmp_path / "cfg" / "loadout" / "config.toml"
@@ -357,47 +320,6 @@ def test_init_is_silent_when_a_machine_config_exists(tmp_path: Path) -> None:
     config_path.write_text('source = "."\n', encoding="utf-8")
     actions = init_project(root, ("claude",), machine_config_path=config_path)
     assert not any("init global" in action for action in actions)
-
-
-def test_harness_add_keeps_everything_else_in_the_config(tmp_path: Path) -> None:
-    """`harness add` rewrote config.toml from the harness list alone, discarding
-    `templates`, `instructions` and the `[template.<name>] vendored` hash. Losing
-    the hash is the worst of the three: `template sync` then cannot tell a clean
-    vendored copy from an edited one, so it silently stops refusing to overwrite."""
-    root = git_repo(tmp_path)
-    init_project(root, ("claude",))
-    path = project_config_path(root)
-    path.write_text(
-        'harnesses = ["claude"]\n'
-        'templates = ["web"]\n'
-        'instructions = ["conventions"]\n'
-        "\n"
-        "[template.web]\n"
-        'vendored = "sha256:abc123"\n',
-        encoding="utf-8",
-    )
-
-    add_harness(root, "codex")
-
-    config = load_project_config(path)
-    assert config.harnesses == ("claude", "codex")
-    assert config.templates == ("web",)
-    assert config.instructions == ("conventions",)
-    assert config.vendored_hash("web") == "sha256:abc123"
-
-
-def test_harness_add_preserves_the_comments_around_the_key(tmp_path: Path) -> None:
-    """The file is hand-maintained source, so a re-serialised rewrite would drop
-    whatever its author wrote around the key — the reason `template declare`
-    rewrites line-wise too."""
-    root = git_repo(tmp_path)
-    init_project(root, ("claude",))
-    path = project_config_path(root)
-    path.write_text('# why these harnesses\nharnesses = ["claude"]\n', encoding="utf-8")
-
-    add_harness(root, "pi")
-
-    assert "# why these harnesses" in path.read_text(encoding="utf-8")
 
 
 def test_gitignore_leaves_instruction_documents_alone_until_one_is_declared(

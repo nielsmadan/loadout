@@ -34,8 +34,9 @@ from .project import (
     PROJECT_DIR,
     load_project_config,
     project_config_path,
+    project_outputs,
 )
-from .scaffold import add_harness, init_global, init_project
+from .scaffold import _append_gitignore, init_global, init_project
 from .skill_installation import (
     SkillSourceLocation,
     SourceSkillState,
@@ -93,12 +94,6 @@ def cmd_init_global(source: Path | None, force: bool = False) -> int:
         response = input(f"Directory to hold the global loadout source [{default}]: ").strip()
         source = Path(response) if response else default
     for action in init_global(source.expanduser(), machine_config_path(), force=force):
-        print(action)
-    return 0
-
-
-def cmd_harness_add(root: Path, harness: str) -> int:
-    for action in add_harness(root, harness):
         print(action)
     return 0
 
@@ -402,6 +397,15 @@ def cmd_sync(root: Path, profile: str = "default", force: bool = False) -> int:
         action = "wrote" if path.exists() else "retired"
         print(f"{action} {_display(path, root)}")
     record_written(root, profile, _entries_for(outputs))
+    if project_config_path(root).is_file():
+        # Root-anchored, the form init's migration writes: a bare "CLAUDE.md"
+        # would also ignore loadout/instructions/native/claude/CLAUDE.md, and
+        # `git add loadout` then silently drops that source from the index.
+        entries = [
+            f"/{path}" for path in project_outputs(load_project_config(project_config_path(root)))
+        ]
+        if _append_gitignore(root, entries):
+            print(f"added {len(entries)} entries to .gitignore")
     _report_notices(root, profile)
     return 0
 

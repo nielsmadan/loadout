@@ -16,15 +16,14 @@ From the repository root:
 loadout init project --harness claude --harness codex
 ```
 
-Use `loadout harness add` for subsequent additions:
+For subsequent additions, add the name to `harnesses` in `loadout/config.toml`:
 
-```sh
-loadout harness add pi
-loadout sync
+```toml
+harnesses = ["claude", "codex", "pi"]
 ```
 
-Both commands update the output paths in `.gitignore`. You can also target a repository
-explicitly with `--root /path/to/project`.
+`loadout sync` then writes the new harness's outputs and extends `.gitignore` to cover them.
+You can also target a repository explicitly with `--root /path/to/project`.
 
 ## Shared and personal sources
 

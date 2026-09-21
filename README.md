@@ -599,9 +599,9 @@ adoption from unresolved installer, template and ownership refusals.
 
 Legacy project configs retain their preset behavior: `loadout/permissions.toml` is shared,
 `permissions.local.toml` is personal, and `config.toml` selects instructions and templates.
-`loadout harness add pi` adds legacy preset routes. Native projects receive an actionable refusal
-because adding a name alone would not establish sources or destinations; define their explicit
-routes with the bundled skill first.
+To enable another harness, add it to `harnesses` in `loadout/config.toml` and run
+`loadout sync`. A native project also needs routes for the new harness in its artifacts file,
+authored with the bundled skill, because a name alone establishes no source or destination.
 
 Legacy preset harnesses and their outputs (native routes can preserve additional artifacts):
 

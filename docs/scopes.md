@@ -123,8 +123,9 @@ nobody needs given all-or-nothing adoption. Revisit only if that adoption model 
 Consequences:
 
 - `loadout init project --harness <name>` (repeatable) scaffolds both sources and adds the personal
-  source plus every generated output to `.gitignore`; `loadout harness add <name>` enables one
-  more harness on an already-initialised project and extends `.gitignore` the same way. A
+  source plus every generated output to `.gitignore`; a harness added later is a `harnesses` edit
+  in `loadout/config.toml`, and `sync` extends `.gitignore` the same way — entries are appended,
+  never removed. A
   committed `.gitignore` rather than `.git/info/exclude`, which is per-clone and silently fails
   to apply on a fresh checkout. `init` warns when a tracked `CLAUDE.md`, `AGENTS.md` or
   `GEMINI.md` exists and proceeds — that file is now something loadout generates as soon as an

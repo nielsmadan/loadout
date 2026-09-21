@@ -279,6 +279,14 @@ def test_explain_is_not_a_command(root: Path, capsys) -> None:
     assert "invalid choice: 'explain'" in capsys.readouterr().err
 
 
+def test_harness_is_not_a_command(root: Path, capsys) -> None:
+    """Removed for 1.0: adding a harness is a `harnesses` list edit plus `sync`."""
+    with pytest.raises(SystemExit) as exit_info:
+        loadout.main(["harness", "add", "pi", "--root", str(root)])
+    assert exit_info.value.code == 2
+    assert "invalid choice: 'harness'" in capsys.readouterr().err
+
+
 def test_sync_with_unknown_fragment_returns_3(root: Path, capsys) -> None:
     manifest = root / "loadout.toml"
     manifest.write_text(

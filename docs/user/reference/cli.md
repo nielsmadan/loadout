@@ -72,13 +72,15 @@ extends the generated paths in `.gitignore`.
 
 ## Add a project harness
 
-```sh
-loadout harness add opencode
-loadout harness add pi --root /path/to/repository
+Add the name to `harnesses` in `loadout/config.toml`, then run `loadout sync`:
+
+```toml
+harnesses = ["claude", "opencode", "pi"]
 ```
 
-The accepted names are `claude`, `codex`, `droid`, `opencode`, and `pi`.
-Run `loadout sync` after changing the enabled set.
+The accepted names are `claude`, `codex`, `droid`, `opencode`, and `pi`. `sync` writes the new
+harness's outputs and extends `.gitignore` to cover every generated path; entries are appended
+only, so removing a harness from the list leaves its entry in place.
 
 ## Templates
 

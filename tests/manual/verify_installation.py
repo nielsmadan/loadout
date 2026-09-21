@@ -73,7 +73,6 @@ for args in [
     ["sync", "--help"],
     ["check", "--help"],
     ["init", "--help"],
-    ["harness", "add", "--help"],
     ["template", "add", "--help"],
     ["template", "list", "--help"],
     ["template", "vendor", "--help"],

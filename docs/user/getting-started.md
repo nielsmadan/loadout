@@ -109,14 +109,14 @@ rather than the generated `CLAUDE.md` or `AGENTS.md`.
 
 ## Add another agent
 
-Enable OpenCode in the same project:
+Enable OpenCode in the same project by adding it to `harnesses` in `loadout/config.toml`:
 
-```sh
-loadout harness add opencode
-loadout sync
+```toml
+harnesses = ["claude", "codex", "opencode"]
 ```
 
-OpenCode uses the existing `AGENTS.md` and receives its own `opencode.json`.
+Then run `loadout sync`. OpenCode uses the existing `AGENTS.md` and receives its own
+`opencode.json`, and `.gitignore` gains its generated paths.
 For OpenCode skills, also follow the [setup note](reference/harnesses.md#opencode-skills).
 
 ## Use this in an existing repository

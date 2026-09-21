@@ -9,7 +9,6 @@ from pathlib import Path
 from . import __version__
 from .commands import (
     cmd_check,
-    cmd_harness_add,
     cmd_skill_install,
     cmd_skill_status,
     cmd_skill_uninstall,
@@ -19,7 +18,6 @@ from .commands import (
     cmd_template_sync,
     cmd_template_vendor,
 )
-from .discovery import project_root
 from .errors import LoadoutError, UsageError
 from .git_hook_commands import run_hook
 from .git_hooks import EVENTS, install_hooks, status_hooks, uninstall_hooks
@@ -96,14 +94,6 @@ def build_parser() -> argparse.ArgumentParser:
         ("recover", "restore unchanged transaction postimages; keep successful baseline"),
     ):
         _add_init_recovery(init_subparsers.add_parser(sub_name, help=sub_help))
-
-    harness = subparsers.add_parser("harness", help="manage this project's enabled harnesses")
-    harness_subparsers = harness.add_subparsers(dest="harness_command")
-    harness_add = harness_subparsers.add_parser(
-        "add", help="enable an additional harness for this project"
-    )
-    harness_add.add_argument("name", help="harness to enable")
-    add_root(harness_add)
 
     template = subparsers.add_parser("template", help="manage this project's templates")
     template_subparsers = template.add_subparsers(dest="template_command")
@@ -369,8 +359,6 @@ def _dispatch(args: argparse.Namespace) -> int:
         )
     if args.command == "init":
         return _dispatch_init(args)
-    if args.command == "harness":
-        return cmd_harness_add(project_root(args.root), args.name)
     if args.command == "template":
         return _dispatch_template(args)
     return _dispatch_outputs(args)
@@ -421,8 +409,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_usage(file=sys.stderr)
         return 2
     if (
-        (args.command == "harness" and args.harness_command != "add")
-        or (args.command == "template" and args.template_command is None)
+        (args.command == "template" and args.template_command is None)
         or (args.command == "integrate" and args.integrate_command is None)
         or (
             args.command == "integrate"

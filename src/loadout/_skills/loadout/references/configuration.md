@@ -122,8 +122,8 @@ agent. During the legacy transition, also recognize explicit `[instructions.<nam
 name, renderer, and destination do not establish one harness unambiguously, ask rather than
 guessing or enabling an agent.
 Also include artifact records' `agents`, filtered by the requested category. Agent membership does
-not itself create an output route. `harness add` refuses native projects until their producer
-routes are explicitly designed; do not add a harness name alone and claim it receives configuration.
+not itself create an output route; a native project needs routes for a harness before it receives
+anything. Do not add a harness name alone and claim it receives configuration.
 
 A generic request covers every configured agent supporting the artifact. A request that names an
 agent covers only that agent. Never enable a new harness as a side effect. Partial support means
