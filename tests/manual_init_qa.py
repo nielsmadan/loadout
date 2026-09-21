@@ -164,7 +164,7 @@ def _project_example(root, before, evidence):
 def test_empty_project_preview_approval_and_repeat(tmp_path, evidence):
     root = _repository(tmp_path / "empty project ü")
     initial = _git(root, "rev-parse", "HEAD")
-    arguments = ["init", "--project", "--json"]
+    arguments = ["init", "project", "--json"]
     for agent in ("claude", "codex", "opencode", "pi"):
         arguments.extend(("--harness", agent))
     preview = json.loads(evidence.cli(root, *arguments, "--dry-run").stdout)
@@ -203,7 +203,7 @@ def test_populated_project_sources_index_and_drift(tmp_path, evidence):
     (root / "notes.txt").write_text("staged note\n")
     _git(root, "add", "notes.txt")
     (root / "notes.txt").write_text("unstaged note\n")
-    arguments = ["init", "--project", "--harness", "claude", "--harness", "codex", "--json"]
+    arguments = ["init", "project", "--harness", "claude", "--harness", "codex", "--json"]
     example_before = {
         name: (root / name).read_bytes().decode()
         for name in (".claude/settings.json", "CLAUDE.md", "AGENTS.md")
@@ -248,7 +248,7 @@ def test_global_runtime_fields_and_source_managed_skill(tmp_path, fake_home, evi
     pi = fake_home / ".pi/agent/settings.json"
     pi.parent.mkdir(parents=True)
     pi.write_text(json.dumps({"defaultModel": "qa-model", "lastChangelogVersion": "qa-runtime"}))
-    arguments = ["init", "--global", "--source", str(root), "--json"]
+    arguments = ["init", "global", "--source", str(root), "--json"]
     for agent in ("claude", "codex", "opencode", "pi"):
         arguments.extend(("--harness", agent))
     result = json.loads(evidence.cli(root, *arguments, "--yes").stdout)
@@ -302,7 +302,7 @@ def test_global_conflicting_copies_require_selection(tmp_path, fake_home, eviden
     )
     arguments = [
         "init",
-        "--global",
+        "global",
         "--source",
         str(root),
         "--harness",
@@ -333,7 +333,7 @@ def test_global_conflicting_copies_require_selection(tmp_path, fake_home, eviden
 @pytest.mark.parametrize("starter", ["none", "frontend", "backend"])
 def test_starter_selection_through_cli(tmp_path, evidence, starter):
     root = _repository(tmp_path / starter)
-    arguments = ["init", "--project", "--harness", "codex", "--starter", starter, "--json"]
+    arguments = ["init", "project", "--harness", "codex", "--starter", starter, "--json"]
     preview = json.loads(evidence.cli(root, *arguments, "--dry-run").stdout)
     assert preview["complete"]
     result = json.loads(evidence.cli(root, *arguments, "--yes").stdout)
@@ -379,7 +379,7 @@ def _read_pty(descriptor, process, predicate, timeout=30):
 def test_interactive_confirmation_cancellation(tmp_path, evidence, action):
     root = _repository(tmp_path / action)
     before = _git(root, "rev-parse", "HEAD")
-    command = [*CLI, "init", "--project", "--harness", "codex", "--starter", "none"]
+    command = [*CLI, "init", "project", "--harness", "codex", "--starter", "none"]
     master, slave = os.openpty()
     process = subprocess.Popen(
         command, cwd=root, stdin=slave, stdout=slave, stderr=slave, start_new_session=True
@@ -439,7 +439,7 @@ def test_pending_checkpoint_failure_recovery_and_retry(tmp_path, evidence):
         "  sleep 0.05\n  i=$((i + 1))\ndone\nexit 1\n"
     )
     hook.chmod(0o755)
-    arguments = ["init", "--project", "--harness", "codex", "--yes", "--json"]
+    arguments = ["init", "project", "--harness", "codex", "--yes", "--json"]
     command = [*CLI, *arguments]
     process = subprocess.Popen(
         command,
@@ -483,7 +483,7 @@ def test_pending_checkpoint_failure_recovery_and_retry(tmp_path, evidence):
     assert journal.is_file()
     assert _git(root, "rev-parse", "HEAD") == initial
     recovered = json.loads(
-        evidence.cli(root, "init", "--recover", str(journal), "--yes", "--json").stdout
+        evidence.cli(root, "init", "recover", str(journal), "--yes", "--json").stdout
     )
     assert recovered["status"] == "recovered"
     assert (root / "AGENTS.md").read_text() == "Original instructions.\n"
@@ -506,7 +506,7 @@ def test_interruption_after_baseline_resumes_without_another_checkpoint(tmp_path
     hook.chmod(0o755)
     failed = json.loads(
         evidence.cli(
-            root, "init", "--project", "--harness", "codex", "--yes", "--json", expected=1
+            root, "init", "project", "--harness", "codex", "--yes", "--json", expected=1
         ).stdout
     )
     assert failed["status"] == "interrupted"
@@ -521,7 +521,7 @@ def test_interruption_after_baseline_resumes_without_another_checkpoint(tmp_path
     external.unlink()
     external.parent.rmdir()
     resumed = json.loads(
-        evidence.cli(root, "init", "--resume", str(journal), "--yes", "--json").stdout
+        evidence.cli(root, "init", "resume", str(journal), "--yes", "--json").stdout
     )
     assert resumed["status"] == "complete"
     assert _git(root, "rev-parse", "HEAD") == baseline
@@ -532,7 +532,7 @@ def test_interruption_after_baseline_resumes_without_another_checkpoint(tmp_path
 
 def test_prepare_source_managed_host_fixture(tmp_path, fake_home, evidence):
     root = _repository(tmp_path / "host fixture")
-    evidence.cli(root, "init", "--project", "--harness", "claude", "--yes", "--json")
+    evidence.cli(root, "init", "project", "--harness", "claude", "--yes", "--json")
     config = tomllib.loads((root / "loadout/config.toml").read_text())
     artifacts = tomllib.loads((root / "loadout" / config["artifacts"]).read_text())["artifact"]
     (route,) = [

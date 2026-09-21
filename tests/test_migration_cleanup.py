@@ -95,15 +95,15 @@ def test_cli_cleanup_failure_retains_its_journal_and_can_retry(
         return unlink(path, *args, **kwargs)
 
     action = "resume" if status == "complete" else "recover"
-    args = ["init", f"--{action}", str(journal.path), "--yes", "--json"]
+    args = ["init", action, str(journal.path), "--yes", "--json"]
     with monkeypatch.context() as patch:
         patch.setattr(Path, "unlink", interrupt)
         assert main(args) == 1
     output = capsys.readouterr()
     assert json.loads(output.out) == {"status": "interrupted", "journal": str(journal.path)}
     assert "cleanup interrupted" in output.err
-    assert f"Resume: loadout init --resume {journal.path} --yes" in output.err
-    assert f"Recover: loadout init --recover {journal.path} --yes" in output.err
+    assert f"Resume: loadout init resume {journal.path} --yes" in output.err
+    assert f"Recover: loadout init recover {journal.path} --yes" in output.err
     terminal = "complete" if action == "resume" else "recovered"
     assert Journal.load(journal.path).status == terminal
     assert main(args) == 0

@@ -13,7 +13,7 @@ from .migration_models import RootMapping, SourceSelection
 @dataclass(frozen=True)
 class InitOptions:
     root: Path
-    scope: ArtifactScope | None = None
+    scope: ArtifactScope
     source: Path | None = None
     agents: tuple[str, ...] = ()
     mappings: tuple[RootMapping, ...] = ()

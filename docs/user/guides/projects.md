@@ -13,7 +13,7 @@ agent files, including their local permission choices.
 From the repository root:
 
 ```sh
-loadout init --harness claude --harness codex
+loadout init project --harness claude --harness codex
 ```
 
 Use `loadout harness add` for subsequent additions:
@@ -60,7 +60,7 @@ After adding an instruction order to a project that previously generated only pe
 rerun `loadout init` with the same current harness list to add the new documents to `.gitignore`:
 
 ```sh
-loadout init --harness claude --harness codex
+loadout init project --harness claude --harness codex
 loadout sync
 ```
 

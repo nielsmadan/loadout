@@ -79,7 +79,7 @@ def _materialize(plan: MigrationPlan, root: Path) -> None:
 
 
 def _init(root: Path, starter: str | None = None) -> list[str]:
-    args = ["init", "--project", "--harness", "claude", "--root", str(root)]
+    args = ["init", "project", "--harness", "claude", "--root", str(root)]
     return args + (["--starter", starter] if starter else [])
 
 
@@ -719,30 +719,13 @@ def test_native_template_sync_refuses_unsupported_upstream_without_changes(
 
 
 @pytest.mark.parametrize("starter", STARTERS)
-def test_global_activation_and_unresolved_project_do_not_mutate(
+def test_unresolved_project_starter_does_not_mutate(
     tmp_path: Path, starter: str, capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert (
-        main(
-            [
-                "init",
-                "--global",
-                "--harness",
-                "claude",
-                "--root",
-                str(tmp_path),
-                "--starter",
-                starter,
-                "--yes",
-                "--json",
-            ]
-        )
+        main(["init", "project", "--root", str(tmp_path), "--starter", starter, "--yes", "--json"])
         == 2
     )
-    preview = json.loads(capsys.readouterr().out)
-    assert preview["issues"][-1]["code"] == "starter-scope"
-    assert list(tmp_path.iterdir()) == []
-    assert main(["init", "--root", str(tmp_path), "--starter", starter, "--yes", "--json"]) == 2
     preview = json.loads(capsys.readouterr().out)
     assert preview["issues"] and not preview["complete"]
     assert list(tmp_path.iterdir()) == []
@@ -780,7 +763,7 @@ def test_starter_source_and_output_participate_in_resume_and_recovery(
     with monkeypatch.context() as patch:
         if action == "recover":
             patch.setattr(migration_transaction, "_finish", fail)
-        assert main(["init", "--resume", result["journal"], "--yes", "--json"]) == (
+        assert main(["init", "resume", result["journal"], "--yes", "--json"]) == (
             1 if action == "recover" else 0
         )
     resumed = json.loads(capsys.readouterr().out)
@@ -792,7 +775,7 @@ def test_starter_source_and_output_participate_in_resume_and_recovery(
         assert (vendored_path(tmp_path, "frontend") / "instructions.md").is_file()
         return
     assert resumed["journal"] == result["journal"]
-    assert main(["init", "--recover", result["journal"], "--yes", "--json"]) == 0
+    assert main(["init", "recover", result["journal"], "--yes", "--json"]) == 0
     recovered = json.loads(capsys.readouterr().out)
     assert recovered["journal"] is None
     assert not Path(result["journal"]).parent.exists()

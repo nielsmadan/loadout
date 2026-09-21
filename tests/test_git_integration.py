@@ -523,7 +523,7 @@ def test_init_installs_no_hook_and_new_git_metadata_is_transactional(
     (new / "AGENTS.md").write_text("initial\n")
     args = [
         "init",
-        "--project",
+        "project",
         "--harness",
         "codex",
         "--root",
@@ -561,14 +561,13 @@ def test_global_init_installs_no_hook_and_the_standalone_command_takes_a_profile
     repo, fake_home, capsys
 ):
     assert (
-        loadout.main(["init", "--global", "--source", str(repo), "--harness", "codex", "--yes"])
-        == 0
+        loadout.main(["init", "global", "--source", str(repo), "--harness", "codex", "--yes"]) == 0
     )
     machine = machine_config_path()
     machine.write_text(f'source="{repo / "loadout"}"\nprofile="focused"\n')
     (repo / "loadout/focused.toml").write_text('extends="default"\n')
     capsys.readouterr()
-    assert loadout.main(["init", "--global", "--source", str(repo), "--yes", "--json"]) == 0
+    assert loadout.main(["init", "global", "--source", str(repo), "--yes", "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["already_initialized"]
     assert not (repo / ".git/hooks/pre-commit").exists()
 
@@ -771,7 +770,7 @@ def test_init_names_the_source_root_when_it_points_at_git_hooks(repo, capsys):
     """The printed command defaults --root to the cwd, so it has to carry the real root."""
     (repo / "AGENTS.md").write_text("initial\n")
     assert (
-        loadout.main(["init", "--project", "--harness", "codex", "--root", str(repo), "--yes"]) == 0
+        loadout.main(["init", "project", "--harness", "codex", "--root", str(repo), "--yes"]) == 0
     )
     out = capsys.readouterr().out
     assert f"loadout integrate git-hooks install --root {repo}" in out

@@ -272,7 +272,7 @@ def test_loadout_error_still_returns_3(root: Path, monkeypatch, capsys) -> None:
 
 
 def test_explain_is_not_a_command(root: Path, capsys) -> None:
-    """Removed for 1.0: it resolved one slice of nine and nothing after `init --global`."""
+    """Removed for 1.0: it resolved one slice of nine and nothing after `init global`."""
     with pytest.raises(SystemExit) as exit_info:
         loadout.main(["explain", "shared", "--root", str(root)])
     assert exit_info.value.code == 2
@@ -396,7 +396,7 @@ def test_init_sync_check_round_trips_for_a_project_only_repo(tmp_path: Path, cap
         loadout.main(
             [
                 "init",
-                "--project",
+                "project",
                 "--yes",
                 "--harness",
                 "claude",
@@ -435,7 +435,7 @@ def test_init_warns_but_succeeds_with_a_tracked_instruction_file_present(
     subprocess.run(["git", "-C", str(tmp_path), "add", "CLAUDE.md"], check=True)
 
     assert (
-        loadout.main(["init", "--project", "--yes", "--harness", "claude", "--root", str(tmp_path)])
+        loadout.main(["init", "project", "--yes", "--harness", "claude", "--root", str(tmp_path)])
         == 0
     )
     out = capsys.readouterr().out
@@ -450,7 +450,7 @@ def test_init_rejects_duplicate_harnesses(tmp_path: Path, capsys) -> None:
         loadout.main(
             [
                 "init",
-                "--project",
+                "project",
                 "--yes",
                 "--harness",
                 "claude",
@@ -470,7 +470,7 @@ def test_check_returns_1_when_a_project_output_has_drifted(tmp_path: Path, capsy
     _init_repo(tmp_path)
     (tmp_path / ".claude").mkdir()
     (tmp_path / ".claude/settings.json").write_text('{"model":"original"}\n')
-    loadout.main(["init", "--project", "--yes", "--harness", "claude", "--root", str(tmp_path)])
+    loadout.main(["init", "project", "--yes", "--harness", "claude", "--root", str(tmp_path)])
     settings = next((tmp_path / "loadout/settings").rglob("*.json"))
     settings.write_text('{"model":"authored"}\n', encoding="utf-8")
     assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
@@ -491,7 +491,7 @@ def test_global_without_a_machine_config_names_init(tmp_path, monkeypatch, capsy
     assert loadout.main(["check", "--global"]) == 3
     err = capsys.readouterr().err
     assert str(tmp_path / "cfg" / "loadout" / "config.toml") in err
-    assert "loadout init --global" in err
+    assert "loadout init global" in err
 
 
 def test_global_and_root_are_mutually_exclusive(capsys) -> None:
@@ -579,7 +579,7 @@ def test_init_global_creates_the_source_and_machine_config(
 
     assert (
         loadout.main(
-            ["init", "--global", "--source", str(source_parent), "--harness", "claude", "--yes"]
+            ["init", "global", "--source", str(source_parent), "--harness", "claude", "--yes"]
         )
         == 0
     )
@@ -597,7 +597,7 @@ def test_init_global_adopts_a_root_manifest_and_syncs_it(
     xdg_home = fake_home / "cfg"
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_home))
 
-    assert loadout.main(["init", "--global", "--source", str(root), "--yes"]) == 0
+    assert loadout.main(["init", "global", "--source", str(root), "--yes"]) == 0
 
     out = capsys.readouterr().out
     config_path = xdg_home / "loadout" / "config.toml"
@@ -611,33 +611,40 @@ def test_init_global_adopts_a_root_manifest_and_syncs_it(
     assert (root / "out" / "shared.md").is_file()
 
 
-def test_init_global_without_source_uses_cwd_and_requires_agents(
+def test_init_global_without_source_defaults_to_cwd_and_requires_agents(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
     monkeypatch.setattr(sys, "stdin", _NoTTY())
 
     monkeypatch.chdir(tmp_path)
-    assert loadout.main(["init", "--global"]) == 2
+    assert loadout.main(["init", "global"]) == 2
 
     err = capsys.readouterr().err
     assert "agents-required" in err
     assert not (tmp_path / "cfg" / "loadout" / "config.toml").exists()
 
 
-def test_global_accepts_explicit_harnesses(tmp_path: Path) -> None:
-    assert (
-        loadout.main(
-            ["init", "--global", "--root", str(tmp_path), "--harness", "claude", "--dry-run"]
-        )
-        == 0
-    )
-
-
-def test_init_without_scope_reports_unresolved_choices(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_bare_init_prints_usage_naming_the_two_scopes(tmp_path: Path, monkeypatch, capsys) -> None:
     monkeypatch.chdir(tmp_path)
-    assert loadout.main(["init", "--dry-run"]) == 2
-    assert "scope-required" in capsys.readouterr().err
+    with pytest.raises(SystemExit) as exit_info:
+        loadout.main(["init"])
+    assert exit_info.value.code == 2
+    err = capsys.readouterr().err
+    assert "project" in err
+    assert "global" in err
+
+
+def test_init_project_rejects_global_only_flags(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        loadout.main(["init", "project", "--registration", "replace", "--root", str(tmp_path)])
+    assert exit_info.value.code == 2
+
+
+def test_init_global_rejects_project_only_flags(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        loadout.main(["init", "global", "--starter", "backend"])
+    assert exit_info.value.code == 2
 
 
 def test_init_global_round_trips_with_canonical_skills_catalog(
@@ -650,7 +657,7 @@ def test_init_global_round_trips_with_canonical_skills_catalog(
 
     assert (
         loadout.main(
-            ["init", "--global", "--source", str(source_parent), "--harness", "claude", "--yes"]
+            ["init", "global", "--source", str(source_parent), "--harness", "claude", "--yes"]
         )
         == 0
     )
@@ -668,10 +675,10 @@ def test_init_notes_a_missing_machine_config(tmp_path: Path, monkeypatch, capsys
     _init_repo(tmp_path)
 
     assert (
-        loadout.main(["init", "--project", "--yes", "--harness", "claude", "--root", str(tmp_path)])
+        loadout.main(["init", "project", "--yes", "--harness", "claude", "--root", str(tmp_path)])
         == 0
     )
 
     out = capsys.readouterr().out
-    assert "init --global" in out
+    assert "init global" in out
     assert (tmp_path / "loadout" / "config.toml").is_file()

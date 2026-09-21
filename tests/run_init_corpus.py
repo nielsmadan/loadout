@@ -44,7 +44,7 @@ def entries(root: Path) -> dict:
 def arguments(case: dict, root: Path, home: Path) -> list[str]:
     args = [
         "init",
-        f"--{case['scope']}",
+        case["scope"],
         "--root" if case["scope"] == "project" else "--source",
         str(root),
     ]

@@ -36,7 +36,7 @@ def run_case(directory: Path, count: int) -> dict:
     result = command(
         [
             "init",
-            "--global",
+            "global",
             "--source",
             str(root),
             "--harness",
@@ -60,7 +60,7 @@ def run_case(directory: Path, count: int) -> dict:
             shutil.copytree(journals[0].parent, preserved)
             result["preserved_journal"] = str(preserved / "journal.json")
             result["recovery"] = command(
-                ["init", "--recover", str(journals[0]), "--yes", "--json"],
+                ["init", "recover", str(journals[0]), "--yes", "--json"],
                 environment,
                 logs,
                 "recovery",

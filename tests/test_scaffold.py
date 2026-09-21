@@ -158,7 +158,7 @@ def test_unknown_harness_is_rejected(tmp_path: Path) -> None:
 
 def test_duplicate_harness_is_rejected(tmp_path: Path) -> None:
     """init_project used to bypass load_project_config's duplicate check by
-    constructing ProjectConfig directly — a `loadout init --harness claude
+    constructing ProjectConfig directly — a `loadout init project --harness claude
     --harness claude` would succeed and then `loadout sync` would fail."""
     root = git_repo(tmp_path)
     with pytest.raises(LoadoutError, match="duplicate"):
@@ -340,7 +340,7 @@ def test_init_notes_a_missing_machine_config(tmp_path: Path) -> None:
     root = git_repo(tmp_path)
     missing_config = tmp_path / "cfg" / "loadout" / "config.toml"
     actions = init_project(root, ("claude",), machine_config_path=missing_config)
-    assert any("init --global" in action for action in actions)
+    assert any("init global" in action for action in actions)
 
 
 def test_init_succeeds_without_a_machine_config(tmp_path: Path) -> None:
@@ -356,7 +356,7 @@ def test_init_is_silent_when_a_machine_config_exists(tmp_path: Path) -> None:
     config_path.parent.mkdir(parents=True)
     config_path.write_text('source = "."\n', encoding="utf-8")
     actions = init_project(root, ("claude",), machine_config_path=config_path)
-    assert not any("init --global" in action for action in actions)
+    assert not any("init global" in action for action in actions)
 
 
 def test_harness_add_keeps_everything_else_in_the_config(tmp_path: Path) -> None:

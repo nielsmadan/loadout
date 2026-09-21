@@ -47,7 +47,7 @@ def run_case(directory: Path, count: int) -> dict:
     root = directory / "repo"
     expected = fixture(root, count, environment)
     logs = directory / "logs"
-    arguments = ["init", "--project", "--root", str(root), "--harness", "claude", "--yes", "--json"]
+    arguments = ["init", "project", "--root", str(root), "--harness", "claude", "--yes", "--json"]
     result = command(arguments, environment, logs, "init")
     result.update(
         support_files=count, input_files=len(expected), input_bytes=sum(map(len, expected.values()))
@@ -73,7 +73,7 @@ def run_case(directory: Path, count: int) -> dict:
             shutil.copytree(journals[0].parent, preserved)
             result["preserved_journal"] = str(preserved / "journal.json")
             result["recovery"] = command(
-                ["init", "--recover", str(journals[0]), "--yes", "--json"],
+                ["init", "recover", str(journals[0]), "--yes", "--json"],
                 environment,
                 logs,
                 "recovery",

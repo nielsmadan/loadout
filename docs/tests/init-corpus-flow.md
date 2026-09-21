@@ -112,7 +112,7 @@ Run these commands once per project case, substituting all of the row's harness 
 ```sh
 repo="$CORPUS_ROOT/CASE"
 
-uv run loadout init --root "$repo" \
+uv run loadout init project --root "$repo" \
   --harness HARNESS1 --harness HARNESS2 \
   >"$EVIDENCE_ROOT/CASE-init.txt" 2>&1
 init_exit=$?
@@ -167,7 +167,7 @@ Run these commands once per global case:
 repo="$CORPUS_ROOT/CASE"
 case_config="$MACHINE_CONFIG_ROOT/CASE"
 
-XDG_CONFIG_HOME="$case_config" uv run loadout init --global --source "$repo" \
+XDG_CONFIG_HOME="$case_config" uv run loadout init global --source "$repo" \
   >"$EVIDENCE_ROOT/CASE-global-init.txt" 2>&1
 init_exit=$?
 cat "$EVIDENCE_ROOT/CASE-global-init.txt"
@@ -194,7 +194,7 @@ sync_exit=$?
 cat "$EVIDENCE_ROOT/CASE-global-sync.txt"
 printf 'sync_exit=%s\n' "$sync_exit"
 
-XDG_CONFIG_HOME="$case_config" uv run loadout init --global --source "$repo" \
+XDG_CONFIG_HOME="$case_config" uv run loadout init global --source "$repo" \
   >"$EVIDENCE_ROOT/CASE-global-init-again.txt" 2>&1
 init_again_exit=$?
 cat "$EVIDENCE_ROOT/CASE-global-init-again.txt"

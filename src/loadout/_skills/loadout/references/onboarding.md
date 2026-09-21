@@ -3,13 +3,12 @@
 Start with a read-only preview:
 
 ```sh
-loadout init --dry-run --json
-loadout init --project --harness claude --harness codex --dry-run --json
-loadout init --global --source /work/dotfiles --harness pi --dry-run --json
+loadout init project --harness claude --harness codex --dry-run --json
+loadout init global --source /work/dotfiles --harness pi --dry-run --json
 ```
 
-Explicit scope wins. Existing source may establish scope; otherwise ask project or global.
-Global source selection defaults to cwd. Use a dedicated directory, never HOME or the filesystem
+Scope is a subcommand: `init project` or `init global`. Global source selection defaults to cwd.
+Use a dedicated directory, never HOME or the filesystem
 root for a new repository. Project discovery finds the enclosing Loadout/Git root from nested
 directories. Configured roots establish agents; a shared AGENTS.md or installed binary does not.
 Repeat `--harness` when membership needs an explicit selection.
@@ -47,7 +46,7 @@ Confirm unusual source layouts with repeatable JSON arguments. Paths are literal
 against cwd when relative; no shell or environment expressions inside JSON are evaluated.
 
 ```sh
-loadout init --global --source /work/dotfiles --harness claude \
+loadout init global --source /work/dotfiles --harness claude \
   --mapping '{"source":"/work/dotfiles/claude","destination":"/home/user/.claude","agents":["claude"]}' \
   --select-source '{"source":"/work/dotfiles/claude","destination":"/home/user/.claude"}' \
   --dry-run --json
@@ -75,8 +74,8 @@ and left as source; repeat init reports no migration. Registration can still be 
 Use normal check/sync for subsequent source edits.
 
 ```sh
-loadout init --resume /work/project/.loadout-state/migrations/ID/journal.json --yes
-loadout init --recover /work/project/.loadout-state/migrations/ID/journal.json --yes --json
+loadout init resume /work/project/.loadout-state/migrations/ID/journal.json --yes
+loadout init recover /work/project/.loadout-state/migrations/ID/journal.json --yes --json
 ```
 
 Resume continues frozen operations after guards. Recover restores only unchanged postimages and

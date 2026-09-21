@@ -53,12 +53,13 @@ CLI integration is covered in `tests/test_init_workflow.py` and `tests/test_cli.
 
 | behaviour | pinned by |
 |---|---|
-| metadata-only unresolved preview, explicit scope and approval | `test_unresolved_json_preview_does_not_mutate`, `test_noninteractive_apply_requires_explicit_approval`, `test_explicit_project_scope_does_not_adopt_global_live_state` |
+| metadata-only unresolved preview, explicit scope and approval | `test_unresolved_json_preview_does_not_mutate`, `test_noninteractive_apply_requires_explicit_approval`, `test_project_init_does_not_adopt_global_live_state` |
 | project adoption, checkpoint/staging and nested repeat no-op | `test_project_preview_and_apply_adopt_and_stage` |
 | global cwd default, source and harness-default registration, matching-config preservation and explicit replacement | `test_global_defaults_to_cwd_and_registers_actual_manifest`, `test_repeat_global_init_saves_defaults_and_preserves_machine_config`, `test_matching_registration_keep_preserves_harness_defaults`, `test_existing_source_registration_is_an_explicit_transaction` |
 | project harness precedence: explicit selection, machine default, discovery, initialized project and stale global source | `test_explicit_project_harnesses_override_machine_defaults`, `test_project_init_uses_machine_harness_defaults`, `test_machine_harness_defaults_take_precedence_over_project_discovery`, `test_initialized_project_ignores_machine_harness_defaults`, `test_stale_global_source_does_not_block_machine_harness_defaults` |
 | duplicate source choices are independent of approval | `test_global_copy_conflict_requires_selection_even_with_yes` |
-| interactive choice/decline and cancellation before mutation | `test_interactive_scope_and_agent_choices_then_decline`, `test_global_prompt_cancellation_with_yes_does_not_mutate` |
+| init scope subcommands: bare usage, and flags rejected outside their scope | `test_bare_init_prints_usage_naming_the_two_scopes`, `test_init_project_rejects_global_only_flags`, `test_init_global_rejects_project_only_flags` |
+| interactive choice/decline and cancellation before mutation | `test_interactive_agent_and_starter_choices_then_decline`, `test_global_apply_cancellation_does_not_mutate` |
 | preview values stay private; malformed mapping shapes are usage errors | `test_preview_never_prints_secret_values`, `test_invalid_mapping_shape_is_usage_error` |
 | resume/recover JSON results and preserved recovery conflicts | `test_cli_resume_and_recover_use_the_reported_journal`, `test_cli_recovery_conflicts_report_paths_and_nonzero_status` |
 | native harness-add avoids false membership | `test_native_harness_add_refuses_without_creating_false_membership` |
@@ -505,7 +506,7 @@ source rather than generated output. See [templates](templates.md) and
 | `t-starter-privacy-guards` | upstream ignore policies and effective exclude-file targets remain guarded at prepare/apply and interrupted resume, with recovery preserved | `test_starter_upstream_privacy_remains_guarded` |
 | `t-starter-inventory` | additions to the template root or existing empty directories invalidate approval; a file-free root is recorded but remains unresolved | `test_starter_inventory_additions_invalidate_approval`, `test_file_free_starter_records_its_root_but_remains_unresolved` |
 | `t-native-sync-symlinks` | native sync rejects vendored/upstream file and directory symlinks before reading content, including modified or missing provenance refusals | `test_native_template_sync_rejects_symlinks_before_content_reads` |
-| `t-starter-transaction` | selection/provenance/source/outputs are previewed, staged, reconstructible and recoverable; default none, scope errors and cancellation leave expected state | `test_cli_starter_is_staged_reconstructs_and_allows_first_source_edits`, `test_starter_source_and_output_participate_in_resume_and_recovery`, `test_global_activation_and_unresolved_project_do_not_mutate`, `test_interactive_starter_then_cancel_never_writes` |
+| `t-starter-transaction` | selection/provenance/source/outputs are previewed, staged, reconstructible and recoverable; default none, unresolved refusal and cancellation leave expected state | `test_cli_starter_is_staged_reconstructs_and_allows_first_source_edits`, `test_starter_source_and_output_participate_in_resume_and_recovery`, `test_unresolved_project_starter_does_not_mutate`, `test_interactive_starter_then_cancel_never_writes` |
 | `t-starter-repeat` | explicit selection on an initialized source names usable template commands; modified vendored copies retain refusal safety | `test_repeat_init_reports_usable_template_command_and_safe_sync` |
 
 ## Project scope

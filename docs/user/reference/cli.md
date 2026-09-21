@@ -42,18 +42,24 @@ It does not resolve invalid sources or merge a modified vendored template.
 ## Initialise
 
 ```sh
-loadout init --harness claude --harness codex
-loadout init --harness opencode --root /path/to/repository
-loadout init --global --source ~/agent-config
+loadout init project --harness claude --harness codex
+loadout init project --harness opencode --root /path/to/repository
+loadout init global --source ~/agent-config
 ```
 
-| Option | Meaning |
-| --- | --- |
-| `--harness NAME` | Select a harness; repeat for several |
-| `--root PATH` | Project directory to initialise |
-| `--global` | Initialise or adopt a global source and write the machine configuration |
-| `--source PATH` | Existing global source, or directory in which to scaffold a new one |
-| `--force` | With `--global`, overwrite an existing machine configuration |
+| Option | Commands | Meaning |
+| --- | --- | --- |
+| `--harness NAME` | `init project`, `init global` | Select a harness; repeat for several |
+| `--root PATH` | `init project` | Project directory to initialise |
+| `--source PATH` | `init global` | Existing global source, or directory in which to scaffold a new one |
+| `--force` | `init global` | With a conflicting registration, alias for `--registration replace` |
+
+Scope is a subcommand: `init project` for a repository, `init global` for machine-wide
+configuration. `--source` on `init global` defaults to the current directory, so a bare
+`init global` adopts the cwd. `--starter none|frontend|backend` and `--root` exist only on
+`init project`; `--registration keep|replace` and `--force` only on `init global`. An
+interrupted migration is resumed or recovered with `loadout init resume <journal> --yes` or
+`loadout init recover <journal> --yes`.
 
 Fresh project initialisation uses explicit `--harness` options, then the machine configuration's
 `harnesses` default, then discovered project configuration. If none establishes membership, it
@@ -109,7 +115,7 @@ loadout integrate skill uninstall
 ```
 
 All three commands accept `--profile NAME` and `--source NAME`. Here `--source` is a
-declared source name, rather than the directory accepted by `init --global`.
+declared source name, rather than the directory accepted by `init global`.
 
 `install` and `uninstall` accept `--yes` to apply the displayed change without a prompt.
 They operate on the global source and synchronise the selected profile.

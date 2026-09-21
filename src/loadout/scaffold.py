@@ -129,7 +129,7 @@ def init_project(
 
     if machine_config_path is not None and not machine_config_path.is_file():
         actions.append(
-            "note: global scope is not set up on this machine. Run `loadout init --global` "
+            "note: global scope is not set up on this machine. Run `loadout init global` "
             "to set it up, or just use project scope as-is."
         )
 

@@ -112,7 +112,7 @@ adopted = outputs(project)
 harnesses = [
     value for agent in ("claude", "codex", "opencode", "pi") for value in ("--harness", agent)
 ]
-init = ["init", "--project", *harnesses]
+init = ["init", "project", *harnesses]
 preview = json.loads(run("fresh init preview", [*init, "--dry-run", "--json"], project).stdout)
 assert preview["complete"] and preview["validated"] and preview["issues"] == []
 assert outputs(project) == adopted

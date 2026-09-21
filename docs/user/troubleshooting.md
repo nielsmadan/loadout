@@ -47,14 +47,14 @@ overwriting generated files by hand makes the next sync undo those changes.
 Run:
 
 ```sh
-loadout init --global --source ~/agent-config
+loadout init global --source ~/agent-config
 ```
 
 Then configure the created source as described in [global setup](guides/global.md).
 A project-only setup does not require global configuration.
 
 If a machine configuration already exists, inspect its `source` path first.
-`init --global --force` is for deliberately replacing that machine selection.
+`loadout init global --force` is for deliberately replacing that machine selection.
 
 ## No targets declared after global initialisation
 

@@ -72,20 +72,6 @@ def _resolve(options: InitOptions) -> tuple[InitOptions, MigrationPlan]:
     plan = _plan(options)
     if options.dry_run or options.json or not sys.stdin.isatty():
         return options, plan
-    if any(i.code == "scope-required" for i in plan.issues):
-        scope = _answer(
-            "Initialize project or global configuration? [project/global, empty cancels] "
-        )
-        if scope not in {"project", "global"}:
-            return options, plan
-        options = replace(options, scope="project" if scope == "project" else "global")
-        options = _project_harness_defaults(options)
-    if options.scope == "global" and options.source is None:
-        answer = _answer(f"Directory to hold the global source [{options.root}]: ")
-        options = replace(
-            options, source=Path(answer).expanduser().absolute() if answer else options.root
-        )
-    plan = _plan(options)
     if any(i.code == "agents-required" for i in plan.issues):
         answer = _answer(
             "Configured harnesses (comma-separated: "
@@ -244,8 +230,6 @@ def run_init(options: InitOptions) -> int:
 
 
 def _run_init(options: InitOptions) -> int:
-    if options.scope == "project" and options.source is not None:
-        raise UsageError("--source selects a global directory; use --root for project scope")
     options, plan = _resolve(options)
     machine, issue = _registration(options, plan)
     if issue:
@@ -261,7 +245,9 @@ def _run_init(options: InitOptions) -> int:
         return 0
     if (prepared.operations or prepared.git) and not options.yes:
         if options.json or not sys.stdin.isatty():
-            raise UsageError("init requires --yes after reviewing init --dry-run; no changes made")
+            raise UsageError(
+                "init requires --yes after reviewing a --dry-run preview; no changes made"
+            )
         if _answer(
             "Apply this migration, including its Git checkpoint and final staging? [y/N] "
         ).lower() not in {"y", "yes"}:
@@ -279,7 +265,7 @@ def _run_init(options: InitOptions) -> int:
         and not options.json
         and not machine_config_path().is_file()
     ):
-        print("Global scope is not configured; use loadout init --global when needed.")
+        print("Global scope is not configured; use loadout init global when needed.")
     return 0
 
 
@@ -296,7 +282,7 @@ def report_failure(error: MigrationFailure, *, as_json: bool) -> int:
         print(json.dumps({"status": "interrupted", "journal": str(error.journal)}))
     print(f"loadout: {error}", file=sys.stderr)
     print(
-        f"Resume: loadout init --resume {shlex.quote(str(error.journal))} --yes\nRecover: loadout init --recover {shlex.quote(str(error.journal))} --yes",
+        f"Resume: loadout init resume {shlex.quote(str(error.journal))} --yes\nRecover: loadout init recover {shlex.quote(str(error.journal))} --yes",
         file=sys.stderr,
     )
     return 1
@@ -306,7 +292,7 @@ def run_recovery(path: Path, *, recover: bool, yes: bool, as_json: bool) -> int:
     action = "recover" if recover else "resume"
     if not yes:
         if as_json or not sys.stdin.isatty():
-            raise UsageError(f"init --{action} requires --yes")
+            raise UsageError(f"init {action} requires --yes")
         try:
             answer = _answer(f"{action.capitalize()} migration journal {path}? [y/N] ")
         except _Cancelled:

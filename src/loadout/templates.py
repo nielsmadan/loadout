@@ -69,7 +69,7 @@ def declared_sources(config_path: Path | None = None) -> tuple[Source, ...]:
     if machine is None:
         raise LoadoutError(
             f"no machine config at {path}, so a declared template has nowhere to "
-            f"resolve from; run `loadout init --global`, or vendor the template"
+            f"resolve from; run `loadout init global`, or vendor the template"
         )
     manifest = load_manifest(manifest_path(machine.source))
     sources = tuple(s for s in manifest.sources if TEMPLATES.use in s.use)

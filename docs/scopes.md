@@ -44,7 +44,7 @@ directory.
 **A machine config says where that source is.** `$XDG_CONFIG_HOME/loadout/config.toml`, or
 `~/.config/loadout/config.toml`, names the directory holding the global `loadout.toml` and
 optionally the profile this machine runs and the default harnesses for fresh project init.
-`loadout sync --global` and `loadout check --global` read it; `loadout init --global` writes it
+`loadout sync --global` and `loadout check --global` read it; `loadout init global` writes it
 with the resolved harness list. Absent means "no global scope on this machine", which is a
 legitimate state, not an error — see
 [0010](decisions/0010-a-machine-config-locates-the-global-source.md) and
@@ -122,7 +122,7 @@ nobody needs given all-or-nothing adoption. Revisit only if that adoption model 
 
 Consequences:
 
-- `loadout init --harness <name>` (repeatable) scaffolds both sources and adds the personal
+- `loadout init project --harness <name>` (repeatable) scaffolds both sources and adds the personal
   source plus every generated output to `.gitignore`; `loadout harness add <name>` enables one
   more harness on an already-initialised project and extends `.gitignore` the same way. A
   committed `.gitignore` rather than `.git/info/exclude`, which is per-clone and silently fails

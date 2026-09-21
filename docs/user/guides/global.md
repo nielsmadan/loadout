@@ -14,7 +14,7 @@ or a [template](templates.md).
 Choose a directory for your configuration:
 
 ```sh
-loadout init --global --source ~/agent-config
+loadout init global --source ~/agent-config
 ```
 
 For a new directory, Loadout creates a nested `loadout/` directory:
@@ -92,7 +92,7 @@ Version-control the configuration source using your normal git workflow. On anot
 clone it and point Loadout at the directory containing `loadout.toml`:
 
 ```sh
-loadout init --global --source ~/agent-config/loadout
+loadout init global --source ~/agent-config/loadout
 loadout sync --global
 ```
 
@@ -134,4 +134,5 @@ Restart a running agent session so it discovers the installed skill. Invoke `loa
 that agent's skill syntax and describe the configuration change you want.
 
 The skill's `--personal`, `--project`, and `--global` scope vocabulary belongs to the skill.
-The CLI's project commands use `--root`; they do not accept `--personal` or `--project`.
+The CLI expresses scope as the `init project` / `init global` subcommands; every other command
+keeps `--root` or `--global` and does not accept `--personal` or `--project`.

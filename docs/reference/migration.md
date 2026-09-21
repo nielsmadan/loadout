@@ -9,16 +9,16 @@ these APIs through `init_workflow.py`; legacy internal scaffold helpers remain a
 ## CLI workflow
 
 ```sh
-loadout init --dry-run --json
-loadout init --project --harness claude --harness opencode --dry-run --json
-loadout init --project --harness claude --harness opencode --yes
-loadout init --project --harness claude --starter frontend --dry-run --json
-loadout init --global --source /work/dotfiles --harness pi --yes
+loadout init project --dry-run --json
+loadout init project --harness claude --harness opencode --dry-run --json
+loadout init project --harness claude --harness opencode --yes
+loadout init project --harness claude --starter frontend --dry-run --json
+loadout init global --source /work/dotfiles --harness pi --yes
 ```
 
-Interactive init asks only unresolved scope/agent/mapping choices and confirms the prepared
-transaction before mutation. Global source selection defaults to cwd. Explicit `--project` or
-`--global` wins; absent flags allow existing scope detection. `--harness` is repeatable in both
+Interactive init asks only unresolved agent/mapping choices and confirms the prepared
+transaction before mutation. Scope is a subcommand: `init project` or `init global`.
+Global source selection defaults to cwd. `--harness` is repeatable in both
 scopes. For a fresh project with no explicit selection, the machine config's `harnesses` list
 supplies the selection before discovery; an initialized project always keeps its own list.
 Noninteractive callers supply unresolved choices and `--yes` approval. Dry-run and JSON previews
@@ -41,7 +41,7 @@ object with `destination` and the chosen inventoried `source`; directory selecti
 relative files. Paths are literal and relative paths resolve against cwd. For example:
 
 ```sh
-loadout init --global --source /work/dotfiles --harness claude \
+loadout init global --source /work/dotfiles --harness claude \
   --mapping '{"source":"/work/dotfiles/claude","destination":"/home/user/.claude","agents":["claude"]}' \
   --select-source '{"source":"/work/dotfiles/claude","destination":"/home/user/.claude"}' \
   --dry-run --json
@@ -57,8 +57,8 @@ default for fresh projects. Existing initialized sources get a clear no-migratio
 normal check/sync as the next operation; repeat init does not reinterpret generated files as
 originals.
 
-Resume with `loadout init --resume /path/to/journal.json --yes`; recover with
-`loadout init --recover /path/to/journal.json --yes`. Add `--json` for machine-readable results.
+Resume with `loadout init resume /path/to/journal.json --yes`; recover with
+`loadout init recover /path/to/journal.json --yes`. Add `--json` for machine-readable results.
 Interrupted transactions and recovery conflicts exit 1 and identify the protected journal or
 conflicting paths. Recovery retains successful baseline commits. Ordinary invalid input or unsafe
 deployment errors exit 3. The bundled skill's onboarding reference follows these same CLI forms.
@@ -344,7 +344,7 @@ public state containers are refused. Journals are temporary transaction state. S
 resume and conflict-free recovery remove their transaction directory, including payloads and
 Git index snapshots. Their JSON results return `journal: null`. The deployment receipt remains
 available to ordinary sync. Failed, interrupted or conflicted transactions retain their journals.
-After successful init, use Git for source history; `init --recover` is for unfinished transactions.
+After successful init, use Git for source history; `init recover` is for unfinished transactions.
 
 Only the currently referenced payload is retained after a durable cursor update. An interruption
 before that update preserves the previous payload. Cleanup first makes the terminal journal

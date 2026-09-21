@@ -51,13 +51,6 @@ def select_starter(plan: MigrationPlan, name: str | None) -> MigrationPlan:
     plan = replace(plan, starter=name)
     if name not in STARTERS:
         raise LoadoutError(f"unknown starter {name!r}; choose none, frontend or backend")
-    if plan.inventory.scope == "global":
-        return _issue(
-            plan,
-            "starter-scope",
-            "Frontend/backend starters apply to project init only. A global source may supply "
-            "project templates; select this starter with loadout init --project --starter " + name,
-        )
     if plan.already_initialized:
         root = shlex.quote(str(plan.inventory.root))
         return _issue(

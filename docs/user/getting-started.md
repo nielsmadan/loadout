@@ -30,7 +30,7 @@ Start in a new directory to try the workflow:
 ```sh
 mkdir loadout-demo
 cd loadout-demo
-loadout init --harness claude --harness codex
+loadout init project --harness claude --harness codex
 ```
 
 This creates `loadout/config.toml`, shared and personal permission files, and entries in
@@ -76,7 +76,7 @@ Run `init` again with the same harnesses to extend `.gitignore` for the instruct
 then render:
 
 ```sh
-loadout init --harness claude --harness codex
+loadout init project --harness claude --harness codex
 loadout sync
 loadout check
 ```

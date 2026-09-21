@@ -80,60 +80,22 @@ def build_parser() -> argparse.ArgumentParser:
     init = subparsers.add_parser(
         "init", help="adopt existing agent configuration into editable loadout source"
     )
-    init.add_argument(
-        "--harness",
-        dest="harnesses",
-        action="append",
-        default=None,
-        help="configured harness (repeatable); otherwise use machine defaults, then detection",
+    init_subparsers = init.add_subparsers(
+        dest="init_command",
+        required=True,
+        metavar="{project,global,resume,recover}",
     )
-    scope = init.add_mutually_exclusive_group()
-    scope.add_argument("--project", action="store_true", help="adopt project configuration")
-    scope.add_argument(
-        "--global",
-        dest="use_global",
-        action="store_true",
-        help="adopt global configuration and register its source on this machine",
+    _add_init_project(init_subparsers.add_parser("project", help="adopt project configuration"))
+    _add_init_global(
+        init_subparsers.add_parser(
+            "global", help="adopt global configuration and register its source on this machine"
+        )
     )
-    init.add_argument(
-        "--source",
-        type=Path,
-        default=None,
-        help=(
-            "[--global] existing global source root, or directory to hold a new source; "
-            "default: cwd"
-        ),
-    )
-    init.add_argument(
-        "--force",
-        action="store_true",
-        help="alias for --registration replace; never resolves source conflicts",
-    )
-    init.add_argument(
-        "--mapping",
-        action="append",
-        default=[],
-        help="root mapping JSON: source, destination, agents; optional kind/category/destination_template",
-    )
-    init.add_argument(
-        "--select-source",
-        action="append",
-        default=[],
-        help="conflicting-copy selection JSON: destination, source",
-    )
-    init.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="preview without changing source, Git or destinations",
-    )
-    init.add_argument("--json", action="store_true", help="emit machine-readable preview or result")
-    init.add_argument(
-        "--yes",
-        action="store_true",
-        help="approve a fully resolved migration and its Git operations",
-    )
-    _add_init_choices(init)
-    add_root(init)
+    for sub_name, sub_help in (
+        ("resume", "resume a protected migration journal"),
+        ("recover", "restore unchanged transaction postimages; keep successful baseline"),
+    ):
+        _add_init_recovery(init_subparsers.add_parser(sub_name, help=sub_help))
 
     harness = subparsers.add_parser("harness", help="manage this project's enabled harnesses")
     harness_subparsers = harness.add_subparsers(dest="harness_command")
@@ -215,7 +177,7 @@ def _resolve_root_and_profile(args: argparse.Namespace) -> tuple[Path, str]:
         config = load_machine_config(config_path)
         if config is None:
             raise LoadoutError(
-                f"no machine config at {config_path}; run `loadout init --global` first"
+                f"no machine config at {config_path}; run `loadout init global` first"
             )
         return config.source, args.profile or config.profile or "default"
     return args.root.resolve(), args.profile or "default"
@@ -254,7 +216,7 @@ def _resolve_global(profile: str | None) -> tuple[Path, str]:
     config_path = machine_config_path()
     config = load_machine_config(config_path)
     if config is None:
-        raise LoadoutError(f"no machine config at {config_path}; run `loadout init --global` first")
+        raise LoadoutError(f"no machine config at {config_path}; run `loadout init global` first")
     return config.source, profile or config.profile or "default"
 
 
@@ -271,53 +233,114 @@ def _dispatch_template(args: argparse.Namespace) -> int:
 
 def _add_init_choices(init: argparse.ArgumentParser) -> None:
     init.add_argument(
+        "--harness",
+        dest="harnesses",
+        action="append",
+        default=None,
+        help="configured harness (repeatable); otherwise use machine defaults, then detection",
+    )
+    init.add_argument(
+        "--mapping",
+        action="append",
+        default=[],
+        help="root mapping JSON: source, destination, agents; optional kind/category/destination_template",
+    )
+    init.add_argument(
+        "--select-source",
+        action="append",
+        default=[],
+        help="conflicting-copy selection JSON: destination, source",
+    )
+    init.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="preview without changing source, Git or destinations",
+    )
+    init.add_argument("--json", action="store_true", help="emit machine-readable preview or result")
+    init.add_argument(
+        "--yes",
+        action="store_true",
+        help="approve a fully resolved migration and its Git operations",
+    )
+
+
+def _add_init_project(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
         "--starter",
         choices=("none", "frontend", "backend"),
         help="optional project template to vendor; default: none",
     )
-    init.add_argument(
+    parser.add_argument(
+        "--root",
+        type=Path,
+        default=Path.cwd(),
+        help="repository root holding loadout.toml (default: cwd)",
+    )
+    _add_init_choices(parser)
+
+
+def _add_init_global(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--source",
+        type=Path,
+        default=None,
+        help="existing global source root, or directory to hold a new source (default: cwd)",
+    )
+    parser.add_argument(
         "--registration",
         choices=("keep", "replace"),
         help="resolve a conflicting global machine registration",
     )
-    recovery = init.add_mutually_exclusive_group()
-    recovery.add_argument("--resume", type=Path, help="resume a protected migration journal")
-    recovery.add_argument(
-        "--recover",
-        type=Path,
-        help="restore unchanged transaction postimages; keep successful baseline",
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="alias for --registration replace; never resolves source conflicts",
     )
+    _add_init_choices(parser)
+
+
+def _add_init_recovery(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("journal", type=Path, help="migration journal to resume or recover")
+    parser.add_argument(
+        "--yes", action="store_true", help="approve the operation without confirmation"
+    )
+    parser.add_argument("--json", action="store_true", help="emit machine-readable result")
 
 
 def _dispatch_init(args: argparse.Namespace) -> int:
-    if args.resume or args.recover:
-        if (
-            args.dry_run
-            or args.project
-            or args.use_global
-            or args.source
-            or args.harnesses
-            or args.mapping
-            or args.select_source
-            or args.registration
-            or args.force
-            or args.starter
-        ):
-            raise UsageError("--resume/--recover accept only --yes and --json")
+    if args.init_command in {"resume", "recover"}:
         return run_recovery(
-            args.resume or args.recover, recover=bool(args.recover), yes=args.yes, as_json=args.json
+            args.journal, recover=args.init_command == "recover", yes=args.yes, as_json=args.json
         )
-    if args.force and args.registration == "keep":
-        raise UsageError("--force conflicts with --registration keep")
+    if args.init_command == "global":
+        if args.force and args.registration == "keep":
+            raise UsageError("--force conflicts with --registration keep")
+        source = (
+            args.source.expanduser().absolute()
+            if args.source
+            else Path.cwd().expanduser().absolute()
+        )
+        return run_init(
+            InitOptions(
+                root=source,
+                scope="global",
+                source=source,
+                agents=tuple(args.harnesses or ()),
+                mappings=tuple(parse_mapping(value) for value in args.mapping),
+                selections=tuple(parse_selection(value) for value in args.select_source),
+                registration="replace" if args.force else args.registration,
+                dry_run=args.dry_run,
+                json=args.json,
+                yes=args.yes,
+            )
+        )
     return run_init(
         InitOptions(
             root=args.root.expanduser().absolute(),
-            scope="global" if args.use_global else "project" if args.project else None,
-            source=args.source.expanduser().absolute() if args.source else None,
+            scope="project",
             agents=tuple(args.harnesses or ()),
             mappings=tuple(parse_mapping(value) for value in args.mapping),
             selections=tuple(parse_selection(value) for value in args.select_source),
-            registration="replace" if args.force else args.registration,
             dry_run=args.dry_run,
             json=args.json,
             yes=args.yes,

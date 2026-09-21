@@ -152,7 +152,7 @@ makes "where do I edit" answerable from the path.
 
 ## Bundled starters and native projects
 
-`loadout init --project --starter frontend` or `--starter backend` vendors the selected template
+`loadout init project --starter frontend` or `--starter backend` vendors the selected template
 with normal content-hash provenance. `--starter none` is the default. Interactive fresh-project
 init offers this choice unless `--yes` already accepts the default. Selection is project-scoped;
 a global source can offer these template names but cannot activate their advice machine-wide.
@@ -217,7 +217,7 @@ default contributes no vote. Nonempty Codex rule text needs an explicit portable
 An absent optional permission source contributes no native rules; required sources remain
 required. Unsupported or ambiguous routes fail before add/vendor/sync changes source.
 
-Catalog overrides of `frontend` and `backend` also work with `init --starter`, including all
+Catalog overrides of `frontend` and `backend` also work with `init project --starter`, including all
 referenced files in privacy checks, approval preconditions, expected outputs and staging.
 Other manifest names are selected with `template add` or `template vendor` after init.
 

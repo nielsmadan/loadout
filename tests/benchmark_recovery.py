@@ -49,7 +49,7 @@ def run(directory: Path) -> dict:
     index = (root / ".git/index").read_bytes()
     with patch("init_evidence.CLI", [sys.executable, "-I", "-c", INTERRUPTED_INIT]):
         initial = command(
-            ["init", "--project", "--root", str(root), "--harness", "claude", "--yes", "--json"],
+            ["init", "project", "--root", str(root), "--harness", "claude", "--yes", "--json"],
             environment,
             logs,
             "init",
@@ -68,7 +68,7 @@ def run(directory: Path) -> dict:
     payload = json.loads((journal.parent / f"payload-{cursor['payload']}.json").read_bytes())
     result.update(operations=len(payload["operations"]), before=journal_storage(journal))
     result["recover"] = command(
-        ["init", "--recover", str(journal), "--yes", "--json"], environment, logs, "recover"
+        ["init", "recover", str(journal), "--yes", "--json"], environment, logs, "recover"
     )
     assert_exit(result["recover"])
     recovery = json.loads((logs / "recover.stdout").read_bytes())

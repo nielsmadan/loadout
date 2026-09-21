@@ -136,8 +136,8 @@ of a source (see
 machine state loadout *reads*: a destination template resolves environment variables at render
 time, per [0011](docs/decisions/0011-a-destination-follows-a-relocated-harness.md).
 
-    loadout init --global --dry-run --json
-    loadout init --global --source /work/dotfiles --harness claude --harness pi --yes
+    loadout init global --dry-run --json
+    loadout init global --source /work/dotfiles --harness claude --harness pi --yes
 
 Global init discovers existing configuration in live harness roots and the selected directory,
 which defaults to cwd. It migrates into `<source>/loadout/`, with explicit native category routes
@@ -161,8 +161,7 @@ new repositories at HOME or the filesystem root are refused.
 
 A missing machine config is **not** an error — it means this machine has no global scope,
 which is correct for someone who only uses project scope. `loadout sync --global` without one
-fails and names the file to create. `loadout init` at project scope notes its absence and
-carries on.
+fails and names the file to create. `loadout init project` notes its absence and carries on.
 
 For `sync` and `check`, `--global` and `--root` are mutually exclusive; `--global` resolves the root from the machine
 config. `--profile` still wins over the machine config's `profile` when both are given.
@@ -549,8 +548,8 @@ anything you put directly into a generated output is silently discarded at the n
 Per-repo permissions and instructions, layered on top of the global manifest above. A repo opts
 in once:
 
-    loadout init --project --harness claude --harness opencode --dry-run
-    loadout init --project --harness claude --harness opencode --yes
+    loadout init project --harness claude --harness opencode --dry-run
+    loadout init project --harness claude --harness opencode --yes
 
 Add `--starter frontend` or `--starter backend` to preview and vendor a small instruction seed.
 The default is `none`; interactive init offers the same optional choice. Starters ship in the
