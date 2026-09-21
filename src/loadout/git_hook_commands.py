@@ -15,7 +15,7 @@ def run_hook(event: str, root: Path, profile: str, arguments: list[str]) -> int:
         return 0
     try:
         result = cmd_sync(root, profile)
-    except Exception as error:
+    except Exception as error:  # noqa: BLE001 - a failing sync must not crash the git operation
         print(f"loadout: {error}", file=sys.stderr)
         result = 3
     if result:

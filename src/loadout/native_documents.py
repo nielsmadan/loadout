@@ -22,9 +22,9 @@ def parse_document(text: str, format_name: str) -> dict[str, Any]:
             else tomlkit.parse(text).unwrap()
         )
         if not isinstance(data, dict):
-            raise ValueError("expected an object")
+            raise TypeError("expected an object")
         return dict(data)
-    except (ValueError, ParseError) as error:
+    except (ValueError, TypeError, ParseError) as error:
         raise LoadoutError(f"invalid partial {format_name.upper()} document: {error}") from error
 
 

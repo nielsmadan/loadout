@@ -286,7 +286,7 @@ def read_receipt(scope: DeploymentScope, frozen: FrozenFile | None) -> Receipt:
         if raw["scope"] != scope.name:
             raise ValueError("receipt scope differs")
         if not isinstance(raw["entries"], list) or not isinstance(raw["pending"], list):
-            raise ValueError("invalid receipt entries")
+            raise TypeError("invalid receipt entries")
         return Receipt(
             tuple(_entry(entry, scope) for entry in raw["entries"]),
             tuple(_entry(entry, scope) for entry in raw["pending"]),

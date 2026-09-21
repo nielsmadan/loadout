@@ -198,7 +198,7 @@ def _worker() -> None:
                 }
             )
         json.dump(result, sys.stdout)
-    except Exception as error:
+    except Exception as error:  # noqa: BLE001 - report the failure; the caller decides the exit
         print(
             type(error).__name__,
             [

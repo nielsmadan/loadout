@@ -166,8 +166,12 @@ def test_droid_reports_each_permission_glob_it_drops_but_not_the_one_it_refuses(
         Rules(allow=("ls", "docker stop cc-*"), ask=("git push *",), deny=("rm *",)),
     )
     assert [notice.message for notice in found] == [
-        "allow glob 'docker stop cc-*' is not rendered because Droid treats "
-        "permission-list metacharacters literally",
-        "ask glob 'git push *' is not rendered because Droid treats "
-        "permission-list metacharacters literally",
+        (
+            "allow glob 'docker stop cc-*' is not rendered because Droid treats "
+            "permission-list metacharacters literally"
+        ),
+        (
+            "ask glob 'git push *' is not rendered because Droid treats "
+            "permission-list metacharacters literally"
+        ),
     ]

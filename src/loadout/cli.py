@@ -452,7 +452,7 @@ def main(argv: list[str] | None = None) -> int:
         _init_error_json(args, 3)
         print(f"loadout: {error}", file=sys.stderr)
         return 3
-    except Exception:
+    except Exception:  # noqa: BLE001 - top-level handler reports unexpected errors
         traceback.print_exc()
         return 4
 

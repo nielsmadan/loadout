@@ -170,8 +170,10 @@ def _select(plan: MigrationPlan, name: str) -> MigrationPlan:
         validated=False,
         notes=(
             *plan.notes,
-            f"Vendor starter {name!r} from {found.source}, provenance {content_hash}. "
-            "Template instructions precede the original bodies on opted-in routes; source bytes and modes are preserved.",
+            (
+                f"Vendor starter {name!r} from {found.source}, provenance {content_hash}. "
+                "Template instructions precede the original bodies on opted-in routes; source bytes and modes are preserved."
+            ),
         ),
     )
     return validate_plan(selected)
