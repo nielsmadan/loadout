@@ -4,14 +4,13 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from .artifacts import FrozenFile
 from .deployment import atomic_install, read_file
 from .errors import LoadoutError
-from .native_templates import validate_template_change
+from .output import FrozenFile
 from .project import ProjectConfig, load_project_config, project_config_path
 from .resolve import ResolvedItem
 from .template_catalog import load_catalog
-from .templates import VENDORED, declare, record_hash, tree_hash, vendored_path
+from .templates import declare, record_hash, tree_hash, vendored_path
 
 
 def _install(path: Path, content: FrozenFile | None) -> None:
@@ -111,8 +110,6 @@ def _preview(
         shutil.copytree(project_config_path(root).parent, preview / "loadout", symlinks=True)
         for path, content in desired.items():
             _install(preview / path.relative_to(root), content)
-        preview_local = preview / local.relative_to(root)
-        validate_template_change(preview, name, ResolvedItem(name, VENDORED, preview_local))
         declare(preview, name)
         for other in sorted(affected):
             record_hash(preview, other, tree_hash(vendored_path(preview, other)))

@@ -169,59 +169,19 @@ They add no dependency installs, permissive rules, model choices or credentials.
 editable source at `loadout/templates/<name>/instructions.md`; later local edits use normal
 modified-copy refusal during `template sync`.
 
-For `presets = false`, a template's UTF-8 `instructions.md` is trimmed and concatenated in
-declared order, with two newlines between tiers and before each original native body. Only
-required project copy/text instruction routes explicitly setting `template_instructions = true`
-receive that prefix. Source bodies remain byte-identical, including their trailing whitespace,
-and outputs retain the source file's full mode. A selected template also activates an empty
-opted-in route. Removing all template text makes such an otherwise empty route dormant again.
-Existing nested instructions and command trees keep their independent routes and content.
+Template instructions are trimmed and concatenated before project instruction fragments. Template
+permissions, skills and MCP servers enter the same project slices as directly authored sources;
+project source wins within each slice. Project skills replace a same-named template skill as a
+whole, including supporting files. MCP project entries replace whole servers. Portable permission
+rules retain deny-wins and project-tier precedence.
 
-Fresh project migration marks the top-level `CLAUDE.md` and `AGENTS.md` routes, including dormant
-ones. Every configured agent must have an opted-in route when template prose is selected.
-An existing manually authored native config gets an actionable route error if one is missing;
-legacy `instructions = [...]` remains unsupported in this mode.
+Project module configuration has no destination table. A Droid project hook that names a support
+script therefore cannot carry that script through Loadout yet; keep the script at its harness path.
+This is the known project module-config limitation tracked with P-32.
 
-Legacy directory templates in native projects compose instruction text only. Empty `permissions.toml`, `mcp.toml`
-and `.gitkeep` scaffolds are accepted. A populated permission, MCP, skill or other contribution
-is refused with its category/path and a remedy: place that content in an explicitly routed
-project source, then remove it from the template. `template add` in either mode and
-`template sync` preflight these limits before changing configuration, copies or provenance. Source symlinks are refused.
-Native `template sync` validates both vendored and upstream trees before reading template
-contents for hashes or refusal diffs.
-This prevents template data from being silently ignored or overlaying native producers.
-
-Catalog manifests additionally compose skills, MCP and portable permissions through existing
-native routes. Fresh init supplies skill routes for all five agents. Their shared internal
-`skills/.routes` source keeps authored skills in the canonical `loadout/skills/` catalog while
-retaining native ownership receipts and modes. Configured Codex, OpenCode, and Pi consumers use
-one `.agents/skills` route when their variants are byte-identical; a shared route refuses
-variants that differ. Existing routes retain their authored destinations and ownership receipts.
-
-A catalog needs one compatible consumer route per agent and category. Set `template_parts =
-false` on routes that should not receive catalog skills, MCP or permissions; this is useful
-for separate personal or auxiliary routes. Instruction participation still uses the independent
-`template_instructions` flag. Skill routes must point at a collection, not an individual skill.
-Project skills replace the whole same-named template skill, including supporting files.
-Tree `modes` overrides apply to template skill documents and supporting files too.
-MCP project entries replace whole servers, preserving native sub-settings. Codex combines MCP
-definitions and approval policy in its MCP route, including policy-only servers. Native policy
-restrictions participate in the permission merge, and unrelated server/tool settings survive.
-Codex's shell rule route alone cannot consume MCP policy.
-
-Native routes may compose [ordered inputs](artifacts.md#ordered-inputs-within-a-part) before
-receiving template contributions. Document layers remain one category owner, portable rule
-layers retain permission strictness, and composed instruction bodies receive the template prefix
-once. Catalog parts are selected lists rather than inherited manifests: verified against
-`template_catalog.py:_load_catalog`, which accepts only the four category lists and rejects
-`extends`.
-
-Native JSON permissions must round-trip through their portable adapter without loss, including
-key order; otherwise selection refuses and asks for an explicit portable source. An explicit
-native catch-all `ask` remains a restriction during merging, whereas an unstated portable
-default contributes no vote. Nonempty Codex rule text needs an explicit portable text renderer.
-An absent optional permission source contributes no native rules; required sources remain
-required. Unsupported or ambiguous routes fail before add/sync changes source.
+Catalog manifests remain selected lists rather than inherited manifests:
+`template_catalog.py:_load_catalog` accepts only the four category lists and rejects `extends`.
+Source symlinks remain refused.
 
 Catalog overrides of `frontend` and `backend` also work with `init project --starter`, including all
 referenced files in privacy checks, approval preconditions, expected outputs and staging.

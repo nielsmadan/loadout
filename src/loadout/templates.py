@@ -112,8 +112,6 @@ def declared_sources(config_path: Path | None = None) -> tuple[Source, ...]:
         )
     manifest = load_manifest(manifest_path(machine.source))
     sources = tuple(s for s in manifest.sources if TEMPLATES.use in s.use)
-    if not manifest.sources and manifest.artifacts is not None:
-        return (Source(machine.source.name, machine.source / "loadout", frozenset({"templates"})),)
     return sources
 
 

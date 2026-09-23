@@ -8,8 +8,9 @@ from typing import Any
 import tomlkit
 from tomlkit.exceptions import ParseError
 
-from .artifacts import _json_constant, _json_object
 from .errors import LoadoutError
+from .output import json_constant as _json_constant
+from .output import json_object as _json_object
 
 
 def parse_document(text: str, format_name: str) -> dict[str, Any]:

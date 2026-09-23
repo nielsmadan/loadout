@@ -6,22 +6,15 @@ import tempfile
 from dataclasses import replace
 from pathlib import Path
 
-from .artifacts import Copied, FrozenFile, Merged, Output, _no_symlinks
 from .bundled_templates import BUNDLED, STARTERS
-from .discovery import credential_material, digest, path_preconditions
+from .discovery import credential_material, path_preconditions
 from .errors import LoadoutError
 from .migration_git import ignored_original, privacy_policy
-from .migration_models import ExpectedOutput, Inventory, Issue, MigrationPlan, SourceWrite
+from .migration_models import Inventory, Issue, MigrationPlan, SourceWrite
 from .migration_paths import entry_path
-from .migration_validation import validate_plan
-from .native_documents import key_fingerprints, parse_document
-from .native_templates import (
-    native_template_prefix,
-    render_native_templates,
-    validate_template_tree,
-)
+from .output import no_symlinks as _no_symlinks
 from .permissions.rules import parse_rules
-from .project import load_project_config, project_config_path
+from .project import project_config_path
 from .resolve import ResolvedItem
 from .template_catalog import load_catalog
 from .templates import copy_tree, declare, record_hash, resolve_template, template_files, tree_hash
@@ -56,8 +49,7 @@ def select_starter(plan: MigrationPlan, name: str | None) -> MigrationPlan:
         return _issue(
             plan,
             "starter-existing-source",
-            "Existing source is already initialized. Add any missing instruction sources and "
-            "routes with template_instructions = true in artifacts.toml, then run "
+            "Existing source is already initialized. Run "
             f"`loadout template add {name} --vendored --root {root}` "
             f"(or `loadout template sync {name} --root {root}` if already vendored), "
             f"then `loadout sync --root {root}`.",
@@ -105,15 +97,11 @@ def _select(plan: MigrationPlan, name: str) -> MigrationPlan:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(write.content)
             path.chmod(write.mode)
-        config = load_project_config(project_config_path(root))
-        native_template_prefix(config, (found,))
         local = source_root / "templates" / (name + ".toml" if found.path.is_file() else name)
         copy_tree(found.path, local)
         declare(root, name)
         content_hash = tree_hash(local)
         record_hash(root, name, content_hash)
-        config = load_project_config(project_config_path(root))
-        prefix = native_template_prefix(config, (ResolvedItem(name, "(vendored)", local),))
         writes = {write.path: write for write in plan.source_writes}
         local_root = local.parent if local.is_file() else local
         for path in (project_config_path(root), *(local_root / p for p in template_files(local))):
@@ -127,42 +115,9 @@ def _select(plan: MigrationPlan, name: str) -> MigrationPlan:
             )
             for state in path_preconditions(target):
                 states.setdefault(state.path, state)
-        expected = {output.path: output for output in plan.expected_outputs}
-        assert config.artifacts is not None
-        for route in config.artifacts.records:
-            if not route.template_instructions or not prefix:
-                continue
-            assert route.output is not None
-            body = writes[plan.inventory.source_root / route.parts[0].source]
-            destination = plan.inventory.root / route.output
-            expected[destination] = ExpectedOutput(
-                destination, "copy", digest(prefix + body.content), body.mode
-            )
-        if local.is_file():
-            for path, output in render_native_templates(
-                root, config, (ResolvedItem(name, "(vendored)", local),)
-            ).items():
-                destination = plan.inventory.root / path.relative_to(root)
-                if wanted := _template_expected(destination, output, expected.get(destination)):
-                    expected[destination] = wanted
     selected = replace(
         plan,
         source_writes=tuple(writes.values()),
-        expected_outputs=tuple(expected.values()),
-        required_absences=tuple(p for p in plan.required_absences if p not in expected),
-        required_owned_absences=tuple(
-            replace(
-                absence,
-                keys=tuple(
-                    key
-                    for key in absence.keys
-                    if key not in dict(expected[absence.path].fingerprints)
-                ),
-            )
-            if absence.path in expected
-            else absence
-            for absence in plan.required_owned_absences
-        ),
         preconditions=tuple(states.values()),
         starter_dependencies=dependencies,
         starter_privacy_policy=policy,
@@ -176,11 +131,10 @@ def _select(plan: MigrationPlan, name: str) -> MigrationPlan:
             ),
         ),
     )
-    return validate_plan(selected)
+    return selected
 
 
 def _public_starter(template: ResolvedItem) -> None:
-    validate_template_tree(template.path)
     for relative in template_files(template.path):
         base = template.path.parent if template.path.is_file() else template.path
         path = base / relative
@@ -195,25 +149,3 @@ def _public_starter(template: ResolvedItem) -> None:
                 "Provide a public template without private material; keep private configuration in "
                 "the project's local artifact sources."
             )
-
-
-def _template_expected(
-    path: Path, output: Output, previous: ExpectedOutput | None
-) -> ExpectedOutput | None:
-    if isinstance(output, FrozenFile):
-        return ExpectedOutput(path, "copy", digest(output.content), output.mode)
-    if isinstance(output, Copied):
-        return ExpectedOutput(path, "copy", digest(output.read_bytes()), output.file_mode())
-    if isinstance(output, Merged):
-        if not output.document.strip() and not output.emit_empty:
-            return None
-        keys = frozenset(parse_document(output.document, output.format))
-        return ExpectedOutput(
-            path,
-            output.format,
-            digest(output.document.encode()),
-            previous.mode if previous else 0o600,
-            tuple(sorted(output.owned)),
-            key_fingerprints(output.document, output.format, keys),
-        )
-    return ExpectedOutput(path, "copy", digest(output.encode()), 0o600)

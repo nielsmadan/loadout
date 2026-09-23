@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from .agents import GLOBAL_PRESET, SliceOutput, known_agents
-from .artifacts import Artifacts, artifact_reference
 from .destinations import resolve_destination
 from .errors import LoadoutError
 from .skill_policy import SkillPolicy, parse_skill_policies
@@ -129,7 +128,6 @@ class Manifest:
     skills: tuple[SkillsTarget, ...] = ()
     skill_policies: tuple[SkillPolicy, ...] = ()
     module_config: tuple[ModuleConfigTarget, ...] = ()
-    artifacts: Artifacts | None = None
     config_paths: tuple[Path, ...] = ()
 
 
@@ -425,7 +423,6 @@ RESERVED_KEYS = frozenset(
         "skills",
         "extends",
         "remove",
-        "artifacts",
         COMMON_BLOCK,
     }
 )
@@ -596,11 +593,8 @@ def _parse_agents(
 def _build_manifest(
     data: dict[str, object], path: Path, *, config_paths: tuple[Path, ...] = ()
 ) -> Manifest:
-    artifacts = (
-        artifact_reference(data["artifacts"], path, "global") if "artifacts" in data else None
-    )
-    raw_sources = data.get("source", [] if artifacts is not None else None)
-    if not isinstance(raw_sources, list) or (not raw_sources and artifacts is None):
+    raw_sources = data.get("source")
+    if not isinstance(raw_sources, list) or not raw_sources:
         raise LoadoutError(f"{path}: at least one [[source]] entry is required")
     sources = parse_sources(list(raw_sources), path.parent)
 
@@ -620,7 +614,7 @@ def _build_manifest(
                 f"output; a base must be an input, never something loadout writes"
             )
 
-    if not targets and not permissions and artifacts is None:
+    if not targets and not permissions and not agent_skills and not agent_module_config:
         raise LoadoutError(
             f"{path}: no [<agent>], [instructions.<agent>] or [permissions.<name>] targets declared"
         )
@@ -641,6 +635,5 @@ def _build_manifest(
         skills=agent_skills,
         skill_policies=skill_policies,
         module_config=agent_module_config,
-        artifacts=artifacts,
         config_paths=config_paths or (path,),
     )

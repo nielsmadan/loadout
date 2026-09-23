@@ -68,5 +68,5 @@ Source protection includes every inherited machine manifest used to resolve a de
 Deployment retirement retains dependencies from both present scopes, including a scope with no
 artifacts or receipts of its own.
 
-See [native routes](artifacts.md), [templates](templates.md), and
+See [templates](templates.md) and
 [ADR 0020](../decisions/0020-composition-uses-explicit-operators.md).

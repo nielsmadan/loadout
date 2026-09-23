@@ -34,7 +34,7 @@ layout in the project: one shared skill tree, not a copy nested under each templ
 
 The native-project tests build their source from `plan_migration`, both with all four agents
 configured and each agent alone. Normal `write_all` produces instruction files, native MCP and permission
-documents, and skills through the generated artifact routes. The shared non-Claude skill
+documents, and skills through the project slices. The shared non-Claude skill
 collection is `.agents/skills`; Claude uses `.claude/skills`.
 
 ## Cases exercised

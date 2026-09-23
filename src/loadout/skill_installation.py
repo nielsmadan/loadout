@@ -15,12 +15,12 @@ from pathlib import Path
 
 import tomlkit
 
-from .artifacts import FrozenFile
 from .bundled_skill import SKILL_NAME
 from .deployment import atomic_install, read_file
 from .emit import Copied, Merged, declared_profiles, render_global
 from .errors import LoadoutError
 from .manifest import Manifest, load_profile, resolve_destination
+from .output import FrozenFile
 from .skills import discover_skills
 from .sources import select_overrides
 from .templates import copy_tree, tree_hash
@@ -186,10 +186,7 @@ def skill_override_removals(
 
 def configured_skill_agents(root: Path, profile: str) -> tuple[str, ...]:
     manifest = _load_skill_profile(root, profile)
-    agents = {target.agent for target in manifest.skills}
-    if manifest.artifacts is not None:
-        agents.update(manifest.artifacts.agents("skills"))
-    return tuple(sorted(agents))
+    return tuple(sorted({target.agent for target in manifest.skills}))
 
 
 def _write_marker(path: Path, digest: str) -> None:

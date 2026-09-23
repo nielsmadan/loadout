@@ -4,20 +4,10 @@ import json
 import os
 import shutil
 import tempfile
-from collections.abc import Callable, Iterable, Mapping
-from dataclasses import replace
+from collections.abc import Callable, Mapping
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from .artifacts import (
-    Artifacts,
-    Copied,
-    FrozenFile,
-    Merged,
-    Output,
-    render_artifacts,
-    validate_artifact_paths,
-)
 from .bundled_templates import BUNDLED
 from .composition import HEADER, load_fragment, render
 from .deployment import (
@@ -44,7 +34,6 @@ from .manifest import (
 )
 from .module_config import MODULE_CONFIG_SUBDIR, discover_module_config
 from .native_documents import apply_document
-from .native_templates import render_native_templates
 from .notices import (
     OPENCODE_EXTERNAL_SKILL_FLAG,
     OPENCODE_SKILL_FLAGS,
@@ -56,6 +45,7 @@ from .notices import (
     unreached_catch_all,
     unsupported_shell_globs,
 )
+from .output import Copied, FrozenFile, Merged, Output
 from .permissions.merge import merge_rules
 from .permissions.renderers import (
     RENDERERS,
@@ -763,32 +753,24 @@ def project_notices(root: Path, environ: Mapping[str, str]) -> tuple[Notice, ...
         return ()
     config = load_project_config(path)
     found: list[Notice] = []
-    # Only the preset path merges permission tiers. A `presets = false` project
-    # renders from artifacts and never needs permissions.toml, so reading it
-    # unconditionally failed a check that had nothing wrong with it.
-    if config.presets:
-        templates = tuple(resolve_template(name, root).path for name in config.templates)
-        catalogs = load_catalogs(templates)
-        if (root / PROJECT_DIR / PROJECT_SOURCE).is_file():
-            rules = _project_rules(root, config, catalogs)
-            for agent, slice_name, spec in project_slices(config.harnesses):
-                if slice_name != "permissions" or not spec.renderer:
-                    continue
-                if rules.default is not None:
-                    found.extend(unreached_catch_all(agent, spec.renderer, rules.default))
-                found.extend(unsupported_shell_globs(agent, spec.renderer, rules))
-        # The same fragment reported at global scope was silent here: project
-        # hooks and plugins reach a destination without passing notices_for.
-        for agent, slice_name, _ in project_slices(config.harnesses):
-            if slice_name not in PROJECT_DOCUMENTS:
+    templates = tuple(resolve_template(name, root).path for name in config.templates)
+    catalogs = load_catalogs(templates)
+    if (root / PROJECT_DIR / PROJECT_SOURCE).is_file():
+        rules = _project_rules(root, config, catalogs)
+        for agent, slice_name, spec in project_slices(config.harnesses):
+            if slice_name != "permissions" or not spec.renderer:
                 continue
-            document, contributed = project_slice_document(
-                root, config, slice_name, catalogs=catalogs
-            )
-            if not contributed:
-                continue
-            known = _known_marketplaces(agent, document) if slice_name == "plugins" else frozenset()
-            found.extend(notices_for(agent, slice_name, document, known))
+            if rules.default is not None:
+                found.extend(unreached_catch_all(agent, spec.renderer, rules.default))
+            found.extend(unsupported_shell_globs(agent, spec.renderer, rules))
+    for agent, slice_name, _ in project_slices(config.harnesses):
+        if slice_name not in PROJECT_DOCUMENTS:
+            continue
+        document, contributed = project_slice_document(root, config, slice_name, catalogs=catalogs)
+        if not contributed:
+            continue
+        known = _known_marketplaces(agent, document) if slice_name == "plugins" else frozenset()
+        found.extend(notices_for(agent, slice_name, document, known))
     trees = project_skill_trees(root, config)
     claude_collision = any(
         {"claude", "opencode"}.issubset(
@@ -891,12 +873,7 @@ def render_global(root: Path, profile: str = "default") -> dict[Path, Output]:
     # collides with it rather than depending on which ran first.
     for module_config_target in manifest.module_config:
         _expand_module_config(module_config_target, manifest, outputs, claimed)
-    return _with_artifacts(
-        outputs,
-        manifest.artifacts,
-        occupied=claimed,
-        source_inputs=_global_source_inputs(root, manifest),
-    )
+    return outputs
 
 
 SKILLS_SUBDIR = "skills"
@@ -1028,56 +1005,6 @@ def render_all(root: Path, profile: str = "default") -> dict[Path, Output]:
                 f"path collision between global and project scope: {', '.join(collisions)}"
             )
         outputs.update(project_outputs)
-    if has_global and has_project:
-        _validate_scope_artifacts(root, profile, global_outputs, project_outputs)
-    return outputs
-
-
-def _validate_scope_artifacts(
-    root: Path,
-    profile: str,
-    global_outputs: Mapping[Path, Output],
-    project_outputs: Mapping[Path, Output],
-) -> None:
-    manifest = load_profile(root, profile)
-    config = load_project_config(project_config_path(root))
-    global_artifacts = manifest.artifacts
-    project_artifacts = config.artifacts
-    project_paths = (
-        validate_artifact_paths(project_artifacts, project_root=root) if project_artifacts else ()
-    )
-    if global_artifacts is not None:
-        validate_artifact_paths(
-            global_artifacts,
-            occupied=(*project_outputs, *project_paths),
-            source_inputs=_project_source_inputs(root, config),
-        )
-    if project_artifacts is not None:
-        validate_artifact_paths(
-            project_artifacts,
-            project_root=root,
-            occupied=global_outputs,
-            source_inputs=_global_source_inputs(root, manifest),
-        )
-
-
-def _with_artifacts(
-    outputs: dict[Path, Output],
-    artifacts: Artifacts | None,
-    *,
-    project_root: Path | None = None,
-    occupied: Mapping[Path, str] | None = None,
-    source_inputs: Iterable[Path] = (),
-) -> dict[Path, Output]:
-    if artifacts is not None:
-        outputs.update(
-            render_artifacts(
-                artifacts,
-                project_root=project_root,
-                occupied=(*outputs, *(occupied or {})),
-                source_inputs=source_inputs,
-            )
-        )
     return outputs
 
 
@@ -1115,40 +1042,7 @@ def _project_source_inputs(root: Path, config: ProjectConfig) -> tuple[Path, ...
 
 def render_project(root: Path) -> dict[Path, Output]:
     config = load_project_config(project_config_path(root))
-    if config.presets:
-        return _render_project_presets(root, config)
-    templates = tuple(resolve_template(name, root) for name in config.templates)
-    outputs = render_native_templates(
-        root, config, templates, source_inputs=_project_source_inputs(root, config)
-    )
-    routed = (
-        {
-            agent
-            for artifact in config.artifacts.records
-            if any(part.category == "skills" for part in artifact.parts)
-            for agent in artifact.agents
-        }
-        if config.artifacts is not None
-        else set()
-    )
-    available = tuple(agent for agent in config.harnesses if agent not in routed)
-    trees = project_skill_trees(root, config) if available else ()
-    catalog: dict[Path, Output] = {}
-    claimed: dict[Path, str] = {}
-    _expand_project_catalog(
-        root,
-        config,
-        trees,
-        (catalog, claimed),
-        available=available,
-    )
-    collisions = sorted(str(path) for path in catalog if path in outputs)
-    if collisions:
-        raise LoadoutError(
-            f"canonical skills collide with native artifact outputs: {', '.join(collisions)}"
-        )
-    outputs.update(catalog)
-    return outputs
+    return _render_project_slices(root, config)
 
 
 def _project_rules(root: Path, config: ProjectConfig, catalogs: Mapping[Path, Catalog]) -> Rules:
@@ -1200,7 +1094,7 @@ def _retired_keys(
     return retired
 
 
-def _render_project_presets(root: Path, config: ProjectConfig) -> dict[Path, Output]:
+def _render_project_slices(root: Path, config: ProjectConfig) -> dict[Path, Output]:
     templates = tuple(resolve_template(name, root).path for name in config.templates)
     catalogs = load_catalogs(templates)
     rules = _project_rules(root, config, catalogs)
@@ -1286,13 +1180,7 @@ def _render_project_presets(root: Path, config: ProjectConfig) -> dict[Path, Out
         # scope renders from the project's own config rather than the global
         # manifest's sources. No project slice has derived ownership today.
         outputs[path] = compose_permission_document(contributors, rules, path)
-    return _with_artifacts(
-        outputs,
-        config.artifacts,
-        project_root=root,
-        occupied=claimed,
-        source_inputs=_project_source_inputs(root, config),
-    )
+    return outputs
 
 
 def project_slice_document(
@@ -1457,34 +1345,7 @@ def atomic_copy(path: Path, source: Path) -> None:
 
 
 def artifact_deployment_scopes(root: Path, profile: str = "default") -> tuple[DeploymentScope, ...]:
-    root = root.absolute()
-    scopes: list[DeploymentScope] = []
-    if manifest_path(root).is_file():
-        manifest = load_profile(root, profile)
-        scopes.append(
-            DeploymentScope(
-                "global", root, root, manifest.artifacts, _global_source_inputs(root, manifest)
-            )
-        )
-    if project_config_path(root).is_file():
-        config = load_project_config(project_config_path(root))
-        scopes.append(
-            DeploymentScope(
-                "project",
-                root,
-                project_config_path(root).parent,
-                config.artifacts,
-                _project_source_inputs(root, config),
-            )
-        )
-    protected = tuple(dict.fromkeys(path for scope in scopes for path in scope.protected))
-    return tuple(
-        replace(scope, protected=protected)
-        for scope in scopes
-        if scope.artifacts is not None
-        or scope.receipt_path.exists()
-        or scope.receipt_path.is_symlink()
-    )
+    return ()
 
 
 def write_all(root: Path, profile: str = "default", *, force: bool = False) -> list[Path]:

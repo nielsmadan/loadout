@@ -4,7 +4,6 @@ from pathlib import Path
 import pytest
 
 import loadout
-import loadout.native_skill_installation as native
 import loadout.skill_installation as legacy
 from loadout.emit import write_all
 from test_cli import _global_skill_root, _write_machine_config
@@ -15,19 +14,11 @@ pytestmark = pytest.mark.integration
 
 def _use_bundle(monkeypatch: pytest.MonkeyPatch, bundle: Path) -> None:
     monkeypatch.setattr("loadout.commands.bundled_skill_path", lambda: bundle)
-    monkeypatch.setattr(native, "bundled_skill_path", lambda: bundle)
 
 
-def _override_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, mixed: bool) -> Path:
+def _override_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = _global_skill_root(tmp_path, monkeypatch, sources=("company", "personal"))
     manifest = root / "loadout.toml"
-    if mixed:
-        manifest.write_text('artifacts="artifacts.toml"\n' + manifest.read_text())
-        (root / "native-skills").mkdir()
-        (root / "artifacts.toml").write_text(
-            '[[artifact]]\nagents=["pi"]\nformat="tree"\ncategory="skills"\n'
-            'source="native-skills"\ndestination="~/.native/skills"\n'
-        )
     _use_bundle(monkeypatch, _bundle(tmp_path / "first", "version one\n"))
     assert loadout.main(["integrate", "skill", "install", "--source", "personal", "--yes"]) == 0
     _bundle(root / "company/skills/loadout", "company version\n")
@@ -49,16 +40,16 @@ def _override_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, mixed: bo
     return root
 
 
-@pytest.mark.parametrize("case", tuple(product((False, True), repeat=3)))
+@pytest.mark.parametrize("case", tuple(product((False, True), repeat=2)))
 def test_skill_commands_manage_the_active_override(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     fake_home: Path,
     capsys: pytest.CaptureFixture[str],
-    case: tuple[bool, bool, bool],
+    case: tuple[bool, bool],
 ) -> None:
-    mixed, explicit, inherited = case
-    root = _override_root(tmp_path, monkeypatch, mixed=mixed)
+    explicit, inherited = case
+    root = _override_root(tmp_path, monkeypatch)
     if inherited:
         (root / "work.toml").write_text('extends="default"\n')
         _write_machine_config(tmp_path / "xdg", root, "work")
@@ -94,23 +85,18 @@ def test_skill_commands_manage_the_active_override(
         .read_text()
         .endswith("retained company skill\n")
     )
-    if mixed:
-        assert [
-            path for path in (fake_home / ".native/skills/loadout").rglob("*") if path.is_file()
-        ] == []
     assert loadout.main(["check", "--global"]) == 0
 
 
-@pytest.mark.parametrize("case", tuple(product((False, True), ("modified", "unowned"))))
+@pytest.mark.parametrize("state", ("modified", "unowned"))
 def test_skill_override_preserves_source_ownership_guards(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     fake_home: Path,
     capsys: pytest.CaptureFixture[str],
-    case: tuple[bool, str],
+    state: str,
 ) -> None:
-    mixed, state = case
-    root = _override_root(tmp_path, monkeypatch, mixed=mixed)
+    root = _override_root(tmp_path, monkeypatch)
     winner = root / "personal/skills/loadout"
     if state == "modified":
         (winner / "SKILL.md").write_text("user edits\n")
@@ -133,7 +119,7 @@ def test_skill_override_preserves_source_ownership_guards(
 def test_explicit_source_cannot_manage_a_shadowed_skill(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    root = _override_root(tmp_path, monkeypatch, mixed=False)
+    root = _override_root(tmp_path, monkeypatch)
     for action in ("status", "install", "uninstall"):
         flags = [] if action == "status" else ["--yes"]
         assert loadout.main(["integrate", "skill", action, "--source", "company", *flags]) == 3
@@ -141,18 +127,17 @@ def test_explicit_source_cannot_manage_a_shadowed_skill(
     assert (root / "company/skills/loadout/SKILL.md").read_text().endswith("company version\n")
 
 
-@pytest.mark.parametrize("mixed", [False, True])
 def test_override_uninstall_rolls_back_a_failed_manifest_write(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake_home: Path, mixed: bool
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake_home: Path
 ) -> None:
-    root = _override_root(tmp_path, monkeypatch, mixed=mixed)
+    root = _override_root(tmp_path, monkeypatch)
     manifest = root / "loadout.toml"
     before = manifest.read_bytes()
     winner = root / "personal/skills/loadout/SKILL.md"
     source = winner.read_bytes()
     output = fake_home / ".claude/skills/loadout/SKILL.md"
     rendered = output.read_bytes()
-    installer = native if mixed else legacy
+    installer = legacy
     original = installer.atomic_install
 
     def fail(path: Path, content: legacy.FrozenFile) -> None:

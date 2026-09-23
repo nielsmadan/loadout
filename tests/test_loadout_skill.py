@@ -149,7 +149,7 @@ def test_capability_matrix_pins_every_scope_mapping() -> None:
         "harnesses": (
             "unsupported",
             "`harnesses` in `loadout/config.toml`",
-            "declared agent blocks or legacy targets",
+            "declared agent blocks",
         ),
         "profiles": (
             "unsupported",

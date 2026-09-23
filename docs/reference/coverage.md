@@ -21,101 +21,45 @@ The operator map is [composition.md](composition.md). Profile tests are in
 | behaviour | pinned by |
 |---|---|
 | legacy targets inherit individual fields and instruction substitution reaches output | `test_legacy_target_inherits_fields_and_applies_substitution`, `test_permission_target_inherits_renderer_and_replaces_lists`, `test_explicit_manifest_path_remains_the_start_of_inheritance` |
-| profiles name sibling files; symlink aliases stay within the source root and use canonical identities for cycles and protection | `test_parent_must_name_a_sibling_profile`, `test_symlinked_parent_must_remain_in_the_source_directory`, `test_symlinked_parent_cycle_uses_canonical_identity`, `test_symlinked_parent_dependency_is_protected_at_its_real_path` |
 | removals precede child fields across a chain, including quoted paths and whole-target replacement | `test_removals_apply_before_child_fields_in_a_chain`, `test_removing_a_target_allows_wholesale_replacement` |
 | removing agent fields exposes shared defaults; supplied maps replace completely | `test_agent_field_removal_exposes_all_and_maps_replace` |
 | missing/overlapping removal paths, list traversal and parentless removal fail | `test_invalid_removals_are_refused`, `test_removal_without_parent_is_refused` |
 | declared skill replacements select the whole tree while other lower-tier skills survive | `test_skill_override_replaces_the_entire_tree` |
 | declared module replacements preserve the winner's bytes and mode while other lower-tier files survive | `test_module_override_keeps_the_winners_bytes_and_mode` |
 | overrides require both contenders, safe exact names and a participating category | `test_override_must_name_both_contenders`, `test_invalid_override_declarations_are_refused`, `test_override_requires_the_category_in_use` |
-| native profile indexes reuse shared inputs across profile switches | `test_profile_indexes_reuse_shared_inputs_through_sync` |
 | parsed skill/module overrides reach deployed bytes, modes and clean checks | `test_declared_overrides_reach_sync_and_check` |
 
-Native ordered inputs are covered in `tests/test_artifact_composition.py`:
 
 | behaviour | pinned by |
 |---|---|
-| JSON/TOML deep merging preserves key order, appends arrays and replaces scalars | `test_document_layers_preserve_order_and_use_deep_merge` |
-| deleted input keys retain partial ownership and cannot hide another part's claim | `test_deleted_layer_keys_retain_partial_ownership`, `test_deleted_layer_key_cannot_hide_another_parts_ownership` |
-| explicit ownership constrains each input before deletion | `test_every_layer_is_checked_against_explicit_keys` |
-| global/project optional input activation, edits, removals and retirement preserve foreign fields and mode | `test_optional_overlay_lifecycle_preserves_foreign_fields` |
-| authored layer order reaches output and external output changes are refused | `test_layered_output_drift_is_refused_and_authored_order_is_applied` |
-| every input remains protected, including absent optional paths and retirement targets | `test_every_input_path_is_protected_even_when_optional`, `test_retirement_cannot_delete_a_new_layer_input` |
-| portable JSON/text layers retain stricter rules and surviving contributions from each source | `test_portable_layers_keep_stricter_rules_and_contributions_from_both_sources`, `test_text_permission_layers_merge_before_rendering`, `test_layered_rule_defaults_keep_the_strictest_stated_value` |
-| composed instruction bytes, modes, optional inputs and empty-to-active lifecycle | `test_composed_instruction_bytes_modes_and_optional_input`, `test_composed_instruction_empty_activation_and_retirement` |
-| invalid UTF-8, layer syntax, symlinks and incompatible operators fail | `test_composed_instructions_refuse_invalid_utf8`, `test_invalid_document_composition_is_rejected`, `test_layered_input_symlink_is_refused`, `test_layered_permissions_require_a_rule_renderer`, `test_opaque_routes_retain_a_single_source` |
-| catalog templates prefix composed instructions once and merge document/rule contributions | `test_catalog_contributions_reach_layered_instructions_and_documents`, `test_text_permission_layers_merge_before_rendering` |
-| staged reconstruction reads staged layers and omits an untracked optional personal input | `test_layered_documents_use_staged_inputs_and_omit_untracked_personal_layer` in `tests/test_git_integration.py` |
 
 ## Migration planning
 
-CLI integration is covered in `tests/test_init_workflow.py` and `tests/test_cli.py`:
 
 | behaviour | pinned by |
 |---|---|
 | metadata-only unresolved preview, explicit scope and approval | `test_unresolved_json_preview_does_not_mutate`, `test_noninteractive_apply_requires_explicit_approval`, `test_project_init_does_not_adopt_global_live_state` |
-| project adoption, checkpoint/staging and nested repeat no-op | `test_project_preview_and_apply_adopt_and_stage` |
 | global cwd default, source and harness-default registration, matching-config preservation and explicit replacement | `test_global_defaults_to_cwd_and_registers_actual_manifest`, `test_repeat_global_init_saves_defaults_and_preserves_machine_config`, `test_matching_registration_keep_preserves_harness_defaults`, `test_existing_source_registration_is_an_explicit_transaction` |
 | project harness precedence: explicit selection, machine default, discovery, initialized project and stale global source | `test_explicit_project_harnesses_override_machine_defaults`, `test_project_init_uses_machine_harness_defaults`, `test_machine_harness_defaults_take_precedence_over_project_discovery`, `test_initialized_project_ignores_machine_harness_defaults`, `test_stale_global_source_does_not_block_machine_harness_defaults` |
 | duplicate source choices are independent of approval | `test_global_copy_conflict_requires_selection_even_with_yes` |
 | init scope subcommands: bare usage, and flags rejected outside their scope | `test_bare_init_prints_usage_naming_the_two_scopes`, `test_init_project_rejects_global_only_flags`, `test_init_global_rejects_project_only_flags` |
 | interactive choice/decline and cancellation before mutation | `test_interactive_agent_and_starter_choices_then_decline`, `test_global_apply_cancellation_does_not_mutate` |
-| preview values stay private; malformed mapping shapes are usage errors | `test_preview_never_prints_secret_values`, `test_invalid_mapping_shape_is_usage_error` |
-| resume/recover JSON results and preserved recovery conflicts | `test_cli_resume_and_recover_use_the_reported_journal`, `test_cli_recovery_conflicts_report_paths_and_nonzero_status` |
-
-Native bundled-skill lifecycle is covered in `tests/test_native_skill_installation.py`:
 
 | behaviour | pinned by |
 |---|---|
-| distinct/shared active trees, bytes/assets and receipt-coherent uninstall | `test_native_install_update_uninstall_and_receipts` |
-| all-target conflict preflight and modified-source/output preservation | `test_one_conflicting_target_preserves_every_target`, `test_new_occupied_output_is_preflighted_before_source_changes` |
-| native hashing includes intentional supporting assets and additions | `test_native_hash_preserves_intentional_assets_and_detects_all_additions` |
-| failed deployment rolls back source, outputs and receipts | `test_native_failure_rolls_back_sources_outputs_and_receipts` |
-| rollback failure retains protected recovery outside deployable trees | `test_failed_rollback_retains_private_recovery_outside_native_trees` |
-| replaced rollback parents retain quarantined source and never redirect restoration | `test_source_rollback_retains_quarantine_when_parent_is_replaced`, `test_file_rollback_does_not_follow_replaced_parent` |
-| native/legacy targets work together, no-target state is explicit | `test_native_and_legacy_routes_install_together`, `test_artifact_manifest_without_skills_reports_no_routes` |
-| mixed CLI changes finish normal global sync and reject changed routing | `test_native_cli_finishes_global_sync_for_pending_legacy_outputs`, `test_native_configuration_changes_invalidate_inspection` |
-| mixed update/uninstall checks frozen legacy preimages at each mutation and rolls back native sources, outputs and receipts while preserving concurrent files | `test_legacy_race_preserves_user_output_and_rolls_back_native_changes`, `test_missing_legacy_output_cannot_be_occupied_during_native_deployment` |
-| missing native sources retain external ownership for reinstall and uninstall | `test_missing_native_source_keeps_marker_ownership_for_reinstall_and_uninstall` |
-| missing-source ownership metadata remains guarded against invalid content and changes after inspection | `test_missing_native_source_rejects_marker_changes_after_inspection`, `test_missing_native_source_does_not_claim_invalid_ownership_metadata` |
-| CLI status reports actual source trees and consumers | `test_native_cli_reports_each_source_and_installs` |
 | package includes onboarding reference | `test_built_wheel_contains_the_complete_skill_tree` in `tests/test_bundled_skill.py` |
 
-All rows below are exercised in `tests/test_migration.py`; the contract is
 [migration.md](migration.md).
 
 | behaviour | pinned by |
 |---|---|
 | explicit scope and shared membership ambiguity | `test_shared_instructions_do_not_invent_scope_or_harnesses` |
-| native categories, ordered literals, no original mutation | `test_project_plan_reconstructs_composite_native_data_without_mutation` |
-| verified portable conversion and silent-loss fallback | `test_permission_extraction_is_verified_after_serialization`, `test_silent_extractor_losses_use_native_fallback` |
-| opaque subtree bytes, modes and relative dependencies | `test_nested_instructions_and_program_dependency_layout`, `test_static_hook_dependency_is_inventoried_and_reconstructed` |
-| runtime exclusions depend on root roles, not ancestor names | `test_workspace_parent_names_are_not_runtime_roles`, `test_symlink_into_known_runtime_root_is_excluded` |
-| tracked nested instructions under dependency/build directories | `test_tracked_nested_instructions_survive_build_walk_filters` |
-| credentials and personal source never enter checkpoint paths | `test_credentials_and_personal_sources_are_excluded_from_checkpoints`, `test_gitignored_authored_configuration_remains_personal` |
-| global relocation and mixed runtime documents | `test_global_live_roots_honor_relocation_and_partial_runtime_ownership`, `test_default_claude_mcp_is_sibling_of_default_harness_directory`, `test_live_roots_expand_using_supplied_home` |
-| explicit dotfile roles and conflicting source selection | `test_dotfile_directory_names_require_confirmed_mapping`, `test_source_and_live_conflict_requires_explicit_selection` |
-| external symlinks require mappings and keep original targets | `test_symlink_external_target_requires_mapping_and_is_never_written` |
 | unknown and unmaterialized native input blocks completion | `test_unknown_native_and_materialization_inputs_block_complete_migration`, `test_unmapped_external_hook_dependency_blocks_completion` |
 | initialized source produces an idempotent no-migration result | `test_existing_source_is_not_reinterpreted` |
-| serialized source mutation fails isolated full comparison | `test_validation_rejects_actual_serialized_source_changes` |
-| minimal project sources and preserved explicit empty values | `test_empty_project_creates_only_config_and_index`, `test_project_documents_create_only_their_populated_sources`, `test_originally_empty_instruction_file_is_recreated` |
-| project readiness distinguishes known destinations from unverified categories while preserving existing mappings | `test_empty_project_creates_only_config_and_index`, `test_existing_codex_hook_mapping_keeps_its_readiness` |
-| full global scaffold and dormant first-entry activation | `test_global_keeps_full_dormant_scaffold`, `test_dormant_document_parts_activate_on_first_entry` |
-| migrated OpenCode plugins also supply hook readiness | `test_existing_opencode_plugins_keep_hooks_routed` |
-| selected instruction starters create only their required routes | `test_empty_project_starter_creates_only_instruction_routes` in `tests/test_starters.py` |
-| skill first entry, edit, rename and deletion | `test_skill_tree_first_entry_edit_rename_and_delete` |
-| synthetic public dotfile layouts | `test_global_synthetic_dbochman_and_anaiis_shapes` |
-| partial output mode policy and private clone behavior | `test_partial_output_mode_policy_preserves_adopted_destination_mode`, `test_private_routes_are_optional_in_a_checkout_without_personal_files` |
 | ignored generated links preserve tracked source privacy | `test_ignored_symlink_output_keeps_tracked_canonical_source_public` |
-| shared skill membership and directory preconditions | `test_shared_agents_tree_keeps_its_actual_consumers`, `test_directory_precondition_detects_a_new_authored_input` |
 | canonical runtime roles through symlinked harness roots, with unchanged crawl limits | `test_symlinked_harness_root_excludes_canonical_runtime_aliases`, `test_symlinked_harness_root_does_not_expand_inventory_boundary`, `test_symlink_cycle_in_harness_root_is_reported` |
 | private canonical originals and future private tree entries stay excluded | `test_private_instruction_excludes_canonical_original_and_aliases`, `test_private_tree_namespace_ignores_future_entries` |
-| retirement accounts for mapped trees, duplicate copies and symlink targets | `test_mapped_tree_retirement_accounts_for_every_original`, `test_duplicate_and_symlink_sources_have_explicit_retirement`, `test_mapped_private_and_runtime_originals_have_retained_dispositions` |
-| retirement uses final output topology and preserves required destinations | `test_ancestor_spelling_does_not_retire_a_generated_destination`, `test_an_original_required_by_another_output_is_not_retired`, `test_symlinked_harness_directory_uses_final_retirement_topology` |
 | dependency mappings agree in original and deployed coordinates | `test_mapped_relative_dependencies_preserve_source_and_deployed_layout`, `test_absolute_dependency_on_relocated_original_stays_blocked`, `test_relative_dependency_with_disagreeing_mapping_stays_blocked` |
-| dependency checks and retirement share final symlink topology | `test_symlinked_harness_absolute_dependency_on_retired_source_is_blocked`, `test_symlinked_harness_dependencies_follow_final_destinations` |
-| direct harness-root sources preserve HOME/relocated destination links and ancestor aliases while blocking stale source references | `test_direct_harness_root_absolute_source_dependencies_are_blocked`, `test_direct_harness_root_dependencies_keep_active_destinations` |
 | recognizable unsupported global harness trees block migration | `test_global_unsupported_harness_tree_is_unresolved` |
 | instruction discovery preconditions every traversed directory | `test_instruction_search_records_each_traversed_directory`, `test_instruction_search_preconditions_canonical_root_listing` |
 
@@ -123,54 +67,28 @@ Additional migration review regressions are in `tests/test_init_review_regressio
 
 | behaviour | pinned by |
 |---|---|
-| runtime-only mixed documents survive apply/recovery/resume and accept their first owned entry | `test_runtime_only_partial_files_apply_and_recover`, `test_runtime_only_partial_resume_then_first_activation` |
-| renamed and extensionless explicit sources use destination document identity | `test_renamed_explicit_documents_keep_destination_ownership` |
-| ordinary untracked project directories do not inherit harness runtime exclusions | `test_untracked_project_runtime_named_directories_keep_instructions` |
 | nested auth/runtime originals remain excluded from both Git phases | `test_nested_runtime_files_remain_original_and_outside_both_git_phases` |
-| opaque JSON/TOML credential detection preserves environment-reference controls | `test_opaque_support_credentials_use_structural_privacy` |
-| corrected interactive source selection replaces the invalid prior selection | `test_interactive_invalid_source_selection_can_be_corrected` |
-| private-path normalization is bounded within filesystem planning | `test_private_paths_are_normalized_once_per_filesystem_plan` |
 | candidate-based corpus inventory detects a joint planner/renderer omission | `test_corpus_oracle_catches_joint_planner_renderer_omission` |
 
 ## Migration transactions
 
-All rows below are exercised in `tests/test_migration_transaction.py`; the contract is
 [migration.md](migration.md#applying-a-resolved-plan).
 
 | behaviour | pinned by |
 |---|---|
-| project checkpoint, staging, source edits and normal sync/check | `test_project_migration_checkpoints_stages_and_uses_normal_lifecycle` |
-| global partial fields, adopted modes and explicit registration | `test_global_migration_preserves_foreign_fields_and_registers_explicit_write`, `test_partial_document_symlink_freezes_foreign_bytes_before_replacement` |
 | existing-source no-op retains explicit registration | `test_existing_source_noop_can_write_explicit_registration` |
-| new baseline includes ordinary source and excludes private namespaces | `test_new_repository_checkpoint_filters_private_namespaces_and_ignored_files`, `test_new_repository_cannot_start_at_home` |
-| enclosing root, detached HEAD and linked worktrees | `test_nested_global_source_uses_enclosing_repository_only`, `test_existing_checkpoint_changes_only_adopted_index_entries`, `test_linked_worktree_preserves_other_checkout_index` |
 | unrelated partial staging and unstaged ignore hunks survive | `test_unrelated_partial_index_and_ignore_hunks_survive` |
-| symlink topology, runtime visibility, external originals and retirement | `test_directory_symlink_retains_runtime_visibility_and_external_targets`, `test_file_and_directory_symlinks_checkpoint_link_entries_and_retire_only_originals` |
 | ambiguous staging and unmerged index refuse preflight | `test_partially_staged_adopted_files_require_resolution_even_when_private`, `test_unmerged_index_is_rejected_before_preimages` |
 | input/index/HEAD and Git privacy changes invalidate preparation | `test_stale_preparation_is_rejected_before_journal`, `test_source_privacy_change_in_info_exclude_blocks_preparation` |
 | unresolved plans cannot reach application | `test_unresolved_plan_cannot_be_prepared` |
-| hook, identity and signing failures preserve original inputs | `test_hook_failure_has_journal_and_does_not_write_source`, `test_identity_failure_keeps_initial_files_and_can_resume_after_configuration`, `test_signing_failure_preserves_requested_signing_and_original_files` |
-| first entry, edit and last deletion use the adopted receipt | `test_first_skill_entry_edit_and_last_deletion_use_adopted_receipt` |
-| literal Git paths and representable ignore patterns | `test_literal_metacharacter_paths_do_not_expand_staging_or_ignore_rules`, `test_newline_output_is_rejected_before_git_initialization` |
-| interrupted filesystem/index writes resume without duplicate checkpoint | `test_interrupted_deployment_resumes_frozen_bytes_and_normal_receipt`, `test_interrupted_final_index_replacement_resumes_without_duplicate_commit` |
 | checkpoint survives refresh failure and recovery | `test_failure_after_checkpoint_commit_records_and_refreshes_success`, `test_recovery_after_final_staging_keeps_baseline_and_restores_original_entries` |
-| recovery preserves concurrent files and subsequent user commits | `test_recovery_preserves_conflicting_edits_and_successful_baseline`, `test_recovery_after_user_commit_preserves_committed_source_and_index` |
 | resume revalidates inputs and refuses intervening new-repo commits | `test_resume_after_hook_failure_refuses_changed_checkpoint_content`, `test_new_repository_resume_refuses_an_intervening_user_commit` |
-| resume rechecks original, canonical and new-source Git privacy at checkpoint and staging boundaries | `test_resume_rechecks_privacy_after_failed_checkpoint`, `test_resume_rechecks_privacy_after_checkpoint_and_before_staging`, `test_resume_rechecks_symlinked_exclude_file_contents` |
-| unchanged output bytes, modes and absences remain guarded across deployment, retirement and final index interruptions | `test_resume_validates_unchanged_outputs_at_every_completion_boundary`, `test_unchanged_outputs_validate_before_retiring_originals`, `test_final_index_resume_validates_dormant_outputs` |
-| ancestor aliases, including nested source directories in enclosing repositories, preserve physical checkpoint paths, terminal link entries, source staging and private directory modes | `test_source_ancestor_alias_preserves_checkpoint_paths_and_link_entries`, `test_nested_source_alias_preserves_enclosing_repository_index_and_privacy`, `test_aliased_source_keeps_private_namespaces_protected` |
 | preimages stay private through hooks; malformed state is refused | `test_untrusted_recovery_state_is_rejected_before_checkpoint`, `test_journal_is_ignored_during_the_real_checkpoint_hook`, `test_loaded_journal_rejects_invalid_shape_before_recovery` |
-| successful init/resume/recovery remove transaction state while retaining deployment receipts; failures retain usable journals | `test_project_migration_checkpoints_stages_and_uses_normal_lifecycle`, `test_hook_failure_has_journal_and_does_not_write_source`, `test_interrupted_deployment_resumes_frozen_bytes_and_normal_receipt`, `test_cli_resume_and_recover_use_the_reported_journal` |
-| payload replacement preserves the previous cursor until publication; cleanup failures report a retryable journal and preserve neighboring state | `test_payload_replacement_keeps_the_previous_cursor_readable_until_published`, `test_unfinished_journal_cannot_be_discarded`, `test_cli_cleanup_failure_retains_its_journal_and_can_retry`, `test_cleanup_refuses_a_symlink_inside_the_transaction` in `test_migration_cleanup.py` |
 
 Retirement optimization is covered in `tests/test_init_review_regressions.py` and
-`tests/test_migration_privacy.py`:
 
 | behaviour | pinned by |
 |---|---|
-| each retirement refreshes privacy while deduplicating same-parent queries | `test_each_retirement_refreshes_privacy_with_deduplicated_parent_queries`, `test_privacy_policy_resolves_each_logical_parent_once` |
-| changes to source, output, parents, privacy or index stop the next retirement | `test_mid_retirement_changes_refuse_before_the_next_original` |
-| exact replacement bytes/modes remain guarded even with unchanged metadata; missing/ambiguous mappings retain full checks | `test_each_retirement_checks_exact_replacement_even_with_unchanged_fingerprint`, `test_retirement_without_replacement_mapping_keeps_full_output_guards` |
 | privacy checks refresh aliases, nested repositories, ignore files and config includes | `test_privacy_policy_refreshes_nested_repositories_and_logical_aliases`, `test_privacy_policy_refreshes_ignore_content_configuration_and_symlinks`, `test_parallel_privacy_keeps_git_include_path_expansion_and_fresh_values` |
 | concurrent guards keep every Git observation for born/unborn/detached refs and wait for all query results | `test_parallel_git_guard_keeps_every_observation_and_ref_check`, `test_parallel_privacy_queries_all_finish_before_success_or_error` |
 | final index bytes are checked after concurrent privacy reads finish | `test_parallel_git_guard_checks_index_after_all_privacy_reads` |
@@ -182,29 +100,17 @@ The contract is [git-integration.md](git-integration.md). These cases run in
 
 | behaviour | pinned by |
 |---|---|
-| actual pre-commit checks partial staging and preserves HEAD on invalid source | `test_real_precommit_validates_partial_index_not_worktree` |
-| supplied alternate index, relative index and missing-index refusal | `test_real_commit_honors_alternate_index_and_relative_index_from_nested_cwd` |
-| unborn, empty, corrupt and unmerged indexes cannot silently validate nothing | `test_unborn_empty_corrupt_and_unmerged_indexes` |
-| HEAD ownership survives declaration/config/source removal; untracking outputs is allowed | `test_real_precommit_uses_head_ownership_after_declaration_removal` |
 | migrating absolute/escaping old sources validates only index dependencies; HEAD and index outputs remain protected | `test_head_source_migration_keeps_head_and_index_output_ownership` |
 | selected profile controls instruction/permission ownership before destination expansion | `test_staged_ownership_selects_profile_before_resolving_destinations` |
-| staged dependency deletion never uses the working replacement | `test_required_source_deletion_does_not_read_unstaged_replacement` |
 | active ownership records must be staged and match their producer, including initially empty records; valid updates and producer retirement remain allowed | `test_staged_ownership_record_matches_its_producer_and_allows_updates`, `test_staged_ownership_record_deletion_requires_producer_retirement`, `test_staged_initial_producer_requires_its_generated_record` |
 | bare bundled and machine template names require staged vendoring | `test_bare_templates_never_fall_back_to_machine_or_bundled_source` |
 | nested global source includes sibling dependencies and isolates global destinations | `test_nested_global_snapshot_contains_sibling_sources_and_isolates_destinations` |
-| external paths, source symlink escapes and submodule dependencies fail | `test_external_and_submodule_dependencies_fail_without_reading_live_sources` |
-| optional private files stay absent and programs stay data | `test_optional_private_source_is_absent_and_programs_are_not_executed` |
 | local custom paths, exact managed identity, other-source/occupied/shared preservation | `test_hook_installation_preserves_occupied_shared_and_other_source_hooks` |
-| linked worktree index and local hooks are independent; common hooks are preserved | `test_linked_worktree_validates_supplied_index_and_preserves_common_hooks` |
 | main checkout preserves default and absolute custom hooks shared with linked worktrees; exclusive paths still install | `test_main_checkout_preserves_hooks_shared_with_linked_worktrees` |
 | sharing is checked again after standalone preview | `test_standalone_install_rechecks_hook_sharing_after_preview` |
 | a hook loadout wrote is removed; one without the marker, or serving another source, is preserved | `test_uninstall_removes_loadout_hooks_and_leaves_a_foreign_one`, `test_uninstall_leaves_a_hook_belonging_to_another_loadout_source` |
 | a hook stays removable after a worktree makes its directory shared; an external directory refuses | `test_uninstall_still_removes_a_hook_after_a_worktree_is_added`, `test_uninstall_refuses_a_hooks_directory_outside_the_repository` |
 | status reports each event and who owns it | `test_status_reports_each_event_and_who_owns_it` |
-| init installs no hook; new Git metadata is still transactional | `test_init_installs_no_hook_and_new_git_metadata_is_transactional` |
-| global init installs no hook; the standalone command takes a profile | `test_global_init_installs_no_hook_and_the_standalone_command_takes_a_profile` |
-| checkout/merge regenerate with receipts and explain failure after Git completed | `test_actual_checkout_and_merge_regenerate_or_preserve_edits_after_git_completed` |
-| file checkout does not regenerate | `test_post_checkout_file_event_does_not_regenerate` |
 | missing installed CLI explains that checkout already completed | `test_missing_loadout_on_path_explains_completed_checkout` |
 | the generated hook runs the hidden event command, carrying source and profile | `test_a_generated_hook_runs_the_hidden_event_command` |
 
@@ -351,7 +257,6 @@ list the expected-output files exist for, and the reason the comparison stays.
 | `default-resolved` | `Rules.catch_all` never hands a renderer `None` | — (test is the record) | `test_catch_all_resolves_unstated_to_the_seeded_verdict` |
 | `default-carriers` | the declared carrier set matches what the renderers actually seed | — (test is the record) | `test_only_the_declared_renderers_seed_a_catch_all` |
 | `default-unreached` | a stated default names the targets it does not reach, at sync time, at both scopes and for every selected harness rather than a named one | [ADR 0015](../decisions/0015-enablement-is-rendered-installation-is-reported.md) | `test_a_stated_catch_all_names_the_harnesses_it_misses`, `test_a_project_only_repo_reports_nothing_rather_than_failing` |
-| `project-notice-scope` | project-scope hooks and plugins documents are reported like their global counterparts, and a `presets = false` project reports rather than failing | [ADR 0015](../decisions/0015-enablement-is-rendered-installation-is-reported.md) | `test_a_native_project_declaring_droid_reports_rather_than_failing` |
 | `project-key-retirement` | a project slice that contributes nothing retires the keys it owns from a co-owned document instead of leaving them for `preserve_foreign` to read back | [ADR 0001](../decisions/0001-render-never-reads-its-own-output.md) | `test_removing_the_plugins_fragment_retires_the_keys_it_wrote` |
 | `settings-routing` | a `settings` fragment reaches only the slices whose preset declares `takes_settings` | [README](../../README.md) | `test_a_settings_fragment_reaches_only_the_slices_whose_renderer_reads_one` |
 
@@ -388,39 +293,6 @@ Every row is pinned by `tests/test_extract_roundtrip.py`, `tests/test_extract_me
 | `x-twice-listed` | a verdict is every category a harness listed the entry in, not the last one | `test_harnesses_agreeing_a_rule_appears_twice_keep_both_entries`, `test_a_rule_one_harness_lists_twice_and_another_once_is_reported` — **not reachable through the pipeline**, see below |
 | `x-machine-merges-back` | a source rendered to all nine documents merges back to itself with no divergence | `test_a_machine_rendered_from_one_source_merges_back_to_it` |
 
-## Native artifacts
-
-The opt-in [artifact routes](artifacts.md) share the existing output boundary. These tests live
-in `tests/test_artifacts.py` and `tests/test_deployment.py`; legacy whole-document fixtures remain unchanged.
-
-| id | behaviour | pinned by |
-|---|---|---|
-| `a-literal-json` | null, false, empty values and native permission order survive composition | `test_json_composition_preserves_literal_values_and_permission_order`, `test_literal_json_rejects_duplicate_keys_and_non_json_values` |
-| `a-literal-toml` | nested maps and arrays preserve values and explicit top-level order | `test_toml_composition_keeps_nested_maps_arrays_and_top_level_order`, `test_toml_arrays_of_maps_preserve_key_order` |
-| `a-one-owner` | explicit owners reserve dormant keys; overlaps and extra fields fail | `test_explicit_owners_collide_even_when_one_is_empty`, `test_settings_cannot_take_a_dormant_category_key`, `test_explicit_key_list_never_silently_discards_extra_fields` |
-| `a-empty-slots` | empty sources stay dormant; first entries activate output; explicit empty presence survives | `test_empty_documents_are_dormant_and_first_entries_activate_them`, `test_empty_document_presence_is_explicit`, `test_empty_copy_presence_is_explicit`, `test_missing_sources_require_explicit_optional_declarations` |
-| `a-rules-adapters` | portable adapters reproduce existing renderers, retain single-source semantics without templates and reject incompatible ownership | `test_permission_json_adapters_match_existing_renderers`, `test_permission_text_adapters_match_existing_renderers`, `test_portable_artifact_without_templates_preserves_single_source`, `test_incompatible_or_whole_file_renderers_are_rejected`, `test_empty_renderer_reserves_its_keys_without_creating_an_output` |
-| `a-native-trees` | per-agent instructions and skill trees retain bytes and modes | `test_native_per_agent_instructions_and_skill_tree_copy_bytes_and_modes` |
-| `a-authored-modes` | full opaque modes survive a real Git-index reconstruction; invalid mode/path declarations are rejected | `test_staged_source_reconstructs_full_opaque_mode`, `test_invalid_authored_modes_are_rejected` in `test_migration_corpus_regressions.py` |
-| `a-migration-scaling` | sibling privacy probes are batched without crossing nested repositories or caching later decisions; cursor saves retain durable payloads; v1 recovery and corrupt-payload refusal remain supported | `test_many_siblings_share_privacy_probe`, `test_batched_privacy_keeps_nested_repositories_and_rechecks`, `test_cursor_saves_keep_payload_and_metadata_changes_replace_it`, `test_version_one_journal_still_recovers`, `test_journal_payload_corruption_blocks_recovery` in `test_migration_corpus_regressions.py` |
-| `a-path-safety` | escaped paths, symlinks, overlapping routes and source/output collisions fail | `test_paths_cannot_escape_their_roots`, `test_symlinks_are_refused_before_native_deployment`, `test_declared_routes_reject_duplicate_and_ancestor_collisions`, `test_sources_and_outputs_cannot_overlap`, `test_outputs_cannot_replace_their_configuration` |
-| `a-coexistence` | explicit and legacy routes cannot overwrite each other or authored inputs | `test_legacy_preset_and_artifact_cannot_claim_the_same_path`, `test_global_artifacts_collide_with_legacy_destinations`, `test_global_artifacts_cannot_overwrite_legacy_inputs`, `test_project_artifacts_cannot_overwrite_legacy_permission_sources`, `test_empty_global_and_project_routes_cannot_overlap` |
-| `a-routing` | explicit project mode rejects ignored declarations; agents and source roots are validated | `test_explicit_project_mode_refuses_ignored_legacy_inputs`, `test_project_config_validates_direct_presets_and_agent_membership`, `test_global_artifacts_follow_destination_templates_and_expose_skill_agents`, `test_artifact_reference_is_relative_to_owning_config_even_when_nested` |
-| `a-dependencies` | cross-scope outputs protect source/config dependencies, inherited profiles and resolved templates | `test_project_artifacts_protect_global_source_dependencies`, `test_global_artifacts_protect_project_source_dependencies`, `test_artifacts_protect_declared_template_dependencies` |
-| `a-inherited-catalog` | every inherited machine manifest stays protected from adoption and retirement, including dependencies from scopes without artifact receipts | `test_inherited_template_manifest_cannot_be_adopted_as_an_output`, `test_retirement_preserves_a_newly_inherited_template_manifest` in `test_manifest_protection.py` |
-| `a-source-only` | composition ignores live output and supports a fresh source root | `test_standalone_composition_is_pure`, `test_rendering_never_uses_destination_content`, `test_artifact_configuration_can_be_reconstructed_under_a_fresh_root` |
-| `a-receipt-guard` | previous/current bytes and full modes permit source changes while manual edits block | `test_source_changes_sync_against_receipt_and_current_desired_bytes`, `test_manual_output_edits_block_then_force_explicit_target`, `test_committed_baseline_does_not_override_artifact_receipt`, `test_relative_root_uses_artifact_receipts` |
-| `a-adoption` | missing receipts never authorize overwriting occupied conflicting output | `test_new_occupied_path_requires_adoption_without_git_baseline`, `test_matching_existing_output_can_be_adopted_and_missing_receipt_is_conservative` |
-| `a-receipt-private` | versioned private receipts stay Git-ignored; tracked, symlinked or invalid state blocks | `test_receipt_is_versioned_private_and_gitignored`, `test_bad_receipt_blocks_even_force`, `test_artifacts_cannot_consume_or_write_metadata` |
-| `a-retirement` | rename/delete/last-entry retirement preserves unowned neighbors and rejects modified output | `test_rename_and_last_route_removal_retire_only_receipted_files`, `test_tree_deletion_and_last_file_cleanup`, `test_force_does_not_delete_modified_retirement`, `test_deleted_artifact_reference_still_retires_previous_outputs` |
-| `a-partial-json` | runtime fields survive authored changes, last-key and whole-route removal | `test_json_partial_preserves_runtime_and_removes_authored_keys`, `test_partial_route_removal_strips_ownership_and_keeps_runtime`, `test_partial_manual_owned_changes_block_but_force_preserves_foreign` |
-| `a-partial-adoption` | new key ownership must match or be absent; dormant optional parts do not create runtime files | `test_partial_first_sync_refuses_occupied_owned_keys`, `test_partial_new_owned_key_must_be_absent_or_match_source`, `test_empty_partial_source_stays_absent_then_activates`, `test_emit_empty_partial_explicitly_creates_runtime_file`, `test_optional_partial_source_removal_retires_last_owned_key` |
-| `a-partial-toml` | foreign TOML bytes survive syntax-aware changes and typed fingerprints distinguish dates from strings | `test_partial_toml_preserves_exact_foreign_bytes_through_changes_and_removal`, `test_toml_syntax_aware_removal_handles_dotted_and_array_tables`, `test_toml_fingerprints_preserve_types_and_nonfinite_values`, `test_nested_toml_temporal_value_becoming_string_is_applied` |
-| `a-partial-order` | authored JSON/TOML key order is applied and guarded while foreign fields and runtime-only changes survive | `test_partial_explicit_order_changes_sync_and_preserve_runtime`, `test_partial_manual_owned_order_changes_block_sync_and_retirement`, `test_interrupted_partial_order_guards_previous_and_pending_ownership` |
-| `a-pending-retirement` | retirement validates every key in previous and pending ownership after an interrupted expansion | `test_interrupted_ownership_expansion_retirement_guards_every_removed_key` |
-| `a-scope-lifecycle` | scopes remain isolated, profiles reuse fingerprints, and relocated roots detach without cleanup | `test_receipts_stay_scope_local_and_global_removal_keeps_project`, `test_removed_receipt_owner_cannot_collide_with_new_scope_output`, `test_profile_switch_uses_previous_deployment_without_committed_source`, `test_moving_checkout_preserves_detached_old_outputs`, `test_relocated_global_root_keeps_old_deployment` |
-| `a-frozen-apply` | frozen bytes/modes and preimage checks protect application, including interrupted writes and retirement | `test_frozen_plan_copies_original_bytes_and_mode`, `test_plan_rechecks_destinations_and_receipts_before_mutation`, `test_interrupted_sync_resumes_then_accepts_a_new_source_revision`, `test_interrupted_retirement_can_finish`, `test_symlinks_never_followed_even_with_force` |
-
 ## Skills
 
 A skill is a tree, so the slice pins two things nothing else does: that the shared case survives
@@ -443,13 +315,13 @@ composition untouched, and that a file's *mode* survives a copy.
 | `s-bundle-wheel` | the wheel carries the canonical loadout skill and its reference | `test_built_wheel_contains_the_complete_skill_tree` |
 | `s-bundle-resource` | source checkouts and built wheels use the same package resource tree | `test_package_resource_is_used`, `test_source_checkout_uses_the_package_resource_tree` |
 | `s-install-source` | install vendors into the active profile's sole skills-capable global source, or requires `--source` rather than choosing among several | `test_one_skills_source_is_selected_by_default`, `test_multiple_skills_sources_require_an_explicit_source`, `test_profile_selects_its_own_source`, `test_unknown_profile_is_refused_before_selecting_a_source`, `test_skill_install_requires_source_when_the_manifest_has_several` |
-| `s-install-override` | status/update/uninstall use the declared skill winner in legacy and mixed routes; uninstall removes its inherited or local declaration and restores the earlier skill while preserving other entries, comments and mode | `test_skill_commands_manage_the_active_override`, `test_explicit_source_cannot_manage_a_shadowed_skill` in `test_skill_overrides.py` |
+| `s-install-override` | status/update/uninstall use the declared skill winner; uninstall removes its inherited or local declaration and restores the earlier skill while preserving other entries, comments and mode | `test_skill_commands_manage_the_active_override`, `test_explicit_source_cannot_manage_a_shadowed_skill` in `test_skill_overrides.py` |
 | `s-override-protection` | overrides retain ownership guards; a failed manifest write restores source, config and deployed output | `test_skill_override_preserves_source_ownership_guards`, `test_override_uninstall_rolls_back_a_failed_manifest_write` in `test_skill_overrides.py` |
 | `s-install-owned` | an ownership hash distinguishes installed, updateable, modified and conflicting source copies; refresh never overwrites user edits | `test_an_existing_unowned_skill_is_a_conflict`, `test_install_vendors_the_bundle_as_a_normal_source_skill`, `test_install_refreshes_an_unmodified_older_bundle`, `test_install_preserves_a_modified_installed_copy`, `test_skill_install_conflict_is_reported_without_overwriting_or_syncing` |
 | `s-install-rendered` | the marker stays source-only and ordinary sync deploys the skill to exactly the configured agents; no configured skill targets means install changes nothing | `test_normal_sync_deploys_the_installed_source_to_configured_agents`, `test_skill_install_vendors_into_the_global_source_and_syncs`, `test_skill_status_reports_the_source_copy_and_configured_agents`, `test_skill_install_with_no_configured_agents_does_not_choose_or_change_a_source` |
 | `s-install-confirm` | mutating commands show the source destination, require confirmation or `--yes`, and a decline changes nothing | `test_skill_install_asks_before_writing_the_named_source`, `test_skill_install_requires_yes_without_interactive_input` |
 | `s-uninstall-owned` | uninstall removes the owned source and unchanged rendered files, preserves unrelated files beside them, and treats an externally modified output as a whole-operation no-op | `test_uninstall_removes_owned_source_and_generated_outputs`, `test_uninstall_refuses_a_modified_generated_output`, `test_uninstall_preserves_unrelated_files_in_the_generated_skill_directory`, `test_skill_uninstall_removes_source_and_synced_outputs` |
-| `s-config-contract` | one portable skill body resolves its reference, pins every artifact/scope route, and names only mappings backed by current renderers | `test_every_relative_skill_link_resolves`, `test_every_harness_receives_the_same_skill_body`, `test_capability_matrix_pins_every_scope_mapping`, `test_settings_capability_names_only_agents_whose_render_preserves_settings`, `test_project_skill_capability_names_only_agents_with_a_destination` |
+| `s-config-contract` | one portable skill body resolves its reference, pins every scope mapping, and names only mappings backed by current renderers | `test_every_relative_skill_link_resolves`, `test_every_harness_receives_the_same_skill_body`, `test_capability_matrix_pins_every_scope_mapping`, `test_settings_capability_names_only_agents_whose_render_preserves_settings`, `test_project_skill_capability_names_only_agents_with_a_destination` |
 
 ## Templates
 
@@ -485,30 +357,10 @@ source rather than generated output. See [templates](templates.md) and
 | `t-instructions-tier` | a template's `instructions.md` arrives as one unnamed block above the project's own fragments, without being named in the order | `test_a_template_contributes_instructions_without_being_named` |
 | `t-fixture-instructions` | the fixture template contributes instructions, or the tier ordering between template and project is untested | `test_the_project_fixture_template_contributes_instructions` |
 | `t-bundled-offline` | both packaged starters include useful instructions and empty categories and render from an actual wheel with networking disabled | `test_bundled_templates_resolve_offline_without_machine_config`, `test_installed_wheel_renders_bundled_templates_offline` |
-| `t-bundled-priority` | named sources precede the bundle, duplicates still fail, vendored copies stop machine reads, and fallback works without machine state | `test_named_sources_and_vendoring_keep_priority_over_bundle`, `test_duplicate_named_sources_still_refuse_bundle_fallback`, `test_bundle_is_used_when_declared_sources_have_no_match` |
-| `t-native-prefix` | native template tiers preserve original per-agent body bytes and modes; only explicit instruction routes receive contributions | `test_plan_freezes_starter_and_preserves_agent_bodies_and_modes`, `test_explicit_routes_leave_nested_instructions_and_commands_intact`, `test_starter_has_an_explicit_instruction_route_for_each_agent` |
-| `t-native-refusal` | missing routes and populated unsupported directory-template categories fail before `template add` in either mode, `template sync` or migration writes | `test_native_template_commands_refuse_missing_route_before_mutation`, `test_unsupported_template_contribution_refuses_before_migration`, `test_populated_native_template_command_preflights_before_mutation`, `test_native_template_sync_refuses_unsupported_upstream_without_changes` |
-| `t-catalog-sharing` | manifests vendor one shared copy, dedupe instruction references, retain later-tier precedence and reconstruct without machine sources | `test_two_templates_share_one_vendored_part_and_render_once`, `test_repeated_parts_keep_last_template_precedence`, `test_staged_catalog_renders_without_machine_source` |
 | `t-catalog-isolation` | catalog parts stay inactive globally; paths and symlinks cannot reach active folders | `test_catalog_parts_do_not_activate_global_outputs`, `test_references_cannot_escape_catalog`, `test_catalog_rejects_symlink_to_active_skill` |
 | `t-catalog-update` | all affected templates confirm together; local edits and edits during confirmation block writes; caught write failures restore prior files | `test_shared_update_prompts_for_all_affected_templates`, `test_shared_update_refuses_local_edits_in_other_affected_template`, `test_new_local_skill_file_during_confirmation_refuses_update`, `test_shared_update_rolls_back_a_write_failure`, `test_undeclared_catalog_sync_cannot_bypass_provenance` |
 | `t-catalog-retirement` | removed shared-skill files retire; parts still referenced elsewhere remain | `test_shared_skill_sync_removes_retired_support_file`, `test_removing_reference_keeps_part_needed_by_other_template` |
-| `t-catalog-native` | native projects compose all four portable categories, preserve project overrides and guard generated retirement | `test_native_fresh_project_renders_all_catalog_parts`, `test_native_project_values_override_template_with_both_tiers_present`, `test_native_project_skill_replaces_whole_template_tree`, `test_native_retirement_preserves_edits_and_then_removes_clean_output` |
-| `t-catalog-routing` | routes can opt out; non-round-trippable native permissions fail before source mutation | `test_native_routes_can_opt_out_of_catalog_parts`, `test_native_unrepresentable_permission_refuses_without_mutation` |
-| `t-catalog-init` | artifacts-only global init offers its catalog; starter overrides freeze the full referenced closure | `test_native_global_source_offers_catalog_without_active_source_slices`, `test_catalog_starter_import_freezes_all_referenced_parts` |
-| `t-catalog-policy-starter` | a permissions-only starter creates the Codex MCP policy route | `test_permissions_only_starter_creates_codex_mcp_policy_route` |
 | `t-catalog-toml` | qualified names and commented template lists remain valid | `test_qualified_catalog_name_vendors_valid_toml`, `test_commented_template_list_remains_valid` |
-| `t-catalog-agents` | each agent receives instructions, skills/support, shell allow/ask/deny, MCP definitions and tool policy; repeated sync changes nothing | `test_each_agent_receives_every_catalog_slice` |
-| `t-catalog-codex-policy` | policy-only servers, literal server names, native restrictions/sub-settings and removal survive composition; shell rules cannot swallow MCP policy and unrepresentable native policy refuses selection | `test_codex_catalog_mcp_policy_survives_sync`, `test_codex_catalog_server_names_are_literal`, `test_codex_native_policy_and_settings_survive_template_removal`, `test_codex_mcp_policy_requires_its_own_consumer`, `test_codex_unrepresentable_native_policy_refuses_before_selection` |
-| `t-catalog-permission-fidelity` | native permission order must round-trip; explicit ask/deny stays restrictive while an unstated portable default does not vote | `test_order_sensitive_native_permissions_refuse_before_template_selection`, `test_native_default_keeps_its_restriction`, `test_portable_unstated_default_does_not_vote_against_template` |
-| `t-catalog-optional` | optional absent Codex permission sources accept template rules; required sources still refuse before mutation | `test_optional_codex_permissions_receive_catalog_rules`, `test_required_codex_permission_source_stays_required` |
-| `t-catalog-modes` | declared modes apply to rendered skill documents and copied support, survive sync/check/staged rendering, and guard outside chmod | `test_catalog_skills_honor_declared_modes` |
-| `t-catalog-render-work` | shared parts validate once per render with no cross-render stale cache; native document sources are read once | `test_catalog_validation_is_shared_per_render_only`, `test_native_catalog_reads_each_document_source_once` |
-| `t-starter-private` | init refuses private, credential-bearing or symlinked overrides before promotion and rechecks changed template input | `test_starter_overrides_cannot_promote_private_or_external_source`, `test_template_changes_after_preview_block_preparation` |
-| `t-starter-privacy-guards` | upstream ignore policies and effective exclude-file targets remain guarded at prepare/apply and interrupted resume, with recovery preserved | `test_starter_upstream_privacy_remains_guarded` |
-| `t-starter-inventory` | additions to the template root or existing empty directories invalidate approval; a file-free root is recorded but remains unresolved | `test_starter_inventory_additions_invalidate_approval`, `test_file_free_starter_records_its_root_but_remains_unresolved` |
-| `t-native-sync-symlinks` | native sync rejects vendored/upstream file and directory symlinks before reading content, including modified or missing provenance refusals | `test_native_template_sync_rejects_symlinks_before_content_reads` |
-| `t-starter-transaction` | selection/provenance/source/outputs are previewed, staged, reconstructible and recoverable; default none, unresolved refusal and cancellation leave expected state | `test_cli_starter_is_staged_reconstructs_and_allows_first_source_edits`, `test_starter_source_and_output_participate_in_resume_and_recovery`, `test_unresolved_project_starter_does_not_mutate`, `test_interactive_starter_then_cancel_never_writes` |
-| `t-starter-repeat` | explicit selection on an initialized source names usable template commands; modified vendored copies retain refusal safety | `test_repeat_init_reports_usable_template_command_and_safe_sync` |
 
 ## Project scope
 
@@ -615,7 +467,6 @@ all of them is [servers](servers.md).
 | `srv-codex-no-project` | Codex gets no project destination yet — open question, not a gap | [servers](servers.md#codex-has-no-project-destination-yet) | `test_codex_gets_no_project_destination_yet` |
 | `srv-template-tier` | a template contributes its servers, beneath the project | [templates](templates.md) | `test_a_template_contributes_its_servers` |
 | `srv-claude-global` | Claude's global entry writes the owned `mcpServers` key in `.claude.json` | [servers](servers.md#claudes-global-entry-writes-claudejson) | `test_claude_global_writes_claude_json` |
-| `srv-no-toml-no-output` | no `mcp.toml` anywhere means no servers output, at global scope too | [servers](servers.md#the-input-is-sourcemcptoml) | `test_no_mcp_toml_means_no_servers_output` |
 | `srv-automatic` | `mcp` is automatic, like `permissions` — no per-agent authoring decision | [servers](servers.md#the-input-is-sourcemcptoml) | `test_a_global_source_renders_claude_servers_without_being_named` |
 | `srv-codex-global` | Codex's global destination is `~/.codex/config.toml`, owning `mcp_servers` only | [servers](servers.md#ten-destinations-eight-built) | `test_codex_global_writes_config_toml` |
 | `own-foreign-survives` | applying owned keys leaves comments, another tool's managed block, a multi-line string and `[projects."…"]` untouched | [codex](codex.md#configtoml-is-co-owned) | `test_content_loadout_does_not_generate_survives` |
@@ -685,7 +536,6 @@ all of them is [servers](servers.md).
 |---|---|---|
 | `wrapper-bypass` | an allowlisted command taking another command as an argument voids every deny | A property of the rule *set*, not of rendering. The intended fix is a build-time `neverallow` ceiling that refuses to emit. Not implemented. |
 | `ask-shadows-allow` | an `ask`/`deny` entry that is a strict prefix of an `allow` makes the allow unreachable on all five harnesses | Same class — generalises [ADR 0005](../decisions/0005-a-deny-cannot-carry-exceptions.md). loadout does not detect it today; found by hand in `~/ac` on 2026-08-08 (`gh api --method` shadowing `gh api --method GET`). Candidate for a source validator. |
-| `claude-afk-delta` | the two Claude bases differ only by `CLAUDE_AFK_TIMEOUT_MS` | A property of `~/ac`'s own base documents, not of loadout. Pinned by `test_base_drift_guard`, which is meaningless against a synthetic fixture. |
 | `oc-compound` | OpenCode takes the least-permitted verdict across a `;`/`&&`/`\|` chain | Harness runtime behaviour. |
 | `config-dir-vars` | which variable relocates each harness's config dir | Upstream facts about the binaries, recorded in [README](README.md#relocating-the-config-directory) with the version each was verified against. loadout renders the same bytes either way, so nothing observable at render time distinguishes a right answer from a wrong one. Re-verify by inspecting the binaries, not by running the suite. |
 | `dest-env-preserve` | with `preserve`, the environment selects which file's foreign keys are merged | Falls out of `preserve` reading the destination ([ADR 0011](../decisions/0011-a-destination-follows-a-relocated-harness.md)); pinned indirectly by `test_each_destination_preserves_its_own_foreign_keys`, which fixes the paths rather than varying the environment. |

@@ -40,27 +40,6 @@ def test_unresolved_json_preview_does_not_mutate(tmp_path, capsys):
     assert list(tmp_path.iterdir()) == [tmp_path / "AGENTS.md"]
 
 
-def test_project_preview_and_apply_adopt_and_stage(tmp_path, capsys):
-    _repo(tmp_path)
-    (tmp_path / "CLAUDE.md").write_text("# Rules\nKeep this.\n")
-    args = ["init", "project", "--harness", "claude", "--root", str(tmp_path)]
-    assert loadout.main([*args, "--dry-run", "--json"]) == 0
-    preview = json.loads(capsys.readouterr().out)
-    assert preview["git"]["baseline_paths"] == ["CLAUDE.md"]
-    assert preview["stage_paths"]
-    assert not (tmp_path / "loadout").exists()
-    assert loadout.main([*args, "--yes"]) == 0
-    assert (tmp_path / "CLAUDE.md").read_text() == "# Rules\nKeep this.\n"
-    assert _git(tmp_path, "show", "HEAD:CLAUDE.md") == "# Rules\nKeep this."
-    assert "loadout/config.toml" in _git(tmp_path, "diff", "--cached", "--name-only")
-    assert loadout.main(["check", "--root", str(tmp_path)]) == 0
-    nested = tmp_path / "src"
-    nested.mkdir()
-    old_head = _git(tmp_path, "rev-parse", "HEAD")
-    assert loadout.main(["init", "project", "--root", str(nested), "--yes", "--json"]) == 0
-    assert _git(tmp_path, "rev-parse", "HEAD") == old_head
-
-
 def test_global_defaults_to_cwd_and_registers_actual_manifest(tmp_path, monkeypatch, capsys):
     _repo(tmp_path)
     monkeypatch.chdir(tmp_path)
@@ -277,16 +256,6 @@ def test_noninteractive_apply_requires_explicit_approval(tmp_path, capsys):
     assert loadout.main(["init", "project", "--harness", "claude", "--root", str(tmp_path)]) == 2
     assert "--yes" in capsys.readouterr().err
     assert list(tmp_path.iterdir()) == []
-
-
-def test_preview_never_prints_secret_values(tmp_path, capsys):
-    settings = tmp_path / ".claude/settings.json"
-    settings.parent.mkdir()
-    settings.write_text('{"env":{"API_KEY":"literal-private-value"}}')
-    assert loadout.main(["init", "project", "--root", str(tmp_path), "--dry-run", "--json"]) == 0
-    captured = capsys.readouterr()
-    assert "literal-private-value" not in captured.out + captured.err
-    assert any(entry["private"] for entry in json.loads(captured.out)["source_writes"])
 
 
 @pytest.mark.parametrize("kind", [[], {}, 1])

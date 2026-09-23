@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .artifacts import ArtifactScope
 from .errors import UsageError
 from .migration_models import RootMapping, SourceSelection
+from .output import ArtifactScope
 
 
 @dataclass(frozen=True)

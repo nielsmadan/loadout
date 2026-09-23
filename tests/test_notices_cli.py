@@ -296,22 +296,3 @@ def test_a_server_named_by_policy_says_nothing(tmp_path: Path, capsys) -> None:
 
     assert loadout.main(["check", "--root", str(root)]) == 0
     assert "mcp.servers" not in capsys.readouterr().out
-
-
-def test_a_native_project_declaring_droid_reports_rather_than_failing(tmp_path: Path) -> None:
-    """`presets = false` renders from artifacts and never reads permissions.toml,
-    so a reporter that parses it unconditionally failed `check` on a project with
-    nothing wrong with it. The notice path has to follow the render path.
-    """
-    (tmp_path / "loadout" / "settings").mkdir(parents=True)
-    (tmp_path / "loadout" / "settings" / "native.json").write_text('{"model": "x"}\n')
-    (tmp_path / "loadout" / "config.toml").write_text(
-        'harnesses = ["droid"]\nartifacts = "artifacts.toml"\npresets = false\n'
-    )
-    (tmp_path / "loadout" / "artifacts.toml").write_text(
-        '[[artifact]]\nagents = ["droid"]\noutput = ".factory/settings.json"\n'
-        'format = "json"\n[artifact.parts]\nsettings = {source = "settings/native.json"}\n'
-    )
-
-    assert not (tmp_path / "loadout" / "permissions.toml").exists()
-    assert collect_notices(tmp_path) == ()

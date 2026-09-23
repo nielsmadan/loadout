@@ -76,7 +76,7 @@ holds `mcp-cache.json`, `run-history.jsonl`, `trust.json`, `auth.json` and
 [0008](../decisions/0008-generated-files-carry-no-machine-state.md).
 
 **Orphan removal.** Legacy module-config sync leaves a destination in place when its source file
-is removed. Cleanup remains manual; native artifact routes have their own receipt-based retirement.
+is removed. Cleanup remains manual.
 
 ## The module writes the same file
 

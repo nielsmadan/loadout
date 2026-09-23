@@ -11,21 +11,25 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from .artifacts import (
-    Artifacts,
+from .destinations import resolve_destination
+from .errors import LoadoutError
+from .native_documents import apply_document, key_fingerprints
+from .output import (
     Copied,
     FrozenFile,
     Merged,
     Output,
-    _json_constant,
-    _json_object,
-    _no_symlinks,
-    artifact_destination,
     relative_path,
 )
-from .destinations import resolve_destination
-from .errors import LoadoutError
-from .native_documents import apply_document, key_fingerprints
+from .output import (
+    json_constant as _json_constant,
+)
+from .output import (
+    json_object as _json_object,
+)
+from .output import (
+    no_symlinks as _no_symlinks,
+)
 
 STATE_DIRECTORY = ".loadout-state"
 RECEIPT_VERSION = 1
@@ -61,7 +65,6 @@ class DeploymentScope:
     name: str
     anchor: Path
     source_root: Path
-    artifacts: Artifacts | None
     protected: tuple[Path, ...]
 
     @property
@@ -101,16 +104,7 @@ class DeploymentPlan:
 
 
 def _routes(scope: DeploymentScope) -> tuple[tuple[str, Path, bool], ...]:
-    if scope.artifacts is None:
-        return ()
-    return tuple(
-        (
-            str(record.output or record.destination),
-            artifact_destination(record, scope.anchor),
-            record.format == "tree",
-        )
-        for record in scope.artifacts.records
-    )
+    return ()
 
 
 def managed_paths(
@@ -385,11 +379,6 @@ def _protected(path: Path, scopes: tuple[DeploymentScope, ...]) -> None:
         raise LoadoutError(f"deployment overlaps protected metadata: {path}")
     for scope in scopes:
         inputs = list(scope.protected)
-        if scope.artifacts:
-            inputs += [
-                scope.artifacts.path,
-                *scope.artifacts.input_paths(),
-            ]
         for source in inputs:
             if path.is_relative_to(source) or source.is_relative_to(path):
                 raise LoadoutError(f"deployment {path} overlaps source {source}")

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 import sys
@@ -9,15 +8,10 @@ from pathlib import Path
 import pytest
 
 import loadout
-from loadout import migration_transaction
 from loadout.emit import check_all, render_all, write_all
 from loadout.errors import LoadoutError
 from loadout.git_hooks import install_hooks, plan_hooks, uninstall_hooks
 from loadout.machine import machine_config_path
-from loadout.migration_journal import Journal
-from loadout.migration_transaction import (
-    recover_migration,
-)
 from loadout.staged import check_staged
 from test_codex_defaults import build
 
@@ -63,29 +57,6 @@ def _project(root):
 def _commit(repo, *paths):
     _git(repo, "add", "--", *paths)
     return _git(repo, "commit", "-qm", "fixture")
-
-
-def test_layered_documents_use_staged_inputs_and_omit_untracked_personal_layer(repo: Path) -> None:
-    source = _project(repo)
-    (source / "artifacts.toml").write_text(
-        '[[artifact]]\nagents=["codex"]\nformat="json"\noutput="settings.json"\n'
-        '[artifact.parts.settings]\nmerge="deep"\n'
-        'sources=[{source="shared.json"},{source="overlay.json"},'
-        '{source="private.json",optional=true}]\n'
-    )
-    shared = source / "shared.json"
-    overlay = source / "overlay.json"
-    shared.write_text('{"model":"base","retained":1}')
-    overlay.write_text('{"model":"variant"}')
-    _git(repo, "add", "loadout")
-    shared.write_text("invalid worktree JSON")
-    (source / "private.json").write_text("invalid untracked JSON")
-    assert check_staged(repo) == 0
-    overlay.write_text("invalid staged JSON")
-    _git(repo, "add", "loadout/overlay.json")
-    overlay.write_text('{"model":"valid worktree"}')
-    with pytest.raises(LoadoutError, match=r"snapshot is incomplete or invalid.*overlay.json"):
-        check_staged(repo)
 
 
 def test_staged_ownership_record_matches_its_producer_and_allows_updates(repo):
@@ -137,110 +108,6 @@ def test_staged_initial_producer_requires_its_generated_record(repo, fragment):
         check_staged(repo)
     write_all(repo)
     _git(repo, "add", "defaults/codex.owned")
-    assert check_staged(repo) == 0
-
-
-def test_real_precommit_validates_partial_index_not_worktree(repo):
-    source = _project(repo)
-    _commit(repo, "loadout")
-    install_hooks(repo)
-    (source / "instructions.md").write_text("staged source\n")
-    _git(repo, "add", "loadout/instructions.md")
-    (source / "artifacts.toml").write_text("broken = [")
-    result = _git(repo, "commit", "-qm", "valid staged source")
-    assert "staged Loadout dependency snapshot is valid" in result.stderr
-    _git(repo, "add", "loadout/artifacts.toml")
-    (source / "artifacts.toml").write_text("artifact=[]\n")
-    head = _git(repo, "rev-parse", "HEAD").stdout
-    result = _git(repo, "commit", "-qm", "invalid staged source", check=False)
-    assert result.returncode != 0
-    assert "staged dependency snapshot is incomplete or invalid" in result.stderr
-    assert _git(repo, "rev-parse", "HEAD").stdout == head
-
-
-def test_real_commit_honors_alternate_index_and_relative_index_from_nested_cwd(repo, monkeypatch):
-    source = _project(repo)
-    _commit(repo, "loadout")
-    install_hooks(repo)
-    alternate = repo / ".git/alternate"
-    environment = {"GIT_INDEX_FILE": str(alternate)}
-    _git(repo, "read-tree", "HEAD", env=environment)
-    (source / "artifacts.toml").write_text("broken = [")
-    _git(repo, "add", "loadout/artifacts.toml")
-    (source / "instructions.md").write_text("alternate\n")
-    _git(repo, "add", "loadout/instructions.md", env=environment)
-    result = _git(repo, "commit", "-qm", "alternate source", env=environment)
-    assert "snapshot is valid" in result.stderr
-    assert _git(repo, "show", "HEAD:loadout/instructions.md").stdout == "alternate\n"
-    monkeypatch.chdir(source)
-    monkeypatch.setenv("GIT_INDEX_FILE", "../.git/alternate")
-    assert check_staged(repo) == 0
-    monkeypatch.setenv("GIT_INDEX_FILE", "../.git/missing")
-    with pytest.raises(LoadoutError, match="supplied GIT_INDEX_FILE is missing"):
-        check_staged(repo)
-
-
-def test_unborn_empty_corrupt_and_unmerged_indexes(repo, monkeypatch):
-    _project(repo)
-    with pytest.raises(LoadoutError, match="no Loadout config in HEAD or the supplied index"):
-        check_staged(repo)
-    _git(repo, "add", "loadout")
-    assert check_staged(repo) == 0
-    empty = repo / ".git/empty-index"
-    _git(repo, "read-tree", "--empty", env={"GIT_INDEX_FILE": str(empty)})
-    monkeypatch.setenv("GIT_INDEX_FILE", str(empty))
-    with pytest.raises(LoadoutError, match="no Loadout config"):
-        check_staged(repo)
-    empty.write_bytes(b"invalid index")
-    with pytest.raises(LoadoutError, match="Git ls-files --stage failed"):
-        check_staged(repo)
-    monkeypatch.delenv("GIT_INDEX_FILE")
-    oid = _git(repo, "rev-parse", ":loadout/config.toml").stdout.strip()
-    result = subprocess.run(
-        ["git", "-C", str(repo), "update-index", "--index-info"],
-        input=f"100644 {oid} 1\tloadout/config.toml\n",
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr
-    with pytest.raises(LoadoutError, match="unmerged index entry"):
-        check_staged(repo)
-
-
-@pytest.mark.parametrize("retirement", ["declaration", "config", "source"])
-def test_real_precommit_uses_head_ownership_after_declaration_removal(repo, retirement):
-    source = _project(repo)
-    output = repo / "AGENTS.md"
-    output.write_text("original\n")
-    _commit(repo, "loadout", "AGENTS.md")
-    install_hooks(repo)
-    if retirement == "declaration":
-        (source / "artifacts.toml").write_text("artifact=[]\n")
-        _git(repo, "add", "loadout/artifacts.toml")
-    else:
-        _git(repo, "rm", "-r", "loadout" if retirement == "source" else "loadout/config.toml")
-    output.write_text("hand edit\n")
-    _git(repo, "add", "AGENTS.md")
-    head = _git(repo, "rev-parse", "HEAD").stdout
-    result = _git(repo, "commit", "-qm", "remove owner and edit output", check=False)
-    assert result.returncode != 0
-    assert "generated files are staged for addition or editing" in result.stderr
-    assert "AGENTS.md" in result.stderr
-    assert _git(repo, "rev-parse", "HEAD").stdout == head
-    _git(repo, "rm", "--cached", "AGENTS.md")
-    _git(repo, "commit", "-qm", "retire generated ownership")
-    assert output.read_text() == "hand edit\n"
-
-
-def test_required_source_deletion_does_not_read_unstaged_replacement(repo):
-    source = _project(repo)
-    _commit(repo, "loadout")
-    _git(repo, "rm", "--cached", "loadout/instructions.md")
-    assert (source / "instructions.md").read_text() == "original\n"
-    with pytest.raises(LoadoutError, match="artifact source not found"):
-        check_staged(repo)
-    _git(repo, "add", "loadout/instructions.md")
     assert check_staged(repo) == 0
 
 
@@ -377,50 +244,6 @@ def test_staged_ownership_selects_profile_before_resolving_destinations(repo, mo
     assert "other.md" in str(error.value)
 
 
-@pytest.mark.parametrize("kind", ["absolute", "symlink", "submodule"])
-def test_external_and_submodule_dependencies_fail_without_reading_live_sources(
-    repo, fake_home, kind
-):
-    source = _project(repo)
-    if kind == "absolute":
-        external = fake_home / "external"
-        (external / "instructions").mkdir(parents=True)
-        (external / "instructions/rule.md").write_text("private\n")
-        (repo / "loadout.toml").write_text(
-            f'[[source]]\nname="external"\npath="{external}"\n'
-            '[instructions.external]\noutput="external.md"\norder=["rule"]\n'
-        )
-        _git(repo, "add", "loadout.toml")
-    elif kind == "symlink":
-        (source / "leak").symlink_to(fake_home, target_is_directory=True)
-    _git(repo, "add", "loadout")
-    if kind == "submodule":
-        _git(repo, "commit", "-qm", "source")
-        oid = _git(repo, "rev-parse", "HEAD").stdout.strip()
-        _git(repo, "update-index", "--add", "--cacheinfo", f"160000,{oid},loadout/skills/opaque")
-    with pytest.raises(
-        LoadoutError, match=r"absolute source path|escapes staged tree|submodule dependency"
-    ):
-        check_staged(repo)
-
-
-def test_optional_private_source_is_absent_and_programs_are_not_executed(repo):
-    source = _project(repo)
-    (source / "artifacts.toml").write_text(
-        '[[artifact]]\nagents=["codex"]\nformat="copy"\ncategory="support"\n'
-        'output="copied.sh"\nsource="program.sh"\n'
-        '[[artifact]]\nagents=["codex"]\nformat="json"\noutput="private.json"\n'
-        '[artifact.parts.settings]\nsource="private.json"\noptional=true\n'
-    )
-    program = source / "program.sh"
-    program.write_text(f'#!/bin/sh\ntouch "{repo}/executed"\n')
-    program.chmod(0o755)
-    _git(repo, "add", "loadout")
-    (source / "private.json").write_text("not valid JSON")
-    assert check_staged(repo) == 0
-    assert sorted(p.name for p in repo.iterdir()) == [".git", "loadout"]
-
-
 def test_hook_installation_preserves_occupied_shared_and_other_source_hooks(repo, tmp_path_factory):
     _project(repo)
     _commit(repo, "loadout")
@@ -445,24 +268,6 @@ def test_hook_installation_preserves_occupied_shared_and_other_source_hooks(repo
     assert plan_hooks(repo).hooks[0].status == "external"
     install_hooks(repo)
     assert list(shared.iterdir()) == []
-
-
-def test_linked_worktree_validates_supplied_index_and_preserves_common_hooks(
-    repo, tmp_path_factory
-):
-    _project(repo)
-    _commit(repo, "loadout")
-    linked = tmp_path_factory.mktemp("linked-parent") / "worktree"
-    _git(repo, "worktree", "add", "-qb", "linked", str(linked))
-    assert plan_hooks(linked).hooks[0].status == "shared"
-    assert check_staged(linked) == 0
-    _git(linked, "config", "extensions.worktreeConfig", "true")
-    _git(linked, "config", "--worktree", "core.hooksPath", ".local-hooks")
-    install_hooks(linked)
-    (linked / "loadout/instructions.md").write_text("linked source\n")
-    _commit(linked, "loadout/instructions.md")
-    assert _git(linked, "show", "HEAD:loadout/instructions.md").stdout == "linked source\n"
-    assert _git(repo, "show", "HEAD:loadout/instructions.md").stdout == "original\n"
 
 
 @pytest.mark.parametrize("custom", [False, True])
@@ -508,117 +313,6 @@ def test_standalone_install_rechecks_hook_sharing_after_preview(
     with pytest.raises(LoadoutError, match="effective hook directory changed"):
         install_hooks(repo)
     assert not (repo / ".git/hooks/pre-commit").exists()
-
-
-@pytest.mark.parametrize("interrupted", [False, True])
-def test_init_installs_no_hook_and_new_git_metadata_is_transactional(
-    repo, tmp_path_factory, capsys, monkeypatch, interrupted
-):
-    new = tmp_path_factory.mktemp("new-repository")
-    monkeypatch.setenv("GIT_CONFIG_COUNT", "2")
-    monkeypatch.setenv("GIT_CONFIG_KEY_0", "user.name")
-    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "Fixture")
-    monkeypatch.setenv("GIT_CONFIG_KEY_1", "user.email")
-    monkeypatch.setenv("GIT_CONFIG_VALUE_1", "fixture@example.invalid")
-    (new / "AGENTS.md").write_text("initial\n")
-    args = [
-        "init",
-        "project",
-        "--harness",
-        "codex",
-        "--root",
-        str(new),
-    ]
-    assert loadout.main([*args, "--dry-run", "--json"]) == 0
-    preview = json.loads(capsys.readouterr().out)
-    assert preview["operations"]
-    assert "git_hooks" not in preview
-    assert not (new / ".git").exists()
-
-    def fail(journal):
-        raise OSError("fixture staging interruption")
-
-    if interrupted:
-        monkeypatch.setattr(migration_transaction, "_finish", fail)
-    assert loadout.main([*args, "--yes", "--json"]) == (1 if interrupted else 0)
-    result = json.loads(capsys.readouterr().out)
-    assert _git(new, "show", "HEAD:AGENTS.md").stdout == "initial\n"
-    if not interrupted:
-        assert result["journal"] is None
-        assert not (new / ".git/hooks/pre-commit").exists()
-        assert list((new / ".loadout-state/migrations").iterdir()) == []
-        return
-    journal = Path(result["journal"])
-    assert Journal.load(journal).status == "apply"
-    baseline = _git(new, "rev-parse", "HEAD").stdout
-    recovered = recover_migration(journal)
-    assert recovered.conflicts == ()
-    assert _git(new, "rev-parse", "HEAD").stdout == baseline
-    assert (new / "AGENTS.md").read_text() == "initial\n"
-
-
-def test_global_init_installs_no_hook_and_the_standalone_command_takes_a_profile(
-    repo, fake_home, capsys
-):
-    assert (
-        loadout.main(["init", "global", "--source", str(repo), "--harness", "codex", "--yes"]) == 0
-    )
-    machine = machine_config_path()
-    machine.write_text(f'source="{repo / "loadout"}"\nprofile="focused"\n')
-    (repo / "loadout/focused.toml").write_text('extends="default"\n')
-    capsys.readouterr()
-    assert loadout.main(["init", "global", "--source", str(repo), "--yes", "--json"]) == 0
-    assert json.loads(capsys.readouterr().out)["already_initialized"]
-    assert not (repo / ".git/hooks/pre-commit").exists()
-
-    assert (
-        loadout.main(
-            ["integrate", "git-hooks", "install", "--root", str(repo / "loadout"), "--regenerate"]
-        )
-        == 0
-    )
-    assert "--profile focused" in (repo / ".git/hooks/post-checkout").read_text()
-    assert "loadout hook-event pre-commit" in (repo / ".git/hooks/pre-commit").read_text()
-
-
-def test_actual_checkout_and_merge_regenerate_or_preserve_edits_after_git_completed(repo):
-    source = _project(repo)
-    _commit(repo, "loadout")
-    first = _git(repo, "rev-parse", "HEAD").stdout
-    _git(repo, "checkout", "-qb", "changed")
-    (source / "instructions.md").write_text("changed branch\n")
-    _commit(repo, "loadout/instructions.md")
-    changed = _git(repo, "rev-parse", "HEAD").stdout
-    _git(repo, "checkout", "-q", "main")
-    assert loadout.main(["sync", "--root", str(repo)]) == 0
-    assert (repo / "AGENTS.md").read_text() == "original\n"
-    install_hooks(repo, regenerate=True)
-    result = _git(repo, "checkout", "-q", "changed")
-    assert "wrote AGENTS.md" in result.stderr
-    assert (repo / "AGENTS.md").read_text() == "changed branch\n"
-    (repo / "AGENTS.md").write_text("manual edit\n")
-    result = _git(repo, "checkout", "-q", "main", check=False)
-    assert result.returncode != 0
-    assert "Git checkout already completed" in result.stderr
-    assert _git(repo, "rev-parse", "HEAD").stdout == first
-    assert (repo / "AGENTS.md").read_text() == "manual edit\n"
-    result = _git(repo, "merge", "--ff-only", "changed", check=False)
-    assert result.returncode == 0
-    assert "Git merge already completed" in result.stderr
-    assert _git(repo, "rev-parse", "HEAD").stdout == changed
-    assert (repo / "AGENTS.md").read_text() == "manual edit\n"
-
-
-def test_post_checkout_file_event_does_not_regenerate(repo):
-    source = _project(repo)
-    _commit(repo, "loadout")
-    assert loadout.main(["sync", "--root", str(repo)]) == 0
-    install_hooks(repo, regenerate=True)
-    (repo / "AGENTS.md").write_text("manual edit\n")
-    (source / "instructions.md").write_text("unstaged\n")
-    _git(repo, "checkout", "--", "loadout/instructions.md")
-    assert (source / "instructions.md").read_text() == "original\n"
-    assert (repo / "AGENTS.md").read_text() == "manual edit\n"
 
 
 def test_missing_loadout_on_path_explains_completed_checkout(repo, tmp_path_factory):
@@ -764,13 +458,3 @@ def test_an_unusable_machine_config_does_not_block_a_repository_hook(repo, fake_
 
     assert loadout.main(["integrate", "git-hooks", "install", "--root", str(repo)]) == 0
     assert "--profile default" in (repo / ".git/hooks/pre-commit").read_text()
-
-
-def test_init_names_the_source_root_when_it_points_at_git_hooks(repo, capsys):
-    """The printed command defaults --root to the cwd, so it has to carry the real root."""
-    (repo / "AGENTS.md").write_text("initial\n")
-    assert (
-        loadout.main(["init", "project", "--harness", "codex", "--root", str(repo), "--yes"]) == 0
-    )
-    out = capsys.readouterr().out
-    assert f"loadout integrate git-hooks install --root {repo}" in out

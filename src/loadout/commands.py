@@ -10,7 +10,6 @@ import tempfile
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
-from .artifacts import FrozenFile
 from .bundled_skill import bundled_skill_path
 from .deployment import DeploymentConflict, managed_paths
 from .emit import (
@@ -27,8 +26,7 @@ from .emit import (
 )
 from .errors import LoadoutError, UsageError
 from .machine import machine_config_path
-from .native_skill_installation import SkillCommand, run_native_skill
-from .native_templates import validate_template_change, validate_template_tree
+from .output import FrozenFile
 from .project import (
     PROJECT_CONFIG_NAME,
     PROJECT_DIR,
@@ -40,7 +38,6 @@ from .scaffold import _append_gitignore, init_global, init_project
 from .skill_installation import (
     SkillSourceLocation,
     SourceSkillState,
-    _load_skill_profile,
     configured_skill_agents,
     inspect_skill_source,
     install_skill_source,
@@ -123,8 +120,6 @@ def _confirm_skill_change(action: str, path: Path, yes: bool) -> bool:
 
 
 def cmd_skill_status(root: Path, profile: str, source_name: str | None = None) -> int:
-    if _load_skill_profile(root, profile).artifacts is not None:
-        return run_native_skill(root, profile, source_name, command=SkillCommand("status"))
     _print_skill_location(root, profile, source_name)
     return 0
 
@@ -136,14 +131,6 @@ def cmd_skill_install(
     *,
     yes: bool = False,
 ) -> int:
-    if _load_skill_profile(root, profile).artifacts is not None:
-        return run_native_skill(
-            root,
-            profile,
-            source_name,
-            command=SkillCommand("install", yes),
-            sync=lambda: cmd_sync(root, profile=profile),
-        )
     agents = configured_skill_agents(root, profile)
     if not agents:
         print("configured agents: none")
@@ -182,14 +169,6 @@ def cmd_skill_uninstall(
     *,
     yes: bool = False,
 ) -> int:
-    if _load_skill_profile(root, profile).artifacts is not None:
-        return run_native_skill(
-            root,
-            profile,
-            source_name,
-            command=SkillCommand("uninstall", yes),
-            sync=lambda: cmd_sync(root, profile=profile),
-        )
     _, location, _ = _print_skill_location(root, profile, source_name)
     if location.state is SourceSkillState.MISSING:
         print("loadout skill is not installed; no changes made")
@@ -564,7 +543,6 @@ def cmd_template_add(root: Path, name: str | None, mode: str | None) -> int:
             print(f"    {_display(found.path, root)}")
             return 0
         found = resolve_template(name, root)
-        validate_template_change(root, name, found)
         declare(root, name)
         print(f"declared {name} in {PROJECT_DIR}/{PROJECT_CONFIG_NAME}")
         print(f"resolves from source {found.source}: {_display(found.path, root)}")
@@ -577,7 +555,6 @@ def cmd_template_add(root: Path, name: str | None, mode: str | None) -> int:
                 f"`loadout template sync {name}` to update it"
             )
         found = resolve_template(name, root)
-        validate_template_change(root, name, found)
         declare(root, name)
         if config.vendored_hash(name) is None:
             record_hash(root, name, tree_hash(local))
@@ -626,7 +603,6 @@ def _make_vendored(root: Path, name: str) -> int:
     local = vendored_path(root, name)
     if found.path.is_file():
         return vendor_catalog(root, name, found)
-    validate_template_change(root, name, found)
     copy_tree(found.path, local)
     declare(root, name)
     record_hash(root, name, tree_hash(local))
@@ -640,7 +616,6 @@ def _make_tracked(root: Path, name: str) -> int:
     """A vendored copy becomes tracked: drop the copy and its recorded hash once
     the source can still resolve the name, so the switch never strands the project."""
     found = resolve_upstream_template(name)
-    validate_template_change(root, name, found)
     remove_vendored(root, name)
     unrecord_hash(root, name)
     print(f"changed {name} to tracked; resolves from source {found.source}")
@@ -698,9 +673,6 @@ def cmd_template_sync(root: Path, name: str) -> int:
     upstream = found.path
     if upstream.is_file():
         raise LoadoutError("template sync cannot change between a directory and a catalog manifest")
-    if not config.presets:
-        validate_template_tree(local)
-        validate_template_tree(upstream)
     current = tree_hash(local)
 
     # Refuse unless the copy can be *proved* unmodified, rather than refusing only
@@ -745,13 +717,11 @@ def cmd_template_sync(root: Path, name: str) -> int:
     # date" instead. Nothing asked for that. The no-provenance gate above already
     # falls through to here when the copy matches, which is the self-heal.
     if tree_hash(upstream) == current:
-        validate_template_change(root, name, found)
         print(f"{name} is up to date")
         if recorded is None:
             record_hash(root, name, current)
         return 0
 
-    validate_template_change(root, name, found)
     changed = _tree_diff(local, upstream, name)
     copy_tree(upstream, local)
     record_hash(root, name, tree_hash(local))

@@ -3,7 +3,6 @@ from pathlib import Path
 import pytest
 
 from loadout.composition import render
-from loadout.emit import check_all, render_global, write_all
 from loadout.errors import LoadoutError
 from loadout.manifest import load_manifest, load_profile
 
@@ -73,26 +72,6 @@ def test_symlinked_parent_cycle_uses_canonical_identity(tmp_path: Path) -> None:
     (tmp_path / "alias.toml").symlink_to(tmp_path / "loadout.toml")
     with pytest.raises(LoadoutError, match="extends cycle: default -> default"):
         load_profile(tmp_path)
-
-
-def test_symlinked_parent_dependency_is_protected_at_its_real_path(tmp_path: Path) -> None:
-    manifest = tmp_path / "loadout.toml"
-    manifest.write_text('extends="alias"\n')
-    base = tmp_path / "base.toml"
-    base.write_text('artifacts="artifacts.toml"\n')
-    (tmp_path / "alias.toml").symlink_to(base)
-    (tmp_path / "replacement.toml").write_bytes(base.read_bytes())
-    (tmp_path / "artifacts.toml").write_text(
-        '[[artifact]]\nagents=["pi"]\nformat="copy"\ncategory="support"\n'
-        f'destination="{base}"\nsource="replacement.toml"\n'
-    )
-    loaded = load_profile(tmp_path)
-    assert loaded.config_paths == (manifest.resolve(), base.resolve())
-    with pytest.raises(LoadoutError, match="overlaps source"):
-        render_global(tmp_path)
-    with pytest.raises(LoadoutError, match="overlaps source"):
-        write_all(tmp_path)
-    assert base.read_bytes() == b'artifacts="artifacts.toml"\n'
 
 
 def test_permission_target_inherits_renderer_and_replaces_lists(tmp_path: Path) -> None:
@@ -194,27 +173,3 @@ def test_removal_without_parent_is_refused(tmp_path: Path) -> None:
     manifest.write_text('remove = ["pi"]\n' + manifest.read_text())
     with pytest.raises(LoadoutError, match=r"requires.*extends"):
         load_profile(root)
-
-
-def test_profile_indexes_reuse_shared_inputs_through_sync(tmp_path: Path, fake_home: Path) -> None:
-    (tmp_path / "loadout.toml").write_text('artifacts = "default-routes.toml"\n')
-    (tmp_path / "variant.toml").write_text(
-        'extends = "default"\nartifacts = "variant-routes.toml"\n'
-    )
-    route = (
-        '[[artifact]]\nagents=["claude"]\ndestination="~/CLAUDE.md"\n'
-        'format="text"\ncategory="instructions"\nmerge="concat"\n'
-        'sources=[{source="shared.md"},{source="OVERLAY.md"}]\n'
-    )
-    for name in ("default", "variant"):
-        (tmp_path / f"{name}-routes.toml").write_text(route.replace("OVERLAY", name))
-        (tmp_path / f"{name}.md").write_text(name)
-    (tmp_path / "shared.md").write_text("shared")
-    output = fake_home / "CLAUDE.md"
-    write_all(tmp_path)
-    assert output.read_bytes() == b"shared\n\ndefault\n"
-    write_all(tmp_path, "variant")
-    assert output.read_bytes() == b"shared\n\nvariant\n"
-    assert check_all(tmp_path, "variant") == []
-    write_all(tmp_path)
-    assert output.read_bytes() == b"shared\n\ndefault\n"

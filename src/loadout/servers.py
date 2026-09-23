@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import tomlkit
+
 from .errors import LoadoutError
 
 __all__ = [
@@ -28,6 +30,7 @@ __all__ = [
     "render_droid_servers",
     "render_opencode_servers",
     "render_pi_servers",
+    "serialize_servers",
 ]
 
 SERVERS_SOURCE = "mcp.toml"
@@ -106,6 +109,24 @@ def parse_servers(path: Path) -> dict[str, Server]:
             env=dict(spec.get("env", {})),
         )
     return servers
+
+
+def serialize_servers(servers: Mapping[str, Server]) -> bytes:
+    document: dict[str, Any] = {}
+    for name, server in servers.items():
+        block: dict[str, Any] = {"transport": server.transport}
+        if server.url is not None:
+            block["url"] = server.url
+        if server.auth_env_var is not None:
+            block["auth_env_var"] = server.auth_env_var
+        if server.command is not None:
+            block["command"] = server.command
+        if server.args:
+            block["args"] = list(server.args)
+        if server.env:
+            block["env"] = dict(server.env)
+        document[name] = block
+    return tomlkit.dumps(document).encode()
 
 
 def _toml_string(value: str) -> str:

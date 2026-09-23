@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from .artifacts import ArtifactScope
+from .output import ArtifactScope
 
 Disposition = Literal["migrated", "runtime-private exclusion", "retained dependency", "unresolved"]
 RENDERED_MODE = 0o600

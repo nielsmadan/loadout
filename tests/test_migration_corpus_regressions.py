@@ -7,13 +7,11 @@ from pathlib import Path
 import pytest
 
 from loadout import migration_journal
-from loadout.artifacts import load_artifacts
-from loadout.commands import cmd_sync
 from loadout.discovery import discover
 from loadout.errors import LoadoutError
 from loadout.git_privacy import ignored_paths
 from loadout.migration import plan_migration
-from loadout.migration_transaction import apply_migration, prepare_migration, recover_migration
+from loadout.migration_transaction import prepare_migration, recover_migration
 from test_migration_transaction import interrupted_completion
 
 pytestmark = pytest.mark.migration_integration
@@ -28,27 +26,6 @@ def repository(root: Path) -> None:
     git(root, "init", "-q")
     git(root, "config", "user.name", "Fixture")
     git(root, "config", "user.email", "fixture@example.invalid")
-
-
-@pytest.mark.parametrize(
-    ("name", "mode"), [("CLAUDE.md", 0o640), (".claude/skills/tool/run.sh", 0o750)]
-)
-def test_staged_source_reconstructs_full_opaque_mode(tmp_path: Path, name: str, mode: int) -> None:
-    root = tmp_path / "original"
-    repository(root)
-    original = root / name
-    original.parent.mkdir(parents=True, exist_ok=True)
-    original.write_bytes(b"inert exact bytes\r\n")
-    original.chmod(mode)
-    plan = plan_migration(discover(root, scope="project", agents=("claude",)))
-    assert plan.complete, plan.preview()
-    apply_migration(prepare_migration(plan))
-    fresh = tmp_path / "fresh"
-    fresh.mkdir()
-    git(root, "checkout-index", "--all", "--prefix=" + str(fresh) + "/")
-    assert cmd_sync(fresh) == 0
-    assert (fresh / name).read_bytes() == b"inert exact bytes\r\n"
-    assert (fresh / name).stat().st_mode & 0o777 == mode
 
 
 def test_many_siblings_share_privacy_probe(tmp_path: Path, monkeypatch) -> None:
@@ -160,23 +137,3 @@ def test_version_one_journal_still_recovers(tmp_path: Path) -> None:
     assert result.conflicts == ()
     assert (tmp_path / "CLAUDE.md").read_bytes() == b"original instructions\n"
     assert not (tmp_path / "loadout/config.toml").exists()
-
-
-@pytest.mark.parametrize(
-    "declaration",
-    [
-        "mode = true",
-        "mode = -1",
-        "mode = 4096",
-        'modes = {"../escape" = 420}',
-        'modes = {"nested/file" = false}',
-    ],
-)
-def test_invalid_authored_modes_are_rejected(tmp_path: Path, declaration: str) -> None:
-    index = tmp_path / "artifacts.toml"
-    format_name = "tree" if declaration.startswith("modes") else "copy"
-    index.write_text(
-        f'[[artifact]]\nagents = ["claude"]\nformat = "{format_name}"\noutput = "CLAUDE.md"\ncategory = "instructions"\nsource = "source"\n{declaration}\n'
-    )
-    with pytest.raises(LoadoutError):
-        load_artifacts(index, scope="project")

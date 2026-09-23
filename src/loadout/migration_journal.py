@@ -10,10 +10,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .artifacts import FrozenFile, _no_symlinks
 from .deployment import MAX_MODE, atomic_install
 from .errors import LoadoutError
 from .migration_git import git
+from .output import FrozenFile
+from .output import no_symlinks as _no_symlinks
 
 JOURNAL_VERSION = 3
 SHA256_LENGTH = 64

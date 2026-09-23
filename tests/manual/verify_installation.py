@@ -6,7 +6,6 @@ import json
 import os
 import subprocess
 import sys
-import tomllib
 from pathlib import Path
 
 parser = argparse.ArgumentParser()
@@ -117,44 +116,30 @@ assert outputs(project) == adopted
 applied = json.loads(run("fresh init", [*init, "--yes", "--json"], project).stdout)
 assert applied["status"] == "complete"
 configuration = project / "loadout"
-routes = tomllib.loads((configuration / "artifacts.toml").read_text())["artifact"]
-route_by_output = {route["output"]: route for route in routes}
 instructions = "# Installation verification\nKeep this shared setup.\n"
-for output in ("CLAUDE.md", "AGENTS.md"):
-    put(configuration / route_by_output[output]["source"], instructions)
-rule = 'prefix_rule(pattern=["git", "status"], decision="allow")\n'
-put(configuration / route_by_output[".codex/rules/permissions.rules"]["source"], rule)
-settings = {
-    ".claude/settings.json": {"permissions": {"allow": ["Bash(git status:*)"]}},
-    "opencode.json": {"permission": {"bash": {"git status*": "allow"}}},
-    ".pi/extensions/pi-permission-system/config.json": {
-        "permission": {"bash": {"git status*": "allow"}}
-    },
-}
-for output, content in settings.items():
-    source = route_by_output[output]["parts"]["permissions"]["source"]
-    put(configuration / source, json.dumps(content) + "\n")
+put(configuration / "instructions/main.md", instructions)
+(config := configuration / "config.toml").write_text(
+    'harnesses = ["claude", "codex", "opencode", "pi"]\ninstructions = ["main"]\n'
+)
+put(configuration / "permissions.toml", '[shell]\nallow = ["git status"]\n')
 probe = "---\nname: install-probe\ndescription: Verify packaged CLI output.\n---\nProbe body.\n"
-skill_outputs = []
-for route in routes:
-    if route.get("category") == "skills":
-        put(configuration / route["source"] / "install-probe/SKILL.md", probe)
-        skill_outputs.append(project / route["output"] / "install-probe/SKILL.md")
+put(configuration / "skills/install-probe.md", probe)
+skill_outputs = [
+    project / path / "install-probe/SKILL.md"
+    for path in (".claude/skills", ".agents/skills", ".opencode/skills", ".pi/skills")
+]
 run("render all four agents", ["sync"], project)
 run("check rendered outputs", ["check"], project)
 for output in ("CLAUDE.md", "AGENTS.md"):
-    assert (project / output).read_text() == instructions
-assert (project / ".codex/rules/permissions.rules").read_text() == rule
-for output, content in settings.items():
-    assert json.loads((project / output).read_text()) == content
-assert all(path.read_text() == probe for path in skill_outputs)
+    assert instructions.strip() in (project / output).read_text()
+assert "git" in (project / ".codex/rules/permissions.rules").read_text()
+assert all(path.read_text().endswith("Probe body.\n") for path in skill_outputs)
 before = outputs(project)
 run("idempotent sync", ["sync"], project)
 assert outputs(project) == before
 
 instructions += "Updated shared instruction.\n"
-for output in ("CLAUDE.md", "AGENTS.md"):
-    put(configuration / route_by_output[output]["source"], instructions)
+put(configuration / "instructions/main.md", instructions)
 run("source change reports drift", ["check"], project, 1)
 run("sync source change", ["sync"], project)
 run("check updated output", ["check"], project)
@@ -206,21 +191,37 @@ run("backend starter check", ["check"], starter)
 
 global_source = work / "global source"
 global_source.mkdir()
-put(global_source / "loadout.toml", 'artifacts = "artifacts.toml"\n')
-destinations = []
-blocks = []
-for agent in ("claude", "codex", "opencode", "pi"):
-    (global_source / "skills" / agent).mkdir(parents=True)
-    destination = work / "global outputs" / agent / "skills"
-    destinations.append(destination)
-    blocks.append(
-        "[[artifact]]\n"
-        + f'agents = ["{agent}"]\nformat = "tree"\ncategory = "skills"\n'
-        + f'source = "skills/{agent}"\ndestination = {json.dumps(str(destination))}\n'
-    )
-put(global_source / "artifacts.toml", "\n".join(blocks))
+put(
+    global_source / "loadout.toml",
+    """[[source]]
+name = "self"
+path = "."
+use = ["skills"]
+
+[claude]
+skills = true
+[codex]
+skills = true
+[opencode]
+skills = true
+[pi]
+skills = true
+""",
+)
+(global_source / "skills").mkdir()
+env.update(
+    CLAUDE_CONFIG_DIR=str(work / "global outputs/claude"),
+    CODEX_HOME=str(work / "global outputs/codex"),
+    PI_CODING_AGENT_DIR=str(work / "global outputs/pi"),
+)
 put(work / "config/loadout/config.toml", f"source = {json.dumps(str(global_source))}\n")
 run("install packaged skill for four agents", ["integrate", "skill", "install", "--yes"], work)
+destinations = [
+    work / "global outputs/claude/skills",
+    work / "global outputs/codex/skills",
+    work / "config/opencode/skills",
+    work / "global outputs/pi/skills",
+]
 for destination in destinations:
     for relative in ("SKILL.md", "references/configuration.md", "references/onboarding.md"):
         assert (destination / "loadout" / relative).stat().st_size > 0

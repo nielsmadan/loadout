@@ -9,8 +9,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-from . import artifacts, emit, manifest, templates
-from .artifacts import Copied, Merged
+from . import emit, manifest, templates
 from .destinations import resolve_destination
 from .errors import LoadoutError
 from .manifest import (
@@ -21,6 +20,7 @@ from .manifest import (
     load_profile,
     manifest_path,
 )
+from .output import Copied, Merged
 from .project import load_project_config, project_config_path, project_outputs
 from .resolve import ResolvedItem
 from .sources import Source, parse_sources
@@ -151,12 +151,6 @@ class Snapshot:
             owned.update(
                 self.destination(str(value), "staged ownership") for value in tree.destinations
             )
-        if config.artifacts:
-            owned.update(
-                self.destination(record.destination, record.label)
-                for record in config.artifacts.records
-                if record.destination
-            )
         return owned
 
     def inspect(self, profile: str, *, render: bool) -> tuple[str, ...]:
@@ -169,7 +163,6 @@ class Snapshot:
                 clear=True,
             ),
             patch.object(manifest, "parse_sources", self.sources if render else lambda *_: ()),
-            patch.object(artifacts, "resolve_destination", self.destination),
             patch.object(emit, "resolve_destination", self.destination),
             patch.object(templates, "resolve_upstream_template", self.upstream),
         ):

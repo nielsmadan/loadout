@@ -13,19 +13,17 @@ root for a new repository. Project discovery finds the enclosing Loadout/Git roo
 directories. Configured roots establish agents; a shared AGENTS.md or installed binary does not.
 Repeat `--harness` when membership needs an explicit selection.
 
-Project init creates sources for existing configuration and explicitly selected starter categories.
-An empty project starts with just `loadout/config.toml` and `loadout/artifacts.toml`, plus managed
-state and recovery ignore entries. Add sources and artifact bindings as needed later. Global init supplies the
-full category scaffold and dormant routes. Repeat init preserves existing source layouts.
+Project init creates canonical sources for configuration with known project destinations. An empty
+project starts with `loadout/config.toml` and `loadout/permissions.toml`. Global init creates the
+canonical global slice sources it needs. Command trees, subagents and unsupported harness-specific
+files remain where they are. Repeat init preserves existing source layouts.
 
 Offer an optional project starter with `--starter none|frontend|backend`; default to `none`.
 These packaged templates work offline and provide short instruction seeds with empty categories.
 Reuse the same selection in preview and apply. They are vendored with content-hash provenance and
-participate in recovery/staging. Global init cannot activate project starters. A native project
-receives template prose only on explicit `template_instructions = true` instruction routes;
-original body bytes and modes survive. Other populated template categories require explicit
-native source edits before selection. Follow the exact template command reported for an already
-initialized source, then sync its managed outputs.
+participate in recovery/staging. Global init cannot activate project starters. Template
+instructions, permissions, skills and MCP servers compose through the project's standard slices.
+Follow the exact template command reported for an already initialized source, then sync.
 
 Init installs no Git hooks. Offer them separately, after init, with
 `loadout integrate git-hooks install --root <source-root> [--profile <name>] [--regenerate]`.

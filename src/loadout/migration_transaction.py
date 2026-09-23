@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any
 
 from . import migration_git
-from .artifacts import FrozenFile
 from .deployment import (
     DeploymentEntry,
     DeploymentPlan,
@@ -19,8 +18,6 @@ from .deployment import (
     FileChange,
     Receipt,
     ScopePlan,
-    _receipt_bytes,
-    _validate_state,
     apply_deployment,
     atomic_install,
 )
@@ -31,6 +28,7 @@ from .migration_models import EntryState, MigrationPlan, SourceWrite
 from .migration_paths import DestinationLayout, entry_path
 from .migration_validation import validate_plan
 from .native_documents import apply_document, key_fingerprints, parse_document
+from .output import FrozenFile
 
 
 class MigrationFailure(LoadoutError):
@@ -225,12 +223,9 @@ def _deployment(
         if inventory.scope == "project"
         else inventory.source_root.resolve(),
         inventory.source_root.resolve(),
-        None,
         (),
     )
-    before_receipt = _validate_state(scope)
-    if before_receipt is not None:
-        raise LoadoutError(f"migration requires an unowned destination scope: {scope.receipt_path}")
+    before_receipt = None
     layout = _layout(plan)
     routes = tuple((route, layout.normalize(path)) for route, path in plan.artifact_routes)
     entries = []
@@ -279,16 +274,9 @@ def _deployment(
 
 def _deployment_operations(builder: _Builder, deployment: DeploymentPlan) -> None:
     scope = deployment.scopes[0]
-    directory = scope.scope.receipt_path.parent
-    builder.parents(directory / ".gitignore", "source", private=(directory,))
-    builder.put(directory / ".gitignore", Image("file", b"*\n", 0o600), "deploy")
-    pending = _receipt_bytes(scope.scope, Receipt((), scope.entries))
-    builder.put(scope.scope.receipt_path, Image("file", pending.content, pending.mode), "deploy")
     for change in scope.changes:
         assert change.after is not None
         builder.put(change.path, Image("file", change.after.content, change.after.mode), "deploy")
-    receipt = _receipt_bytes(scope.scope, Receipt(scope.entries))
-    builder.put(scope.scope.receipt_path, Image("file", receipt.content, receipt.mode), "deploy")
 
 
 def _ignore_lines(plan: MigrationPlan) -> tuple[str, ...]:
@@ -378,7 +366,11 @@ def _filesystem_plan(
         path = layout.normalize(write.path)
         builder.parents(path, "source", private=private)
         builder.put(path, Image("file", write.content, write.mode), "source")
-    deployment = _deployment(builder, plan, frozen) if not plan.already_initialized else None
+    deployment = (
+        _deployment(builder, plan, frozen)
+        if not plan.already_initialized and plan.generated_writes
+        else None
+    )
     if deployment is not None:
         _deployment_operations(builder, deployment)
     for path in plan.obsolete:
@@ -395,7 +387,7 @@ def _filesystem_plan(
             Image("file", machine_write.content, machine_write.mode),
             "registration",
         )
-    return builder, deployment
+    return builder, None
 
 
 def prepare_migration(

@@ -56,6 +56,13 @@ def test_unrecognised_key_is_an_error_not_ignored(tmp_path: Path) -> None:
         load_project_config(path)
 
 
+@pytest.mark.parametrize("key", ("presets = false", 'artifacts = "artifacts.toml"'))
+def test_removed_route_keys_are_unrecognised(tmp_path: Path, key: str) -> None:
+    path = write(tmp_path, f'harnesses = ["claude"]\n{key}\n')
+    with pytest.raises(LoadoutError, match=key.split(" ", 1)[0]):
+        load_project_config(path)
+
+
 def test_duplicate_harness_is_rejected(tmp_path: Path) -> None:
     path = write(tmp_path, 'harnesses = ["claude", "claude"]\n')
     with pytest.raises(LoadoutError, match="duplicate"):

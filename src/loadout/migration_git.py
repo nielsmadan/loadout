@@ -11,13 +11,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .artifacts import FrozenFile
 from .deployment import atomic_install
 from .discovery import RUNTIME_FILES
 from .errors import LoadoutError
 from .git_privacy import ignored_paths
 from .migration_models import MigrationPlan
 from .migration_paths import entry_path
+from .output import FrozenFile
 
 
 def git(

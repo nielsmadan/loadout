@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 
 from loadout import commands
-from loadout.artifacts import Copied
+from loadout.output import Copied
 from loadout.written import (
     WrittenEntry,
     accepts_bytes,

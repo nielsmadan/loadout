@@ -22,7 +22,9 @@ from init_evidence import (
     isolated_environment,
     write_json,
 )
+from loadout.agents import GLOBAL_PRESET
 from loadout.destinations import resolve_destination
+from loadout.project import PROJECT_PRESET
 
 CASES = Path(__file__).parent / "fixtures/init_corpus.json"
 
@@ -178,15 +180,7 @@ def reconstruction(root: Path, home: Path, preview: dict, expected: dict, logs: 
             else fresh_home / target.relative_to(home)
         )
 
-    records = tomllib.loads((root / "loadout/artifacts.toml").read_text())["artifact"]
-    with patch.dict(os.environ, {**env, "HOME": str(home)}, clear=True):
-        private_routes = [
-            root / record["output"]
-            if preview["scope"] == "project"
-            else resolve_destination(record["destination"], "corpus reconstruction")
-            for record in records
-            if record.get("optional")
-        ]
+    private_routes: list[Path] = []
     public = {
         path: spec
         for path, spec in expected.items()
@@ -238,20 +232,18 @@ def reconstruction(root: Path, home: Path, preview: dict, expected: dict, logs: 
 
 
 def lifecycle(root: Path, source: Path, preview: dict, env: dict, logs: Path) -> dict:
-    artifacts = tomllib.loads((root / "loadout/artifacts.toml").read_text())["artifact"]
-    tree = next(
-        record
-        for record in artifacts
-        if record["format"] == "tree" and record["category"] == "skills"
-    )
-    target_source = root / "loadout" / tree["source"] / "corpus-lifecycle/SKILL.md"
+    agent = next(agent for agent in preview["agents"] if "skills" in GLOBAL_PRESET[agent])
+    target_source = root / "loadout/skills/corpus-lifecycle.md"
     if preview["scope"] == "project":
-        target = root / tree["output"] / "corpus-lifecycle/SKILL.md"
+        spec = PROJECT_PRESET[agent]["skills"]
+        assert spec.output is not None
+        target = root / spec.output / "corpus-lifecycle/SKILL.md"
     else:
+        spec = GLOBAL_PRESET[agent]["skills"]
+        assert spec.destination is not None
         with patch.dict(os.environ, env, clear=True):
-            target = (
-                resolve_destination(tree["destination"], "corpus lifecycle")
-                / "corpus-lifecycle/SKILL.md"
+            target = resolve_destination(spec.destination, "corpus lifecycle") / (
+                "corpus-lifecycle/SKILL.md"
             )
     target_source.parent.mkdir(parents=True)
     records = []
@@ -330,10 +322,7 @@ def adopt(case: dict, root: Path, preview: dict, env: dict, logs: Path) -> dict:
             "ordered_sha256": digest(json.dumps(allow).encode()),
             "full_list_equal": True,
         }
-    if any(
-        record["format"] == "tree" and record.get("category") == "skills"
-        for record in tomllib.loads((root / "loadout/artifacts.toml").read_text())["artifact"]
-    ):
+    if any("skills" in GLOBAL_PRESET[agent] for agent in preview["agents"]):
         result["lifecycle"] = lifecycle(root, source, preview, env, logs)
     if case["case"] == "synthetic-global":
         result["example"] = {

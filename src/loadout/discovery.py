@@ -10,13 +10,13 @@ from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 
-from .artifacts import CATEGORIES, ArtifactScope
 from .errors import LoadoutError
 from .git_privacy import ignored_paths
 from .harnesses import KNOWN_HARNESSES
 from .migration_models import Candidate, EntryState, Inventory, Issue, RootMapping
 from .migration_paths import DestinationLayout
 from .native_documents import parse_document
+from .output import CATEGORIES, ArtifactScope
 
 GLOBAL_ROOTS = {
     "claude": ("CLAUDE_CONFIG_DIR", ".claude"),

@@ -107,12 +107,6 @@ record cannot vouch for the other's write.
 `check` asks the same question and says which answer applies, rather than sending you to `sync`
 where `sync` is about to refuse.
 
-Explicit [artifact routes](docs/reference/artifacts.md) use private deployment receipts instead.
-They accept the last deployed bytes and mode or the current source output, even before a Git
-commit. Occupied new destinations require a matching output or explicit `--force` adoption.
-Removed outputs are retired only while their recorded ownership still matches. Partial JSON/TOML
-routes guard authored keys and preserve runtime fields.
-
 ## Global scope
 
 Global scope is the configuration that applies to every project on this machine. A **machine
@@ -288,19 +282,6 @@ at least one source, and at least one `[instructions.<agent>]` or `[permissions.
 declared; no two targets, of either kind, may share an `output` path, and — among the targets
 selected for the active profile — no two may share a `destination` either; that raises a
 `LoadoutError` naming both.
-
-### Native artifacts
-
-An `artifacts = "artifacts.toml"` reference adds explicit routes for native settings, permissions,
-instructions, scripts and skill trees. Routes declare their agents and destinations; composite
-documents have separate category owners, with conflicts rather than implicit override order.
-An artifacts-only global manifest can omit `[[source]]`. Project config accepts the same
-reference and `presets = false` to use explicit routes in place of its built-in outputs.
-
-See [native artifact routes](docs/reference/artifacts.md) for the schema, dormant empty slots,
-portable permission adapters, partial runtime-document ownership, deployment receipts and
-path-safety rules. Receipts live in a private, self-ignored `.loadout-state/` beside the owning
-config; keep that directory out of commits and source copies.
 
 ### Agent blocks
 
@@ -565,45 +546,31 @@ checkout and merge. A new clone needs that command explicitly. Manual validation
 See [Git integration](docs/reference/git-integration.md) for dependencies, alternate indexes,
 worktrees, profiles and post-hook failure behavior.
 
-`init` adopts existing configuration, retaining native behavior and private scope. Harness roots
-can establish membership; explicit `--harness` selections resolve shared-file ambiguity. Project
-init creates sources and routes only for existing configuration and the categories needed by an
-explicitly selected starter. An empty project starts with just `loadout/config.toml` and an empty
-`loadout/artifacts.toml`, plus managed-state and recovery entries in `.gitignore`. Global init keeps the full
-category scaffold and dormant core routes. Existing empty outputs retain their presence. A
-typical migrated source contains:
+`init` adopts only configuration with a known slice destination. It extracts permissions,
+instructions, settings, hooks, plugins, MCP servers, skills and global module configuration into
+canonical sources. Harness-specific command and subagent trees stay where their harness reads them;
+Loadout neither moves nor ignores them.
+
+A project source normally contains:
 
 ```text
-loadout/config.toml               harnesses, presets = false, artifacts reference
-loadout/artifacts.toml            destinations and each category's source producers
-loadout/<category>/               native or verified portable source fragments and trees
-loadout/<category>/local/         discovered personal/private source, gitignored
+loadout/config.toml          configured harnesses, instructions and templates
+loadout/permissions.toml     shared permission rules
+loadout/instructions/        ordered instruction fragments
+loadout/skills/              authored skills and supporting files
+loadout/mcp.toml             MCP server definitions, when present
+loadout/hooks.json           hook declarations, when supported
+loadout/plugins.json         plugin declarations, when supported
 ```
 
-Generated project files are ignored and removed from the final index while their on-disk outputs
-remain available to the harness. Existing source is never reinterpreted on repeat init: use
-check/sync after editing its declared producers. Edit the fragment named by its artifact route,
-not an output or an unreferenced legacy filename. The bundled skill asks before widening personal
-changes when no personal producer exists.
+Generated project files are ignored and removed from the final index while remaining available to
+the harness. Re-running init does not reinterpret an existing source; edit it and use `check` or
+`sync`. Repositories adopted by an older route-based build should restore any command or subagent
+files from `loadout/` to their harness paths and run init again. Sync leaves stale `.gitignore`
+entries from older versions in place rather than guessing which user-authored entries to delete.
 
-To add a category later, create its source and declare its destination in `loadout/artifacts.toml`.
-Template instructions need an instruction route with `template_instructions = true` for each
-selected harness; see [native artifact routes](docs/reference/artifacts.md).
-
-Opaque artifact modes are stored explicitly during migration, so full filesystem modes survive
-reconstruction from Git. Edit `mode` or tree `modes` in the artifact binding when changing those
-permissions; new undeclared tree files use their source mode. Optional private source is absent
-from a public clone and must be supplied separately to recreate private outputs. The
-[repeatable corpus and performance records](docs/tests/init-corpus/README.md) distinguish completed
-adoption from unresolved installer, template and ownership refusals.
-
-Legacy project configs retain their preset behavior: `loadout/permissions.toml` is shared,
-`permissions.local.toml` is personal, and `config.toml` selects instructions and templates.
-To enable another harness, add it to `harnesses` in `loadout/config.toml` and run
-`loadout sync`. A native project also needs routes for the new harness in its artifacts file,
-authored with the bundled skill, because a name alone establishes no source or destination.
-
-Legacy preset harnesses and their outputs (native routes can preserve additional artifacts):
+To enable another harness, add it to `harnesses` in `loadout/config.toml` and run `loadout sync`.
+Loadout derives every output path from its project preset:
 
 | harness | generates |
 | --- | --- |
@@ -613,38 +580,20 @@ Legacy preset harnesses and their outputs (native routes can preserve additional
 | `opencode` | `opencode.json`, `AGENTS.md`, `.opencode/skills/` |
 | `pi` | `.pi/extensions/pi-permission-system/config.json`, `AGENTS.md`, `.pi/skills/` |
 
-### Legacy project instructions
-
-This recipe requires legacy presets. After native `init`, edit the instruction producers named
-in `loadout/artifacts.toml`; adding `instructions` to the project config is not supported.
+### Project instructions
 
 `instructions` in `loadout/config.toml` names fragments in `loadout/instructions/`, in reading
-order, and they compose into `CLAUDE.md` and `AGENTS.md`:
+order. They compose into `CLAUDE.md` and `AGENTS.md`. One order serves the whole repository because
+four harnesses share `AGENTS.md`. With no instructions or template prose, neither document is
+generated.
 
 ```toml
 instructions = ["conventions", "testing"]
 ```
 
-**One order for the repo, not one per harness.** Codex, Droid, OpenCode and Pi all read a repo-root
-`AGENTS.md` (see [config.md](docs/reference/config.md#instructions)), so a per-harness order
-would need one file to hold four of them. With a single order the two documents are identical
-by construction rather than by an assertion that could fail open. Declare no `instructions` and
-neither file is generated, so a repo using loadout for permissions alone keeps its hand-written
-`CLAUDE.md`.
-
-A template contributes its `instructions.md` as one unnamed block **above** the repo's own
-fragments — adopting `web` brings its prose without the repo restating it, and anything the repo
-declares is read last.
-
-`opencode.json`, `.factory/settings.json`, and `.claude/settings.json` are harness-owned
-multi-purpose config files, so
-loadout preserves any foreign top-level key already there (`$schema`, for example) instead of
-overwriting the whole document. Every other output is loadout-only and always renders from
-a blank document.
-
-`.claude/settings.json` is loadout's Claude output at project scope; Claude Code writes to
-`.claude/settings.local.json` itself when you choose "don't ask again", and merges both at
-startup. A generator that owned `.local.json` would delete those grants on every sync.
+A template contributes instructions before project fragments, so project prose is read last.
+Harness-owned multi-purpose JSON files preserve foreign top-level keys; Loadout replaces only the
+keys belonging to its slices.
 
 ### Project skills
 
@@ -674,10 +623,6 @@ It writes Claude to `.claude/skills`, Codex to `.agents/skills`, Droid to `.fact
 OpenCode to `.opencode/skills`, and Pi to `.pi/skills`. Byte-identical Codex, OpenCode, and Pi
 variants may share the `.agents/skills` convention.
 
-Native projects use the same catalog. Their internal skill routes keep template deployment,
-ownership receipts, explicit modes, and unusual native layouts available; the canonical
-`loadout/skills/` catalog is the normal authoring interface.
-
 **OpenCode needs `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1` in your shell**, or it also scans
 `.claude/skills/` and picks between the two copies of each skill at random. `loadout check` says
 so when neither that variable nor `OPENCODE_DISABLE_CLAUDE_CODE` is set — advisory, never an exit
@@ -688,12 +633,9 @@ When Codex and OpenCode need different variants of the same skill, also set
 A template contributes `skills/` the same way it contributes `instructions.md`: a tier beneath the
 project, so a skill the project defines under the same name replaces the template's.
 
-### Legacy project MCP servers
+### Project MCP servers
 
-This automatic filename convention applies to legacy presets. In a native project, edit the
-MCP source named by its artifact route instead.
-
-For legacy presets, `loadout/mcp.toml` declares servers for enabled harnesses with a destination:
+`loadout/mcp.toml` declares servers for enabled harnesses with a known destination:
 
 ```toml
 # loadout/mcp.toml
@@ -735,9 +677,6 @@ declares outranks it.
     loadout template sync <name>             # update that vendored copy from its source
     loadout template list                    # every declared template, its mode, and how each resolves
 
-This config example uses legacy presets. Native projects declare `templates` too, but bind their
-instruction producers through `artifacts.toml` as described below instead of using `instructions`.
-
 ```toml
 # loadout/config.toml
 harnesses = ["claude", "codex"]
@@ -768,12 +707,8 @@ Parts live under `templates/skills/`, `templates/instructions/`, `templates/mcp/
 the same parts. Vendoring keeps one shared copy; updating a shared part lists all affected
 templates and asks for confirmation. Locally modified copies block the update.
 
-Native projects compose template instructions into copy/text instruction routes marked
-`template_instructions = true`. Fresh migrations mark the top-level `CLAUDE.md` and `AGENTS.md`
-routes, preserving each original body and mode beneath the template text. Catalog manifests
-also contribute skills, MCP and permissions through compatible native routes. Directory templates
-retain their instruction-only native behavior. Unsupported routes are refused before source
-mutation; see the [catalog and route rules](docs/reference/templates.md#shared-catalog-parts).
+Templates contribute instructions, skills, MCP servers and permissions through the same project
+slices as directly authored source.
 
 For directory templates, `template sync` is **refuse-and-diff**: it updates an unmodified copy, and on a copy you have
 edited it prints the diff and exits 1 without changing anything. `loadout check` reports such a

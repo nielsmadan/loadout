@@ -6,8 +6,9 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from .artifacts import _no_symlinks, _regular_file
 from .errors import LoadoutError
+from .output import no_symlinks as _no_symlinks
+from .output import regular_file as _regular_file
 from .permissions.rules import parse_rules
 from .servers import parse_servers
 from .skills import SKILL_DOCUMENT, Skill, _excluded

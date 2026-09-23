@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .agents import SliceOutput
-from .artifacts import Artifacts, artifact_reference
 from .errors import LoadoutError
 from .harnesses import KNOWN_HARNESSES
 from .skill_policy import SkillPolicy, parse_skill_policies
@@ -40,14 +39,8 @@ class ProjectConfig:
     vendored: tuple[tuple[str, str], ...] = ()
     instructions: tuple[str, ...] = ()
     skill_policies: tuple[SkillPolicy, ...] = ()
-    artifacts: Artifacts | None = None
-    presets: bool = True
 
     def __post_init__(self) -> None:
-        if not isinstance(self.presets, bool):
-            raise LoadoutError("presets must be a boolean")
-        if not self.presets and self.instructions:
-            raise LoadoutError("presets = false cannot use legacy instructions")
         if not self.harnesses:
             raise LoadoutError("at least one harness is required")
         if len(set(self.harnesses)) != len(self.harnesses):
@@ -56,14 +49,6 @@ class ProjectConfig:
         if bad:
             known = ", ".join(sorted(KNOWN_HARNESSES))
             raise LoadoutError(f"unknown harness(es) {', '.join(bad)} (known: {known})")
-        if self.artifacts is not None:
-            if self.presets and any(r.template_instructions for r in self.artifacts.records):
-                raise LoadoutError("template_instructions routes require presets = false")
-            extra = set(self.artifacts.agents()) - set(self.harnesses)
-            if extra:
-                raise LoadoutError(
-                    f"artifact agents must be configured harnesses: {', '.join(sorted(extra))}"
-                )
         if len(set(self.templates)) != len(self.templates):
             raise LoadoutError("duplicate template in the list")
         if len(set(self.instructions)) != len(self.instructions):
@@ -113,14 +98,12 @@ def load_project_config(path: Path) -> ProjectConfig:
             "template",
             "instructions",
             "skills",
-            "artifacts",
-            "presets",
         }
     )
     if unknown:
         raise LoadoutError(
             f"{path}: unrecognised key(s) {', '.join(unknown)}; 'harnesses', "
-            f"'templates', 'instructions', 'skills', 'artifacts', 'presets' and [template.<name>] are the keys this "
+            f"'templates', 'instructions', 'skills' and [template.<name>] are the keys this "
             f"file accepts"
         )
 
@@ -147,10 +130,6 @@ def load_project_config(path: Path) -> ProjectConfig:
             vendored=_parse_provenance(data.get("template", {}), path),
             instructions=tuple(raw_instructions),
             skill_policies=parse_skill_policies(data.get("skills")),
-            artifacts=artifact_reference(data["artifacts"], path, "project")
-            if "artifacts" in data
-            else None,
-            presets=data.get("presets", True),
         )
     except LoadoutError as error:
         raise LoadoutError(f"{path}: {error}") from error
@@ -301,13 +280,7 @@ def project_outputs(
     writes_instructions = bool(config.instructions or config.templates)
     paths = [
         spec.output
-        for _, name, spec in project_slices(selected if config.presets else ())
+        for _, name, spec in project_slices(selected)
         if spec.output is not None and (name != "instructions" or writes_instructions)
     ]
-    if config.artifacts is not None:
-        paths.extend(
-            str(record.output)
-            for record in config.artifacts.records
-            if record.output is not None and set(record.agents).intersection(selected)
-        )
     return tuple(dict.fromkeys(paths))

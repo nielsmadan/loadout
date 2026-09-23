@@ -78,63 +78,6 @@ def migrated_support_journal(root: Path) -> tuple[Journal, dict[Path, Image]]:
     return Journal.load(path), originals
 
 
-def test_recovery_payloads_stay_bounded_through_interruption_and_conflict_retry(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    journal, originals = migrated_support_journal(tmp_path)
-    baseline = git(tmp_path, "rev-parse", "HEAD")
-    expected_index = base64.b64decode(journal.metadata["refreshed_index"])
-    retained = payloads(journal)
-    measurements = []
-    save, install = Journal.save, migration_journal.install
-    restored = 0
-
-    def measure(current: Journal) -> None:
-        save(current)
-        current_payloads = payloads(current)
-        measurements.append((len(current_payloads), sum(map(len, current_payloads.values()))))
-
-    def interrupt(path: Path, image: Image) -> None:
-        nonlocal restored
-        install(path, image)
-        restored += 1
-        if restored == 3:
-            raise KeyboardInterrupt
-
-    monkeypatch.setattr(Journal, "save", measure)
-    with monkeypatch.context() as patch:
-        patch.setattr(migration_journal, "install", interrupt)
-        with pytest.raises(KeyboardInterrupt):
-            recover_migration(journal.path)
-    assert restored == 3
-    assert measurements
-    expected_size = (len(retained), sum(map(len, retained.values())))
-    assert set(measurements) == {expected_size}
-    assert (tmp_path / ".git/index").read_bytes() == expected_index
-    reloaded = Journal.load(journal.path)
-    assert reloaded.status == "recovering"
-    assert len(reloaded.recovered_operations) == 2
-    conflict = next(o for o in journal.operations if o.path == tmp_path / "loadout/config.toml")
-    conflict.path.write_bytes(b"concurrent source edit\n")
-    conflicted = recover_migration(journal.path)
-    assert conflict.path in conflicted.conflicts
-    assert conflict.path.read_bytes() == b"concurrent source edit\n"
-    assert Journal.load(journal.path).status == "recovery-conflicts"
-    install(conflict.path, conflict.after)
-    result = recover_migration(journal.path)
-    assert result.conflicts == ()
-    assert result.journal is None
-    assert set(measurements) == {expected_size}
-    assert not journal.path.parent.exists()
-    for path, image in originals.items():
-        assert migration_journal.snapshot(path) == image
-    assert not (tmp_path / "loadout/config.toml").exists()
-    assert git(tmp_path, "rev-parse", "HEAD") == baseline
-    assert (tmp_path / ".git/index").read_bytes() == expected_index
-    assert git(tmp_path, "show", ":notes.txt") == b"staged\n"
-    assert (tmp_path / "notes.txt").read_bytes() == b"working\n"
-
-
 @pytest.mark.parametrize("version", [1, 2])
 def test_legacy_recovery_progress_survives_reload(
     version: int, tmp_path: Path, monkeypatch

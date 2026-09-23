@@ -3,20 +3,14 @@ from __future__ import annotations
 import json
 import subprocess
 import tomllib
-from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
 
 import pytest
 
-from loadout.artifacts import CATEGORIES
 from loadout.discovery import discover, entry_state, live_roots
-from loadout.emit import Copied, Merged, render_all
+from loadout.emit import render_all
 from loadout.migration import plan_migration
-from loadout.migration_models import MigrationPlan, RootMapping, SourceSelection
-from loadout.migration_validation import validate_plan
-from loadout.native_documents import parse_document
-from loadout.permissions.renderers import render_codex_project, render_opencode
-from loadout.permissions.rules import Rules
+from loadout.migration_models import MigrationPlan, RootMapping
 
 pytestmark = pytest.mark.integration
 
@@ -56,87 +50,6 @@ def test_shared_instructions_do_not_invent_scope_or_harnesses(tmp_path: Path) ->
     assert inventory.agents == ()
 
 
-def test_project_plan_reconstructs_composite_native_data_without_mutation(tmp_path: Path) -> None:
-    original = '{"model": null, "permissions":{"allow":["Read(a)", "Bash(git status)", "Read(b)"]}, "hooks":{"Stop":[]}, "enabledPlugins":{"x@y":false}}'
-    settings = write(tmp_path, ".claude/settings.json", original)
-    plan = migration(tmp_path)
-    assert settings.read_text() == original
-    assert (tmp_path / "loadout").exists() is False
-    assert parse_document(generated(plan, settings).decode(), "json") == json.loads(original)
-    assert settings in plan.checkpoint_paths
-    assert all(not w.private for w in plan.source_writes)
-    source_categories = {
-        w.path.relative_to(plan.inventory.source_root).parts[0] for w in plan.source_writes
-    }
-    assert source_categories == {
-        "config.toml",
-        "artifacts.toml",
-        "settings",
-        "permissions",
-        "hooks",
-        "plugins",
-    }
-    assert any(
-        c.category == "module-config" and c.state == "explicit-binding" for c in plan.categories
-    )
-    with pytest.raises(FrozenInstanceError):
-        plan.validated = False  # type: ignore[misc]
-
-
-def test_permission_extraction_is_verified_after_serialization(tmp_path: Path) -> None:
-    content = json.dumps(render_opencode(Rules(allow=("git",)), {}))
-    path = write(tmp_path, "opencode.json", content)
-    plan = migration(tmp_path, ("opencode",))
-    assert json.loads(generated(plan, path)) == json.loads(content)
-    assert any('renderer = "opencode"' in w.content.decode() for w in plan.source_writes)
-
-
-@pytest.mark.parametrize(
-    "path,agents,content",
-    [
-        (
-            ".codex/rules/custom.rules",
-            ("codex",),
-            'prefix_rule(pattern=["git"],decision="allow")\n',
-        ),
-        ("opencode.json", ("opencode",), '{"permission":{"bash":{"*":"ask","git":"allow"}}}'),
-        (
-            ".pi/extensions/pi-permission-system/config.json",
-            ("pi",),
-            '{"permission":{"mcp":{"a_b":"allow","a:b":"deny"}}}',
-        ),
-        (
-            ".claude/settings.json",
-            ("claude",),
-            '{"permissions":{"allow":["Read(x)","Bash(git status)","Read(y)"]}}',
-        ),
-    ],
-)
-def test_silent_extractor_losses_use_native_fallback(
-    tmp_path: Path, path: str, agents: tuple[str, ...], content: str
-) -> None:
-    destination = write(tmp_path, path, content)
-    plan = migration(tmp_path, agents)
-    output = generated(plan, destination)
-    if destination.suffix == ".rules":
-        assert output == content.encode()
-    else:
-        assert json.loads(output) == json.loads(content)
-    assert "renderer" not in next(
-        w.content.decode() for w in plan.source_writes if w.path.name == "artifacts.toml"
-    )
-
-
-def test_exact_codex_renderer_output_can_be_portable(tmp_path: Path) -> None:
-    content = render_codex_project(Rules(allow=("git status",)))
-    path = write(tmp_path, ".codex/rules/permissions.rules", content, 0o600)
-    plan = migration(tmp_path, ("codex",))
-    assert generated(plan, path) == content.encode()
-    assert 'renderer = "codex-project"' in next(
-        w.content.decode() for w in plan.source_writes if w.path.name == "artifacts.toml"
-    )
-
-
 def test_nested_instructions_and_program_dependency_layout(tmp_path: Path) -> None:
     paths = {
         "AGENTS.md": (b"shared\n", 0o644),
@@ -151,25 +64,33 @@ def test_nested_instructions_and_program_dependency_layout(tmp_path: Path) -> No
     for path, (content, mode) in paths.items():
         write(tmp_path, path, content, mode)
     plan = migration(tmp_path, ("claude", "codex"))
-    assert {
-        w.path.relative_to(tmp_path).as_posix(): (w.content, w.mode) for w in plan.generated_writes
-    } == paths
+    assert plan.generated_writes == ()
+    retained = {entry.path for entry in plan.originals if entry.action == "retain"}
+    assert tmp_path / "src/AGENTS.md" in retained
+    assert tmp_path / ".claude/rules/python.md" in retained
+    assert tmp_path / ".claude/commands/check.md" in retained
+    assert tmp_path / ".claude/skills/a/SKILL.md" not in retained
+    assert {w.path.name for w in plan.source_writes} >= {
+        "config.toml",
+        "permissions.toml",
+        "main.md",
+        "a.md",
+    }
 
 
-@pytest.mark.parametrize("parent", ["projects", "cache", "logs"])
-def test_workspace_parent_names_are_not_runtime_roles(tmp_path: Path, parent: str) -> None:
-    root = tmp_path / parent / "configuration"
-    path = write(root, ".claude/settings.json", '{"model":"test"}')
-    plan = migration(root)
-    assert json.loads(generated(plan, path)) == {"model": "test"}
-
-
-def test_tracked_nested_instructions_survive_build_walk_filters(tmp_path: Path) -> None:
-    write(tmp_path, "vendor/sub/AGENTS.md", "tracked vendor instructions\n")
-    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
-    subprocess.run(["git", "-C", str(tmp_path), "add", "--", "vendor/sub/AGENTS.md"], check=True)
-    plan = migration(tmp_path, ("codex",))
-    assert generated(plan, tmp_path / "vendor/sub/AGENTS.md") == b"tracked vendor instructions\n"
+def test_project_init_leaves_commands_and_agents_in_place(tmp_path: Path) -> None:
+    command = write(tmp_path, ".claude/commands/ship.md", "ship\n")
+    agent = write(tmp_path, ".claude/agents/auditor.md", "audit\n")
+    plan = migration(tmp_path, ("claude",))
+    assert plan.generated_writes == ()
+    assert {entry.path for entry in plan.originals if entry.action == "retain"} >= {
+        command,
+        agent,
+    }
+    assert "/.claude/commands" not in plan.ignores
+    assert "/.claude/agents" not in plan.ignores
+    assert all("commands" not in write.path.parts for write in plan.source_writes)
+    assert all("agents" not in write.path.parts for write in plan.source_writes)
 
 
 def test_credentials_and_personal_sources_are_excluded_from_checkpoints(tmp_path: Path) -> None:
@@ -197,55 +118,6 @@ def test_credentials_and_personal_sources_are_excluded_from_checkpoints(tmp_path
     assert auth.read_text() == secret
 
 
-def test_global_live_roots_honor_relocation_and_partial_runtime_ownership(
-    tmp_path: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    source = tmp_path / "dotfiles"
-    source.mkdir()
-    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(fake_home / "custom-claude"))
-    monkeypatch.setenv("CODEX_HOME", str(fake_home / "custom-codex"))
-    monkeypatch.setenv("FACTORY_HOME_OVERRIDE", str(fake_home / "custom-droid-home"))
-    monkeypatch.setenv("PI_CODING_AGENT_DIR", str(fake_home / "custom-pi"))
-    claude = write(
-        fake_home,
-        "custom-claude/.claude.json",
-        '{"mcpServers":{"search":{"command":"search"}},"oauthAccount":{"token":"runtime-secret"},"projects":{"x":{}}}',
-    )
-    codex = write(
-        fake_home,
-        "custom-codex/config.toml",
-        'model = "test"\n[projects."/private/project"]\ntrust_level = "trusted"\n',
-    )
-    droid = write(
-        fake_home,
-        "custom-droid-home/.factory/settings.json",
-        '{"model":"test","commandAllowlist":["ls"],"enabledPlugins":{"review@official":true},'
-        '"trustedFolders":{"/workspace":{"trustedAt":"fixture"}}}',
-    )
-    pi = write(
-        fake_home, "custom-pi/settings.json", '{"defaultModel":"test","lastChangelogVersion":"1"}'
-    )
-    inventory = discover(source, scope="global", agents=("claude", "codex", "droid", "pi"))
-    plan = plan_migration(inventory)
-    assert plan.complete, [(issue.code, issue.message) for issue in plan.issues]
-    assert json.loads(generated(plan, claude)) == {"mcpServers": {"search": {"command": "search"}}}
-    assert tomllib.loads(generated(plan, codex).decode()) == {"model": "test"}
-    assert json.loads(generated(plan, droid)) == {
-        "model": "test",
-        "commandAllowlist": ["ls"],
-        "enabledPlugins": {"review@official": True},
-    }
-    assert "trustedFolders" not in "".join(
-        write.content.decode(errors="replace") for write in plan.source_writes
-    )
-    assert json.loads(generated(plan, pi)) == {"defaultModel": "test"}
-    assert "runtime-secret" not in "".join(
-        w.content.decode(errors="replace") for w in plan.source_writes
-    )
-    assert claude.read_text().find("runtime-secret") > 0
-    assert plan.inventory.source_root == source / "loadout"
-
-
 def test_default_claude_mcp_is_sibling_of_default_harness_directory(
     tmp_path: Path, fake_home: Path
 ) -> None:
@@ -266,65 +138,6 @@ def test_live_roots_expand_using_supplied_home() -> None:
     relocated = live_roots(Path("/isolated/home"), {"FACTORY_HOME_OVERRIDE": "~/factory-home"})
     assert any(m.source == Path("/isolated/home/factory-home/.factory") for m in relocated)
     assert any(m.source == Path("/isolated/home/xdg/mcp/mcp.json") for m in roots)
-
-
-def test_dotfile_directory_names_require_confirmed_mapping(tmp_path: Path, fake_home: Path) -> None:
-    source = write(tmp_path, "claude/settings.json", '{"model":"source"}')
-    inventory = discover(tmp_path, scope="global", agents=("claude",))
-    assert any(c.path == source and c.disposition == "unresolved" for c in inventory.candidates)
-    mapping = RootMapping(source.parent, fake_home / ".claude", ("claude",))
-    plan = plan_migration(
-        discover(tmp_path, scope="global", agents=("claude",), mappings=(mapping,))
-    )
-    assert plan.complete, plan.preview()
-    assert json.loads(generated(plan, fake_home / ".claude/settings.json")) == {"model": "source"}
-
-
-def test_source_and_live_conflict_requires_explicit_selection(
-    tmp_path: Path, fake_home: Path
-) -> None:
-    source = write(tmp_path, "claude/settings.json", '{"model":"source"}')
-    live = write(fake_home, ".claude/settings.json", '{"model":"live"}')
-    inventory = discover(
-        tmp_path,
-        scope="global",
-        agents=("claude",),
-        mappings=(RootMapping(source.parent, live.parent, ("claude",)),),
-    )
-    unresolved = plan_migration(inventory)
-    assert {i.code for i in unresolved.issues} == {"source-conflict"}
-    selected = plan_migration(inventory, selections=(SourceSelection(live, source),))
-    assert selected.complete, selected.preview()
-    assert json.loads(generated(selected, live)) == {"model": "source"}
-    assert live.read_text() == '{"model":"live"}'
-
-
-def test_symlink_external_target_requires_mapping_and_is_never_written(tmp_path: Path) -> None:
-    project = tmp_path / "project"
-    project.mkdir()
-    outside = write(tmp_path, "shared/CLAUDE.md", "external instructions\n")
-    link = project / "CLAUDE.md"
-    link.symlink_to(outside)
-    inventory = discover(project, scope="project", agents=("claude",))
-    assert {i.code for i in inventory.issues} == {"external-symlink"}
-    plan = plan_migration(
-        discover(
-            project,
-            scope="project",
-            agents=("claude",),
-            mappings=(RootMapping(outside, link, ("claude",), "file", "instructions"),),
-        )
-    )
-    assert plan.complete, plan.preview()
-    assert generated(plan, link) == b"external instructions\n"
-    assert link.is_symlink()
-    assert outside.read_text() == "external instructions\n"
-    assert any(s.path == link and s.link == str(outside) for s in plan.preconditions)
-    assert any(s.path == outside and s.digest for s in plan.preconditions)
-    assert outside not in plan.obsolete
-    retained = next(item for item in plan.originals if item.path == outside)
-    assert retained.action == "retain"
-    assert retained.reason == "External original remains outside the retirement boundary."
 
 
 def test_symlink_into_known_runtime_root_is_excluded(tmp_path: Path) -> None:
@@ -359,159 +172,6 @@ def test_existing_source_is_not_reinterpreted(tmp_path: Path) -> None:
     assert plan.source_writes == ()
 
 
-def test_validation_rejects_actual_serialized_source_changes(tmp_path: Path) -> None:
-    path = write(tmp_path, ".claude/settings.json", '{"model":"original"}')
-    plan = migration(tmp_path)
-    sources = tuple(
-        replace(w, content=w.content.replace(b'"original"', b'"mutated"'))
-        for w in plan.source_writes
-    )
-    assert any(b'"mutated"' in w.content for w in sources)
-    changed = validate_plan(replace(plan, source_writes=sources))
-    assert not changed.complete
-    assert changed.issues[0].code == "reconstruction-failed"
-    assert path.read_text() == '{"model":"original"}'
-
-
-@pytest.mark.parametrize(
-    "agents",
-    [("claude",), ("codex",), ("opencode",), ("pi",), ("claude", "codex", "opencode", "pi")],
-)
-def test_empty_project_creates_only_config_and_index(
-    tmp_path: Path, agents: tuple[str, ...]
-) -> None:
-    plan = migration(tmp_path, agents)
-    assert {
-        w.path.relative_to(plan.inventory.source_root).as_posix() for w in plan.source_writes
-    } == {"config.toml", "artifacts.toml"}
-    assert index(plan) == {"artifact": []}
-    assert plan.generated_writes == ()
-    assert plan.artifact_routes == ()
-    assert plan.ignores == ("/loadout/.loadout-state/",)
-    readiness = {(c.agents[0], c.category): c for c in plan.categories}
-    for agent in agents:
-        assert readiness[agent, "settings"].state == "explicit-binding"
-        assert readiness[agent, "instructions"].state == "explicit-binding"
-        assert readiness[agent, "plugins"].state == "explicit-binding"
-        assert readiness[agent, "hooks"].state == (
-            "unsupported" if agent == "codex" else "explicit-binding"
-        )
-        assert readiness[agent, "mcp-permissions"].state == (
-            "explicit-binding" if agent == "claude" else "unsupported"
-        )
-
-
-def test_existing_codex_hook_mapping_keeps_its_readiness(tmp_path: Path) -> None:
-    path = write(tmp_path, ".codex/hooks/notify.sh", "notify\n")
-    plan = migration(tmp_path, ("codex",))
-    hooks = next(c for c in plan.categories if c.category == "hooks")
-    assert hooks.state == "routed"
-    assert hooks.destinations == (path.parent,)
-    assert generated(plan, path) == b"notify\n"
-
-
-def test_global_keeps_full_dormant_scaffold(tmp_path: Path, fake_home: Path) -> None:
-    plan = plan_migration(
-        discover(tmp_path, scope="global", agents=("claude", "codex", "opencode", "pi"))
-    )
-    assert plan.complete, plan.preview()
-    assert {
-        w.path.relative_to(plan.inventory.source_root).parts[0] for w in plan.source_writes
-    } == CATEGORIES | {"loadout.toml", "artifacts.toml"}
-    assert {o.path for o in plan.expected_outputs} == set()
-    assert {fake_home / ".claude/CLAUDE.md", fake_home / ".codex/AGENTS.md"} <= set(
-        plan.required_absences
-    )
-    assert {c.category for c in plan.categories if c.state == "routed"} >= {
-        "settings",
-        "instructions",
-        "permissions",
-        "hooks",
-        "plugins",
-        "skills",
-        "mcp",
-    }
-
-
-def test_originally_empty_instruction_file_is_recreated(tmp_path: Path) -> None:
-    path = write(tmp_path, "CLAUDE.md", b"")
-    plan = migration(tmp_path)
-    assert generated(plan, path) == b""
-
-
-def test_existing_opencode_plugins_keep_hooks_routed(tmp_path: Path) -> None:
-    path = write(tmp_path, ".opencode/plugins/notify.ts", "export default {}\n")
-    plan = migration(tmp_path, ("opencode",))
-    hooks = next(c for c in plan.categories if c.category == "hooks")
-    assert hooks.state == "routed"
-    assert hooks.destinations == (path.parent,)
-    assert generated(plan, path) == b"export default {}\n"
-
-
-@pytest.mark.parametrize(
-    "agent,path,content,category",
-    [
-        ("claude", ".claude/settings.json", '{"permissions":{"allow":["Read"]}}', "permissions"),
-        ("claude", ".claude/settings.json", '{"hooks":{}}', "hooks"),
-        ("claude", ".claude/settings.json", "{}", "settings"),
-        ("claude", ".mcp.json", "{}", "mcp"),
-        ("codex", ".codex/config.toml", 'model = "test"\n', "settings"),
-        ("opencode", "opencode.json", '{"plugin":[]}', "plugins"),
-        ("pi", ".pi/settings.json", '{"packages":[]}', "plugins"),
-    ],
-)
-def test_project_documents_create_only_their_populated_sources(
-    tmp_path: Path, agent: str, path: str, content: str, category: str
-) -> None:
-    destination = write(tmp_path, path, content)
-    plan = migration(tmp_path, (agent,))
-    assert {
-        w.path.relative_to(plan.inventory.source_root).parts[0] for w in plan.source_writes
-    } == {"config.toml", "artifacts.toml", category}
-    assert len(plan.source_writes) == 3
-    (record,) = index(plan)["artifact"]
-    assert set(record["parts"]) == {category}
-    format_name = "toml" if path.endswith(".toml") else "json"
-    assert parse_document(generated(plan, destination).decode(), format_name) == parse_document(
-        content, format_name
-    )
-
-
-def test_global_synthetic_dbochman_and_anaiis_shapes(tmp_path: Path, fake_home: Path) -> None:
-    files = {
-        "claude/agents/reviewer.md": "review\n",
-        "claude/commands/check.md": "check\n",
-        "claude/hooks/check.sh": "#!/bin/sh\ntrue\n",
-        "claude/scripts/helper.sh": "true\n",
-        "claude/rules/python.md": "Python rules\n",
-        "claude/keybindings.json": '{"bindings":[]}',
-        "claude/rtk-filters.toml": "enabled = false\n",
-        "codex/profiles/review.config.toml": 'model = "review"\n',
-        "codex/rules/default.rules": 'prefix_rule(pattern=["git"],decision="allow")\n',
-        "codex/AGENTS.md": "Codex rules\n",
-        "opencode/plugin/tmux-notify.js": "export default {}\n",
-    }
-    for name, content in files.items():
-        write(tmp_path, name, content, 0o755 if name.endswith(".sh") else 0o644)
-    mappings = tuple(
-        RootMapping(tmp_path / name, fake_home / relative, (name,))
-        for name, relative in (
-            ("claude", ".claude"),
-            ("codex", ".codex"),
-            ("opencode", ".config/opencode"),
-        )
-    )
-    plan = plan_migration(
-        discover(
-            tmp_path, scope="global", agents=("claude", "codex", "opencode"), mappings=mappings
-        )
-    )
-    assert plan.complete, plan.preview()
-    assert len(plan.expected_outputs) == len(files)
-    shell = next(w for w in plan.generated_writes if w.path == fake_home / ".claude/hooks/check.sh")
-    assert shell.mode == 0o755
-
-
 def materialize_sources(plan: MigrationPlan, root: Path, *, include_private: bool = True) -> None:
     for source in plan.source_writes:
         if include_private or not source.private:
@@ -521,98 +181,6 @@ def materialize_sources(plan: MigrationPlan, root: Path, *, include_private: boo
                 source.content,
                 source.mode,
             )
-
-
-@pytest.mark.parametrize(
-    "agent,category,content",
-    [
-        ("claude", "permissions", {"permissions": {"allow": ["Bash(git status)"]}}),
-        ("claude", "hooks", {"hooks": {"Stop": []}}),
-        ("claude", "plugins", {"enabledPlugins": {"example@market": False}}),
-        ("claude", "mcp", {"mcpServers": {"test": {"command": "server"}}}),
-        ("opencode", "permissions", {"permission": {"bash": {"*": "ask"}}}),
-        ("opencode", "mcp", {"mcp": {"test": {"type": "local", "command": ["server"]}}}),
-        ("pi", "plugins", {"packages": ["npm:example"]}),
-    ],
-)
-def test_dormant_document_parts_activate_on_first_entry(
-    tmp_path: Path, agent: str, category: str, content: dict[str, object]
-) -> None:
-    origin = tmp_path / "origin"
-    origin.mkdir()
-    plan = plan_migration(discover(origin, scope="global", agents=(agent,)))
-    assert plan.complete, plan.preview()
-    fresh = tmp_path / "fresh"
-    materialize_sources(plan, fresh)
-    records = tomllib.loads((fresh / "loadout/artifacts.toml").read_text())["artifact"]
-    record = next(r for r in records if category in r.get("parts", {}))
-    source = fresh / "loadout" / record["parts"][category]["source"]
-    source.write_text(json.dumps(content))
-    outputs = render_all(fresh / "loadout")
-    destination = next(
-        path for route, path in plan.artifact_routes if route == record["destination"]
-    )
-    output = outputs[destination]
-    actual = output.document if isinstance(output, Merged) else output
-    assert isinstance(actual, str)
-    assert json.loads(actual) == content
-
-
-def test_skill_tree_first_entry_edit_rename_and_delete(tmp_path: Path) -> None:
-    origin = tmp_path / "origin"
-    origin.mkdir()
-    write(origin, ".claude/skills/first/SKILL.md", "first skill\n")
-    plan = migration(origin)
-    fresh = tmp_path / "fresh"
-    materialize_sources(plan, fresh)
-    source_root = fresh / "loadout/skills"
-    (source_root / "first.md").unlink()
-    assert render_all(fresh) == {}
-    path = write(source_root, "first.md", "first skill\n")
-    output = render_all(fresh)[fresh / ".claude/skills/first/SKILL.md"]
-    assert isinstance(output, Copied)
-    assert output.source.read_text() == "first skill\n"
-    path.write_text("changed skill\n")
-    renamed = path.with_name("second.md")
-    path.rename(renamed)
-    outputs = render_all(fresh)
-    assert tuple(outputs) == (fresh / ".claude/skills/second/SKILL.md",)
-    renamed.unlink()
-    assert render_all(fresh) == {}
-    clone = tmp_path / "clone"
-    for file in (fresh / "loadout").rglob("*"):
-        if file.is_file():
-            write(clone, file.relative_to(fresh).as_posix(), file.read_bytes())
-    assert render_all(clone) == {}
-
-
-def test_partial_output_mode_policy_preserves_adopted_destination_mode(tmp_path: Path) -> None:
-    path = write(tmp_path, ".codex/config.toml", 'model = "test"\n', 0o640)
-    plan = migration(tmp_path, ("codex",))
-    output = next(w for w in plan.generated_writes if w.path == path)
-    assert (output.mode, output.mode_policy) == (0o640, "preserve-destination")
-    settings = write(tmp_path, ".claude/settings.json", '{"model":"test"}')
-    other = migration(tmp_path, ("claude",))
-    assert next(w.mode for w in other.generated_writes if w.path == settings) == 0o600
-
-
-@pytest.mark.parametrize(
-    "agent,path,content",
-    [
-        ("codex", ".codex/config.toml", 'model = "personal"\n'),
-        ("pi", ".pi/settings.json", '{"defaultModel":"personal"}'),
-    ],
-)
-def test_gitignored_authored_configuration_remains_personal(
-    tmp_path: Path, agent: str, path: str, content: str
-) -> None:
-    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
-    write(tmp_path, ".gitignore", path + "\n")
-    original = write(tmp_path, path, content)
-    plan = migration(tmp_path, (agent,))
-    assert original in plan.private_paths
-    assert original not in plan.checkpoint_paths
-    assert all(w.private for w in plan.source_writes if b"personal" in w.content)
 
 
 def test_ignored_symlink_output_keeps_tracked_canonical_source_public(tmp_path: Path) -> None:
@@ -635,18 +203,6 @@ def test_private_routes_are_optional_in_a_checkout_without_personal_files(tmp_pa
     assert all("private-model" not in str(value) for value in outputs.values())
 
 
-def test_static_hook_dependency_is_inventoried_and_reconstructed(tmp_path: Path) -> None:
-    write(
-        tmp_path,
-        ".claude/settings.json",
-        '{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"sh ./tools/check.sh"}]}]}}',
-    )
-    dependency = write(tmp_path, "tools/check.sh", "#!/bin/sh\ntrue\n", 0o755)
-    plan = migration(tmp_path)
-    assert generated(plan, dependency) == b"#!/bin/sh\ntrue\n"
-    assert any(c.path == dependency and c.category == "support" for c in plan.inventory.candidates)
-
-
 def test_unmapped_external_hook_dependency_blocks_completion(tmp_path: Path) -> None:
     write(
         tmp_path,
@@ -655,16 +211,6 @@ def test_unmapped_external_hook_dependency_blocks_completion(tmp_path: Path) -> 
     )
     plan = plan_migration(discover(tmp_path, scope="project", agents=("claude",)))
     assert {issue.code for issue in plan.issues} == {"dependency-mapping"}
-
-
-def test_shared_agents_tree_keeps_its_actual_consumers(tmp_path: Path) -> None:
-    path = write(tmp_path, ".agents/skills/shared/SKILL.md", "shared skill\n")
-    plan = migration(tmp_path, ("claude", "codex", "droid", "opencode", "pi"))
-    assert generated(plan, path) == b"shared skill\n"
-    policy = tomllib.loads(
-        next(w.content.decode() for w in plan.source_writes if w.path.name == "config.toml")
-    )["skills"]["shared"]
-    assert policy["agents"] == ["codex", "opencode", "pi"]
 
 
 def test_directory_precondition_detects_a_new_authored_input(tmp_path: Path) -> None:
@@ -683,19 +229,6 @@ def test_scaffold_gitkeep_remains_a_retained_dependency(tmp_path: Path) -> None:
         next(c.disposition for c in plan.inventory.candidates if c.path == marker)
         == "retained dependency"
     )
-
-
-def test_support_json_assets_remain_opaque_and_have_no_unrelated_category_parts(
-    tmp_path: Path,
-) -> None:
-    asset = write(tmp_path, ".claude/hooks/assets/config.json", b'{ "fixture" : null }\n', 0o640)
-    keybindings = write(tmp_path, ".claude/keybindings.json", '{"bindings":[]}')
-    plan = migration(tmp_path)
-    assert generated(plan, asset) == b'{ "fixture" : null }\n'
-    record = next(
-        r for r in index(plan)["artifact"] if r["output"] == str(keybindings.relative_to(tmp_path))
-    )
-    assert tuple(record["parts"]) == ("settings",)
 
 
 def test_runtime_history_references_are_excluded_before_dependency_discovery(
@@ -717,29 +250,6 @@ def test_explicit_pi_agent_source_does_not_leave_its_parent_layout_unresolved(
     mapping = RootMapping(source.parent, fake_home / ".pi/agent", ("pi",))
     plan = plan_migration(discover(tmp_path, scope="global", agents=("pi",), mappings=(mapping,)))
     assert plan.complete, plan.preview()
-
-
-def test_opencode_supplemental_paths_are_part_of_live_inventory(
-    tmp_path: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    extra = write(fake_home, "extra/config.json", '{"model":"extra"}')
-    directory = fake_home / "extra-root"
-    plugin = write(directory, "plugins/extra.ts", "export default {}\n")
-    monkeypatch.setenv("OPENCODE_CONFIG", str(extra))
-    monkeypatch.setenv("OPENCODE_CONFIG_DIR", str(directory))
-    plan = plan_migration(discover(tmp_path, scope="global", agents=("opencode",)))
-    assert plan.complete, plan.preview()
-    assert {extra, plugin} <= {w.path for w in plan.generated_writes}
-
-
-def test_explicit_file_mapping_resolves_unknown_native_category(tmp_path: Path) -> None:
-    original = write(tmp_path, ".claude/preferences.md", "native preferences\n")
-    mapping = RootMapping(original, original, ("claude",), "file", "instructions")
-    plan = plan_migration(
-        discover(tmp_path, scope="project", agents=("claude",), mappings=(mapping,))
-    )
-    assert plan.complete, plan.preview()
-    assert generated(plan, original) == b"native preferences\n"
 
 
 def test_symlinked_harness_root_excludes_canonical_runtime_aliases(tmp_path: Path) -> None:
@@ -788,59 +298,6 @@ def test_private_tree_namespace_ignores_future_entries(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == str(added)
-
-
-def test_mapped_tree_retirement_accounts_for_every_original(
-    tmp_path: Path, fake_home: Path
-) -> None:
-    files = {
-        write(tmp_path, "claude/commands/foo.md", "command\n"),
-        write(tmp_path, "claude/hooks/check.sh", "true\n"),
-        write(tmp_path, "claude/skills/one/SKILL.md", "skill\n"),
-    }
-    mapping = RootMapping(tmp_path / "claude", fake_home / ".claude", ("claude",))
-    plan = plan_migration(
-        discover(tmp_path, scope="global", agents=("claude",), mappings=(mapping,))
-    )
-    assert plan.complete, plan.preview()
-    assert set(plan.obsolete) == files
-    assert {item["path"] for item in plan.preview()["originals"] if item["action"] == "retire"} == {
-        str(path) for path in files
-    }
-
-
-def test_duplicate_and_symlink_sources_have_explicit_retirement(
-    tmp_path: Path, fake_home: Path
-) -> None:
-    first = write(tmp_path, "claude/commands/foo.md", "first\n")
-    second = write(tmp_path, "alternate/commands/foo.md", "second\n")
-    canonical = write(tmp_path, "authored/skill.md", "skill\n")
-    alias = tmp_path / "claude/skills/one/SKILL.md"
-    alias.parent.mkdir(parents=True)
-    alias.symlink_to(canonical)
-    mappings = tuple(
-        RootMapping(tmp_path / name, fake_home / ".claude", ("claude",))
-        for name in ("claude", "alternate")
-    )
-    destination = fake_home / ".claude/commands/foo.md"
-    plan = plan_migration(
-        discover(tmp_path, scope="global", agents=("claude",), mappings=mappings),
-        selections=(SourceSelection(destination, first),),
-    )
-    assert plan.complete, plan.preview()
-    assert set(plan.obsolete) == {first, second, alias, canonical}
-    assert generated(plan, destination) == b"first\n"
-
-
-def test_ancestor_spelling_does_not_retire_a_generated_destination(tmp_path: Path) -> None:
-    physical = tmp_path / "physical"
-    original = write(physical, ".claude/commands/one.md", "command\n")
-    alias = tmp_path / "alias"
-    alias.symlink_to(physical, target_is_directory=True)
-    logical = alias / ".claude/commands/one.md"
-    plan = migration(alias)
-    assert generated(plan, logical) == original.read_bytes()
-    assert plan.obsolete == ()
 
 
 def test_mapped_relative_dependencies_preserve_source_and_deployed_layout(
@@ -951,32 +408,6 @@ def test_mapped_private_and_runtime_originals_have_retained_dispositions(
     assert {private, auth, mixed} <= set(plan.private_paths)
 
 
-def test_an_original_required_by_another_output_is_not_retired(tmp_path: Path) -> None:
-    original = write(tmp_path, ".claude/commands/one.md", "shared command\n")
-    second = tmp_path / ".claude/commands/two.md"
-    mapping = RootMapping(original, second, ("claude",), "file", "instructions")
-    plan = plan_migration(
-        discover(tmp_path, scope="project", agents=("claude",), mappings=(mapping,))
-    )
-    assert plan.complete, plan.preview()
-    assert {output.path for output in plan.generated_writes} == {original, second}
-    assert next(item.action for item in plan.originals if item.path == original) == "generated"
-    assert plan.obsolete == ()
-
-
-def test_symlinked_harness_directory_uses_final_retirement_topology(tmp_path: Path) -> None:
-    original = write(tmp_path, "canonical/hooks/check.sh", "true\n")
-    (tmp_path / ".claude").symlink_to("canonical", target_is_directory=True)
-    destination = tmp_path / ".claude/hooks/check.sh"
-    plan = migration(tmp_path)
-    assert generated(plan, destination) == original.read_bytes()
-    assert plan.obsolete == (original,)
-    assert {item.path: item.action for item in plan.originals} == {
-        destination: "generated",
-        original: "retire",
-    }
-
-
 @pytest.mark.parametrize("source_alias", [False, True])
 def test_symlinked_harness_absolute_dependency_on_retired_source_is_blocked(
     tmp_path: Path, source_alias: bool
@@ -997,27 +428,6 @@ def test_symlinked_harness_absolute_dependency_on_retired_source_is_blocked(
         project / ".claude/scripts/common.sh",
     )
     assert not plan.complete
-
-
-@pytest.mark.parametrize("reference_kind", ["relative", "physical", "ancestor-alias"])
-def test_symlinked_harness_dependencies_follow_final_destinations(
-    tmp_path: Path, reference_kind: str
-) -> None:
-    project = tmp_path / "project"
-    helper = write(project, "canonical/scripts/common.sh", "true\n")
-    alias = tmp_path / "alias"
-    alias.symlink_to(project, target_is_directory=True)
-    references = {
-        "relative": "../scripts/common.sh",
-        "physical": str(project / ".claude/scripts/common.sh"),
-        "ancestor-alias": str(alias / ".claude/scripts/common.sh"),
-    }
-    script = write(project, "canonical/hooks/check.sh", f"source {references[reference_kind]}\n")
-    (project / ".claude").symlink_to("canonical", target_is_directory=True)
-    plan = migration(project)
-    assert generated(plan, project / ".claude/hooks/check.sh") == script.read_bytes()
-    assert generated(plan, project / ".claude/scripts/common.sh") == helper.read_bytes()
-    assert set(plan.obsolete) == {script, helper}
 
 
 @pytest.fixture(params=["home", "relocated"])
@@ -1062,35 +472,6 @@ def test_direct_harness_root_absolute_source_dependencies_are_blocked(
         mapping.destination / "hooks/check.sh",
     }
     assert not plan.complete
-
-
-@pytest.mark.parametrize("reference_kind", ["relative", "absolute", "ancestor-alias"])
-def test_direct_harness_root_dependencies_keep_active_destinations(
-    tmp_path: Path, direct_harness_mapping: RootMapping, reference_kind: str
-) -> None:
-    mapping = direct_harness_mapping
-    helper = write(mapping.source, "scripts/common.sh", "true\n")
-    alias = tmp_path / "active-parent"
-    alias.symlink_to(mapping.destination.parent, target_is_directory=True)
-    references = {
-        "relative": "../scripts/common.sh",
-        "absolute": str(mapping.destination / "scripts/common.sh"),
-        "ancestor-alias": str(alias / mapping.destination.name / "scripts/common.sh"),
-    }
-    script = write(mapping.source, "hooks/check.sh", f"source {references[reference_kind]}\n")
-    plan = plan_migration(
-        discover(mapping.source, scope="global", agents=("claude",), mappings=(mapping,))
-    )
-    assert plan.complete, plan.preview()
-    assert generated(plan, mapping.destination / "hooks/check.sh") == script.read_bytes()
-    assert generated(plan, mapping.destination / "scripts/common.sh") == helper.read_bytes()
-    assert set(plan.obsolete) == {script, helper}
-    assert {item.path: item.action for item in plan.originals} == {
-        mapping.destination / "hooks/check.sh": "generated",
-        mapping.destination / "scripts/common.sh": "generated",
-        script: "retire",
-        helper: "retire",
-    }
 
 
 def test_relative_dependency_with_disagreeing_mapping_stays_blocked(

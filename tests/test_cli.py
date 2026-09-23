@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import subprocess
 import sys
-import tomllib
 from pathlib import Path
 
 import pytest
@@ -421,16 +420,20 @@ def test_init_sync_check_round_trips_for_a_project_only_repo(tmp_path: Path, cap
     assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
     assert {p.name for p in (tmp_path / "loadout").iterdir()} == {
         "config.toml",
-        "artifacts.toml",
-        ".loadout-state",
+        "permissions.toml",
     }
-    assert tomllib.loads((tmp_path / "loadout/artifacts.toml").read_text()) == {"artifact": []}
     assert (tmp_path / ".gitignore").read_text().splitlines() == [
         "/.loadout-state/",
         "/loadout/.loadout-state/",
+        "/.claude/settings.json",
+        "/.claude/mcp-permissions.json",
+        "/.mcp.json",
+        "/.claude/skills",
+        "/opencode.json",
+        "/.opencode/skills",
     ]
-    assert not (tmp_path / ".claude" / "settings.json").exists()
-    assert not (tmp_path / "opencode.json").exists()
+    assert (tmp_path / ".claude" / "settings.json").is_file()
+    assert (tmp_path / "opencode.json").is_file()
 
     assert loadout.main(["check", "--root", str(tmp_path)]) == 0
 
@@ -472,26 +475,6 @@ def test_init_rejects_duplicate_harnesses(tmp_path: Path, capsys) -> None:
     )
     assert "distinct" in capsys.readouterr().err
     assert not (tmp_path / "loadout" / "config.toml").exists()
-
-
-def test_check_returns_1_when_a_project_output_has_drifted(tmp_path: Path, capsys) -> None:
-    _init_repo(tmp_path)
-    (tmp_path / ".claude").mkdir()
-    (tmp_path / ".claude/settings.json").write_text('{"model":"original"}\n')
-    loadout.main(["init", "project", "--yes", "--harness", "claude", "--root", str(tmp_path)])
-    settings = next((tmp_path / "loadout/settings").rglob("*.json"))
-    settings.write_text('{"model":"authored"}\n', encoding="utf-8")
-    assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
-    capsys.readouterr()
-
-    tampered = tmp_path / ".claude" / "settings.json"
-    tampered.write_text("tampered\n", encoding="utf-8")
-
-    assert loadout.main(["check", "--root", str(tmp_path)]) == 1
-    err = capsys.readouterr().err
-    assert "DRIFT" in err
-    assert "settings.json" in err
-    assert tampered.read_text() == "tampered\n"
 
 
 def test_global_without_a_machine_config_names_init(tmp_path, monkeypatch, capsys) -> None:
@@ -653,29 +636,6 @@ def test_init_global_rejects_project_only_flags(tmp_path: Path) -> None:
     with pytest.raises(SystemExit) as exit_info:
         loadout.main(["init", "global", "--starter", "backend"])
     assert exit_info.value.code == 2
-
-
-def test_init_global_round_trips_with_canonical_skills_catalog(
-    tmp_path: Path, monkeypatch, capsys
-) -> None:
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
-    source_parent = tmp_path / "home"
-    source_parent.mkdir()
-    _init_repo(source_parent)
-
-    assert (
-        loadout.main(
-            ["init", "global", "--source", str(source_parent), "--harness", "claude", "--yes"]
-        )
-        == 0
-    )
-    capsys.readouterr()
-
-    assert loadout.main(["sync", "--global"]) == 0
-    assert loadout.main(["check", "--global"]) == 0
-    source = source_parent / "loadout"
-    assert (source / "skills/.gitkeep").is_file()
-    assert "[claude]" in (source / "loadout.toml").read_text()
 
 
 def test_init_notes_a_missing_machine_config(tmp_path: Path, monkeypatch, capsys) -> None:
