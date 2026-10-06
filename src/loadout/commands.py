@@ -249,18 +249,17 @@ def _committed_variants(root: Path, profiles: Iterable[str]) -> dict[Path, set[s
 
 def _modified_outside_loadout(
     root: Path, outputs: Mapping[Path, Output], profile: str = "default"
-) -> list[tuple[Path, str, str]] | None:
-    """Files matching no output loadout itself could have written — None if unknowable.
+) -> list[tuple[Path, str, str]]:
+    """Files matching no output loadout itself could have written.
 
-    The accept set spans the committed source, the working source, and every declared
-    profile, so an unsynced source edit, a synced one and a profile switch all match
-    something. Without a committed baseline an unsynced edit is indistinguishable from
-    a hand edit, so the caller must not block.
+    The accept set spans the committed source, the working source, every declared
+    profile and the record of what sync last wrote, so an unsynced source edit, a
+    synced one and a profile switch all match something. With neither a commit nor a
+    record, only the working source remains: a file that does not match it is content
+    loadout did not write, and is refused rather than overwritten.
     """
     profiles = declared_profiles(root)
     acceptable = _committed_variants(root, profiles)
-    if not acceptable:
-        return None
     for path, forms in _render_variants(root, profiles, rebase_to=root).items():
         acceptable.setdefault(path, set()).update(forms)
     # The third variant, and the only one that knows about a source state which was
@@ -339,9 +338,7 @@ def cmd_sync(root: Path, profile: str = "default", force: bool = False) -> int:
     outputs = render_all(root, profile)
     if not force:
         modified = _modified_outside_loadout(root, outputs, profile)
-        if modified is None:
-            print("note: no committed baseline — skipping the modified-file check", file=sys.stderr)
-        elif modified:
+        if modified:
             full: list[str] = []
             for path, actual, expected in modified:
                 rel = _display(path, root)
@@ -454,7 +451,7 @@ def cmd_check(root: Path, profile: str = "default") -> int:
     # about to refuse, sending the reader in a circle and teaching them --force. Ask
     # the guard the same question sync will, and say which answer applies.
     hand_edited = _modified_outside_loadout(root, render_all(root, profile), profile)
-    blocked = {path for path, _, _ in hand_edited or ()}
+    blocked = {path for path, _, _ in hand_edited}
     if blocked:
         for path in sorted(blocked):
             print(f"MODIFIED OUTSIDE LOADOUT: {_display(path, root)}", file=sys.stderr)

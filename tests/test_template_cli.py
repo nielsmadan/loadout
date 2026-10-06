@@ -347,7 +347,7 @@ def test_check_notes_a_modified_vendored_template_without_failing(
     (bare_project / "loadout" / "templates" / "web" / "permissions.toml").write_text(
         '[shell]\nallow = ["mine"]\n', encoding="utf-8"
     )
-    main(["sync", "--root", str(bare_project)])
+    main(["sync", "--root", str(bare_project), "--force"])
     capsys.readouterr()
     assert main(["check", "--root", str(bare_project)]) == 0
     assert "web" in capsys.readouterr().out
@@ -361,7 +361,7 @@ def test_check_is_silent_about_a_clean_vendored_template(
 ) -> None:
     _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
     main(["template", "add", "web", "--vendored", "--root", str(bare_project)])
-    main(["sync", "--root", str(bare_project)])
+    main(["sync", "--root", str(bare_project), "--force"])
     capsys.readouterr()
     assert main(["check", "--root", str(bare_project)]) == 0
     assert "modified" not in capsys.readouterr().out
@@ -373,7 +373,7 @@ def test_check_still_fails_on_real_drift_alongside_a_diverged_template(
     """The note must not swallow the exit code check exists to produce."""
     _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
     main(["template", "add", "web", "--vendored", "--root", str(bare_project)])
-    main(["sync", "--root", str(bare_project)])
+    main(["sync", "--root", str(bare_project), "--force"])
     (bare_project / "loadout" / "templates" / "web" / "permissions.toml").write_text(
         '[shell]\nallow = ["mine"]\n', encoding="utf-8"
     )
@@ -454,7 +454,7 @@ def test_check_reports_a_vendored_copy_with_no_recorded_provenance(
     Reported and not failed, for ADR 0014's reason: a vendored copy is source."""
     _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
     main(["template", "add", "web", "--vendored", "--root", str(bare_project)])
-    main(["sync", "--root", str(bare_project)])
+    main(["sync", "--root", str(bare_project), "--force"])
     _strip_provenance(bare_project)
     capsys.readouterr()
 

@@ -97,12 +97,15 @@ source twice before committing left an output rendered from a state that is neit
 and `sync` refused a file it had written itself. The record only ever widens acceptance — delete
 it and the guard behaves exactly as it did before, warning and all.
 
-Two cases still warn without anything being wrong. The first `sync` over config that predates
-loadout — adoption is the one time loadout overwrites a file it has never written. And a file
-whose committed baseline is unavailable — outside a git repo, or before the first commit — where
-an unsynced edit cannot be told from a hand edit, so the check is skipped entirely and says so.
-A destination shared between machines through a symlinked config repo can warn too: one machine's
-record cannot vouch for the other's write.
+The guard does not need git. Outside a repository, or before the first commit, the working
+source and the record are the baseline: an unsynced source edit leaves the output matching what
+was recorded, while a hand edit does not. On the very first `sync`, with neither a commit nor a
+record, a file that does not match the working source is refused until you pass `--force`.
+
+Two cases warn without anything being wrong. The first `sync` over config that predates
+loadout — adoption is the one time loadout overwrites a file it has never written. And a
+destination shared between machines through a symlinked config repo: one machine's record cannot
+vouch for the other's write.
 
 `check` asks the same question and says which answer applies, rather than sending you to `sync`
 where `sync` is about to refuse.

@@ -435,3 +435,40 @@ def test_global_init_with_an_existing_skill_leaves_sync_working(tmp_path, fake_h
     assert loadout.main(["sync", "--global"]) == 0
     assert (fake_home / ".claude/skills/code-review/SKILL.md").is_file()
     assert loadout.main(["check", "--global"]) == 0
+
+
+def test_a_hook_another_tool_installs_survives_the_next_global_sync(
+    tmp_path, fake_home, monkeypatch, capsys
+):
+    """The D-02 regression. `init global` stages the source without committing it, so
+    the git guard had no baseline, and the second sync stripped the hook with exit 0."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    claude = fake_home / ".claude"
+    (claude / "skills" / "review").mkdir(parents=True)
+    (claude / "CLAUDE.md").write_text("# global\n")
+    (claude / "settings.json").write_text(
+        '{"model": "opus", "permissions": {"allow": ["Bash(ls:*)"]}}\n'
+    )
+    (claude / "skills" / "review" / "SKILL.md").write_text(
+        "---\nname: review\ndescription: r\n---\nbody\n"
+    )
+    source = (tmp_path / "src").resolve()
+    source.mkdir()
+    init = ["init", "global", "--harness", "claude", "--source", str(source), "--yes"]
+    assert loadout.main(init) == 0
+    assert loadout.main(["sync", "--global"]) == 0
+    head = subprocess.run(
+        ["git", "-C", str(source), "rev-parse", "HEAD"], capture_output=True, check=False
+    )
+    assert head.returncode != 0
+    settings = claude / "settings.json"
+    hook = [{"hooks": [{"type": "command", "command": "echo compacting"}]}]
+    document = json.loads(settings.read_text())
+    document["hooks"] = {"PreCompact": hook}
+    settings.write_text(json.dumps(document, indent=2) + "\n")
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--global"]) == 1
+
+    assert "settings.json was modified outside loadout" in capsys.readouterr().err
+    assert json.loads(settings.read_text())["hooks"]["PreCompact"] == hook

@@ -158,7 +158,7 @@ def test_check_reports_the_opencode_skills_race_without_failing(
     a report that moved the exit code would break every pre-commit hook."""
     monkeypatch.delenv("OPENCODE_DISABLE_CLAUDE_CODE_SKILLS", raising=False)
     monkeypatch.delenv("OPENCODE_DISABLE_CLAUDE_CODE", raising=False)
-    assert loadout.main(["sync", "--root", str(project)]) == 0
+    assert loadout.main(["sync", "--root", str(project), "--force"]) == 0
     capsys.readouterr()
 
     assert loadout.main(["check", "--root", str(project)]) == 0
@@ -191,7 +191,7 @@ def test_a_project_without_opencode_is_not_told_about_its_flag(
         ),
         encoding="utf-8",
     )
-    loadout.main(["sync", "--root", str(project)])
+    loadout.main(["sync", "--root", str(project), "--force"])
     capsys.readouterr()
 
     assert loadout.main(["check", "--root", str(project)]) == 0

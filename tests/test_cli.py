@@ -175,20 +175,20 @@ def test_skill_uninstall_removes_source_and_synced_outputs(
 
 
 def test_sync_writes_files_and_returns_0(root: Path, capsys) -> None:
-    assert loadout.main(["sync", "--root", str(root)]) == 0
+    assert loadout.main(["sync", "--root", str(root), "--force"]) == 0
     assert (root / "out" / "shared.md").is_file()
     assert "shared.md" in capsys.readouterr().out
 
 
 def test_sync_default_profile_omits_the_variant_target(root: Path, fake_home: Path) -> None:
-    assert loadout.main(["sync", "--root", str(root)]) == 0
+    assert loadout.main(["sync", "--root", str(root), "--force"]) == 0
     assert (root / "out" / "primary.md").is_file()
     written = (fake_home / ".harness-a" / "PRIMARY.md").read_text(encoding="utf-8")
     assert "The default variant." in written
 
 
 def test_sync_profile_variant_selects_the_variant_target(root: Path, fake_home: Path) -> None:
-    assert loadout.main(["sync", "--root", str(root), "--profile", "variant"]) == 0
+    assert loadout.main(["sync", "--root", str(root), "--profile", "variant", "--force"]) == 0
     written = (fake_home / ".harness-a" / "PRIMARY.md").read_text(encoding="utf-8")
     assert "The variant." in written
     # instructions.primary declares profile = "default", so it is mutually exclusive
@@ -213,12 +213,12 @@ def test_sync_profile_variant_selects_the_variant_target(root: Path, fake_home: 
 
 
 def test_check_returns_0_when_clean(root: Path) -> None:
-    loadout.main(["sync", "--root", str(root)])
+    loadout.main(["sync", "--root", str(root), "--force"])
     assert loadout.main(["check", "--root", str(root)]) == 0
 
 
 def test_check_returns_1_and_diffs_on_drift(root: Path, capsys) -> None:
-    loadout.main(["sync", "--root", str(root)])
+    loadout.main(["sync", "--root", str(root), "--force"])
     (root / "out" / "shared.md").write_text("tampered\n")
     assert loadout.main(["check", "--root", str(root)]) == 1
     err = capsys.readouterr().err
@@ -230,7 +230,7 @@ def test_check_drift_depends_on_the_active_profile(root: Path, capsys) -> None:
     """Syncing under 'default' leaves the shared destination holding the default
     document, so check is clean under 'default' and reports drift under 'variant',
     which expects the other document at that same path."""
-    assert loadout.main(["sync", "--root", str(root)]) == 0
+    assert loadout.main(["sync", "--root", str(root), "--force"]) == 0
     assert loadout.main(["check", "--root", str(root)]) == 0
     capsys.readouterr()
     assert loadout.main(["check", "--root", str(root), "--profile", "variant"]) == 1
@@ -495,7 +495,7 @@ def test_global_uses_the_configured_source(root: Path, tmp_path, monkeypatch) ->
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     _write_machine_config(tmp_path / "xdg", root)
 
-    assert loadout.main(["sync", "--global"]) == 0
+    assert loadout.main(["sync", "--global", "--force"]) == 0
     assert (root / "out" / "shared.md").is_file()
 
 
@@ -505,7 +505,7 @@ def test_global_applies_the_configured_profile(
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     _write_machine_config(tmp_path / "xdg", root, profile="variant")
 
-    assert loadout.main(["sync", "--global"]) == 0
+    assert loadout.main(["sync", "--global", "--force"]) == 0
     assert "The variant." in (fake_home / ".harness-a" / "PRIMARY.md").read_text(encoding="utf-8")
     assert not (root / "out" / "primary.md").is_file()
 
@@ -516,7 +516,7 @@ def test_global_explicit_profile_overrides_the_machine_config(
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     _write_machine_config(tmp_path / "xdg", root, profile="variant")
 
-    assert loadout.main(["sync", "--global", "--profile", "default"]) == 0
+    assert loadout.main(["sync", "--global", "--profile", "default", "--force"]) == 0
     assert (root / "out" / "primary.md").is_file()
     written = (fake_home / ".harness-a" / "PRIMARY.md").read_text(encoding="utf-8")
     assert "The default variant." in written
@@ -528,7 +528,7 @@ def test_global_with_no_configured_profile_falls_back_to_default(
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     _write_machine_config(tmp_path / "xdg", root)
 
-    assert loadout.main(["sync", "--global"]) == 0
+    assert loadout.main(["sync", "--global", "--force"]) == 0
     assert (root / "out" / "primary.md").is_file()
     written = (fake_home / ".harness-a" / "PRIMARY.md").read_text(encoding="utf-8")
     assert "The default variant." in written
@@ -543,7 +543,7 @@ def test_sync_succeeds_under_a_non_utf8_locale(root: Path, monkeypatch) -> None:
     monkeypatch.setenv("PYTHONCOERCECLOCALE", "0")
     monkeypatch.setenv("PYTHONUTF8", "0")
     result = subprocess.run(
-        [sys.executable, "-m", "loadout", "sync", "--root", str(root)],
+        [sys.executable, "-m", "loadout", "sync", "--root", str(root), "--force"],
         capture_output=True,
         text=True,
         check=False,
@@ -598,7 +598,7 @@ def test_init_global_adopts_a_root_manifest_and_syncs_it(
     assert "adopted" in out
     assert not (root / "loadout" / "loadout.toml").exists()
 
-    assert loadout.main(["sync", "--global"]) == 0
+    assert loadout.main(["sync", "--global", "--force"]) == 0
     assert (root / "out" / "shared.md").is_file()
 
 

@@ -31,9 +31,10 @@ Loadout compares current output with the working source, committed source when a
 what it last recorded writing. A destination shared between machines can still trigger a warning,
 because one machine's record does not identify another machine's writes.
 
-Outside a git repository or before a first commit, the committed baseline is unavailable.
-Loadout reports when that limits protection. Review the named files when adopting an existing
-setup.
+Outside a git repository or before a first commit, the working source and the record are the
+baseline, so protection does not depend on git. On a first sync with no record yet, any file that
+does not match the working source is refused. Review the named files when adopting an existing
+setup, then pass `--force` once.
 
 ## Check reports drift
 
