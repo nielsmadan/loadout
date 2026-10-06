@@ -330,29 +330,24 @@ def test_global_conflicting_copies_require_selection(tmp_path, fake_home, eviden
     evidence.save(result="Pass", scenarios=["Q04"])
 
 
-@pytest.mark.parametrize("starter", ["none", "frontend", "backend"])
-def test_starter_selection_through_cli(tmp_path, evidence, starter):
-    root = _repository(tmp_path / starter)
-    arguments = ["init", "project", "--harness", "codex", "--starter", starter, "--json"]
-    preview = json.loads(evidence.cli(root, *arguments, "--dry-run").stdout)
-    assert preview["complete"]
+@pytest.mark.parametrize("template", ["frontend", "backend"])
+def test_bundled_template_after_init_through_cli(tmp_path, evidence, template):
+    root = _repository(tmp_path / template)
+    arguments = ["init", "project", "--harness", "codex", "--json"]
     result = json.loads(evidence.cli(root, *arguments, "--yes").stdout)
     assert result["status"] == "complete"
+    evidence.cli(root, "template", "add", template, "--vendored")
+    evidence.cli(root, "sync")
     config = tomllib.loads((root / "loadout/config.toml").read_text())
-    if starter == "none":
-        assert config.get("templates", []) == []
-        assert not (root / "AGENTS.md").exists()
-    else:
-        assert config["templates"] == [starter]
-        assert config["template"][starter]["vendored"]
-        vendored = root / "loadout/templates" / starter
-        _categories(vendored)
-        instructions = (vendored / "instructions.md").read_text().strip()
-        assert instructions
-        assert (root / "AGENTS.md").read_text().strip() == instructions
+    assert config["templates"] == [template]
+    assert config["template"][template]["vendored"]
+    vendored = root / "loadout/templates" / template
+    _categories(vendored)
+    instructions = (vendored / "instructions.md").read_text().strip()
+    assert instructions
+    assert instructions in (root / "AGENTS.md").read_text()
     evidence.cli(root, "check")
-    evidence.cli(root, "check", "--staged")
-    evidence.save(result="Pass", scenarios=["Q17"], starter=starter)
+    evidence.save(result="Pass", scenarios=["Q17"], template=template)
 
 
 def _read_pty(descriptor, process, predicate, timeout=30):
@@ -379,7 +374,7 @@ def _read_pty(descriptor, process, predicate, timeout=30):
 def test_interactive_confirmation_cancellation(tmp_path, evidence, action):
     root = _repository(tmp_path / action)
     before = _git(root, "rev-parse", "HEAD")
-    command = [*CLI, "init", "project", "--harness", "codex", "--starter", "none"]
+    command = [*CLI, "init", "project", "--harness", "codex"]
     master, slave = os.openpty()
     process = subprocess.Popen(
         command, cwd=root, stdin=slave, stdout=slave, stderr=slave, start_new_session=True

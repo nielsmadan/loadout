@@ -3,14 +3,14 @@
 Run from the repository root:
 
 ```sh
-.venv/bin/pytest -q tests/test_template_catalog.py tests/test_artifacts.py tests/test_templates.py tests/test_template_cli.py tests/test_starters.py tests/test_git_integration.py
+.venv/bin/pytest -q tests/test_template_catalog.py tests/test_artifacts.py tests/test_templates.py tests/test_template_cli.py tests/test_bundled_templates.py tests/test_git_integration.py
 .venv/bin/python tests/regenerate_expected.py --check
 just check
 ```
 
 Tests use isolated homes, machine configuration and temporary repositories. They do not
-change the developer's installed skills or global source. The starter and staged tests run
-real Git operations inside those temporary repositories.
+change the developer's installed skills or global source. The staged tests run real Git
+operations inside those temporary repositories.
 
 ## Input and output
 
@@ -58,8 +58,6 @@ collection is `.agents/skills`; Claude uses `.claude/skills`.
   retirement until the generated file is restored to its last-written bytes.
 - Reject escaped paths, symlinks, ambiguous formats and conflicting existing shared parts.
 - Vendor qualified names and update commented TOML lists without invalidating the config.
-- Import a catalog override of the `frontend` starter, apply its migration transaction,
-  and verify the staged project after removing its machine-source configuration.
 - Reject unsupported native permissions; opt auxiliary routes out with
   `template_parts = false`.
 - Check each agent's exact shell allow/ask/deny and MCP tool-policy output, plus MCP definitions,

@@ -273,11 +273,6 @@ def _add_init_choices(init: argparse.ArgumentParser) -> None:
 
 def _add_init_project(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "--starter",
-        choices=("none", "frontend", "backend"),
-        help="optional project template to vendor; default: none",
-    )
-    parser.add_argument(
         "--root",
         type=Path,
         default=Path.cwd(),
@@ -351,7 +346,6 @@ def _dispatch_init(args: argparse.Namespace) -> int:
             dry_run=args.dry_run,
             json=args.json,
             yes=args.yes,
-            starter=args.starter,
         )
     )
 

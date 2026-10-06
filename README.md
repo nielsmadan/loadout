@@ -535,11 +535,10 @@ in once:
     loadout init project --harness claude --harness opencode --dry-run
     loadout init project --harness claude --harness opencode --yes
 
-Add `--starter frontend` or `--starter backend` to preview and vendor a small instruction seed.
-The default is `none`; interactive init offers the same optional choice. Starters ship in the
-package and work offline. They add no dependencies, permission grants, models or credentials.
-Starter selection, provenance and outputs participate in the migration checkpoint/staging and
-recovery workflow. Global init does not activate project starters.
+To start from a small instruction seed, apply a bundled template after init with
+`loadout template add frontend --vendored` (or `backend`), then `loadout sync`. Bundled templates
+ship in the package and work offline. They add no dependencies, permission grants, models or
+credentials.
 
 Git hooks are not part of adopting configuration: install them with
 `loadout integrate git-hooks install --root . [--regenerate]`, which reports exact integration

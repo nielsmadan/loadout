@@ -178,7 +178,7 @@ def resolve_upstream_template(name: str, config_path: Path | None = None) -> Res
 
 def _bundled_template(name: str, path: Path) -> ResolvedItem:
     if not (path / "instructions.md").is_file():
-        raise LoadoutError(f"bundled starter missing at {path}; reinstall the loadout package")
+        raise LoadoutError(f"bundled template missing at {path}; reinstall the loadout package")
     return ResolvedItem(name=name, source=BUNDLED, path=path)
 
 

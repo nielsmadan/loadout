@@ -179,15 +179,15 @@ assert vendored.read_text() == template_body + "\nLocal change.\n"
 vendored.write_text(template_body)
 run("check restored template", ["check"], project)
 
-starter = work / "backend starter"
-starter.mkdir()
-result = json.loads(
-    run("backend starter init", [*init, "--starter", "backend", "--yes", "--json"], starter).stdout
-)
+templated = work / "backend template"
+templated.mkdir()
+result = json.loads(run("backend template init", [*init, "--yes", "--json"], templated).stdout)
 assert result["status"] == "complete"
-backend = (starter / "loadout/templates/backend/instructions.md").read_text().strip()
-assert backend in (starter / "CLAUDE.md").read_text()
-run("backend starter check", ["check"], starter)
+run("backend template add", ["template", "add", "backend", "--vendored"], templated)
+run("backend template sync", ["sync"], templated)
+backend = (templated / "loadout/templates/backend/instructions.md").read_text().strip()
+assert backend in (templated / "CLAUDE.md").read_text()
+run("backend template check", ["check"], templated)
 
 global_source = work / "global source"
 global_source.mkdir()

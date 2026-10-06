@@ -244,9 +244,9 @@ def test_global_apply_cancellation_does_not_mutate(tmp_path, monkeypatch, failur
     assert not machine_config_path().exists()
 
 
-def test_interactive_agent_and_starter_choices_then_decline(tmp_path, monkeypatch, capsys):
+def test_interactive_agent_choice_then_decline(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
-    replies = iter(("claude", "none", "n"))
+    replies = iter(("claude", "n"))
     monkeypatch.setattr("builtins.input", lambda prompt: next(replies))
     assert loadout.main(["init", "project", "--root", str(tmp_path)]) == 0
     assert "declined" in capsys.readouterr().out
@@ -567,3 +567,15 @@ def test_an_exact_claude_rule_adopts_into_shell_and_renders_back_unchanged(
     assert loadout.main(["sync", "--global"]) == 0
     settings = json.loads((claude / "settings.json").read_text())
     assert settings["permissions"]["allow"] == ["Bash(git status)", "Bash(ls:*)"]
+
+
+def test_a_bundled_template_is_applied_after_init_with_template_add(tmp_path, capsys):
+    _repo(tmp_path)
+    init = ["init", "project", "--harness", "claude", "--root", str(tmp_path), "--yes"]
+    assert loadout.main(init) == 0
+    root = ["--root", str(tmp_path)]
+    assert loadout.main(["template", "add", "backend", "--vendored", *root]) == 0
+    assert loadout.main(["sync", *root]) == 0
+
+    vendored = (tmp_path / "loadout" / "templates" / "backend" / "instructions.md").read_text()
+    assert vendored.strip() in (tmp_path / "CLAUDE.md").read_text()

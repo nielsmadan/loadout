@@ -56,8 +56,7 @@ loadout init global --source ~/agent-config
 
 Scope is a subcommand: `init project` for a repository, `init global` for machine-wide
 configuration. `--source` on `init global` defaults to the current directory, so a bare
-`init global` adopts the cwd. `--starter none|frontend|backend` and `--root` exist only on
-`init project`; `--registration keep|replace` and `--force` only on `init global`. An
+`init global` adopts the cwd. `--root` exists only on `init project`; `--registration keep|replace` and `--force` only on `init global`. An
 interrupted migration is resumed or recovered with `loadout init resume <journal> --yes` or
 `loadout init recover <journal> --yes`.
 

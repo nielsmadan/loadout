@@ -53,7 +53,7 @@ A bare name can resolve to a machine override during normal sync, so silently su
 package copy would validate a different producer. Run the exact `loadout template add <name>
 --vendored --root <source-root>` command reported by the check, then stage the template tree
 and config.
-Normal template resolution is unchanged; init already vendors selected starters.
+Normal template resolution is unchanged.
 
 ## Installing hooks
 

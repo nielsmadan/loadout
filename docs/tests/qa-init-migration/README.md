@@ -36,7 +36,7 @@ The records identify protected recovery journals by path but do not copy their p
 | Populated project with partial unrelated staging | Original config survives in source; generated paths leave the index; unrelated staged/unstaged notes stay distinct; source edits sync and output edits refuse |
 | Global source and bundled skill lifecycle | Manifest registration points at the source; Pi runtime version survives sync; all four source-managed skill copies install, repeat safely and uninstall |
 | Conflicting global copies | Preview and `--yes` refuse without mutation; explicit source selection determines deployed content |
-| None/frontend/backend starters | Optional templates are vendored with provenance, render their instructions and pass staged validation |
+| Frontend/backend templates after init | `template add <name> --vendored` vendors a bundled template with provenance and its instructions render on the next sync |
 | PTY decline and SIGINT at confirmation | Actual pending prompt appears; either cancellation leaves source and Git unchanged |
 | Held failing pre-commit hook | CLI is observed pending; failed checkpoint retains HEAD; supported recovery and retry succeed |
 | Post-commit concurrent source change | Successful checkpoint survives interruption; foreign change is preserved; removing the fixture fault allows resume without another checkpoint |

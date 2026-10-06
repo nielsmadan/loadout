@@ -18,12 +18,11 @@ project starts with `loadout/config.toml` and `loadout/permissions.toml`. Global
 canonical global slice sources it needs. Command trees, subagents and unsupported harness-specific
 files remain where they are. Repeat init preserves existing source layouts.
 
-Offer an optional project starter with `--starter none|frontend|backend`; default to `none`.
-These packaged templates work offline and provide short instruction seeds with empty categories.
-Reuse the same selection in preview and apply. They are vendored with content-hash provenance and
-participate in recovery/staging. Global init cannot activate project starters. Template
-instructions, permissions, skills and MCP servers compose through the project's standard slices.
-Follow the exact template command reported for an already initialized source, then sync.
+After project init, offer a bundled template: `loadout template add frontend --vendored` (or
+`backend`), then `loadout sync`. These packaged templates work offline and provide short
+instruction seeds with empty categories, vendored with content-hash provenance. Global scope
+cannot activate them. Template instructions, permissions, skills and MCP servers compose through
+the project's standard slices.
 
 Init installs no Git hooks. Offer them separately, after init, with
 `loadout integrate git-hooks install --root <source-root> [--profile <name>] [--regenerate]`.

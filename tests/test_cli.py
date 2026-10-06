@@ -632,10 +632,30 @@ def test_init_project_rejects_global_only_flags(tmp_path: Path) -> None:
     assert exit_info.value.code == 2
 
 
-def test_init_global_rejects_project_only_flags(tmp_path: Path) -> None:
+def test_init_global_rejects_project_only_flags(tmp_path: Path, capsys) -> None:
     with pytest.raises(SystemExit) as exit_info:
-        loadout.main(["init", "global", "--starter", "backend"])
+        loadout.main(["init", "global", "--root", str(tmp_path)])
     assert exit_info.value.code == 2
+    assert "unrecognized arguments: --root" in capsys.readouterr().err
+
+
+def test_init_project_no_longer_takes_a_starter(tmp_path: Path, capsys) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        loadout.main(
+            [
+                "init",
+                "project",
+                "--harness",
+                "claude",
+                "--root",
+                str(tmp_path),
+                "--starter",
+                "backend",
+            ]
+        )
+    assert exit_info.value.code == 2
+    assert "unrecognized arguments: --starter backend" in capsys.readouterr().err
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_init_notes_a_missing_machine_config(tmp_path: Path, monkeypatch, capsys) -> None:

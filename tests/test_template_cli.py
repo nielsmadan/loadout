@@ -7,7 +7,7 @@ import pytest
 
 from loadout.cli import main
 from loadout.project import load_project_config, project_config_path
-from loadout.templates import tree_hash
+from loadout.templates import tree_hash, vendored_path
 
 pytestmark = pytest.mark.integration
 
@@ -461,3 +461,38 @@ def test_check_reports_a_vendored_copy_with_no_recorded_provenance(
     assert main(["check", "--root", str(bare_project)]) == 0
 
     assert "no recorded provenance" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("mode", ("tracked", "vendored"))
+def test_template_add_refuses_an_unloadable_project_config_before_mutation(
+    tmp_path: Path, mode: str
+) -> None:
+    """Keys an older build wrote fail the load, and nothing is vendored or declared."""
+    source = tmp_path / "loadout"
+    source.mkdir()
+    config = source / "config.toml"
+    config.write_text('harnesses = ["claude"]\npresets = false\nartifacts = "artifacts.toml"\n')
+    before = config.read_bytes()
+
+    assert main(["template", "add", "frontend", "--" + mode, "--root", str(tmp_path)]) == 3
+
+    assert config.read_bytes() == before
+    assert not (source / "templates").exists()
+
+
+@pytest.mark.parametrize("mode", ("tracked", "vendored"))
+def test_template_add_refuses_an_unloadable_global_source_before_mutation(
+    tmp_path: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    """A global template of the same name shadows the bundled one, so the global
+    manifest is read first; one that cannot load stops the command untouched."""
+    (tmp_path / "loadout").mkdir()
+    project_config_path(tmp_path).write_text('harnesses = ["claude"]\n')
+    tree = _upstream(fake_home, monkeypatch, "frontend", '[shell]\nallow = ["npm"]\n')
+    (tree.parents[2] / "loadout.toml").write_text('[[source]]\nname = "ac"\npath = "loadout"\n')
+    before = project_config_path(tmp_path).read_bytes()
+
+    assert main(["template", "add", "frontend", "--" + mode, "--root", str(tmp_path)]) == 3
+
+    assert project_config_path(tmp_path).read_bytes() == before
+    assert not vendored_path(tmp_path, "frontend").exists()

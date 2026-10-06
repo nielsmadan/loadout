@@ -37,7 +37,6 @@ from .permissions.rules import Rules, parse_rules
 from .project import PROJECT_PRESET, load_project_config
 from .servers import serialize_servers
 from .skills import SKILL_DOCUMENT
-from .starters import select_starter, starter_categories
 
 RUNTIME_KEYS = {
     "codex": frozenset({"projects", "trust"}),
@@ -311,9 +310,8 @@ def _preset_routes(inventory: Inventory, config: dict[str, Any]) -> tuple[tuple[
 
 
 class _PlanBuilder:
-    def __init__(self, inventory: Inventory, categories: frozenset[str]) -> None:
+    def __init__(self, inventory: Inventory) -> None:
         self.inventory = inventory
-        self.categories = categories
         self.available_categories: set[tuple[str, str]] = set()
         self.records: dict[Path, dict[str, Any]] = {}
         self.writes: dict[Path, SourceWrite] = {}
@@ -881,10 +879,8 @@ class _PlanBuilder:
             destination.is_relative_to(p) or p.is_relative_to(destination) for p in self.records
         ):
             return
-        if (
-            self.inventory.scope == "project"
-            and format_name not in {"json", "toml"}
-            and category not in self.categories
+        if format_name == "tree" or (
+            self.inventory.scope == "project" and format_name not in {"json", "toml"}
         ):
             return
         candidate = Candidate(
@@ -898,12 +894,7 @@ class _PlanBuilder:
             b"{}\n" if format_name == "json" else b"",
             format=format_name,
         )
-        if format_name == "tree":
-            if self.inventory.scope == "project" and category == "skills":
-                self.project_skill_route(destination, agents)
-            elif self.inventory.scope == "project":
-                self.tree(destination, agents, category, ())
-        elif format_name in {"json", "toml"}:
+        if format_name in {"json", "toml"}:
             self.document(candidate, existing=False)
         else:
             self.opaque(candidate, existing=False)
@@ -913,7 +904,7 @@ class _PlanBuilder:
         record.update(category="skills")
         self.records[destination] = record
 
-    def starters(self) -> None:
+    def dormant_routes(self) -> None:
         project = self.inventory.scope == "project"
         for agent in self.inventory.agents:
             root = (
@@ -952,7 +943,6 @@ class _PlanBuilder:
             self.available_categories.add((agent, "skills"))
             if not project:
                 self.global_slices[agent].add("skills")
-            self.starter_skill_route(agent, project)
             if agent == "claude":
                 self.dormant(root / "hooks", (agent,), "hooks", "tree")
                 if not project:
@@ -997,19 +987,6 @@ class _PlanBuilder:
                     "mcp",
                     "json",
                 )
-        if project:
-            return
-
-    def starter_skill_route(self, agent: str, project: bool) -> None:
-        if not project or (skill_spec := PROJECT_PRESET[agent].get("skills")) is None:
-            return
-        assert skill_spec.output is not None
-        self.dormant(
-            self.inventory.root / skill_spec.output,
-            (agent,),
-            "skills",
-            "tree",
-        )
 
 
 def _permission_renderer(candidate: Candidate, project: bool) -> str | None:
@@ -1077,17 +1054,6 @@ def _initialized(inventory: Inventory) -> MigrationPlan:
     )
 
 
-def plan_migration(
-    inventory: Inventory,
-    *,
-    selections: tuple[SourceSelection, ...] = (),
-    starter: str | None = None,
-) -> MigrationPlan:
-    return select_starter(
-        _plan_migration(inventory, selections=selections, starter=starter), starter
-    )
-
-
 def _project_config(inventory: Inventory, builder: _PlanBuilder) -> dict[str, Any]:
     config: dict[str, Any] = {"harnesses": list(inventory.agents)}
     if instructions := builder.finish_project_sources():
@@ -1125,8 +1091,8 @@ def _global_config(inventory: Inventory, builder: _PlanBuilder) -> dict[str, Any
     return config
 
 
-def _plan_migration(
-    inventory: Inventory, *, selections: tuple[SourceSelection, ...], starter: str | None
+def plan_migration(
+    inventory: Inventory, *, selections: tuple[SourceSelection, ...] = ()
 ) -> MigrationPlan:
     if inventory.initialized is not None:
         return _initialized(inventory)
@@ -1134,17 +1100,10 @@ def _plan_migration(
     issues = (*inventory.issues, *conflicts)
     if issues:
         return MigrationPlan(inventory, preconditions=inventory.preconditions, issues=issues)
-    try:
-        selected_categories = starter_categories(inventory, starter)
-    except (LoadoutError, OSError, ValueError) as error:
-        return MigrationPlan(
-            inventory,
-            issues=(Issue("starter-selection", (inventory.source_root,), str(error)),),
-        )
-    builder = _PlanBuilder(inventory, selected_categories)
+    builder = _PlanBuilder(inventory)
     try:
         builder.originals(candidates)
-        builder.starters()
+        builder.dormant_routes()
     except (LoadoutError, UnicodeError, ValueError, TypeError) as error:
         return MigrationPlan(
             inventory,

@@ -156,12 +156,12 @@ Given `~/ac/loadout.toml` declaring `[[source]] path = "loadout"`, templates res
 `~/ac/loadout/templates/<name>/`. Everything under a source belongs to loadout, which is what
 makes "where do I edit" answerable from the path.
 
-## Bundled starters and native projects
+## Bundled templates and native projects
 
-`loadout init project --starter frontend` or `--starter backend` vendors the selected template
-with normal content-hash provenance. `--starter none` is the default. Interactive fresh-project
-init offers this choice unless `--yes` already accepts the default. Selection is project-scoped;
-a global source can offer these template names but cannot activate their advice machine-wide.
+`frontend` and `backend` ship in the package and resolve offline. `loadout template add
+frontend --vendored` (or `backend`) vendors one with normal content-hash provenance, the same way
+as any other template; it is the one way to apply a template, before or after init. A global
+source can offer these template names but cannot activate their advice machine-wide.
 
 The packaged seeds cover frontend accessibility, responsive layouts and UI states, or backend
 boundaries, authorization, failures and compatibility. Each includes empty category scaffolds.
@@ -183,24 +183,9 @@ Catalog manifests remain selected lists rather than inherited manifests:
 `template_catalog.py:_load_catalog` accepts only the four category lists and rejects `extends`.
 Source symlinks remain refused.
 
-Catalog overrides of `frontend` and `backend` also work with `init project --starter`, including all
-referenced files in privacy checks, approval preconditions, expected outputs and staging.
-Other manifest names are selected with `template add --vendored` (or `--tracked`) after init.
-
-Init includes the selected template in preview metadata, source writes, output expectations,
-fresh-source validation, staging and recovery. Private/Git-ignored or credential-bearing template
-overrides require a public template before init can vendor them into committed source. Errors
-name paths without printing content. The same conservative credential heuristic used for
-migration does not prove arbitrary content secret-free.
-The approved plan records template files and directory membership, including empty directories;
-adding a file or directory invalidates it. Upstream Git privacy decisions and applicable ignore
-policies are preserved through preparation, application and interrupted resume, including
-effective exclude-file targets. A policy change requires rediscovery even if it has not yet
-changed whether an existing template file is ignored.
-
-Repeat init with an explicit starter reports the exact `template add --vendored`/`template sync`
-and normal `sync` commands instead of discarding the choice. A vendored clone resolves before
-reading machine configuration and works independently of its original template source.
+A catalog override of `frontend` or `backend` is applied the same way, with `template add
+--vendored` (or `--tracked`). A vendored clone resolves before reading machine configuration and
+works independently of its original template source.
 
 ## The content hash
 

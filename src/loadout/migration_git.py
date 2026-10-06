@@ -216,8 +216,6 @@ def _partial_adopted(root: Path, paths: tuple[str, ...]) -> None:
 
 def prepare_git(plan: MigrationPlan) -> GitPreparation:
     selected = plan.inventory.root.resolve()
-    if privacy_policy(selected, plan.starter_dependencies) != plan.starter_privacy_policy:
-        raise LoadoutError("Git starter privacy policy changed after migration preview")
     privacy_checks = _authored_privacy(plan)
     probe = git(selected, "rev-parse", "--show-toplevel", check=False)
     existing = probe.returncode == 0
@@ -306,7 +304,6 @@ def _policy_paths(plan: MigrationPlan, root: Path, baseline: tuple[str, ...]) ->
                 for path in (
                     *(root / path for path in baseline),
                     *(write.path for write in plan.source_writes),
-                    *plan.starter_dependencies,
                     *(
                         path
                         for candidate in plan.inventory.candidates
@@ -427,7 +424,6 @@ def _authored_privacy(plan: MigrationPlan) -> tuple[tuple[Path, bool], ...]:
                 for c in plan.inventory.candidates
                 if c.disposition == "migrated"
             ),
-            *plan.starter_dependencies,
         )
     )
     for candidate in plan.inventory.candidates:
@@ -440,12 +436,6 @@ def _authored_privacy(plan: MigrationPlan) -> tuple[tuple[Path, bool], ...]:
                 f"Git-derived source privacy changed since discovery: {candidate.path}"
             )
         result.append((path, private))
-    for path in plan.starter_dependencies:
-        if path in ignored:
-            raise LoadoutError(
-                f"Git-derived starter privacy changed after migration preview: {path}"
-            )
-        result.append((path, False))
     return tuple(result)
 
 
