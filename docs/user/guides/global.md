@@ -21,10 +21,16 @@ For a new directory, Loadout creates a nested `loadout/` directory:
 
 ```text
 ~/agent-config/loadout/
+├── README.md
 ├── loadout.toml
-├── permissions.toml
-└── instructions/
+├── mcp.toml
+└── permissions.toml
 ```
+
+`mcp.toml` holds a commented example until you define a server; commented out, it changes
+nothing. `README.md` shows the full layout and how to add hooks, plugins and settings. Anything
+`init` adopts from your existing agent configuration lands beside these: instructions, settings,
+hooks, plugins and skills, each in its own directory.
 
 It also writes the machine configuration at `~/.config/loadout/config.toml`, or
 `$XDG_CONFIG_HOME/loadout/config.toml` when XDG_CONFIG_HOME is set. That file points at

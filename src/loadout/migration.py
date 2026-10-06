@@ -72,6 +72,54 @@ TREE_CATEGORIES = {
 }
 
 
+SERVERS_EXAMPLE = b"""\
+# MCP server definitions, rendered for every agent that reads MCP config.
+# Uncomment a block, edit it, then run `loadout sync --global`.
+#
+# [context7]
+# transport = "stdio"
+# command = "npx"
+# args = ["-y", "@upstash/context7-mcp"]
+#
+# [jina]
+# transport = "http"
+# url = "https://mcp.jina.ai/v1"
+# auth_env_var = "JINA_API_KEY"   # the NAME of an environment variable, never a token
+"""
+
+SOURCE_README = b"""\
+# Agent configuration
+
+A loadout global source. `loadout sync --global` renders it into each agent's own
+configuration; edit here rather than in the generated files.
+
+## Layout
+
+    loadout.toml       the agents, and the slices each one takes
+    permissions.toml   shell and MCP tool rules for every agent
+    mcp.toml           MCP server definitions for every agent that reads them
+    instructions/      instruction fragments, named in reading order
+    settings/          settings fragments, one JSON document per name
+    hooks/             hook fragments, one JSON document per name
+    plugins/           plugin fragments, one JSON document per name
+    skills/            skills, one file or directory each
+    module-config/     files copied verbatim into an agent's config directory
+
+Only what you use has to exist.
+
+## Add hooks, plugins or settings
+
+1. Write the fragment, for example `hooks/claude.json`.
+2. Add the category to `use` in the `[[source]]` block of `loadout.toml`.
+3. Name the fragment in the agent's block, for example `hooks = ["claude"]`.
+4. Run `loadout sync --global`.
+
+Hooks, plugins, settings and instructions must be named: an agent block that leaves
+one out means loadout does not manage it. Permissions, MCP servers, skills and
+module-config apply to every declared agent without being named.
+"""
+
+
 def serialize_document(document: dict[str, Any], format_name: str) -> bytes:
     if format_name == "json":
         return (json.dumps(document, ensure_ascii=False, indent=2, allow_nan=False) + "\n").encode()
@@ -603,7 +651,7 @@ class _PlanBuilder:
                     if isinstance(value, dict)
                     for name, server in value.items()
                 }
-                self.write(Path("mcp.toml"), serialize_servers(servers))
+                self.write(Path("mcp.toml"), serialize_servers(servers) or SERVERS_EXAMPLE)
                 for agent, _ in values:
                     blocks[agent]["mcp"] = True
                 continue
@@ -616,6 +664,9 @@ class _PlanBuilder:
                     continue
                 self.write(Path(f"{category}/{name}.json"), serialize_document(value, "json"))
                 blocks[agent][category] = [name]
+        if self.inventory.source_root / "mcp.toml" not in self.writes:
+            self.write(Path("mcp.toml"), SERVERS_EXAMPLE)
+        self.write(Path("README.md"), SOURCE_README)
         for agent, slices in self.global_slices.items():
             if "skills" in slices:
                 blocks[agent]["skills"] = True
@@ -632,7 +683,6 @@ class _PlanBuilder:
     ) -> None:
         private = any(c.private for c in candidates)
         source = self.source(category, agents, destination, private=private)
-        self.write(source / ".gitkeep", b"", private=private)
         for candidate in candidates:
             assert candidate.destination is not None
             self.write(
@@ -859,10 +909,8 @@ class _PlanBuilder:
             self.opaque(candidate, existing=False)
 
     def project_skill_route(self, destination: Path, agents: tuple[str, ...]) -> None:
-        source = Path("skills/.routes")
-        self.write(source / ".gitkeep", b"")
         record = self.record(destination, agents, "tree")
-        record.update(category="skills", source=source.as_posix())
+        record.update(category="skills")
         self.records[destination] = record
 
     def starters(self) -> None:

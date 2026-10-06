@@ -11,6 +11,7 @@ import pytest
 import loadout
 from loadout import migration_transaction
 from loadout.discovery import discover
+from loadout.emit import render_all
 from loadout.errors import LoadoutError
 from loadout.machine import machine_config_path
 
@@ -472,3 +473,76 @@ def test_a_hook_another_tool_installs_survives_the_next_global_sync(
 
     assert "settings.json was modified outside loadout" in capsys.readouterr().err
     assert json.loads(settings.read_text())["hooks"]["PreCompact"] == hook
+
+
+def _ordinary_claude_home(home: Path) -> None:
+    claude = home / ".claude"
+    for name in ("review", "explain"):
+        (claude / "skills" / name).mkdir(parents=True)
+        (claude / "skills" / name / "SKILL.md").write_text(
+            f"---\nname: {name}\ndescription: d\n---\nbody\n"
+        )
+    (claude / "CLAUDE.md").write_text("# global\n")
+    (claude / "settings.json").write_text('{"model": "opus"}\n')
+
+
+def _home_files(home: Path) -> dict[Path, bytes]:
+    return {
+        path: path.read_bytes()
+        for path in home.rglob("*")
+        if path.is_file() and ".config" not in path.relative_to(home).parts
+    }
+
+
+def test_global_init_seeds_servers_and_one_readme_and_nothing_else(tmp_path, fake_home, capsys):
+    _repo(tmp_path)
+    _ordinary_claude_home(fake_home)
+
+    assert loadout.main(["init", "global", "--source", str(tmp_path), "--yes"]) == 0
+
+    source = tmp_path / "loadout"
+    assert tomllib.loads((source / "mcp.toml").read_text()) == {}
+    assert "[context7]" in (source / "mcp.toml").read_text()
+    assert "## Add hooks, plugins or settings" in (source / "README.md").read_text()
+    assert "mcp" in tomllib.loads((source / "loadout.toml").read_text())["source"][0]["use"]
+    assert sorted(p.name for p in tmp_path.rglob("README.md")) == ["README.md"]
+    assert list(tmp_path.rglob(".gitkeep")) == []
+
+    assert loadout.main(["sync", "--global"]) == 0
+    synced = _home_files(fake_home)
+    assert loadout.main(["sync", "--global"]) == 0
+    assert _home_files(fake_home) == synced
+
+
+def test_a_comment_only_mcp_toml_renders_exactly_as_none(tmp_path, fake_home):
+    _repo(tmp_path)
+    _ordinary_claude_home(fake_home)
+    assert loadout.main(["init", "global", "--source", str(tmp_path), "--yes"]) == 0
+    source = tmp_path / "loadout"
+    seeded = render_all(source)
+
+    (source / "mcp.toml").unlink()
+    manifest = source / "loadout.toml"
+    manifest.write_text(manifest.read_text().replace('"mcp", ', ""))
+
+    assert "mcp" not in tomllib.loads(manifest.read_text())["source"][0]["use"]
+    assert fake_home / ".claude.json" in seeded
+    assert render_all(source) == seeded
+
+
+def test_project_init_seeds_neither_servers_nor_readme(tmp_path, fake_home):
+    _repo(tmp_path)
+    skill = tmp_path / ".claude" / "skills" / "local"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("---\nname: local\ndescription: d\n---\nbody\n")
+
+    init = ["init", "project", "--root", str(tmp_path), "--harness", "claude", "--yes"]
+    assert loadout.main(init) == 0
+
+    source = tmp_path / "loadout"
+    assert (source / "skills").is_dir()
+    assert sorted(p.name for p in source.iterdir() if p.is_file()) == [
+        "config.toml",
+        "permissions.toml",
+    ]
+    assert list(tmp_path.rglob(".gitkeep")) == []
