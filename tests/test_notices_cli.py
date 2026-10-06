@@ -124,6 +124,8 @@ def test_a_stated_catch_all_names_the_harnesses_it_misses(root: Path, capsys) ->
     assert "opencode.permissions: [shell] default" not in out
     assert "pi.permissions: [shell] default" not in out
     assert "note: droid.permissions: allow glob 'gamma-*'" in out
+    assert "note: codex.permissions: allow '=mu status' is not rendered" in out
+    assert "note: droid.permissions: deny '=nu wipe' is rendered as 'nu wipe'" in out
 
 
 def test_a_project_only_repo_reports_nothing_rather_than_failing(
@@ -148,6 +150,7 @@ def test_a_project_only_repo_reports_nothing_rather_than_failing(
     assert not any(m.startswith("opencode.") for m in messages)
     assert sum("[shell] default" in m for m in messages) == 4
     assert "droid.permissions: allow glob 'gamma-*' is not rendered" in " | ".join(messages)
+    assert "codex.permissions: deny '=nu wipe' is rendered as 'nu wipe'" in " | ".join(messages)
 
 
 def test_check_reports_the_opencode_skills_race_without_failing(

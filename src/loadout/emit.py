@@ -38,6 +38,7 @@ from .notices import (
     OPENCODE_EXTERNAL_SKILL_FLAG,
     OPENCODE_SKILL_FLAGS,
     Notice,
+    inexact_shell_entries,
     notices_for,
     opencode_external_skills_race,
     opencode_skills_race,
@@ -666,6 +667,7 @@ def _permission_notices(manifest: Manifest, profile: str) -> tuple[Notice, ...]:
         if rules.default is not None:
             found.extend(unreached_catch_all(agent, target.renderer, rules.default))
         found.extend(unsupported_shell_globs(agent, target.renderer, rules))
+        found.extend(inexact_shell_entries(agent, target.renderer, rules))
     return tuple(dict.fromkeys(found))
 
 
@@ -762,6 +764,7 @@ def project_notices(root: Path, environ: Mapping[str, str]) -> tuple[Notice, ...
         if rules.default is not None:
             found.extend(unreached_catch_all(agent, spec.renderer, rules.default))
         found.extend(unsupported_shell_globs(agent, spec.renderer, rules))
+        found.extend(inexact_shell_entries(agent, spec.renderer, rules))
     for agent, slice_name, _ in project_slices(config.harnesses):
         if slice_name not in PROJECT_DOCUMENTS:
             continue

@@ -430,3 +430,46 @@ def test_droid_still_drops_allow_and_ask_globs_and_keeps_the_rest() -> None:
     assert doc["commandAllowlist"] == ["ls"]
     assert doc["commandDenylist"] == ["git push"]
     assert doc["commandBlocklist"] == ["rm"]
+
+
+EXACT = Rules(allow=("=git status",), ask=("=git log",), deny=("=git push", "rm"))
+
+
+def test_claude_writes_an_exact_entry_without_the_prefix_suffix() -> None:
+    assert claude_pattern("=git status") == "Bash(git status)"
+    assert claude_pattern("git status") == "Bash(git status:*)"
+
+
+@pytest.mark.parametrize("patterns", [opencode_patterns, pi_patterns, pi_project_patterns])
+def test_opencode_and_pi_emit_only_the_bare_form_of_an_exact_entry(patterns: Any) -> None:
+    assert patterns("=git status") == ["git status"]
+    assert patterns("git status") == ["git status", "git status *"]
+
+
+def test_codex_omits_an_exact_allow_and_ask_and_widens_an_exact_deny() -> None:
+    rules = [line for line in render_codex(EXACT).splitlines() if line.startswith("prefix_rule")]
+    assert rules == [
+        codex_rule("git push", "forbidden"),
+        codex_rule("rm", "forbidden"),
+    ]
+
+
+def test_codex_project_omits_an_exact_allow_and_ask_and_widens_an_exact_deny() -> None:
+    assert render_codex_project(EXACT).splitlines()[1:] == [
+        'prefix_rule(pattern = ["git", "push"], decision = "forbidden")',
+        'prefix_rule(pattern = ["rm"], decision = "forbidden")',
+    ]
+
+
+def test_droid_omits_an_exact_allow_and_ask_and_widens_an_exact_deny() -> None:
+    assert render_droid(EXACT, {}) == {
+        "commandAllowlist": [],
+        "commandDenylist": [],
+        "commandBlocklist": ["git push", "rm"],
+    }
+
+
+def test_a_widened_exact_deny_is_not_written_twice_beside_its_prefix() -> None:
+    rules = Rules(deny=("=git push", "git push"))
+    assert render_droid(rules, {})["commandBlocklist"] == ["git push"]
+    assert render_codex_project(rules).count("prefix_rule") == 1

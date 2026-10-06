@@ -58,7 +58,7 @@ source does get its catch-all there. A project stating one gets it on OpenCode o
 
 Pi matches with **minimatch**, where `foo *` never matches a bare `foo`. So a plain
 prefix must be emitted in both forms — `<entry>` and `<entry> *`. Entries ending in `*`
-are kept literal.
+are kept literal. An exact entry (`=pwd`) is emitted as the bare form only, at both scopes.
 
 ### MCP targets are derived, not `server/tool`
 

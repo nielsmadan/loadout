@@ -546,3 +546,24 @@ def test_project_init_seeds_neither_servers_nor_readme(tmp_path, fake_home):
         "permissions.toml",
     ]
     assert list(tmp_path.rglob(".gitkeep")) == []
+
+
+def test_an_exact_claude_rule_adopts_into_shell_and_renders_back_unchanged(
+    tmp_path, fake_home, capsys
+):
+    _repo(tmp_path)
+    claude = fake_home / ".claude"
+    claude.mkdir()
+    (claude / "settings.json").write_text(
+        '{"permissions": {"allow": ["Bash(git status)", "Bash(ls:*)"]}}\n'
+    )
+
+    init = ["init", "global", "--harness", "claude", "--source", str(tmp_path), "--yes"]
+    assert loadout.main(init) == 0
+
+    source = tomllib.loads((tmp_path / "loadout" / "permissions.toml").read_text())
+    assert source["shell"]["allow"] == ["=git status", "ls"]
+    assert source["claude"]["extra"]["allow"] == []
+    assert loadout.main(["sync", "--global"]) == 0
+    settings = json.loads((claude / "settings.json").read_text())
+    assert settings["permissions"]["allow"] == ["Bash(git status)", "Bash(ls:*)"]

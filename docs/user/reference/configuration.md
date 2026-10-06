@@ -149,6 +149,14 @@ deny = ["docs/delete"]
 - `[shell] default` is rendered for OpenCode and Pi. Claude and Codex use native settings;
   Droid uses session autonomy.
 - A bare `"*"` shell entry is invalid. Use the `default` key for a catch-all.
+- A plain shell entry is a prefix: `"git status"` also matches `git status --short`. An entry
+  starting with `=` is exact: `"=git status"` matches that command and nothing longer. An exact
+  entry may not contain `*`.
+
+Exact entries render exactly for Claude, OpenCode, and Pi. Codex and Droid cannot match a whole
+command, so Loadout omits an exact `allow` or `ask` for them, leaving the command to their own
+approval, and renders an exact `deny` as its prefix, which blocks more rather than less.
+`loadout sync` reports each one.
 
 Trailing shell globs can be represented by Claude, OpenCode, and Pi. Loadout skips them for
 Codex's literal prefix rules and Droid's literal permission lists. Different matching behavior remains visible in the

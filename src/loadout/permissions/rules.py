@@ -19,6 +19,18 @@ def is_glob(entry: str) -> bool:
     return entry.endswith("*")
 
 
+EXACT_MARK = "="
+
+
+def is_exact(entry: str) -> bool:
+    """A source entry starting with `=` matches that command and nothing longer."""
+    return entry.startswith(EXACT_MARK)
+
+
+def exact_command(entry: str) -> str:
+    return entry.removeprefix(EXACT_MARK)
+
+
 Decision = Literal["allow", "ask", "deny"]
 
 # Ordered least to most strict. `strictest()` resolves by index, so reordering
@@ -121,6 +133,19 @@ def _refuse_catch_all_entry(shell: Mapping[str, Any], path: Path) -> None:
             )
 
 
+def _refuse_malformed_exact(shell: Mapping[str, Any], path: Path) -> None:
+    # A `*` would be a wildcard to every harness that renders the command bare,
+    # so an exact entry carrying one could not mean the same thing anywhere.
+    for category in DECISIONS:
+        for entry in _entries(shell, category):
+            command = exact_command(entry)
+            if is_exact(entry) and (not command or "*" in command or command != command.strip()):
+                raise LoadoutError(
+                    f"{path}: shell.{category} exact entry {entry!r} must name a command with "
+                    f"no '*' and no surrounding whitespace"
+                )
+
+
 def _mcp_entries(block: Mapping[str, Any], key: str, path: Path) -> tuple[str, ...]:
     entries = _entries(block, key)
     for entry in entries:
@@ -150,6 +175,7 @@ def parse_rules(path: Path) -> Rules:
         raise LoadoutError(f"{path}: [opencode.extra] must map strings to strings")
 
     _refuse_catch_all_entry(shell, path)
+    _refuse_malformed_exact(shell, path)
 
     return Rules(
         allow=_entries(shell, "allow"),

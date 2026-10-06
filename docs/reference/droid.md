@@ -76,6 +76,11 @@ anywhere in the command line, bounded by whitespace, a separator, or the end. `l
 `tests: {match: ["ls", "ls -la"], noMatch: ["lsof", "LS"]}`. `rm -rf` matches `rm -rf /foo`, and
 also `x && rm -rf /foo`.
 
+The same wrapping is why Droid has **no exact match**: an entry always matches with arguments
+after it. An exact source entry (`=git status`) is therefore omitted from `commandAllowlist` and
+`commandDenylist`, and written bare into `commandBlocklist`, where matching more is the safe
+direction. `loadout sync` reports each.
+
 So Droid needs **less** than the harnesses whose matcher is a prefix: OpenCode is emitted as both
 `pwd` and `pwd *`, while Droid carries the bare entry alone and still catches it after `&&`.
 

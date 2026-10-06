@@ -30,7 +30,14 @@ import pytest
 from loadout.errors import LoadoutError
 from loadout.extract import EXTRACTORS, VALUE_EXTRACTORS, extract
 from loadout.permissions.renderers import RENDERERS, JsonSpec, TextSpec, render_codex_project
-from loadout.permissions.rules import UNSTATED_DEFAULT, Rules, is_glob, mcp_parts
+from loadout.permissions.rules import (
+    UNSTATED_DEFAULT,
+    Rules,
+    exact_command,
+    is_exact,
+    is_glob,
+    mcp_parts,
+)
 
 CATEGORIES = ("allow", "ask", "deny")
 
@@ -77,8 +84,9 @@ NOT_INVERTED: set[str] = {
 INVERTED = sorted(EXTRACTORS)
 
 # Shapes, not realism — the same discipline as tests/fixtures/permissions.toml.
-# Bare, multi-word, trailing glob, and a glob that is not the whole final token.
-SHELL_POOL = ("alpha", "beta sub", "gamma-*", "delta run --tag=*")
+# Bare, multi-word, trailing glob, a glob that is not the whole final token, and an
+# exact entry, which Codex and Droid omit from allow and ask and widen in deny.
+SHELL_POOL = ("alpha", "beta sub", "gamma-*", "delta run --tag=*", "=epsilon run")
 
 # Server-wide, per-tool, a server name with a dot, and a second server so
 # codex-mcp-permissions's sort-by-server has something to reorder.
@@ -276,23 +284,40 @@ def _codex_mcp_carried(rules: Rules) -> Rules:
     )
 
 
+def _prefix_only(entries: tuple[str, ...], category: str) -> tuple[str, ...]:
+    """No exact match: an exact allow or ask is omitted, an exact deny comes back
+    as the prefix it was widened to."""
+    if category != "deny":
+        return tuple(e for e in entries if not is_exact(e))
+    return tuple(exact_command(e) if is_exact(e) else e for e in entries)
+
+
 def _codex_carried(rules: Rules) -> Rules:
     # A glob is emitted as a comment with no category attached, so it is
     # reported, never extracted.
     return Rules(
-        allow=tuple(e for e in rules.allow if not is_glob(e)),
-        ask=tuple(e for e in rules.ask if not is_glob(e)),
-        deny=tuple(e for e in rules.deny if not is_glob(e)),
+        allow=_prefix_only(tuple(e for e in rules.allow if not is_glob(e)), "allow"),
+        ask=_prefix_only(tuple(e for e in rules.ask if not is_glob(e)), "ask"),
+        deny=_prefix_only(tuple(e for e in rules.deny if not is_glob(e)), "deny"),
+    )
+
+
+def _codex_project_carried(rules: Rules) -> Rules:
+    # Globs are emitted as prefix rules here rather than skipped.
+    return Rules(
+        allow=_prefix_only(rules.allow, "allow"),
+        ask=_prefix_only(rules.ask, "ask"),
+        deny=_prefix_only(rules.deny, "deny"),
     )
 
 
 def _droid_carried(rules: Rules) -> Rules:
-    # `deny` is carried whole: a glob there is refused at render (see REFUSES),
-    # so it never reaches extraction and nothing is dropped from the blocklist.
+    # A glob in `deny` is refused at render (see REFUSES), so it never reaches
+    # extraction and nothing is dropped from the blocklist.
     return Rules(
-        allow=tuple(e for e in rules.allow if not is_glob(e)),
-        ask=tuple(e for e in rules.ask if not is_glob(e)),
-        deny=rules.deny,
+        allow=_prefix_only(tuple(e for e in rules.allow if not is_glob(e)), "allow"),
+        ask=_prefix_only(tuple(e for e in rules.ask if not is_glob(e)), "ask"),
+        deny=_prefix_only(rules.deny, "deny"),
     )
 
 
@@ -345,7 +370,7 @@ PROJECTIONS = {
     "claude-mcp-permissions": _mcp_only,
     "codex": _codex_carried,
     "codex-mcp-permissions": _codex_mcp_carried,
-    "codex-project": _shell_only,
+    "codex-project": _codex_project_carried,
     "droid": _droid_carried,
     "opencode": _opencode_carried,
     "pi": _pi_carried,
@@ -568,3 +593,29 @@ def test_the_base_keeps_keys_other_slices_own() -> None:
     assert _serialize("claude", _render("claude", extraction.rules, extraction.base)) == _serialize(
         "claude", document
     )
+
+
+def test_a_claude_rule_without_the_prefix_suffix_adopts_as_an_exact_entry() -> None:
+    """Kept Claude-only before exact entries existed, so adding Codex later never got it."""
+    document = {"permissions": {"allow": ["Bash(git status)"], "deny": ["Bash(git push)"]}}
+    extraction = extract("claude", document)
+
+    assert extraction.rules.allow == ("=git status",)
+    assert extraction.rules.deny == ("=git push",)
+    assert extraction.rules.claude_extra_allow == ()
+    rendered = _render("claude", extraction.rules, extraction.base)
+    assert rendered["permissions"]["allow"] == ["Bash(git status)"]
+    assert rendered["permissions"]["deny"] == ["Bash(git push)"]
+
+
+@pytest.mark.parametrize("pattern", ["Bash(foo * bar)", "Bash( git status)", "Bash()"])
+def test_a_claude_rule_that_is_not_one_command_stays_claude_only(pattern: str) -> None:
+    extraction = extract("claude", {"permissions": {"allow": [pattern]}})
+    assert extraction.rules.allow == ()
+    assert extraction.rules.claude_extra_allow == (pattern,)
+
+
+@pytest.mark.parametrize("name", ["opencode", "pi"])
+def test_a_bare_form_without_its_argument_companion_is_an_exact_entry(name: str) -> None:
+    document = _render(name, Rules(allow=("=git status", "ls")), {})
+    assert extract(name, document).rules.allow == ("=git status", "ls")

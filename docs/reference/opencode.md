@@ -42,7 +42,8 @@ source states none. Being first is what lets every rule refine it — see
 
 **A plain prefix must be emitted in both forms** — `<entry>` and `<entry> *` — because
 `pwd *` does not match a bare `pwd`. Entries ending in `*` are kept literal; OpenCode's
-matcher handles the glob.
+matcher handles the glob. An exact entry (`=pwd`) is emitted as the bare form **only**, which
+is what makes it exact here.
 
 MCP entries become top-level keys under `permission`, not nested:
 

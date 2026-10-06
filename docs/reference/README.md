@@ -35,6 +35,7 @@ the findings were expensive to establish and re-adding support depends on them.
 | specificity affects order | no | no | no | no | n/a | n/a |
 | glob patterns | yes | **no** | **no** | **no** | yes | yes (minimatch) |
 | bare matches with-args | yes, via `:*` | yes (prefix) | native list semantics | yes (prefix) | **no** | **no** |
+| exact match | yes, `Bash(x)` | **no** | **no** | not evaluated | yes, bare `x` | yes, bare `x` |
 | permissions in own file | no | **yes** | no | no | no | **yes** |
 | emission order matters | no | no | no | no | **yes** | **yes** |
 
@@ -67,6 +68,22 @@ skipped withholds a pre-approval, and Codex and Antigravity fall through to an a
 level, not a prompt, and `commandBlocklist` has no approval path at all — so a skipped `deny`
 glob would remove a block outright. Loadout refuses to render that rather than skipping it, and
 skips-with-a-report only in `allow` and `ask`.
+
+### Exact entries
+
+A source entry starting with `=` matches one whole command: `=git status` and not
+`git status --short`. Claude writes it as `Bash(git status)` with no `:*`, and OpenCode and Pi
+as the bare form alone, without the `git status *` companion a prefix gets. **Codex and Droid
+have no whole-command form** — a token prefix and a whole-word run — so the two directions are
+handled oppositely:
+
+| category | where the harness cannot match exactly |
+|---|---|
+| `allow`, `ask` | omitted, so the command falls through to the harness's own approval |
+| `deny` | written as its prefix (Codex) or word run (Droid), which blocks more, never less |
+
+Both are reported by `loadout sync`. Adoption must never grant more than the source granted. An
+exact entry may not contain `*`: every harness that writes it bare would read that as a wildcard.
 
 ### Bare vs with-arguments
 

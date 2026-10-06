@@ -29,7 +29,16 @@ from ..servers import (
     render_pi_servers,
 )
 from ..toml_paths import key_name, key_path, leaf_values, overlapping_keys
-from .rules import MCP_SEED, Rules, is_glob, mcp_native, mcp_parts
+from .rules import (
+    MCP_SEED,
+    Rules,
+    dedupe,
+    exact_command,
+    is_exact,
+    is_glob,
+    mcp_native,
+    mcp_parts,
+)
 
 JsonRenderer = Callable[[Rules, dict[str, Any]], dict[str, Any]]
 TextRenderer = Callable[[Rules], str]
@@ -182,6 +191,8 @@ def render_claude_mcp(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
 
 
 def pi_patterns(entry: str) -> list[str]:
+    if is_exact(entry):
+        return [exact_command(entry)]
     return [entry] if is_glob(entry) else [entry, f"{entry} *"]
 
 
@@ -225,6 +236,19 @@ def render_pi(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
 CODEX_DECISION = {"allow": "allow", "deny": "forbidden", "ask": "prompt"}
 
 
+def prefix_form(entry: str, category: str) -> str | None:
+    """An entry as a harness with no exact match carries it, or None to omit it.
+
+    Codex and Droid match a prefix or a word run, never a whole command. An exact
+    allow or ask is omitted so the command falls through to the harness's own
+    approval; an exact deny is widened to its prefix, which over-blocks rather than
+    under-blocks. Adoption must never grant more than the source granted.
+    """
+    if not is_exact(entry):
+        return entry
+    return exact_command(entry) if category == "deny" else None
+
+
 def codex_rule(entry: str, decision: str) -> str:
     tokens = ", ".join(json.dumps(t) for t in entry.split())
     return f'prefix_rule(pattern = [{tokens}], decision = "{decision}")'
@@ -242,7 +266,9 @@ def render_codex(rules: Rules) -> str:
     for category in CATEGORIES:
         decision = CODEX_DECISION[category]
         entries = rules.shell(category)
-        emitted = [e for e in entries if not is_glob(e)]
+        emitted = dedupe(
+            [form for e in entries if not is_glob(e) and (form := prefix_form(e, category))]
+        )
         skipped += [e for e in entries if is_glob(e)]
         if emitted:
             lines.append("")
@@ -461,7 +487,10 @@ def render_codex_mcp(rules: Rules) -> str:
 
 def claude_pattern(entry: str) -> str:
     # Colon form matches the command with args or bare; a glob entry is kept
-    # literal since Claude's matcher already understands `*`.
+    # literal since Claude's matcher already understands `*`, and an exact entry
+    # is written bare, which Claude matches only as the whole command.
+    if is_exact(entry):
+        return f"Bash({exact_command(entry)})"
     return f"Bash({entry})" if is_glob(entry) else f"Bash({entry}:*)"
 
 
@@ -522,10 +551,20 @@ def render_droid(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
             f"commands, and every other harness reads a bare entry as 'this command with any "
             f"arguments'. See docs/reference/droid.md#shell-permissions."
         )
+
+    def carried(category: str) -> list[str]:
+        return dedupe(
+            [
+                form
+                for entry in rules.shell(category)
+                if not is_glob(entry) and (form := prefix_form(entry, category))
+            ]
+        )
+
     settings = copy.deepcopy(base)
-    settings["commandAllowlist"] = [entry for entry in rules.allow if not is_glob(entry)]
-    settings["commandDenylist"] = [entry for entry in rules.ask if not is_glob(entry)]
-    settings["commandBlocklist"] = list(rules.deny)
+    settings["commandAllowlist"] = carried("allow")
+    settings["commandDenylist"] = carried("ask")
+    settings["commandBlocklist"] = carried("deny")
     return settings
 
 
@@ -538,6 +577,8 @@ def render_droid(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
 
 
 def opencode_patterns(entry: str) -> list[str]:
+    if is_exact(entry):
+        return [exact_command(entry)]
     return [entry] if is_glob(entry) else [entry, f"{entry} *"]
 
 
@@ -576,7 +617,8 @@ def render_codex_project(rules: Rules) -> str:
     lines = [CODEX_PROJECT_HEADER]
     for category in PROJECT_CATEGORIES:
         decision = CODEX_PROJECT_DECISION[category]
-        for entry in rules.shell(category):
+        forms = dedupe([form for e in rules.shell(category) if (form := prefix_form(e, category))])
+        for entry in forms:
             tokens = ", ".join(json.dumps(token) for token in shlex.split(entry))
             lines.append(f'prefix_rule(pattern = [{tokens}], decision = "{decision}")')
     return "\n".join(lines) + "\n"

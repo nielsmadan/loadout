@@ -40,6 +40,13 @@ prefix_rule(pattern = ["git", "push"], decision = "forbidden")
 The entry is split on whitespace into tokens; each token is JSON-quoted. Decisions map
 `allow → allow`, `deny → forbidden`, `ask → prompt`.
 
+**No exact match either.** A `prefix_rule` matches its tokens as a prefix of argv, and the
+policy language has no other command rule — verified negative: the execpolicy builtins in the
+0.159.2 binary are `prefix_rule`, `network_rule` and `host_executable`, located from the
+`codex_execpolicy::parser::POLICY_BUILTINS_STATICS` string table. So an exact source entry
+(`=git status`) is omitted from `allow` and `ask` and written as its prefix in `deny`, and
+`loadout sync` reports each. Both scopes behave the same way.
+
 **No globs or wildcards** — the docs are explicit that patterns are "literal strings or
 unions of literals". Entries ending in `*` are skipped and listed in a trailing comment
 block; they fall through to Codex's normal approval prompt, which is fail-closed.

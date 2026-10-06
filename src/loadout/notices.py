@@ -27,12 +27,13 @@ from typing import Any
 from .adapters import OPENCODE_MAPPINGS, PI_MAPPINGS
 from .hooks import CLAUDE_EVENTS, CODEX_EVENTS, DROID_EVENTS, unrecognised_events
 from .permissions.renderers import CATCH_ALL_RENDERERS
-from .permissions.rules import Rules, is_glob
+from .permissions.rules import Rules, exact_command, is_exact, is_glob
 from .plugins import ADDRESSED_BY, unaddressable, unregistered_marketplaces
 from .servers import Server
 
 __all__ = [
     "Notice",
+    "inexact_shell_entries",
     "known_events",
     "notices_for",
     "opencode_skills_race",
@@ -163,6 +164,44 @@ def unsupported_shell_globs(agent: str, renderer: str, rules: Rules) -> tuple[No
         for entry in rules.shell(category)
         if is_glob(entry)
     )
+
+
+# Renderers whose matcher has no exact form: Codex's token prefix and Droid's
+# whole-word run. Keyed by renderer, since `codex` and `codex-project` are one
+# matcher at two scopes.
+PREFIX_ONLY = {"codex": "Codex", "codex-project": "Codex", "droid": "Droid"}
+
+
+def inexact_shell_entries(agent: str, renderer: str, rules: Rules) -> tuple[Notice, ...]:
+    harness = PREFIX_ONLY.get(renderer)
+    if harness is None:
+        return ()
+    omitted = tuple(
+        Notice(
+            agent=agent,
+            slice="permissions",
+            message=(
+                f"{category} {entry!r} is not rendered because {harness} cannot match a "
+                f"command exactly; the command falls through to {harness}'s own approval"
+            ),
+        )
+        for category in ("allow", "ask")
+        for entry in rules.shell(category)
+        if is_exact(entry)
+    )
+    widened = tuple(
+        Notice(
+            agent=agent,
+            slice="permissions",
+            message=(
+                f"deny {entry!r} is rendered as {exact_command(entry)!r} because {harness} "
+                f"cannot match a command exactly, so it also blocks that command with arguments"
+            ),
+        )
+        for entry in rules.deny
+        if is_exact(entry)
+    )
+    return omitted + widened
 
 
 def unpermitted_servers(servers: Mapping[str, Server], rules: Rules) -> tuple[str, ...]:

@@ -15,6 +15,7 @@ import pytest
 from loadout.notices import (
     OPENCODE_SKILL_FLAGS,
     Notice,
+    inexact_shell_entries,
     known_events,
     notices_for,
     opencode_skills_race,
@@ -175,3 +176,34 @@ def test_droid_reports_each_permission_glob_it_drops_but_not_the_one_it_refuses(
             "permission-list metacharacters literally"
         ),
     ]
+
+
+@pytest.mark.parametrize(
+    ("renderer", "harness"), [("codex", "Codex"), ("codex-project", "Codex"), ("droid", "Droid")]
+)
+def test_a_prefix_only_harness_reports_each_exact_entry_it_omits_or_widens(
+    renderer: str, harness: str
+) -> None:
+    rules = Rules(allow=("=git status", "ls"), ask=("=git log",), deny=("=git push", "rm"))
+    assert [notice.message for notice in inexact_shell_entries("agent", renderer, rules)] == [
+        (
+            f"allow '=git status' is not rendered because {harness} cannot match a command "
+            f"exactly; the command falls through to {harness}'s own approval"
+        ),
+        (
+            f"ask '=git log' is not rendered because {harness} cannot match a command "
+            f"exactly; the command falls through to {harness}'s own approval"
+        ),
+        (
+            f"deny '=git push' is rendered as 'git push' because {harness} cannot match a "
+            f"command exactly, so it also blocks that command with arguments"
+        ),
+    ]
+
+
+@pytest.mark.parametrize("renderer", ["claude", "claude-project", "opencode", "pi", "pi-project"])
+def test_a_harness_that_matches_exactly_reports_nothing_about_exact_entries(
+    renderer: str,
+) -> None:
+    rules = Rules(allow=("=git status",), deny=("=git push",))
+    assert inexact_shell_entries("agent", renderer, rules) == ()

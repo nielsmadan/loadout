@@ -41,10 +41,10 @@ which do not break the round trip belong at render time, where they can still be
 |---|---|---|
 | `claude`, `claude-project` | shell, MCP, `claude.extra` | nothing; `opencode.extra` is not its to carry |
 | `claude-mcp-permissions` | MCP | — |
-| `codex` | non-glob shell | **glob entries.** `render_codex` diverts them to a trailing comment block with no decision attached, so the file does not record whether `gamma-*` was allowed, asked or denied. Reported, never guessed. |
-| `codex-project` | shell | quote *style*. `render_codex_project` tokenises with `shlex.split`, and a token holding whitespace is re-quoted on the way back, so `echo "a b"` returns as `echo 'a b'` — the document round-trips, the source spelling normalises. |
+| `codex` | non-glob shell; an exact deny as its prefix | **exact allow and ask**, which it omits, and the exactness of a deny. **glob entries.** `render_codex` diverts them to a trailing comment block with no decision attached, so the file does not record whether `gamma-*` was allowed, asked or denied. Reported, never guessed. |
+| `codex-project` | shell; an exact deny as its prefix | **exact allow and ask**, and the exactness of a deny. Quote *style*. `render_codex_project` tokenises with `shlex.split`, and a token holding whitespace is re-quoted on the way back, so `echo "a b"` returns as `echo 'a b'` — the document round-trips, the source spelling normalises. |
 | `codex-mcp-permissions` | MCP | **source order.** `render_codex_mcp` groups by server and sorts servers and tools, and resolves an entry listed twice to its last category. The emitted order is canonical, so re-rendering is stable. |
-| `droid` | non-glob shell | MCP policy, trailing shell globs, and `[shell] default`; Droid's command lists have no representation for them |
+| `droid` | non-glob shell; an exact deny as its word run | exact allow and ask, the exactness of a deny, MCP policy, trailing shell globs, and `[shell] default`; Droid's command lists have no representation for them |
 | `opencode` | shell, MCP, `opencode.extra` | see *order loss* below |
 | `pi`, `pi-project` | shell, MCP | see *order loss* below |
 
@@ -105,6 +105,11 @@ Rendering is not injective, and three forms have to be undone:
   lets `foo *` match a bare `foo`. Extraction drops the ` *` form when the bare form carries the
   same decision. Missing this doubles the rule on the next render.
 - **`Bash(foo:*)`.** Claude's colon form is stripped back to `foo`.
+- **Exact entries.** `Bash(foo)` with neither `:*` nor a `*` reads back as `=foo`, and so does
+  an OpenCode or Pi bare form with no `foo *` companion carrying the same decision. Before exact
+  entries existed, the first stayed in `[claude.extra]` and never reached another harness, and
+  the second re-rendered with a companion it never had. A pattern holding a `*`, or surrounding
+  whitespace, is not one command and keeps its previous reading.
 - **Pi's MCP fan-out.** One `server/tool` entry emits `server_tool` and `server:tool`, plus
   `mcp_server_<server>` and `mcp_connect_<server>` when the tool is `*`. The colon form is the
   anchor — the only emitted form that splits unambiguously — and the companions are consumed.
@@ -145,8 +150,8 @@ onboarding tool. The entry is withheld and named in the report for a person to r
 
 Silence counts as disagreement, but only from a harness that could have spoken. `CAPABILITIES`
 declares, per renderer, whether its document can state a shell rule, an MCP rule, a glob, and a
-catch-all default; Codex and Droid are not voters on globs, and the MCP-only renderers are not voters on
-shell entries. Counting their silence would suppress rules every harness that can express them
+catch-all default; Codex and Droid are not voters on globs or exact entries, and the MCP-only
+renderers are not voters on shell entries. Counting their silence would suppress rules every harness that can express them
 agrees on.
 
 Only OpenCode and Pi vote on the default, because only they *author* one: Claude's
@@ -159,6 +164,10 @@ back a prompt. It settles on the strictest stated verdict instead.
 A dropped entry falls through to the catch-all, so while any shell entry is withheld the
 catch-all is not stated looser than the `ask` it used to fall through to. Without that, adopting
 a pair of files that disagree about one deny renders that command executable.
+
+Codex and Droid write an exact deny `=x` as a deny on `x`, so their `x` is not drift when every
+harness that can match exactly is silent on `x` and denies `=x`: the merged `=x` renders the
+same prefix back. If any of those also states `x` itself, the disagreement is real and reported.
 
 A name with no declared capability is an error rather than a non-voter. A harness silently
 excluded from the vote cannot veto, so adding a renderer would quietly widen the source.

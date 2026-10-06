@@ -15,7 +15,7 @@ from pathlib import Path
 
 from fixture_root import PROJECT_INSTRUCTIONS
 from loadout.manifest import MANIFEST_NAME, load_manifest
-from loadout.permissions.rules import UNSTATED_DEFAULT, is_glob, mcp_parts, parse_rules
+from loadout.permissions.rules import UNSTATED_DEFAULT, is_exact, is_glob, mcp_parts, parse_rules
 
 FIXTURE = Path(__file__).parent / "fixtures" / "permissions.toml"
 RULES = parse_rules(FIXTURE)
@@ -44,6 +44,20 @@ def test_a_multi_word_prefix_is_present() -> None:
 def test_a_glob_is_present_so_the_skip_path_runs() -> None:
     """Codex skips these and emits a trailing comment block."""
     assert [entry for entry in RULES.allow if is_glob(entry)]
+
+
+def test_an_exact_allow_and_an_exact_deny_are_both_present() -> None:
+    """They take opposite paths where a harness has no exact match: Codex and Droid
+    omit the allow and widen the deny to its prefix."""
+    assert [entry for entry in RULES.allow if is_exact(entry)]
+    assert [entry for entry in RULES.deny if is_exact(entry)]
+
+
+def test_the_project_fixture_carries_an_exact_allow_and_an_exact_deny() -> None:
+    """The project Codex renderer is the only path to `codex-project`'s handling."""
+    project = parse_rules(PROJECT_FIXTURES / "permissions.toml")
+    assert [entry for entry in project.allow if is_exact(entry)]
+    assert [entry for entry in project.deny if is_exact(entry)]
 
 
 def test_a_catch_all_default_is_stated_and_is_not_the_unstated_verdict() -> None:

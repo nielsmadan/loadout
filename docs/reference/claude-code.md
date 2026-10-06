@@ -43,8 +43,23 @@ hand-maintained keys would not.
 ```
 Bash(<entry>:*)     plain command prefix
 Bash(<entry>)       entry ending in `*` — Claude's matcher handles the glob
+Bash(<command>)     exact entry `=<command>` — no `:*`, so only the whole command
 mcp__<server>__<tool>
 ```
+
+**`Bash(x)` without `:*` is exact — verified 2026-10-06 against Claude Code 2.1.292 by reading
+the installed binary**, not by a live probe: a nested `claude -p` could not authenticate from
+the sandboxed session that checked it, so the probe below is still the stronger evidence and
+worth repeating. The embedded rule classifier sorts a Bash rule into three types:
+
+    function Cit(e){let n=HAe(e);if(n!==null)return{type:"prefix",prefix:n};
+      if(Lpo(e))return{type:"wildcard",pattern:e};return{type:"exact",command:e}}
+
+`HAe` matches `^(.+):\*$` and `Lpo` an unescaped `*`. The Bash permission matcher then
+tests an `exact` rule with `case"exact":return ke.command===Se`, string equality against the
+command and its normalised forms — leading `VAR=value` assignments and a `timeout`/`time`
+wrapper stripped — so `Bash(git status)` matches `git status` and `FOO=1 git status`, never
+`git status --short`.
 
 **Verified 2026-08-01 against Claude Code 2.1.220**, sandboxed `HOME`, with
 `Bash(touch alpha:*)` as the only allow rule:

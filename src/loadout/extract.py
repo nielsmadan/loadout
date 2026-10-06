@@ -15,11 +15,13 @@ from .permissions.renderers import pi_mcp_patterns
 from .permissions.rules import (
     CATCH_ALL_ENTRY,
     DECISIONS,
+    EXACT_MARK,
     MCP_SEED,
     UNSTATED_DEFAULT,
     Decision,
     Rules,
     dedupe,
+    is_exact,
     is_glob,
     strictest,
 )
@@ -94,6 +96,15 @@ def extract_claude_mcp(document: Any) -> Extraction:
 OWNED_CLAUDE_KEYS = ("allow", "deny", "ask")
 
 
+def _exact_shaped(command: str) -> bool:
+    """Whether a bare pattern reads back as an exact entry `parse_rules` accepts.
+
+    Any `*` is a wildcard to Claude, OpenCode and Pi alike, so a pattern holding one
+    is not a single command and stays where it was before exact entries existed.
+    """
+    return bool(command) and "*" not in command and command == command.strip()
+
+
 def _claude_entry(pattern: str) -> tuple[str, str]:
     """Classify one Claude permission string as ("shell" | "mcp" | "extra", value)."""
     if pattern.startswith("Bash(") and pattern.endswith(")"):
@@ -105,6 +116,8 @@ def _claude_entry(pattern: str) -> tuple[str, str]:
             return "shell", inner[: -len(":*")]
         if is_glob(inner):
             return "shell", inner
+        if _exact_shaped(inner):
+            return "shell", EXACT_MARK + inner
     if pattern.startswith("mcp__"):
         server, separator, tool = pattern[len("mcp__") :].partition("__")
         if separator and server and tool:
@@ -276,7 +289,12 @@ def _collapse_shell(
         bare = pattern.removesuffix(ARGUMENT_SUFFIX)
         if bare != pattern and patterns.get(bare) == decision:
             continue
-        buckets[decision].append(pattern)
+        # A bare form with no `foo *` companion matches only the whole command,
+        # which is what an exact entry renders to.
+        alone = patterns.get(pattern + ARGUMENT_SUFFIX) != decision
+        buckets[decision].append(
+            EXACT_MARK + pattern if alone and _exact_shaped(pattern) else pattern
+        )
     return buckets, notes
 
 
@@ -1210,6 +1228,9 @@ class Capability:
     shell: bool
     mcp: bool
     globs: bool = True
+    # False where the matcher has no whole-command form: an exact allow or ask is
+    # omitted there, and an exact deny is written as its prefix.
+    exact: bool = True
     # Whether this renderer *authors* the catch-all verdict. Claude's is
     # `permissions.defaultMode`, which `render_claude` preserves from the base
     # rather than writing; Codex's is `approval_policy` in a file loadout does
@@ -1223,11 +1244,11 @@ CAPABILITIES: dict[str, Capability] = {
     "claude-project": Capability(shell=True, mcp=True),
     # globs=False: render_codex diverts glob entries to an uncategorised comment
     # block, so the document cannot state a decision for one.
-    "codex": Capability(shell=True, mcp=False, globs=False),
+    "codex": Capability(shell=True, mcp=False, globs=False, exact=False),
     "codex-mcp-permissions": Capability(shell=False, mcp=True),
     # render_codex_project does not skip globs; it emits them as prefix_rules.
-    "codex-project": Capability(shell=True, mcp=False),
-    "droid": Capability(shell=True, mcp=False, globs=False),
+    "codex-project": Capability(shell=True, mcp=False, exact=False),
+    "droid": Capability(shell=True, mcp=False, globs=False, exact=False),
     "opencode": Capability(shell=True, mcp=True, default=True),
     "pi": Capability(shell=True, mcp=True, default=True),
     "pi-project": Capability(shell=True, mcp=True),
@@ -1263,7 +1284,34 @@ def _can_state(name: str, kind: str, entry: str) -> bool:
         return capability.mcp
     if kind == CATCH_ALL:
         return capability.default
-    return capability.shell and (capability.globs or not is_glob(entry))
+    return (
+        capability.shell
+        and (capability.globs or not is_glob(entry))
+        and (capability.exact or not is_exact(entry))
+    )
+
+
+def _widened_exact_deny(
+    entry: str, verdicts: tuple[tuple[str, str], ...], extractions: Mapping[str, Extraction]
+) -> bool:
+    """Whether a prefix-only harness's deny is the widened form of an exact deny.
+
+    Codex and Droid write `deny = ["=x"]` as a prefix deny on `x`, so their `x` is
+    accounted for when every harness that can match exactly is silent on `x` and
+    denies `=x`. Re-rendering the merged `=x` writes the same prefix back.
+    """
+    exact = EXACT_MARK + entry
+    prefix_only = [verdict for name, verdict in verdicts if not _capability(name).exact]
+    exact_capable = [(name, verdict) for name, verdict in verdicts if _capability(name).exact]
+    return (
+        bool(prefix_only)
+        and all(verdict == "deny" for verdict in prefix_only)
+        and bool(exact_capable)
+        and all(
+            verdict == ABSENT and exact in extractions[name].rules.deny
+            for name, verdict in exact_capable
+        )
+    )
 
 
 def _reconcile(
@@ -1290,6 +1338,8 @@ def _reconcile(
             if _can_state(name, kind, entry)
         )
         agreed = {verdict for _, verdict in verdicts}
+        if kind == SHELL and _widened_exact_deny(entry, verdicts, extractions):
+            continue
         if len(agreed) == 1 and ABSENT not in agreed:
             for category in next(iter(agreed)).split("+"):
                 buckets[category].append(entry)

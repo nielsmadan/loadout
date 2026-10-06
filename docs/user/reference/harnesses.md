@@ -60,6 +60,7 @@ instructions, skills, and MCP definitions to the supported targets.
 | Native decision order | Deny, ask, allow | Most restrictive | Native lists | Last match | Last match |
 | Command matching | Patterns | Literal prefixes | Literal list entries | Globs | Globs |
 | Loadout trailing shell globs | Rendered | Skipped | Skipped and reported | Rendered | Rendered |
+| Loadout exact shell entries (`=`) | Rendered | Allow and ask omitted, deny widened, reported | Allow and ask omitted, deny widened, reported | Rendered | Rendered |
 | Loadout shell catch-all | Native settings instead | Separate approval setting | Session autonomy instead | Rendered | Rendered |
 
 Loadout expands bare commands where a harness needs a second rule for arguments and emits

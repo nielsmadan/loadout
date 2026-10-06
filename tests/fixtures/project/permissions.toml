@@ -16,6 +16,7 @@ allow = [
   "beta sub",              # multi-word prefix
   "gamma-*",               # glob: the project Codex renderer does NOT skip these
   "zeta",                  # overridden by the personal tier's deny
+  "=mu status",            # exact: omitted by the project Codex renderer
 ]
 
 ask = [
@@ -24,6 +25,7 @@ ask = [
 
 deny = [
   "iota push",
+  "=nu wipe",              # exact deny: widened to a prefix by the project Codex renderer
 ]
 
 [mcp]

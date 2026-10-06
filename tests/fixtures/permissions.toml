@@ -21,6 +21,7 @@ allow = [
   "delta run --tag=*",        # glob that is not the whole final token
   "zeta",                     # also in deny, and not last: shows Pi's key-move
   "eta",                      # follows zeta, so "moved to the end" is observable
+  "=mu status",               # exact: bare on 3 harnesses, omitted on Codex and Droid
 ]
 
 ask = [
@@ -30,6 +31,7 @@ ask = [
 deny = [
   "zeta",                     # overwrites the allow above
   "iota push",
+  "=nu wipe",                 # exact deny: bare on 3 harnesses, widened to a prefix on 2
 ]
 
 [mcp]

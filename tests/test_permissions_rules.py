@@ -11,6 +11,8 @@ from loadout.permissions.rules import (
     UNSTATED_DEFAULT,
     Rules,
     dedupe,
+    exact_command,
+    is_exact,
     is_glob,
     mcp_native,
     mcp_parts,
@@ -166,3 +168,29 @@ def test_rules_is_frozen() -> None:
     rules = parse_rules(SOURCE)
     with pytest.raises(dataclasses.FrozenInstanceError):
         rules.allow = ()  # type: ignore[misc]
+
+
+def test_an_exact_entry_is_marked_and_keeps_its_command() -> None:
+    assert is_exact("=git status")
+    assert not is_exact("git status")
+    assert exact_command("=git status") == "git status"
+
+
+def test_parse_rules_reads_an_exact_entry_in_every_category(tmp_path: Path) -> None:
+    source = tmp_path / "permissions.toml"
+    source.write_text(
+        '[shell]\nallow = ["=git status"]\nask = ["=git log"]\ndeny = ["=git push"]\n',
+        encoding="utf-8",
+    )
+    rules = parse_rules(source)
+    assert (rules.allow, rules.ask, rules.deny) == (("=git status",), ("=git log",), ("=git push",))
+
+
+@pytest.mark.parametrize("bad", ["=", "=git *", "=a*b", "= git", "=git "])
+def test_parse_rules_refuses_an_exact_entry_that_is_not_one_command(
+    tmp_path: Path, bad: str
+) -> None:
+    source = tmp_path / "permissions.toml"
+    source.write_text(f'[shell]\ndeny = ["{bad}"]\n', encoding="utf-8")
+    with pytest.raises(LoadoutError, match=r"shell\.deny exact entry"):
+        parse_rules(source)

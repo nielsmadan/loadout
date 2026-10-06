@@ -312,3 +312,48 @@ def test_the_merge_space_provokes_every_declared_refusal() -> None:
     covering one fewer."""
     for name in REFUSES:
         assert any(_declines(name, rules) for rules in CLEAN_SPACE), name
+
+
+def test_prefix_only_silence_on_an_exact_entry_is_not_divergence() -> None:
+    """Codex and Droid omit an exact allow, so they do not get a vote on it."""
+    merged = merge_extractions(
+        {
+            "claude": Extraction(Rules(allow=("=git status",))),
+            "codex": Extraction(Rules()),
+            "droid": Extraction(Rules()),
+            "opencode": Extraction(Rules(allow=("=git status",))),
+        }
+    )
+    assert merged.rules.allow == ("=git status",)
+    assert merged.divergences == ()
+
+
+def test_a_prefix_deny_that_widens_an_exact_deny_merges_back_to_the_exact_entry() -> None:
+    merged = merge_extractions(
+        {
+            "claude": Extraction(Rules(deny=("=git push",))),
+            "codex": Extraction(Rules(deny=("git push",))),
+            "opencode": Extraction(Rules(deny=("=git push",))),
+        }
+    )
+    assert merged.rules.deny == ("=git push",)
+    assert merged.divergences == ()
+
+
+def test_a_prefix_deny_another_exact_harness_also_states_is_still_divergence() -> None:
+    """OpenCode denies the prefix as well as the exact command, so Codex's
+    `git push` is not explained by the exact entry alone. Absorbing it would drop
+    OpenCode's wider deny from the source."""
+    merged = merge_extractions(
+        {
+            "claude": Extraction(Rules(deny=("=git push",))),
+            "codex": Extraction(Rules(deny=("git push",))),
+            "opencode": Extraction(Rules(deny=("=git push", "git push"))),
+        }
+    )
+    assert _verdicts(merged, "git push") == {
+        "claude": "absent",
+        "codex": "deny",
+        "opencode": "deny",
+    }
+    assert merged.rules.deny == ("=git push",)
