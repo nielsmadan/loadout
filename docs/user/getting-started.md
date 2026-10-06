@@ -59,7 +59,7 @@ Run the project's tests before reporting a change as complete.
 Explain any checks you could not run.
 ```
 
-Replace the shared permission file with:
+Write the shared permission file:
 
 ```toml title="loadout/permissions.toml"
 [shell]
@@ -68,7 +68,9 @@ ask = ["git commit"]
 deny = ["git push"]
 ```
 
-The personal `loadout/permissions.local.toml` can stay empty.
+Both permission files are optional. A missing `permissions.toml` means the same as an empty one:
+no shared rules, and each agent's permission rules are written empty on the next sync. The
+personal `loadout/permissions.local.toml` can stay absent too.
 
 ## Render both agents' files
 

@@ -421,3 +421,24 @@ def test_without_a_record_the_copied_edit_blocks_as_before(project: Path, capsys
 
     assert loadout.main(["sync", "--root", str(project)]) == 1
     assert "was modified outside loadout" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("committed", [True, False], ids=["git", "no-git"])
+def test_hand_written_permissions_survive_a_project_with_no_permissions_source(
+    tmp_path: Path, committed: bool, capsys
+) -> None:
+    """A missing permissions.toml clears the owned key, the same as an empty one —
+    so the guard is what stands between a first sync and the rules already there."""
+    (tmp_path / "loadout").mkdir()
+    (tmp_path / "loadout" / "config.toml").write_text('harnesses = ["claude"]\n', encoding="utf-8")
+    settings = tmp_path / ".claude" / "settings.json"
+    settings.parent.mkdir()
+    hand_written = '{"model": "opus", "permissions": {"allow": ["Bash(rm:*)"]}}\n'
+    settings.write_text(hand_written, encoding="utf-8")
+    if committed:
+        _commit_source(tmp_path)
+
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 1
+
+    assert ".claude/settings.json was modified outside loadout" in capsys.readouterr().err
+    assert settings.read_text(encoding="utf-8") == hand_written

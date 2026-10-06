@@ -650,3 +650,33 @@ def test_init_notes_a_missing_machine_config(tmp_path: Path, monkeypatch, capsys
     out = capsys.readouterr().out
     assert "init global" in out
     assert (tmp_path / "loadout" / "config.toml").is_file()
+
+
+def _instructions_only_project(root: Path) -> Path:
+    (root / "loadout" / "instructions").mkdir(parents=True)
+    quoted = ", ".join(f'"{h}"' for h in ("claude", "codex", "droid", "opencode", "pi"))
+    (root / "loadout" / "config.toml").write_text(
+        f'harnesses = [{quoted}]\ninstructions = ["main"]\n', encoding="utf-8"
+    )
+    (root / "loadout" / "instructions" / "main.md").write_text("# Main\n", encoding="utf-8")
+    return root
+
+
+def _generated(root: Path) -> dict[Path, bytes]:
+    return {
+        path.relative_to(root): path.read_bytes()
+        for path in root.rglob("*")
+        if path.is_file() and path.relative_to(root).parts[0] != "loadout"
+    }
+
+
+def test_a_project_without_permissions_toml_syncs_as_if_it_were_empty(tmp_path: Path) -> None:
+    absent = _instructions_only_project(tmp_path / "absent")
+    empty = _instructions_only_project(tmp_path / "empty")
+    (empty / "loadout" / "permissions.toml").write_text("", encoding="utf-8")
+
+    assert loadout.main(["sync", "--root", str(absent)]) == 0
+    assert loadout.main(["sync", "--root", str(empty)]) == 0
+
+    assert Path(".claude/settings.json") in _generated(absent)
+    assert _generated(absent) == _generated(empty)

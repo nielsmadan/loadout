@@ -129,9 +129,23 @@ def test_a_dropped_harness_name_is_rejected(project: Path) -> None:
         render_project(project)
 
 
-def test_missing_committed_source_is_an_error(project: Path) -> None:
-    (project / "loadout" / "permissions.toml").unlink()
-    with pytest.raises(LoadoutError, match="not found"):
+def test_a_missing_committed_source_renders_exactly_as_an_empty_one(project: Path) -> None:
+    source = project / "loadout" / "permissions.toml"
+    source.write_text("", encoding="utf-8")
+    empty = render_project(project)
+
+    source.unlink()
+
+    assert render_project(project) == empty
+    # The personal tier still arrives, so the comparison is between two renders with
+    # rules in them rather than two empty documents.
+    settings = json.loads(empty[project / ".claude/settings.json"])
+    assert "Bash(kappa only-here:*)" in settings["permissions"]["allow"]
+
+
+def test_an_invalid_committed_source_is_still_an_error(project: Path) -> None:
+    (project / "loadout" / "permissions.toml").write_text("[shell\n", encoding="utf-8")
+    with pytest.raises(LoadoutError, match=r"permissions\.toml"):
         render_project(project)
 
 

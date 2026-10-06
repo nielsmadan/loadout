@@ -558,13 +558,19 @@ A project source normally contains:
 
 ```text
 loadout/config.toml          configured harnesses, instructions and templates
-loadout/permissions.toml     shared permission rules
+loadout/permissions.toml     shared permission rules, optional
 loadout/instructions/        ordered instruction fragments
 loadout/skills/              authored skills and supporting files
 loadout/mcp.toml             MCP server definitions, when present
 loadout/hooks.json           hook declarations, when supported
 loadout/plugins.json         plugin declarations, when supported
 ```
+
+A missing `permissions.toml` means the same as an empty one. The harnesses you declare are what
+make loadout own their permission keys, not the file's existence, so without it `sync` writes each
+key empty and clears whatever rules were there. Deleting the file clears your rules on the next
+sync, just as emptying it does. Rules loadout did not write are refused first; see
+[Files modified outside loadout](#files-modified-outside-loadout).
 
 Generated project files are ignored and removed from the final index while remaining available to
 the harness. Re-running init does not reinterpret an existing source; edit it and use `check` or

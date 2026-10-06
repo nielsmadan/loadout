@@ -755,14 +755,13 @@ def project_notices(root: Path, environ: Mapping[str, str]) -> tuple[Notice, ...
     found: list[Notice] = []
     templates = tuple(resolve_template(name, root).path for name in config.templates)
     catalogs = load_catalogs(templates)
-    if (root / PROJECT_DIR / PROJECT_SOURCE).is_file():
-        rules = _project_rules(root, config, catalogs)
-        for agent, slice_name, spec in project_slices(config.harnesses):
-            if slice_name != "permissions" or not spec.renderer:
-                continue
-            if rules.default is not None:
-                found.extend(unreached_catch_all(agent, spec.renderer, rules.default))
-            found.extend(unsupported_shell_globs(agent, spec.renderer, rules))
+    rules = _project_rules(root, config, catalogs)
+    for agent, slice_name, spec in project_slices(config.harnesses):
+        if slice_name != "permissions" or not spec.renderer:
+            continue
+        if rules.default is not None:
+            found.extend(unreached_catch_all(agent, spec.renderer, rules.default))
+        found.extend(unsupported_shell_globs(agent, spec.renderer, rules))
     for agent, slice_name, _ in project_slices(config.harnesses):
         if slice_name not in PROJECT_DOCUMENTS:
             continue
@@ -1062,10 +1061,9 @@ def _project_rules(root: Path, config: ProjectConfig, catalogs: Mapping[Path, Ca
         parse_rules(contributed)
         for contributed in contribution_paths(templates, "permissions", catalogs=catalogs)
     ]
-    tiers.append(parse_rules(project_dir / PROJECT_SOURCE))
-    local_path = project_dir / PROJECT_LOCAL_SOURCE
-    if local_path.is_file():
-        tiers.append(parse_rules(local_path))
+    for path in (project_dir / PROJECT_SOURCE, project_dir / PROJECT_LOCAL_SOURCE):
+        if path.is_file():
+            tiers.append(parse_rules(path))
     return merge_rules(*tiers)
 
 
