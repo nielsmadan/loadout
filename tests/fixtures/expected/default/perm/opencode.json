@@ -19,10 +19,12 @@
       "delta run --tag=*": "allow",
       "eta": "allow",
       "eta *": "allow",
+      "mu status": "allow",
       "zeta": "deny",
       "zeta *": "deny",
       "iota push": "deny",
       "iota push *": "deny",
+      "nu wipe": "deny",
       "theta check": "ask",
       "theta check *": "ask"
     },

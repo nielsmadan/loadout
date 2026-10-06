@@ -8,6 +8,7 @@
       "beta sub": "allow",
       "beta sub *": "allow",
       "gamma-*": "allow",
+      "mu status": "allow",
       "kappa only-here": "allow",
       "kappa only-here *": "allow",
       "theta check": "ask",
@@ -16,6 +17,7 @@
       "omicron publish *": "deny",
       "iota push": "deny",
       "iota push *": "deny",
+      "nu wipe": "deny",
       "zeta": "deny",
       "zeta *": "deny"
     },

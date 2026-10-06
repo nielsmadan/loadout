@@ -11,6 +11,7 @@ prefix_rule(pattern = ["eta"], decision = "allow")
 
 prefix_rule(pattern = ["zeta"], decision = "forbidden")
 prefix_rule(pattern = ["iota", "push"], decision = "forbidden")
+prefix_rule(pattern = ["nu", "wipe"], decision = "forbidden")
 
 prefix_rule(pattern = ["theta", "check"], decision = "prompt")
 

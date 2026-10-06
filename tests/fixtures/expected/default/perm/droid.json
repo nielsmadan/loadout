@@ -17,6 +17,7 @@
   ],
   "commandBlocklist": [
     "zeta",
-    "iota push"
+    "iota push",
+    "nu wipe"
   ]
 }

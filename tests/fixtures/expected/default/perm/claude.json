@@ -8,6 +8,7 @@
       "Bash(gamma-*)",
       "Bash(delta run --tag=*)",
       "Bash(eta:*)",
+      "Bash(mu status)",
       "mcp__svc__*",
       "mcp__svc.two__read",
       "Read(//tmp/**)"
@@ -15,6 +16,7 @@
     "deny": [
       "Bash(zeta:*)",
       "Bash(iota push:*)",
+      "Bash(nu wipe)",
       "mcp__blocked__*",
       "mcp__svc__purge",
       "Write(//etc/**)"

@@ -12,6 +12,7 @@
   "commandBlocklist": [
     "omicron publish",
     "iota push",
+    "nu wipe",
     "zeta"
   ],
   "enabledPlugins": {
