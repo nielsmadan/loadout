@@ -685,3 +685,17 @@ def test_global_init_renders_and_records_so_sync_changes_nothing(
     rendered = _bytes(fake_home, tmp_path / "src")
     assert loadout.main(["sync", "--global"]) == 0
     assert _bytes(fake_home, tmp_path / "src") == rendered
+
+
+def test_project_init_ignores_the_adopted_skill_folder_not_the_directory(tmp_path):
+    _repo(tmp_path)
+    skill = tmp_path / ".claude" / "skills" / "local"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("---\nname: local\ndescription: d\n---\nbody\n")
+
+    init = ["init", "project", "--harness", "claude", "--root", str(tmp_path), "--yes"]
+    assert loadout.main(init) == 0
+
+    ignored = (tmp_path / ".gitignore").read_text().splitlines()
+    assert "/.claude/skills/local/" in ignored
+    assert "/.claude/skills" not in ignored

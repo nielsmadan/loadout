@@ -590,7 +590,10 @@ sync, just as emptying it does. Rules loadout did not write are refused first; s
 [Files modified outside loadout](#files-modified-outside-loadout).
 
 Generated project files are ignored and removed from the final index while remaining available to
-the harness. Re-running init does not reinterpret an existing source; edit it and use `check` or
+the harness. `.gitignore` lists exactly what sync wrote: with no `mcp.toml` there is no `.mcp.json`
+entry, so one written by `claude mcp add` stays committable, and a skill is listed by its own folder
+(`/.claude/skills/review/`), never the skills directory, so a skill installed there by hand stays
+visible to git. Re-running init does not reinterpret an existing source; edit it and use `check` or
 `sync`. Repositories adopted by an older route-based build should restore any command or subagent
 files from `loadout/` to their harness paths and run init again. Sync leaves stale `.gitignore`
 entries from older versions in place rather than guessing which user-authored entries to delete.

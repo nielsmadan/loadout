@@ -35,9 +35,9 @@ from .output import FrozenFile
 from .project import (
     PROJECT_CONFIG_NAME,
     PROJECT_DIR,
+    gitignore_entries,
     load_project_config,
     project_config_path,
-    project_outputs,
 )
 from .scaffold import _append_gitignore, init_global, init_project
 from .skill_installation import (
@@ -398,9 +398,8 @@ def deploy(
     # Root-anchored, the form init's migration writes: a bare "CLAUDE.md"
     # would also ignore loadout/instructions/native/claude/CLAUDE.md, and
     # `git add loadout` then silently drops that source from the index.
-    entries = [
-        f"/{path}" for path in project_outputs(load_project_config(project_config_path(root)))
-    ]
+    config = load_project_config(project_config_path(root))
+    entries = list(gitignore_entries(root, outputs, config))
     return written, len(entries) if _append_gitignore(root, entries) else 0
 
 

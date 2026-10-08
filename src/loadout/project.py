@@ -3,7 +3,7 @@ from __future__ import annotations
 import tomllib
 from collections.abc import Iterable
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from .agents import SliceOutput
 from .errors import LoadoutError
@@ -258,6 +258,31 @@ def project_slices(harnesses: Iterable[str]) -> tuple[tuple[str, str, SliceOutpu
         for harness in harnesses
         for name, spec in PROJECT_PRESET[harness].items()
     )
+
+
+def gitignore_entries(
+    root: Path, written: Iterable[Path], config: ProjectConfig
+) -> tuple[str, ...]:
+    """The root-anchored `.gitignore` lines for what sync wrote, and nothing else.
+
+    A skill's files collapse to its folder, never the skills directory, because
+    loadout owns only the folders it writes: a skill installed there by hand has
+    to stay visible to git beside them.
+    """
+    skill_dirs = tuple(
+        PurePosixPath(spec.output)
+        for _, name, spec in project_slices(config.harnesses)
+        if name == "skills" and spec.output is not None
+    )
+
+    def entry(path: Path) -> str:
+        relative = PurePosixPath(path.relative_to(root).as_posix())
+        for directory in skill_dirs:
+            if relative.is_relative_to(directory) and relative != directory:
+                return f"/{directory}/{relative.relative_to(directory).parts[0]}/"
+        return f"/{relative}"
+
+    return tuple(dict.fromkeys(entry(path) for path in written if path.is_relative_to(root)))
 
 
 def project_outputs(

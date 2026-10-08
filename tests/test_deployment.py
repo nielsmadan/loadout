@@ -68,3 +68,41 @@ def test_sync_maintains_gitignore_without_a_git_repository(tmp_path: Path) -> No
     assert (tmp_path / "CLAUDE.md").is_file()
     ignored = (tmp_path / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert "/.claude/settings.json" in ignored
+
+
+def _skill(directory: Path, name: str) -> None:
+    (directory / name).mkdir(parents=True)
+    (directory / name / "SKILL.md").write_text(
+        f"---\nname: {name}\ndescription: d\n---\nbody\n", encoding="utf-8"
+    )
+
+
+def test_gitignore_names_each_skill_folder_loadout_writes(tmp_path: Path) -> None:
+    """Loadout owns only the folders it writes, so the directory is never listed whole:
+    that entry is what used to hide a hand-installed skill beside them."""
+    _preset_project(tmp_path, '"claude"')
+    _skill(tmp_path / "loadout" / "skills", "mine")
+
+    assert cli(tmp_path, "sync") == 0
+
+    ignored = (tmp_path / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert "/.claude/skills/mine/" in ignored
+    assert "/.claude/skills" not in ignored
+
+
+def test_mcp_json_is_written_and_ignored_only_once_there_is_a_source(tmp_path: Path) -> None:
+    _preset_project(tmp_path, '"claude"')
+    hand_written = '{"mcpServers": {"cli": {"command": "x"}}}\n'
+    (tmp_path / ".mcp.json").write_text(hand_written, encoding="utf-8")
+
+    assert cli(tmp_path, "sync") == 0
+    assert (tmp_path / ".mcp.json").read_text(encoding="utf-8") == hand_written
+    assert "/.mcp.json" not in (tmp_path / ".gitignore").read_text(encoding="utf-8").splitlines()
+
+    (tmp_path / "loadout" / "mcp.toml").write_text(
+        '[docs]\ntransport = "stdio"\ncommand = "docs-mcp"\n', encoding="utf-8"
+    )
+    (tmp_path / ".mcp.json").unlink()
+    assert cli(tmp_path, "sync") == 0
+    assert "docs-mcp" in (tmp_path / ".mcp.json").read_text(encoding="utf-8")
+    assert "/.mcp.json" in (tmp_path / ".gitignore").read_text(encoding="utf-8").splitlines()

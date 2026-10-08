@@ -756,7 +756,7 @@ class _PlanBuilder:
         policy = self.skill_policies.setdefault(name, {"agents": [], "render": False})
         policy["agents"] = list(dict.fromkeys((*policy["agents"], *agents)))
         if self.inventory.scope == "project":
-            self.project_skill_route(destination, agents)
+            self.project_skill_route(destination / name, agents)
         else:
             for agent in agents:
                 self.global_slices[agent].add("skills")

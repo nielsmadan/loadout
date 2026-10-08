@@ -442,3 +442,27 @@ def test_hand_written_permissions_survive_a_project_with_no_permissions_source(
 
     assert ".claude/settings.json was modified outside loadout" in capsys.readouterr().err
     assert settings.read_text(encoding="utf-8") == hand_written
+
+
+def test_a_hand_installed_skill_beside_a_loadout_one_stays_visible_to_git(tmp_path: Path) -> None:
+    (tmp_path / "loadout" / "skills" / "mine").mkdir(parents=True)
+    (tmp_path / "loadout" / "config.toml").write_text('harnesses = ["claude"]\n')
+    (tmp_path / "loadout" / "skills" / "mine" / "SKILL.md").write_text(
+        "---\nname: mine\ndescription: d\n---\nmine\n"
+    )
+    theirs = tmp_path / ".claude" / "skills" / "theirs"
+    theirs.mkdir(parents=True)
+    (theirs / "SKILL.md").write_text("---\nname: theirs\ndescription: d\n---\ntheirs\n")
+    _git(tmp_path, "init", "-q")
+
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
+
+    status = subprocess.run(
+        ["git", "-C", str(tmp_path), "status", "--porcelain", "--untracked-files=all"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert "?? .claude/skills/theirs/SKILL.md" in status
+    assert ".claude/skills/mine/" not in status
+    _git(tmp_path, "add", ".claude/skills/theirs")
