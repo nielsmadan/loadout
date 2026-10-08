@@ -81,6 +81,9 @@ for args in [
     ["integrate", "git-hooks", "install", "--help"],
     ["integrate", "git-hooks", "status", "--help"],
     ["integrate", "git-hooks", "uninstall", "--help"],
+    ["integrate", "completions", "install", "--help"],
+    ["integrate", "completions", "status", "--help"],
+    ["integrate", "completions", "uninstall", "--help"],
 ]:
     run("help " + " ".join(args[:-1]), args, work)
 run("invalid command", ["not-a-command"], work, 2)

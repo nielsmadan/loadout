@@ -17,6 +17,13 @@ from .commands import (
     cmd_template_list,
     cmd_template_sync,
 )
+from .completions import (
+    SHELLS,
+    install_completions,
+    resolve_shell,
+    status_completions,
+    uninstall_completions,
+)
 from .errors import LoadoutError, UsageError
 from .git_hook_commands import run_hook
 from .git_hooks import EVENTS, install_hooks, status_hooks, uninstall_hooks
@@ -137,6 +144,9 @@ def build_parser() -> argparse.ArgumentParser:
             "git-hooks", help="optional repository-local Git integration"
         )
     )
+    _add_completions(
+        integrate_subparsers.add_parser("completions", help="shell tab completion for loadout")
+    )
 
     # The generated hook scripts invoke this; nobody types it. Passing help=SUPPRESS
     # renders a literal "==SUPPRESS==" row, so omit help to drop the row and set the
@@ -219,6 +229,30 @@ def _add_git_hooks(parser: argparse.ArgumentParser) -> None:
             help="active profile to render (default: the machine config's profile when it "
             "registers this source, otherwise 'default')",
         )
+
+
+def _add_completions(parser: argparse.ArgumentParser) -> None:
+    commands = parser.add_subparsers(dest="completions_command", required=True)
+    for sub_name, sub_help in (
+        ("install", "write the completion script where the shell loads it"),
+        ("status", "show whether the installed script is present and current"),
+        ("uninstall", "remove the completion script loadout wrote"),
+    ):
+        commands.add_parser(sub_name, help=sub_help).add_argument(
+            "--shell",
+            choices=SHELLS,
+            help="shell to manage (default: the shell running loadout)",
+        )
+
+
+def _dispatch_completions(args: argparse.Namespace) -> int:
+    shell = resolve_shell(args.shell)
+    action = {
+        "install": install_completions,
+        "status": status_completions,
+        "uninstall": uninstall_completions,
+    }[args.completions_command]
+    return action(shell, build_parser())
 
 
 def _resolve_global(profile: str | None) -> tuple[Path, str]:
@@ -357,6 +391,8 @@ def _dispatch(args: argparse.Namespace) -> int:
     if args.command == "hook-event":
         return run_hook(args.event, args.root.resolve(), args.profile, args.git_arguments)
     if args.command == "integrate":
+        if args.integrate_command == "completions":
+            return _dispatch_completions(args)
         return (
             _dispatch_git_hooks(args)
             if args.integrate_command == "git-hooks"

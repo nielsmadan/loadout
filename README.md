@@ -110,6 +110,19 @@ vouch for the other's write.
 `check` asks the same question and says which answer applies, rather than sending you to `sync`
 where `sync` is about to refuse.
 
+## Shell completions
+
+    loadout integrate completions install            # for the shell running loadout
+    loadout integrate completions install --shell fish
+    loadout integrate completions status
+    loadout integrate completions uninstall
+
+Completes subcommands and fixed-choice options for bash, zsh and fish. The script is written to
+the shell's own completion directory and never into a startup file; `install` prints the one line
+to add where the shell needs it. `status` says whether the installed script is current, and
+`uninstall` removes only a script loadout wrote. Locations are in the
+[CLI reference](docs/user/reference/cli.md#shell-completions).
+
 ## Global scope
 
 Global scope is the configuration that applies to every project on this machine. A **machine

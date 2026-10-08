@@ -15,7 +15,7 @@ homebrew = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(homebrew)
 
 
-def test_formula_uses_release_source_and_locked_runtime_dependency(tmp_path):
+def test_formula_uses_release_source_and_locked_runtime_dependencies(tmp_path):
     output = tmp_path / "Formula/loadout.rb"
     digest = "a" * 64
     result = subprocess.run(
@@ -29,10 +29,12 @@ def test_formula_uses_release_source_and_locked_runtime_dependency(tmp_path):
     assert 'url "https://github.com/nielsmadan/loadout/archive/refs/tags/v9.8.7.tar.gz"' in formula
     assert f'\n  sha256 "{digest}"\n' in formula
     lock = tomllib.loads((ROOT / "uv.lock").read_text())
-    dependency = next(package for package in lock["package"] if package["name"] == "tomlkit")
-    assert f'    url "{dependency["sdist"]["url"]}"' in formula
-    assert f'    sha256 "{dependency["sdist"]["hash"].removeprefix("sha256:")}"' in formula
-    assert re.findall(r'^  resource "([^"]+)" do$', formula, flags=re.MULTILINE) == ["tomlkit"]
+    for name in ("shtab", "tomlkit"):
+        dependency = next(package for package in lock["package"] if package["name"] == name)
+        assert f'    url "{dependency["sdist"]["url"]}"' in formula
+        assert f'    sha256 "{dependency["sdist"]["hash"].removeprefix("sha256:")}"' in formula
+    resources = re.findall(r'^  resource "([^"]+)" do$', formula, flags=re.MULTILINE)
+    assert resources == ["shtab", "tomlkit"]
 
 
 def package(name, dependencies=()):

@@ -116,8 +116,8 @@ loadout integrate skill status
 loadout integrate skill uninstall
 ```
 
-All three commands accept `--profile NAME` and `--source NAME`. Here `--source` is a
-declared source name, rather than the directory accepted by `init global`.
+All three commands accept `--profile NAME` and `--source NAME`. `--source` names a declared
+`[[source]]` from the manifest; it is not a directory.
 
 `install` and `uninstall` accept `--yes` to apply the displayed change without a prompt.
 They operate on the global source and synchronise the selected profile.
@@ -141,6 +141,29 @@ All three accept `--root` and `--profile NAME`. `install` also accepts `--dry-ru
 the generated script rather than by the command they invoke. A hook without that marker is
 never touched, whoever wrote it. A hook that loadout wrote for a different source in the same
 repository is left alone too. `--yes` skips the confirmation prompt.
+
+### Shell completions
+
+```sh
+loadout integrate completions install
+loadout integrate completions status
+loadout integrate completions uninstall --shell zsh
+```
+
+Completes subcommands and fixed-choice options for bash, zsh and fish. `--shell` defaults to the
+shell running loadout, then to `$SHELL`; when neither is one of the three, the command exits 2 and
+asks for `--shell`. The script is generated once, at install, so a TAB costs no Python start-up.
+
+| Shell | Installed at | Loaded by |
+| --- | --- | --- |
+| bash | `${BASH_COMPLETION_USER_DIR:-${XDG_DATA_HOME:-~/.local/share}/bash-completion}/completions/loadout` | bash-completion 2, on demand; otherwise `source` it from `~/.bashrc` |
+| zsh | `${XDG_DATA_HOME:-~/.local/share}/zsh/site-functions/_loadout` | `compinit`, once that directory is on `fpath` |
+| fish | `${XDG_CONFIG_HOME:-~/.config}/fish/completions/loadout.fish` | fish, automatically |
+
+Loadout never edits a shell startup file; `install` prints the one line to add where one is
+needed. `status` reports whether the script is installed and current, since an upgrade can add
+commands. `uninstall` removes only a script carrying loadout's marker, and installing over a file
+without it is refused.
 
 ## Exit codes
 

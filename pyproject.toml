@@ -9,6 +9,7 @@ description = "One source of truth for AI coding-agent configuration, rendered t
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "shtab>=1.12",
     "tomlkit>=0.15.1",
 ]
 license = "MIT"
