@@ -252,10 +252,30 @@ def _committed_variants(root: Path, profiles: Iterable[str]) -> dict[Path, set[s
         return _render_variants(Path(tmp_dir), profiles, rebase_to=root)
 
 
+@dataclass(frozen=True)
+class Unaccepted:
+    """A file on disk no baseline accounts for. `kind` is hand-edited when a commit or
+    a record says what loadout wrote there, and unknown when neither exists."""
+
+    path: Path
+    kind: str
+    actual: str
+    expected: str
+
+
 def _modified_outside_loadout(
     root: Path, outputs: Mapping[Path, Output], profile: str = "default"
 ) -> list[tuple[Path, str, str]]:
+    return [(u.path, u.actual, u.expected) for u in unaccepted_outputs(root, outputs, profile)]
+
+
+def unaccepted_outputs(
+    root: Path, outputs: Mapping[Path, Output], profile: str = "default"
+) -> list[Unaccepted]:
     """Files matching no output loadout itself could have written.
+
+    The one classifier behind both sync's refusal and check's drift kinds, so the
+    two cannot disagree about what counts as a hand edit.
 
     The accept set spans the committed source, the working source, every declared
     profile and the record of what sync last wrote, so an unsynced source edit, a
@@ -264,14 +284,19 @@ def _modified_outside_loadout(
     loadout did not write, and is refused rather than overwritten.
     """
     profiles = declared_profiles(root)
-    acceptable = _committed_variants(root, profiles)
+    committed = _committed_variants(root, profiles)
+    acceptable = {path: set(forms) for path, forms in committed.items()}
     for path, forms in _render_variants(root, profiles, rebase_to=root).items():
         acceptable.setdefault(path, set()).update(forms)
     # The third variant, and the only one that knows about a source state which was
     # never committed and has since moved on. See written.py and ADR 0019.
     written = read_written(root)
 
-    modified: list[tuple[Path, str, str]] = []
+    def unaccepted(path: Path, actual: str, expected: str) -> Unaccepted:
+        baseline = path in committed or written.get(path) is not None
+        return Unaccepted(path, "hand-edited" if baseline else "unknown", actual, expected)
+
+    modified: list[Unaccepted] = []
     artifacts = managed_paths(artifact_deployment_scopes(root, profile), outputs)
     for path, expected in outputs.items():
         if path in artifacts:
@@ -282,7 +307,9 @@ def _modified_outside_loadout(
                 and path.read_bytes() != expected.content
                 and not accepts_bytes(written.get(path), path.read_bytes())
             ):
-                modified.append((path, describe_file(path), f"{len(expected.content)} bytes\n"))
+                modified.append(
+                    unaccepted(path, describe_file(path), f"{len(expected.content)} bytes\n")
+                )
             continue
         if isinstance(expected, Copied):
             # A copied file has no per-profile form, so it is compared against its
@@ -295,7 +322,9 @@ def _modified_outside_loadout(
                 and not accepts_bytes(written.get(path), path.read_bytes())
             ):
                 modified.append(
-                    (path, describe_file(path), describe_file(expected.source, expected.prefix))
+                    unaccepted(
+                        path, describe_file(path), describe_file(expected.source, expected.prefix)
+                    )
                 )
             continue
         if isinstance(expected, Merged):
@@ -312,7 +341,7 @@ def _modified_outside_loadout(
         if normalise(path, actual) not in forms and not accepts_text(
             written.get(path), path, actual
         ):
-            modified.append((path, actual, expected))
+            modified.append(unaccepted(path, actual, expected))
     return modified
 
 
@@ -519,18 +548,47 @@ def _check_notes(root: Path, profile: str) -> list[str]:
     return notes
 
 
+DRIFT_ADVICE = {
+    "source-changed": "the source changed since the last sync; run `loadout sync`",
+    "missing": "not on disk; run `loadout sync`",
+    "hand-edited": "edited outside loadout; move the edit into the source, or run "
+    "`loadout sync --force` to discard it",
+    "unknown": "no record of what loadout wrote here and no committed baseline, so a source "
+    "change cannot be told from a hand edit; review the diff before syncing",
+}
+
+
+def drift_kinds(root: Path, profile: str, drift: list[tuple[Path, str, str]]) -> dict[Path, str]:
+    """Each drifted path's kind, from the guard's own verdict.
+
+    A merged output is outside the guard, which records owned keys but no hash, so
+    its drift is unknown rather than a guess.
+    """
+    outputs = render_all(root, profile)
+    verdicts = {u.path: u.kind for u in unaccepted_outputs(root, outputs, profile)}
+
+    def kind(path: Path) -> str:
+        if not path.exists():
+            return "missing"
+        if isinstance(outputs.get(path), Merged):
+            return "unknown"
+        return verdicts.get(path, "source-changed")
+
+    return {path: kind(path) for path, _, _ in drift}
+
+
 def _check_json(root: Path, profile: str) -> int:
-    """Each drifted path as an object, so a drift kind can join it once P-30 is ruled."""
     captured = io.StringIO()
     with contextlib.redirect_stdout(captured):
         drift = check_all(root, profile)
     notes = [line.removeprefix("note: ") for line in captured.getvalue().splitlines()]
     notes += _check_notes(root, profile)
+    kinds = drift_kinds(root, profile, drift)
     code = 1 if drift else 0
     result = {
         "status": "drift" if drift else "clean",
         "exit_code": code,
-        "drift": [{"path": str(path)} for path, _, _ in drift],
+        "drift": [{"path": str(path), "kind": kinds[path]} for path, _, _ in drift],
         "notes": notes,
     }
     print(json.dumps(result, indent=2))
@@ -546,32 +604,22 @@ def cmd_check(root: Path, profile: str = "default", *, as_json: bool = False) ->
     if not drift:
         print("generated files are up to date")
         return 0
+    # `check` used to end every drift with "run `loadout sync`" even where sync was
+    # about to refuse, sending the reader in a circle and teaching them --force. Ask
+    # the guard the same question sync will, and say which answer applies.
+    kinds = drift_kinds(root, profile, drift)
     for path, actual, expected in drift:
         rel = _display(path, root)
-        print(f"DRIFT: {rel}", file=sys.stderr)
+        print(f"DRIFT ({kinds[path]}): {rel}", file=sys.stderr)
         lines = list(diff_lines(rel, actual, expected, context=3))
         sys.stderr.writelines(lines[:DIFF_LIMIT])
         if len(lines) > DIFF_LIMIT:
             print(f"    ... {len(lines) - DIFF_LIMIT} more diff line(s)", file=sys.stderr)
-    # `check` used to end every drift with "run `loadout sync`" even where sync was
-    # about to refuse, sending the reader in a circle and teaching them --force. Ask
-    # the guard the same question sync will, and say which answer applies.
-    hand_edited = _modified_outside_loadout(root, render_all(root, profile), profile)
-    blocked = {path for path, _, _ in hand_edited}
-    if blocked:
-        for path in sorted(blocked):
-            print(f"MODIFIED OUTSIDE LOADOUT: {_display(path, root)}", file=sys.stderr)
-        print(
-            f"\n{len(drift)} generated file(s) out of sync. {len(blocked)} of them hold edits "
-            f"loadout did not write, and `loadout sync` will refuse rather than discard them — "
-            f"move those into the source, or run `loadout sync --force`.",
-            file=sys.stderr,
-        )
-        return 1
-    print(
-        f"\n{len(drift)} generated file(s) out of sync — run `loadout sync`.",
-        file=sys.stderr,
-    )
+    print(f"\n{len(drift)} generated file(s) out of sync:", file=sys.stderr)
+    for kind, advice in DRIFT_ADVICE.items():
+        count = sum(1 for value in kinds.values() if value == kind)
+        if count:
+            print(f"  {count} {kind}: {advice}.", file=sys.stderr)
     return 1
 
 

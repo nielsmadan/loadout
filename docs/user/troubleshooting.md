@@ -38,9 +38,12 @@ setup, then pass `--force` once.
 
 ## Check reports drift
 
-Edit the source, then run the matching `loadout sync`. Check again afterward.
+`check` labels each drifted file. `source-changed` and `missing` mean the source is ahead: run
+the matching `loadout sync`, then check again.
 
-If the output was edited directly, follow the protected-edits steps above. Repeatedly
+`hand-edited` means the file was edited directly; follow the protected-edits steps above.
+`unknown` means loadout has neither a record of what it wrote nor a committed baseline, so it cannot
+tell a source change from a hand edit: read the diff before syncing. Repeatedly
 overwriting generated files by hand makes the next sync undo those changes.
 
 ## No global configuration

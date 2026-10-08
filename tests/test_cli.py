@@ -726,7 +726,7 @@ def test_check_json_names_each_drifted_path_with_the_plain_exit_code(root: Path,
     result = json.loads(out)
     assert result["status"] == "drift"
     assert result["exit_code"] == 1
-    assert result["drift"] == [{"path": str(root / "out" / "shared.md")}]
+    assert result["drift"] == [{"path": str(root / "out" / "shared.md"), "kind": "hand-edited"}]
 
 
 def test_check_json_on_a_clean_tree_is_an_empty_result(root: Path, capsys) -> None:

@@ -37,7 +37,11 @@ configuration's selection; otherwise the default is `default`.
 keeps its modification time, prints `wrote <path>` for each one it changed, and ends with
 `N written, M unchanged`, or `Up to date.` when nothing changed. `check` compares them with the current source and reports
 drift without rewriting the generated files, so `check` is the preview of `sync`; there is no
-`sync --dry-run`. `check --json` exits with the same code as `check`. A root containing both
+`sync --dry-run`. Each drifted file carries a kind, judged by the same comparison `sync` uses to
+refuse an overwrite: `source-changed` (the source moved on; run `sync`), `hand-edited` (it differs
+from what sync last wrote; move the edit into the source, or `sync --force` to discard it),
+`unknown` (no record and no committed baseline to judge by; review the diff first) or `missing`.
+`check --json` reports the same kind per path and exits with the same code as `check`. A root containing both
 global and project configuration renders both scopes.
 
 JSON output (`init --json`, `check --json`) is not covered by a stability promise in 1.0.

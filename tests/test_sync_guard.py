@@ -466,3 +466,75 @@ def test_a_hand_installed_skill_beside_a_loadout_one_stays_visible_to_git(tmp_pa
     assert "?? .claude/skills/theirs/SKILL.md" in status
     assert ".claude/skills/mine/" not in status
     _git(tmp_path, "add", ".claude/skills/theirs")
+
+
+def _instruction_project(root: Path) -> Path:
+    (root / "loadout" / "instructions").mkdir(parents=True)
+    (root / "loadout" / "config.toml").write_text(
+        'harnesses = ["claude"]\ninstructions = ["main"]\n'
+    )
+    (root / "loadout" / "instructions" / "main.md").write_text("Shared rules.\n")
+    return root / "CLAUDE.md"
+
+
+def _drift(root: Path, capsys) -> tuple[str, str]:
+    assert loadout.main(["check", "--root", str(root), "--json"]) == 1
+    kinds = {Path(e["path"]).name: e["kind"] for e in json.loads(capsys.readouterr().out)["drift"]}
+    assert loadout.main(["check", "--root", str(root)]) == 1
+    return kinds["CLAUDE.md"], capsys.readouterr().err
+
+
+def test_check_calls_an_unsynced_source_edit_a_source_change(tmp_path: Path, capsys) -> None:
+    _instruction_project(tmp_path)
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
+    fragment = tmp_path / "loadout" / "instructions" / "main.md"
+    fragment.write_text("Shared rules.\nAnd one more.\n")
+    capsys.readouterr()
+
+    kind, err = _drift(tmp_path, capsys)
+
+    assert kind == "source-changed"
+    assert "DRIFT (source-changed): CLAUDE.md" in err
+    assert "the source changed since the last sync; run `loadout sync`" in err
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
+
+
+def test_check_tells_a_hand_edit_how_to_keep_it(tmp_path: Path, capsys) -> None:
+    output = _instruction_project(tmp_path)
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
+    output.write_text(output.read_text() + "my own line\n")
+    capsys.readouterr()
+
+    kind, err = _drift(tmp_path, capsys)
+
+    assert kind == "hand-edited"
+    assert "move the edit into the source, or run `loadout sync --force` to discard it" in err
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 1
+    assert output.read_text().endswith("my own line\n")
+
+
+def test_check_says_when_there_is_no_baseline_to_judge_by(tmp_path: Path, capsys) -> None:
+    output = _instruction_project(tmp_path)
+    output.write_text("written before loadout\n")
+    assert not _has_commit(tmp_path)
+    assert not written_state_path(tmp_path).is_file()
+
+    kind, err = _drift(tmp_path, capsys)
+
+    assert kind == "unknown"
+    assert "no record of what loadout wrote here and no committed baseline" in err
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 1
+
+
+def test_check_calls_an_absent_output_missing(tmp_path: Path, capsys) -> None:
+    output = _instruction_project(tmp_path)
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
+    output.unlink()
+    capsys.readouterr()
+
+    kind, err = _drift(tmp_path, capsys)
+
+    assert kind == "missing"
+    assert "DRIFT (missing): CLAUDE.md" in err
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
+    assert output.is_file()
