@@ -4,7 +4,7 @@ import json
 import os
 import shutil
 import tempfile
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -74,7 +74,7 @@ from .record import read_record, render_record
 from .resolve import INSTRUCTIONS, SETTINGS, json_slice, resolve_item
 from .servers import SERVERS_SOURCE, Server, parse_servers
 from .skill_policy import render_skill_for, selected_skill_agents
-from .skills import SKILL_DOCUMENT, Skill, discover_skills, render_skill
+from .skills import SKILL_DOCUMENT, Skill, discover_skills, loose_skill_files, render_skill
 from .sources import Source, select_overrides
 from .surgery import apply_json, apply_toml, concat_documents
 from .template_catalog import Catalog, contribution_paths, load_catalogs
@@ -702,12 +702,31 @@ def _unpermitted_servers(manifest: Manifest) -> tuple[Notice, ...]:
     )
 
 
+def _loose_skill_notices(skill_roots: Iterable[Path]) -> tuple[Notice, ...]:
+    return tuple(
+        Notice(
+            agent="all",
+            slice="skills",
+            message=f"{path} is not a skill and was skipped; a skill is skills/<name>/SKILL.md",
+        )
+        for skills_root in skill_roots
+        for path in loose_skill_files(skills_root)
+    )
+
+
 def collect_notices(root: Path, profile: str = "default") -> tuple[Notice, ...]:
     """Advisory findings about project setup and global slice fragments."""
     found: list[Notice] = list(project_notices(root, os.environ))
     if not manifest_path(root).is_file():
         return tuple(found)
     manifest = load_profile(root, profile)
+    found.extend(
+        _loose_skill_notices(
+            source.path / SKILLS_SUBDIR
+            for source in manifest.sources
+            if SKILLS_SUBDIR in source.use
+        )
+    )
     found.extend(_global_skill_race(manifest, os.environ))
     found.extend(_permission_notices(manifest, profile))
     found.extend(_unpermitted_servers(manifest))
@@ -755,6 +774,7 @@ def project_notices(root: Path, environ: Mapping[str, str]) -> tuple[Notice, ...
         return ()
     config = load_project_config(path)
     found: list[Notice] = []
+    found.extend(_loose_skill_notices((root / PROJECT_DIR / SKILLS_SUBDIR,)))
     templates = tuple(resolve_template(name, root).path for name in config.templates)
     catalogs = load_catalogs(templates)
     rules = _project_rules(root, config, catalogs)

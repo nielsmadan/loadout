@@ -299,3 +299,19 @@ def test_a_server_named_by_policy_says_nothing(tmp_path: Path, capsys) -> None:
 
     assert loadout.main(["check", "--root", str(root)]) == 0
     assert "mcp.servers" not in capsys.readouterr().out
+
+
+def test_a_loose_file_in_skills_gets_one_notice_and_a_readme_none(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    skills = project / "loadout" / "skills"
+    (skills / "README.md").write_text("# About these skills\n", encoding="utf-8")
+    (skills / "old-style.md").write_text("---\nname: old-style\n---\nbody\n", encoding="utf-8")
+
+    assert loadout.main(["sync", "--root", str(project), "--force"]) == 0
+
+    out = capsys.readouterr().out
+    assert out.count("is not a skill and was skipped") == 1
+    assert f"{skills / 'old-style.md'} is not a skill" in out
+    assert not (project / ".claude" / "skills" / "README").exists()
+    assert not (project / ".claude" / "skills" / "old-style").exists()

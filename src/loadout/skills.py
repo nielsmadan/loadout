@@ -101,8 +101,23 @@ def _supporting(root: Path, document: Path) -> tuple[Path, ...]:
     )
 
 
+def loose_skill_files(skills_root: Path) -> tuple[Path, ...]:
+    """Files directly in `skills/`, which are not skills: a skill is `<name>/SKILL.md`.
+
+    `README.md` documents the directory and dotfiles are tool litter, so neither is
+    worth a notice; anything else may be a skill written in the old flat form.
+    """
+    if not skills_root.is_dir():
+        return ()
+    return tuple(
+        entry
+        for entry in sorted(skills_root.iterdir())
+        if entry.is_file() and entry.name != "README.md" and not entry.name.startswith(".")
+    )
+
+
 def discover_skills(skills_root: Path) -> tuple[Skill, ...]:
-    """Every canonical or directory-form skill, with local variants winning."""
+    """Every `<name>/SKILL.md` skill, with a `<name>.local/` variant winning."""
     if not skills_root.is_dir():
         return ()
     public: dict[str, Skill] = {}
@@ -118,21 +133,6 @@ def discover_skills(skills_root: Path) -> tuple[Skill, ...]:
         name = entry.name.removesuffix(".local") if is_local else entry.name
         target = local if is_local else public
         target[name] = Skill(name, document, entry, _supporting(entry, document))
-
-    for document in sorted(skills_root.glob("*.md")):
-        is_local = document.name.endswith(".local.md")
-        name = (
-            document.name.removesuffix(".local.md")
-            if is_local
-            else document.name.removesuffix(".md")
-        )
-        support = skills_root / (name + ".local" if is_local else name)
-        target = local if is_local else public
-        if name in target:
-            raise LoadoutError(
-                f"{skills_root}: skill {name!r} has both a flat document and a directory SKILL.md"
-            )
-        target[name] = Skill(name, document, support, _supporting(support, document))
 
     return tuple((local.get(name) or public[name]) for name in sorted(public.keys() | local.keys()))
 

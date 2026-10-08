@@ -14,7 +14,7 @@ rules describe different operations.
 | native instruction `sources` with `merge = "concat"` | optional missing input contributes nothing | UTF-8 prose joins with blank lines | invalid UTF-8 fails with its input path |
 | global named fragments | search participating sources | source qualification selects exactly one item | duplicate unqualified names fail |
 | global skills/module files | collect offered items | whole item replacement through `source.overrides` | undeclared duplicate names/paths fail |
-| skill catalog variants | public skill targets configured consumers | `.local.md` and `.local/` replace the whole skill; `agents` narrows consumers | duplicate flat/directory forms fail |
+| skill catalog variants | public skill targets configured consumers | `<name>.local/` replaces the whole skill; `agents` narrows consumers | a loose file in `skills/` is not a skill and is reported |
 | skill frontmatter harness block | inherit shared keys | harness value replaces the shared value | all harness blocks are stripped after selection |
 | MCP server definitions | keep other servers | later source replaces the whole same-named server | source order determines the winner |
 | project template skills/MCP | keep other entries | later template, then project, replaces the whole named entry | project declarations supply the highest tier |

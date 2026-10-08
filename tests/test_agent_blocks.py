@@ -63,9 +63,9 @@ def test_an_empty_agent_block_still_renders_its_automatic_slices(tmp_path: Path)
 
 def test_skills_default_to_every_configured_agent(tmp_path: Path) -> None:
     root = build(tmp_path, "\n[claude]\n\n[droid]\n")
-    skills = root / "skills"
-    skills.mkdir()
-    (skills / "review.md").write_text("# Review\n", encoding="utf-8")
+    skill = root / "skills" / "review"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("# Review\n", encoding="utf-8")
 
     paths = rendered(root)
 
@@ -78,9 +78,9 @@ def test_a_global_skill_policy_selects_named_agents(tmp_path: Path) -> None:
         tmp_path,
         '\n[claude]\n\n[droid]\n\n[skills.review]\nagents = ["droid"]\n',
     )
-    skills = root / "skills"
-    skills.mkdir()
-    (skills / "review.md").write_text("# Review\n", encoding="utf-8")
+    skill = root / "skills" / "review"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("# Review\n", encoding="utf-8")
 
     paths = rendered(root)
 

@@ -626,15 +626,16 @@ keys belonging to its slices.
 
 ### Project skills
 
-Put each authored skill document directly in `loadout/skills/`:
+Give each skill its own directory in `loadout/skills/`, with supporting files beside it:
 
 ```text
-loadout/skills/review.md
+loadout/skills/review/SKILL.md
 loadout/skills/review/reference.md
 ```
 
-The matching directory is optional and holds supporting files. The directory form
-`loadout/skills/review/SKILL.md` remains supported for existing catalogs.
+That is the only skill form. A file directly in `loadout/skills/` is not a skill: `README.md`
+documents the directory and is skipped silently, and any other loose file is skipped with a notice
+from `sync` and `check`.
 
 A skill reaches every configured harness by default. Restrict one in `loadout/config.toml`:
 
@@ -643,8 +644,8 @@ A skill reaches every configured harness by default. Restrict one in `loadout/co
 agents = ["claude", "droid"]
 ```
 
-Use `review.local.md` and, when needed, `review.local/` for a private replacement of the complete
-`review` skill. Project scaffolding ignores both forms. A local replacement is not an overlay:
+Use `review.local/SKILL.md`, with its own supporting files, for a private replacement of the
+complete `review` skill. A local replacement is not an overlay:
 its document and supporting files replace the public variant together.
 
 Loadout renders `::: <harness>` sections and `:concept[…]` separately for each selected harness.

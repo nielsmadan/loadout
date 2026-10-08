@@ -732,8 +732,8 @@ class _PlanBuilder:
         )
         if document is None:
             raise LoadoutError("canonical skill migration requires SKILL.md")
-        source_document = Path("skills") / f"{name}{suffix}.md"
         source_support = Path("skills") / f"{name}{suffix}"
+        source_document = source_support / "SKILL.md"
         self.write(
             source_document,
             document.content,

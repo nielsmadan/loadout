@@ -47,7 +47,7 @@ files outside a known slice remain harness-owned and stay in place.
 | `mcp-permissions` | `loadout/permissions.local.toml` | `loadout/permissions.toml` | MCP policy from selected `permissions.toml` sources |
 | `mcp` | unsupported | `loadout/mcp.toml` | `mcp.toml` from selected sources |
 | `instructions` | unsupported | `loadout/config.toml` and `loadout/instructions/*.md` | manifest selection and `instructions/*.md` fragments |
-| `skills` | unsupported | supported for `claude`, `codex`, `droid`, `opencode`, `pi` via `loadout/skills/<name>.md` or `<name>/SKILL.md` | `skills/<name>.md` or `<name>/SKILL.md` from selected sources |
+| `skills` | unsupported | supported for `claude`, `codex`, `droid`, `opencode`, `pi` via `loadout/skills/<name>/SKILL.md` | `skills/<name>/SKILL.md` from selected sources |
 | `settings` | unsupported | unsupported | supported for `claude`, `droid`, `opencode` via `settings/<name>.json` fragments; Codex uses `defaults`; Pi unsupported |
 | `defaults` | unsupported | unsupported | Codex top-level and nested settings via `defaults/<name>.json` fragments |
 | `hooks` | unsupported | Droid via `loadout/hooks.json` | `hooks/<name>.json` fragments selected by agents offering hooks |
@@ -118,9 +118,9 @@ be derived from its package name. An OpenCode plugin's `.ts` file belongs here r
 `plugins`, which renders enablement OpenCode has no list for.
 
 Project instructions are named in `loadout/config.toml` and stored in
-`loadout/instructions/<name>.md`. Project skills use `loadout/skills/<name>.md` with optional
-supporting files under `loadout/skills/<name>/`; directory-form `<name>/SKILL.md` remains
-supported. `<name>.local.md` and `<name>.local/` replace the complete public skill privately.
+`loadout/instructions/<name>.md`. Project skills use `loadout/skills/<name>/SKILL.md` with
+supporting files beside it; that is the only form, and a loose file in `skills/` is not a skill.
+`<name>.local/SKILL.md` replaces the complete public skill privately.
 `[skills.<name>] agents = [...]` narrows the default set of configured consumers. Templates are
 declared by name; use `loadout template add <name> --tracked`, `--vendored`, or
 `template sync <name>` when that command exactly expresses the request.

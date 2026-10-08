@@ -74,8 +74,11 @@ def test_nested_instructions_and_program_dependency_layout(tmp_path: Path) -> No
         "config.toml",
         "permissions.toml",
         "main.md",
-        "a.md",
     }
+    source = tmp_path / "loadout"
+    written = {w.path.relative_to(source).as_posix() for w in plan.source_writes}
+    assert {"skills/a/SKILL.md", "skills/a/scripts/check.sh"} <= written
+    assert not any(path.count("/") == 1 and path.startswith("skills/") for path in written)
 
 
 def test_project_init_leaves_commands_and_agents_in_place(tmp_path: Path) -> None:

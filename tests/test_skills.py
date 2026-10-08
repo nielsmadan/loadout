@@ -12,12 +12,14 @@ from pathlib import Path
 
 import pytest
 
+from loadout.emit import Copied, render_all
 from loadout.errors import LoadoutError
 from loadout.skills import (
     BANNER,
     apply_body,
     apply_frontmatter,
     discover_skills,
+    loose_skill_files,
     render_skill,
     split_frontmatter,
 )
@@ -81,41 +83,28 @@ def test_supporting_files_are_found_and_sorted(tmp_path: Path) -> None:
     )
 
 
-def test_a_flat_document_and_sibling_support_directory_form_one_skill(tmp_path: Path) -> None:
-    (tmp_path / "pdf.md").write_text(PLAIN, encoding="utf-8")
-    support = tmp_path / "pdf" / "scripts"
-    support.mkdir(parents=True)
-    (support / "run.py").write_text("print()", encoding="utf-8")
+def test_a_file_directly_in_skills_is_not_a_skill(tmp_path: Path) -> None:
+    """The flat form is gone: a skill is `<name>/SKILL.md`. A README documents the
+    directory, so only the other loose file is reported."""
+    _write(tmp_path, "doc", PLAIN)
+    (tmp_path / "README.md").write_text("# About these skills\n", encoding="utf-8")
+    (tmp_path / "review.md").write_text(PLAIN, encoding="utf-8")
 
-    (skill,) = discover_skills(tmp_path)
-
-    assert skill.name == "pdf"
-    assert skill.document == tmp_path / "pdf.md"
-    assert skill.supporting_root == tmp_path / "pdf"
-    assert skill.supporting == (Path("scripts/run.py"),)
+    assert [skill.name for skill in discover_skills(tmp_path)] == ["doc"]
+    assert loose_skill_files(tmp_path) == (tmp_path / "review.md",)
 
 
-def test_a_local_document_and_tree_replace_the_public_skill(tmp_path: Path) -> None:
-    (tmp_path / "review.md").write_text("public\n", encoding="utf-8")
-    (tmp_path / "review").mkdir()
-    (tmp_path / "review" / "public.txt").write_text("public\n", encoding="utf-8")
-    (tmp_path / "review.local.md").write_text("local\n", encoding="utf-8")
-    (tmp_path / "review.local").mkdir()
-    (tmp_path / "review.local" / "private.txt").write_text("private\n", encoding="utf-8")
+def test_a_local_tree_replaces_the_public_skill(tmp_path: Path) -> None:
+    public = _write(tmp_path, "review", "public\n")
+    (public / "public.txt").write_text("public\n", encoding="utf-8")
+    local = _write(tmp_path, "review.local", "local\n")
+    (local / "private.txt").write_text("private\n", encoding="utf-8")
 
     (skill,) = discover_skills(tmp_path)
 
     assert skill.name == "review"
-    assert skill.document == tmp_path / "review.local.md"
+    assert skill.document == local / "SKILL.md"
     assert skill.supporting == (Path("private.txt"),)
-
-
-def test_flat_and_directory_documents_for_one_variant_are_ambiguous(tmp_path: Path) -> None:
-    (tmp_path / "review.md").write_text("flat\n", encoding="utf-8")
-    _write(tmp_path, "review", "directory\n")
-
-    with pytest.raises(LoadoutError, match="both a flat document"):
-        discover_skills(tmp_path)
 
 
 def test_build_artifacts_are_not_skill_content(tmp_path: Path) -> None:
@@ -210,3 +199,45 @@ def test_split_frontmatter_reports_absence_rather_than_guessing() -> None:
 def test_unclosed_frontmatter_is_refused() -> None:
     with pytest.raises(LoadoutError, match="never closed"):
         split_frontmatter("---\nname: x\n")
+
+
+def test_a_directory_form_source_renders_every_skill_and_file_unchanged(
+    tmp_path: Path, fake_home: Path
+) -> None:
+    """The regression guard for the form every real source uses: skill documents
+    come back as source plus banner, supporting files byte for byte with their
+    modes, at the same paths before and after the flat form was dropped."""
+    source = tmp_path / "source"
+    skills = source / "skills"
+    _write(skills, "doc", PLAIN)
+    tool = _write(skills, "tool", PLAIN.replace("name: doc", "name: tool"))
+    (tool / "scripts").mkdir()
+    (tool / "scripts" / "run.sh").write_text("#!/bin/sh\necho run\n", encoding="utf-8")
+    (tool / "scripts" / "run.sh").chmod(0o755)
+    (tool / "references" / "deep").mkdir(parents=True)
+    (tool / "references" / "deep" / "notes.md").write_text("notes\n", encoding="utf-8")
+    _write(skills, "doc.local", PLAIN.replace("Body text", "Local body text"))
+    (source / "permissions.toml").write_text("", encoding="utf-8")
+    (source / "loadout.toml").write_text(
+        '[[source]]\nname = "s"\npath = "."\nuse = ["skills", "permissions"]\n\n[claude]\n',
+        encoding="utf-8",
+    )
+
+    outputs = render_all(source)
+
+    destination = fake_home / ".claude" / "skills"
+    skill_outputs = {p: c for p, c in outputs.items() if p.is_relative_to(destination)}
+    assert set(skill_outputs) == {
+        destination / "doc" / "SKILL.md",
+        destination / "tool" / "SKILL.md",
+        destination / "tool" / "scripts" / "run.sh",
+        destination / "tool" / "references" / "deep" / "notes.md",
+    }
+    banner = BANNER.format(name="doc")
+    assert skill_outputs[destination / "doc" / "SKILL.md"] == PLAIN.replace(
+        "Body text", "Local body text"
+    ).replace("---\n\n# Doc", f"---\n\n{banner}\n\n# Doc", 1)
+    script = skill_outputs[destination / "tool" / "scripts" / "run.sh"]
+    assert isinstance(script, Copied)
+    assert script.read_bytes() == b"#!/bin/sh\necho run\n"
+    assert script.file_mode() & 0o111

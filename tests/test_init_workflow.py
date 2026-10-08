@@ -699,3 +699,21 @@ def test_project_init_ignores_the_adopted_skill_folder_not_the_directory(tmp_pat
     ignored = (tmp_path / ".gitignore").read_text().splitlines()
     assert "/.claude/skills/local/" in ignored
     assert "/.claude/skills" not in ignored
+
+
+def test_global_init_writes_every_skill_in_directory_form(tmp_path, fake_home):
+    _repo(tmp_path)
+    skills = fake_home / ".claude" / "skills"
+    (skills / "review").mkdir(parents=True)
+    (skills / "review" / "SKILL.md").write_text("---\nname: review\ndescription: r\n---\nbody\n")
+    (skills / "deploy" / "scripts").mkdir(parents=True)
+    (skills / "deploy" / "SKILL.md").write_text("---\nname: deploy\ndescription: d\n---\nbody\n")
+    (skills / "deploy" / "scripts" / "ship.sh").write_text("#!/bin/sh\n")
+
+    assert loadout.main(["init", "global", str(tmp_path), "--harness", "claude", "--yes"]) == 0
+
+    source = tmp_path / "loadout" / "skills"
+    assert (source / "review" / "SKILL.md").is_file()
+    assert (source / "deploy" / "SKILL.md").is_file()
+    assert (source / "deploy" / "scripts" / "ship.sh").is_file()
+    assert sorted(p.name for p in source.iterdir() if p.is_file()) == []

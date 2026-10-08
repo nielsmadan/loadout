@@ -436,14 +436,14 @@ native projects both route Codex through `.agents/skills`.
 Loadout authors project skills in one canonical catalog:
 
 ```text
-loadout/skills/review.md
+loadout/skills/review/SKILL.md
 loadout/skills/review/reference.md
 ```
 
-The matching directory holds optional supporting files. Existing
-`loadout/skills/review/SKILL.md` trees remain valid. A skill targets every configured harness by
-default; `[skills.review] agents = ["claude", "droid"]` restricts it. A private
-`review.local.md` plus optional `review.local/` directory replaces the complete public skill.
+`<name>/SKILL.md` is the only skill form; supporting files sit beside it. A loose file directly
+in `skills/` is not a skill — `README.md` silently, anything else with a notice. A skill targets
+every configured harness by default; `[skills.review] agents = ["claude", "droid"]` restricts it.
+A private `review.local/SKILL.md` tree replaces the complete public skill.
 The same forms apply to global source catalogs without the `loadout/` prefix.
 
 Codex, OpenCode, and Pi can share `.agents/skills` only when their rendered documents are

@@ -46,6 +46,14 @@ the matching `loadout sync`, then check again.
 tell a source change from a hand edit: read the diff before syncing. Repeatedly
 overwriting generated files by hand makes the next sync undo those changes.
 
+## A skill named README, or a skill that stopped updating
+
+A skill is `skills/<name>/SKILL.md`. Older versions also read every `skills/*.md` file as a skill,
+so a `skills/README.md` rendered as a skill named `README`. Loadout no longer renders those files,
+but it does not delete skill folders it wrote earlier. Remove a stale one by hand, for example
+`~/.claude/skills/README/`. A skill you kept as `skills/<name>.md` must move to
+`skills/<name>/SKILL.md`; `sync` and `check` name any loose file they skip.
+
 ## No global configuration
 
 Run:
