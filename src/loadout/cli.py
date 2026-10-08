@@ -293,11 +293,6 @@ def _add_init_global(parser: argparse.ArgumentParser) -> None:
         choices=("keep", "replace"),
         help="resolve a conflicting global machine registration",
     )
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help="alias for --registration replace; never resolves source conflicts",
-    )
     _add_init_choices(parser)
 
 
@@ -315,8 +310,6 @@ def _dispatch_init(args: argparse.Namespace) -> int:
             args.journal, recover=args.init_command == "recover", yes=args.yes, as_json=args.json
         )
     if args.init_command == "global":
-        if args.force and args.registration == "keep":
-            raise UsageError("--force conflicts with --registration keep")
         source = (
             args.source.expanduser().absolute()
             if args.source
@@ -330,7 +323,7 @@ def _dispatch_init(args: argparse.Namespace) -> int:
                 agents=tuple(args.harnesses or ()),
                 mappings=tuple(parse_mapping(value) for value in args.mapping),
                 selections=tuple(parse_selection(value) for value in args.select_source),
-                registration="replace" if args.force else args.registration,
+                registration=args.registration,
                 dry_run=args.dry_run,
                 json=args.json,
                 yes=args.yes,

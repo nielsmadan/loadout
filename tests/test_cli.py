@@ -639,6 +639,13 @@ def test_init_global_rejects_project_only_flags(tmp_path: Path, capsys) -> None:
     assert "unrecognized arguments: --root" in capsys.readouterr().err
 
 
+def test_init_global_takes_no_force_flag(tmp_path: Path, capsys) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        loadout.main(["init", "global", "--force"])
+    assert exit_info.value.code == 2
+    assert "unrecognized arguments: --force" in capsys.readouterr().err
+
+
 def test_init_project_no_longer_takes_a_starter(tmp_path: Path, capsys) -> None:
     with pytest.raises(SystemExit) as exit_info:
         loadout.main(

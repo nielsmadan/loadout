@@ -52,11 +52,10 @@ loadout init global --source ~/agent-config
 | `--harness NAME` | `init project`, `init global` | Select a harness; repeat for several |
 | `--root PATH` | `init project` | Project directory to initialise |
 | `--source PATH` | `init global` | Existing global source, or directory in which to scaffold a new one |
-| `--force` | `init global` | With a conflicting registration, alias for `--registration replace` |
 
 Scope is a subcommand: `init project` for a repository, `init global` for machine-wide
 configuration. `--source` on `init global` defaults to the current directory, so a bare
-`init global` adopts the cwd. `--root` exists only on `init project`; `--registration keep|replace` and `--force` only on `init global`. An
+`init global` adopts the cwd. `--root` exists only on `init project`; `--registration keep|replace` only on `init global`. An
 interrupted migration is resumed or recovered with `loadout init resume <journal> --yes` or
 `loadout init recover <journal> --yes`.
 

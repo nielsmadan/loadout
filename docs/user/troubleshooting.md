@@ -55,7 +55,7 @@ Then configure the created source as described in [global setup](guides/global.m
 A project-only setup does not require global configuration.
 
 If a machine configuration already exists, inspect its `source` path first.
-`loadout init global --force` is for deliberately replacing that machine selection.
+`loadout init global --registration replace` is for deliberately replacing that machine selection.
 
 ## No targets declared after global initialisation
 

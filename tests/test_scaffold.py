@@ -265,7 +265,7 @@ def test_init_global_refuses_when_a_machine_config_exists(tmp_path: Path) -> Non
 
     message = str(excinfo.value)
     assert str(config_path) in message
-    assert "--force" in message
+    assert "--registration replace" in message
 
 
 def test_init_global_force_overwrites(tmp_path: Path) -> None:

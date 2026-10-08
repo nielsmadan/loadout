@@ -218,7 +218,7 @@ def init_global(source_parent: Path, config_path: Path, force: bool = False) -> 
     if config_path.exists() and not force:
         raise LoadoutError(
             f"{config_path} already exists; this machine is already initialised for "
-            f"global scope. Pass --force to reinitialise it."
+            f"global scope. Pass --registration replace to reinitialise it."
         )
 
     root_manifest = source_parent / MANIFEST_NAME

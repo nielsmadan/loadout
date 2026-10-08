@@ -65,8 +65,8 @@ source and outputs, safely retires mapped originals and stages the result. It do
 final migration. Git identity/signing/hook failures need repair, never bypasses.
 
 Global registration points `source` to the actual manifest directory. A conflicting registration
-requires `--registration replace` or `--registration keep`; `--force` is the legacy spelling of
-replace and does not resolve source-copy conflicts. Existing initialized sources are recognized
+requires `--registration replace` or `--registration keep`; neither resolves source-copy
+conflicts. Existing initialized sources are recognized
 and left as source; repeat init reports no migration. Registration can still be explicitly changed.
 Use normal check/sync for subsequent source edits.
 

@@ -143,7 +143,7 @@ harness list. That list becomes the default for fresh project init. An existing 
 is recognized as source and left intact; repeat init reports no migration while refreshing the
 saved harness default.
 A conflicting machine registration requires `--registration replace` or `--registration keep`.
-`--force` remains an alias for registration replacement only. `--yes` approves resolved operations;
+`--yes` approves resolved operations;
 it never chooses between conflicting sources.
 
 Use `--mapping` and `--select-source` JSON arguments for unusual layouts or duplicate copies.

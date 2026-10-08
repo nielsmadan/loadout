@@ -182,6 +182,21 @@ def test_matching_registration_keep_preserves_harness_defaults(tmp_path, monkeyp
     assert tomllib.loads(machine.read_text(encoding="utf-8"))["harnesses"] == ["claude"]
 
 
+def test_a_conflicting_registration_names_the_flag_that_replaces_it(tmp_path, capsys):
+    """The refusal users follow, so the flag it names has to exist."""
+    _repo(tmp_path)
+    init = ["init", "global", "--source", str(tmp_path), "--harness", "claude", "--yes"]
+    assert loadout.main(init) == 0
+    machine_config_path().write_text('source = "/different"\n')
+    capsys.readouterr()
+
+    assert loadout.main(init) == 2
+
+    assert "--registration replace" in capsys.readouterr().err
+    assert loadout.main([*init, "--registration", "replace"]) == 0
+    assert tomllib.loads(machine_config_path().read_text())["source"] == str(tmp_path / "loadout")
+
+
 def test_global_copy_conflict_requires_selection_even_with_yes(tmp_path, fake_home, capsys):
     _repo(tmp_path)
     live = fake_home / ".claude"
