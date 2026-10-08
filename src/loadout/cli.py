@@ -30,6 +30,7 @@ from .git_hooks import EVENTS, install_hooks, status_hooks, uninstall_hooks
 from .init_options import InitOptions, parse_mapping, parse_selection
 from .init_workflow import run_init, run_recovery
 from .machine import load_machine_config, machine_config_path
+from .project import project_config_path
 from .staged import check_staged
 
 
@@ -59,8 +60,17 @@ def build_parser() -> argparse.ArgumentParser:
             )
 
     for name, help_text in (
-        ("sync", "regenerate every generated file; preview with `loadout check`"),
-        ("check", "exit 1 if any generated file has drifted"),
+        (
+            "sync",
+            (
+                "regenerate a project's generated files, or this machine's with --global; "
+                "preview with `loadout check`"
+            ),
+        ),
+        (
+            "check",
+            "exit 1 if a project's generated files, or this machine's with --global, have drifted",
+        ),
     ):
         sub = subparsers.add_parser(name, help=help_text, description=help_text)
         add_root(sub, allow_global=True)
@@ -141,7 +151,8 @@ def build_parser() -> argparse.ArgumentParser:
         "integrate", help="wire loadout into another system so it runs automatically"
     )
     integrate_subparsers = integrate.add_subparsers(dest="integrate_command")
-    _add_skill(integrate_subparsers.add_parser("skill", help="manage the bundled loadout skill"))
+    skill_help = "manage the bundled loadout skill in this machine's global source"
+    _add_skill(integrate_subparsers.add_parser("skill", help=skill_help, description=skill_help))
     _add_git_hooks(
         integrate_subparsers.add_parser(
             "git-hooks", help="optional repository-local Git integration"
@@ -266,8 +277,16 @@ def _resolve_global(profile: str | None) -> tuple[Path, str]:
     return config.source, profile or config.profile or "default"
 
 
+TEMPLATE_OUTSIDE_PROJECT = (
+    "template commands manage a project's templates; to author one, create "
+    "`templates/<name>/` in your global source."
+)
+
+
 def _dispatch_template(args: argparse.Namespace) -> int:
     root = args.root.resolve()
+    if not project_config_path(root).is_file():
+        raise LoadoutError(TEMPLATE_OUTSIDE_PROJECT)
     if args.template_command == "list":
         return cmd_template_list(root)
     if args.template_command == "add":

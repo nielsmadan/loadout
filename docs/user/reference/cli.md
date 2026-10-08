@@ -98,7 +98,8 @@ loadout template sync python
 loadout template list
 ```
 
-All four accept `--root PATH`.
+All four accept `--root PATH` and work on a project. Outside one they exit 3: templates are
+applied to projects and authored as `templates/<name>/` in your global source.
 
 | Command | Result |
 | --- | --- |

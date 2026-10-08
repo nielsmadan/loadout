@@ -756,4 +756,32 @@ def test_check_json_is_not_offered_with_staged(root: Path, capsys) -> None:
 def test_sync_help_points_at_check_as_its_preview(capsys) -> None:
     with pytest.raises(SystemExit):
         loadout.main(["sync", "--help"])
-    assert "preview with `loadout check`" in capsys.readouterr().out
+    assert "preview with `loadout check`" in " ".join(capsys.readouterr().out.split())
+
+
+def _help(capsys, *command: str) -> str:
+    with pytest.raises(SystemExit):
+        loadout.main([*command, "--help"])
+    return " ".join(capsys.readouterr().out.split())
+
+
+@pytest.mark.parametrize("command", ["sync", "check"])
+def test_sync_and_check_help_name_both_scopes(command: str, capsys) -> None:
+    assert "a project's generated files, or this machine's with --global" in _help(capsys, command)
+
+
+def test_integrate_skill_help_names_the_global_source(capsys) -> None:
+    assert "in this machine's global source" in _help(capsys, "integrate", "skill")
+
+
+def test_a_template_command_outside_a_project_says_where_templates_are_authored(
+    tmp_path: Path, capsys
+) -> None:
+    (tmp_path / "loadout.toml").write_text('[[source]]\nname = "s"\npath = "."\n')
+
+    assert loadout.main(["template", "list", "--root", str(tmp_path)]) == 3
+
+    assert capsys.readouterr().err.strip() == (
+        "loadout: template commands manage a project's templates; to author one, create "
+        "`templates/<name>/` in your global source."
+    )
