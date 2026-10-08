@@ -234,19 +234,20 @@ def test_a_vendored_copy_resolves_with_no_machine_config_at_all(tmp_path: Path) 
     assert resolve_template("web", tmp_path).path == vendored
 
 
-def test_an_unresolvable_template_names_every_place_searched(
+def test_an_unresolvable_template_names_every_template_that_resolves(
     tmp_path: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    source = _global_source(fake_home, monkeypatch, "flutter")
+    _global_source(fake_home, monkeypatch, "flutter")
     with pytest.raises(LoadoutError) as error:
         resolve_template("web", tmp_path)
-    message = str(error.value)
-    assert str(vendored_path(tmp_path, "web")) in message
-    assert str(source / "loadout" / "templates" / "web") in message
+    assert str(error.value) == (
+        "template 'web' not found. Available: backend, flutter, frontend. "
+        "Run 'loadout template add' to choose."
+    )
 
 
 def test_no_machine_config_says_so_rather_than_reporting_no_sources(tmp_path: Path) -> None:
-    with pytest.raises(LoadoutError, match="no machine config"):
+    with pytest.raises(LoadoutError, match="No global source is configured"):
         resolve_template("web", tmp_path)
 
 
@@ -259,7 +260,7 @@ def test_a_source_offering_no_templates_is_left_out_of_the_search(
         "[claude]\ninstructions = []\n",
         encoding="utf-8",
     )
-    with pytest.raises(LoadoutError, match="no source offers templates"):
+    with pytest.raises(LoadoutError, match=r"Available: backend, frontend\."):
         resolve_template("web", tmp_path)
 
 

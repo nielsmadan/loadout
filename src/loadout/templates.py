@@ -19,7 +19,7 @@ from pathlib import Path
 
 import tomlkit
 
-from .bundled_templates import BUNDLED, bundled_template
+from .bundled_templates import BUNDLED, STARTERS, bundled_template
 from .errors import LoadoutError
 from .machine import load_machine_config, machine_config_path
 from .manifest import load_manifest, manifest_path
@@ -95,6 +95,14 @@ def vendored_path(root: Path, name: str) -> Path:
     return manifest if manifest.exists() else directory
 
 
+class TemplateNotFound(LoadoutError):
+    """No vendored copy, source or bundled template answers to the name."""
+
+
+class NoGlobalSource(LoadoutError):
+    """No machine config, so no declared source can offer a template."""
+
+
 def declared_sources(config_path: Path | None = None) -> tuple[Source, ...]:
     """Every source the machine's global manifest declares that offers templates.
 
@@ -106,9 +114,9 @@ def declared_sources(config_path: Path | None = None) -> tuple[Source, ...]:
     path = machine_config_path() if config_path is None else config_path
     machine = load_machine_config(path)
     if machine is None:
-        raise LoadoutError(
-            f"no machine config at {path}, so a declared template has nowhere to "
-            f"resolve from; run `loadout init global`, or vendor the template"
+        raise NoGlobalSource(
+            f"no machine config at {path}, so a declared template has nowhere to resolve from; "
+            f"run `loadout init global`"
         )
     manifest = load_manifest(manifest_path(machine.source))
     sources = tuple(s for s in manifest.sources if TEMPLATES.use in s.use)
@@ -129,8 +137,50 @@ def resolve_template(name: str, root: Path, config_path: Path | None = None) -> 
 
     try:
         return resolve_upstream_template(name, config_path)
-    except LoadoutError as error:
-        raise LoadoutError(f"{error} Vendored path: {local}.") from error
+    except (TemplateNotFound, NoGlobalSource) as error:
+        configured = not isinstance(error, NoGlobalSource)
+        raise LoadoutError(_not_found(name, root, configured=configured)) from error
+
+
+def source_template_names(source: Source) -> tuple[str, ...]:
+    """Templates a source's `templates/` directory can resolve by name."""
+    templates_dir = source.path / TEMPLATES_SUBDIR
+    if not templates_dir.is_dir():
+        return ()
+    names: list[str] = []
+    for entry in sorted(templates_dir.iterdir()):
+        if entry.name in PART_DIRECTORIES and entry.is_dir():
+            continue
+        if entry.is_file() and entry.suffix == ".toml":
+            try:
+                load_catalog(entry)
+            except LoadoutError:
+                continue
+            names.append(entry.name.removesuffix(".toml"))
+        elif entry.is_dir():
+            names.append(entry.name)
+    return tuple(dict.fromkeys(names))
+
+
+def _resolvable_names(root: Path) -> list[str]:
+    try:
+        sources = declared_sources()
+    except LoadoutError:
+        sources = ()
+    offered = {name for source in sources for name in source_template_names(source)}
+    return sorted(offered | set(vendored_names(root)) | set(STARTERS))
+
+
+def _not_found(name: str, root: Path, *, configured: bool) -> str:
+    names = _resolvable_names(root)
+    sentences = [f"template {name!r} not found."]
+    if not configured:
+        sentences.append(
+            "No global source is configured, so only vendored and bundled templates resolve."
+        )
+    sentences.append(f"Available: {', '.join(names)}.")
+    sentences.append("Run 'loadout template add' to choose.")
+    return " ".join(sentences)
 
 
 def resolve_upstream_template(name: str, config_path: Path | None = None) -> ResolvedItem:
@@ -171,7 +221,7 @@ def resolve_upstream_template(name: str, config_path: Path | None = None) -> Res
         return hits[0]
     if bundled is not None:
         return _bundled_template(name, bundled)
-    raise LoadoutError(
+    raise TemplateNotFound(
         f"templates not found: {name!r}. Searched {', '.join(searched) or '(no source offers templates)'}."
     )
 

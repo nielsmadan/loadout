@@ -12,41 +12,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .errors import LoadoutError
-from .sources import Source
-from .template_catalog import load_catalog
-from .templates import (
-    PART_DIRECTORIES,
-    TEMPLATES_SUBDIR,
-    VENDORED,
-    declared_sources,
-    vendored_names,
-)
+from .templates import VENDORED, declared_sources, source_template_names, vendored_names
 
 
 @dataclass(frozen=True)
 class AvailableTemplate:
     name: str
     source: str
-
-
-def _source_names(source: Source) -> tuple[str, ...]:
-    """Templates a source's `templates/` directory can resolve by name."""
-    templates_dir = source.path / TEMPLATES_SUBDIR
-    if not templates_dir.is_dir():
-        return ()
-    names: list[str] = []
-    for entry in sorted(templates_dir.iterdir()):
-        if entry.name in PART_DIRECTORIES and entry.is_dir():
-            continue
-        if entry.is_file() and entry.suffix == ".toml":
-            try:
-                load_catalog(entry)
-            except LoadoutError:
-                continue
-            names.append(entry.name.removesuffix(".toml"))
-        elif entry.is_dir():
-            names.append(entry.name)
-    return tuple(dict.fromkeys(names))
 
 
 def available_templates(root: Path) -> tuple[AvailableTemplate, ...]:
@@ -66,7 +38,7 @@ def available_templates(root: Path) -> tuple[AvailableTemplate, ...]:
         # No machine config means only vendored copies can resolve.
         declared = ()
     for source in declared:
-        for name in _source_names(source):
+        for name in source_template_names(source):
             if name in seen:
                 continue
             options.append(AvailableTemplate(name, source.name))

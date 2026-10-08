@@ -356,7 +356,7 @@ def test_a_template_carrying_no_permissions_is_not_an_error(bare_project: Path) 
 
 def test_an_unresolvable_template_fails_the_render(bare_project: Path) -> None:
     _declare(bare_project, "missing")
-    with pytest.raises(LoadoutError, match="no machine config"):
+    with pytest.raises(LoadoutError, match="No global source is configured"):
         render_project(bare_project)
 
 

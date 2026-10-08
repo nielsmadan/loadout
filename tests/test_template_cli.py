@@ -496,3 +496,30 @@ def test_template_add_refuses_an_unloadable_global_source_before_mutation(
 
     assert project_config_path(tmp_path).read_bytes() == before
     assert not vendored_path(tmp_path, "frontend").exists()
+
+
+def test_an_unknown_template_names_every_one_that_resolves(
+    bare_project: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    _upstream(fake_home, monkeypatch, "company", '[shell]\nallow = ["x"]\n')
+
+    assert main(["template", "add", "nosuch", "--vendored", "--root", str(bare_project)]) == 3
+
+    assert capsys.readouterr().err.strip() == (
+        "loadout: template 'nosuch' not found. Available: backend, company, frontend. "
+        "Run 'loadout template add' to choose."
+    )
+
+
+def test_without_a_global_source_the_message_says_so(
+    bare_project: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(fake_home / "no-config"))
+
+    assert main(["template", "add", "nosuch", "--vendored", "--root", str(bare_project)]) == 3
+
+    message = capsys.readouterr().err
+    assert (
+        "No global source is configured, so only vendored and bundled templates resolve." in message
+    )
+    assert "Available: backend, frontend." in message
