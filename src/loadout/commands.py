@@ -379,10 +379,24 @@ def cmd_sync(root: Path, profile: str = "default", force: bool = False) -> int:
     for path in written:
         action = "wrote" if path.exists() else "retired"
         print(f"{action} {_display(path, root)}")
+    print(_sync_summary(outputs, written))
     if ignored:
         print(f"added {ignored} entries to .gitignore")
     _report_notices(root, profile)
     return 0
+
+
+def _sync_summary(outputs: Mapping[Path, Output], written: list[Path]) -> str:
+    paths = set(outputs) | {
+        record
+        for content in outputs.values()
+        if isinstance(content, Merged)
+        for record, _ in content.records
+    }
+    changed = sum(1 for path in written if path in paths)
+    if not changed:
+        return "Up to date."
+    return f"{changed} written, {len(paths) - changed} unchanged"
 
 
 def deploy(

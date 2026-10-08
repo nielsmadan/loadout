@@ -1381,6 +1381,8 @@ def write_outputs(
     for path in deployment.detached:
         print(f"note: detached deployment retained for explicit cleanup: {path}")
     for path, frozen_content in frozen.items():
+        if _unchanged(path, frozen_content):
+            continue
         path.parent.mkdir(parents=True, exist_ok=True)
         if isinstance(frozen_content, FrozenFile):
             _atomic_frozen_copy(path, frozen_content.content, frozen_content.mode)
@@ -1388,6 +1390,18 @@ def write_outputs(
             atomic_write(path, frozen_content)
         written.append(path)
     return written
+
+
+def _unchanged(path: Path, content: str | FrozenFile) -> bool:
+    """Same bytes already there, so rewriting would only move the mtime."""
+    if not path.is_file():
+        return False
+    if isinstance(content, FrozenFile):
+        return (
+            path.read_bytes() == content.content
+            and path.stat().st_mode & 0o7777 == content.mode & 0o7777
+        )
+    return path.read_bytes() == content.encode("utf-8")
 
 
 def check_all(root: Path, profile: str = "default") -> list[tuple[Path, str, str]]:

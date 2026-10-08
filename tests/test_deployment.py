@@ -106,3 +106,38 @@ def test_mcp_json_is_written_and_ignored_only_once_there_is_a_source(tmp_path: P
     assert cli(tmp_path, "sync") == 0
     assert "docs-mcp" in (tmp_path / ".mcp.json").read_text(encoding="utf-8")
     assert "/.mcp.json" in (tmp_path / ".gitignore").read_text(encoding="utf-8").splitlines()
+
+
+def _outputs(root: Path) -> dict[Path, int]:
+    return {
+        path: path.stat().st_mtime_ns
+        for path in root.rglob("*")
+        if path.is_file() and "loadout" not in path.relative_to(root).parts[:1]
+    }
+
+
+def test_a_sync_with_nothing_to_change_rewrites_nothing(tmp_path: Path, capsys) -> None:
+    _preset_project(tmp_path, '"claude", "codex"')
+    assert cli(tmp_path, "sync") == 0
+    before = _outputs(tmp_path)
+    capsys.readouterr()
+
+    assert cli(tmp_path, "sync") == 0
+
+    assert capsys.readouterr().out.splitlines() == ["Up to date."]
+    assert len(before) > 3
+    assert _outputs(tmp_path) == before
+
+
+def test_a_one_line_source_change_writes_exactly_one_file(tmp_path: Path, capsys) -> None:
+    _preset_project(tmp_path, '"claude"')
+    assert cli(tmp_path, "sync") == 0
+    fragment = tmp_path / "loadout" / "instructions" / "main.md"
+    fragment.write_text(fragment.read_text(encoding="utf-8") + "One more rule.\n")
+    capsys.readouterr()
+
+    assert cli(tmp_path, "sync") == 0
+
+    lines = capsys.readouterr().out.splitlines()
+    assert [line for line in lines if line.startswith("wrote ")] == ["wrote CLAUDE.md"]
+    assert lines[-1] == "1 written, 2 unchanged"

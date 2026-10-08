@@ -33,7 +33,9 @@ loadout check --global --profile focused
 `--root` and `--global` are mutually exclusive. The explicit profile wins over the machine
 configuration's selection; otherwise the default is `default`.
 
-`sync` writes generated outputs. `check` compares them with the current source and reports
+`sync` writes generated outputs. It rewrites only files whose bytes change, so an unchanged file
+keeps its modification time, prints `wrote <path>` for each one it changed, and ends with
+`N written, M unchanged`, or `Up to date.` when nothing changed. `check` compares them with the current source and reports
 drift without rewriting the generated files, so `check` is the preview of `sync`; there is no
 `sync --dry-run`. `check --json` exits with the same code as `check`. A root containing both
 global and project configuration renders both scopes.
