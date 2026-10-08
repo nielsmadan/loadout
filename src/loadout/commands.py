@@ -87,8 +87,8 @@ def cmd_init_global(source: Path | None, force: bool = False) -> int:
     if source is None:
         if not sys.stdin.isatty():
             raise LoadoutError(
-                "--source is required when not attached to a terminal "
-                "(loadout init global --source <path>)"
+                "a directory is required when not attached to a terminal "
+                "(loadout init global <path>)"
             )
         default = Path.home() / "loadout"
         response = input(f"Directory to hold the global loadout source [{default}]: ").strip()

@@ -37,7 +37,6 @@ def run_case(directory: Path, count: int) -> dict:
         [
             "init",
             "global",
-            "--source",
             str(root),
             "--harness",
             "claude",

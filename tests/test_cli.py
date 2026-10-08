@@ -568,12 +568,7 @@ def test_init_global_creates_the_source_and_machine_config(
     source_parent.mkdir()
     _init_repo(source_parent)
 
-    assert (
-        loadout.main(
-            ["init", "global", "--source", str(source_parent), "--harness", "claude", "--yes"]
-        )
-        == 0
-    )
+    assert loadout.main(["init", "global", str(source_parent), "--harness", "claude", "--yes"]) == 0
 
     out = capsys.readouterr().out
     loadout_dir = source_parent / "loadout"
@@ -588,7 +583,7 @@ def test_init_global_adopts_a_root_manifest_and_syncs_it(
     xdg_home = fake_home / "cfg"
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_home))
 
-    assert loadout.main(["init", "global", "--source", str(root), "--yes"]) == 0
+    assert loadout.main(["init", "global", str(root), "--yes"]) == 0
 
     out = capsys.readouterr().out
     config_path = xdg_home / "loadout" / "config.toml"
@@ -644,6 +639,13 @@ def test_init_global_takes_no_force_flag(tmp_path: Path, capsys) -> None:
         loadout.main(["init", "global", "--force"])
     assert exit_info.value.code == 2
     assert "unrecognized arguments: --force" in capsys.readouterr().err
+
+
+def test_init_global_takes_its_directory_as_an_argument_not_source(tmp_path: Path, capsys) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        loadout.main(["init", "global", "--source", str(tmp_path)])
+    assert exit_info.value.code == 2
+    assert "unrecognized arguments: --source" in capsys.readouterr().err
 
 
 def test_init_project_no_longer_takes_a_starter(tmp_path: Path, capsys) -> None:

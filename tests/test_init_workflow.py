@@ -182,10 +182,26 @@ def test_matching_registration_keep_preserves_harness_defaults(tmp_path, monkeyp
     assert tomllib.loads(machine.read_text(encoding="utf-8"))["harnesses"] == ["claude"]
 
 
+def test_global_init_registers_the_directory_it_is_given(tmp_path, monkeypatch):
+    """Given a directory, cwd plays no part: the loser is a cwd that would register elsewhere."""
+    target = tmp_path / "config-repo"
+    target.mkdir()
+    _repo(target)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+
+    assert loadout.main(["init", "global", str(target), "--harness", "pi", "--yes"]) == 0
+
+    registered = tomllib.loads(machine_config_path().read_text())["source"]
+    assert registered == str(target / "loadout")
+    assert list(elsewhere.iterdir()) == []
+
+
 def test_a_conflicting_registration_names_the_flag_that_replaces_it(tmp_path, capsys):
     """The refusal users follow, so the flag it names has to exist."""
     _repo(tmp_path)
-    init = ["init", "global", "--source", str(tmp_path), "--harness", "claude", "--yes"]
+    init = ["init", "global", str(tmp_path), "--harness", "claude", "--yes"]
     assert loadout.main(init) == 0
     machine_config_path().write_text('source = "/different"\n')
     capsys.readouterr()
@@ -209,7 +225,6 @@ def test_global_copy_conflict_requires_selection_even_with_yes(tmp_path, fake_ho
     args = [
         "init",
         "global",
-        "--source",
         str(tmp_path),
         "--harness",
         "claude",
@@ -227,14 +242,11 @@ def test_global_copy_conflict_requires_selection_even_with_yes(tmp_path, fake_ho
 
 def test_existing_source_registration_is_an_explicit_transaction(tmp_path, capsys):
     _repo(tmp_path)
-    assert (
-        loadout.main(["init", "global", "--source", str(tmp_path), "--harness", "claude", "--yes"])
-        == 0
-    )
+    assert loadout.main(["init", "global", str(tmp_path), "--harness", "claude", "--yes"]) == 0
     machine = machine_config_path()
     machine.write_text('source = "/different"\n')
     capsys.readouterr()
-    args = ["init", "global", "--source", str(tmp_path), "--yes", "--json"]
+    args = ["init", "global", str(tmp_path), "--yes", "--json"]
     assert loadout.main(args) == 2
     assert json.loads(capsys.readouterr().out)["issues"][0]["code"] == "registration-conflict"
     assert loadout.main([*args, "--registration", "keep"]) == 0
@@ -254,7 +266,7 @@ def test_global_apply_cancellation_does_not_mutate(tmp_path, monkeypatch, failur
         raise failure
 
     monkeypatch.setattr("builtins.input", cancel)
-    assert loadout.main(["init", "global", "--source", str(tmp_path), "--harness", "claude"]) == 0
+    assert loadout.main(["init", "global", str(tmp_path), "--harness", "claude"]) == 0
     assert list(tmp_path.iterdir()) == []
     assert not machine_config_path().exists()
 
@@ -415,7 +427,6 @@ def test_existing_mixed_manifest_includes_legacy_skill_membership(tmp_path, caps
             [
                 "init",
                 "global",
-                "--source",
                 str(tmp_path),
                 "--harness",
                 "pi",
@@ -446,7 +457,7 @@ def test_global_init_with_an_existing_skill_leaves_sync_working(tmp_path, fake_h
     )
     (fake_home / ".claude/CLAUDE.md").write_text("# Instructions\n", encoding="utf-8")
 
-    assert loadout.main(["init", "global", "--source", str(tmp_path), "--yes"]) == 0
+    assert loadout.main(["init", "global", str(tmp_path), "--yes"]) == 0
     capsys.readouterr()
     assert loadout.main(["sync", "--global"]) == 0
     assert (fake_home / ".claude/skills/code-review/SKILL.md").is_file()
@@ -470,7 +481,7 @@ def test_a_hook_another_tool_installs_survives_the_next_global_sync(
     )
     source = (tmp_path / "src").resolve()
     source.mkdir()
-    init = ["init", "global", "--harness", "claude", "--source", str(source), "--yes"]
+    init = ["init", "global", "--harness", "claude", str(source), "--yes"]
     assert loadout.main(init) == 0
     assert loadout.main(["sync", "--global"]) == 0
     head = subprocess.run(
@@ -513,7 +524,7 @@ def test_global_init_seeds_servers_and_one_readme_and_nothing_else(tmp_path, fak
     _repo(tmp_path)
     _ordinary_claude_home(fake_home)
 
-    assert loadout.main(["init", "global", "--source", str(tmp_path), "--yes"]) == 0
+    assert loadout.main(["init", "global", str(tmp_path), "--yes"]) == 0
 
     source = tmp_path / "loadout"
     assert tomllib.loads((source / "mcp.toml").read_text()) == {}
@@ -532,7 +543,7 @@ def test_global_init_seeds_servers_and_one_readme_and_nothing_else(tmp_path, fak
 def test_a_comment_only_mcp_toml_renders_exactly_as_none(tmp_path, fake_home):
     _repo(tmp_path)
     _ordinary_claude_home(fake_home)
-    assert loadout.main(["init", "global", "--source", str(tmp_path), "--yes"]) == 0
+    assert loadout.main(["init", "global", str(tmp_path), "--yes"]) == 0
     source = tmp_path / "loadout"
     seeded = render_all(source)
 
@@ -573,7 +584,7 @@ def test_an_exact_claude_rule_adopts_into_shell_and_renders_back_unchanged(
         '{"permissions": {"allow": ["Bash(git status)", "Bash(ls:*)"]}}\n'
     )
 
-    init = ["init", "global", "--harness", "claude", "--source", str(tmp_path), "--yes"]
+    init = ["init", "global", "--harness", "claude", str(tmp_path), "--yes"]
     assert loadout.main(init) == 0
 
     source = tomllib.loads((tmp_path / "loadout" / "permissions.toml").read_text())

@@ -283,7 +283,8 @@ def _add_init_project(parser: argparse.ArgumentParser) -> None:
 
 def _add_init_global(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "--source",
+        "directory",
+        nargs="?",
         type=Path,
         default=None,
         help="existing global source root, or directory to hold a new source (default: cwd)",
@@ -311,8 +312,8 @@ def _dispatch_init(args: argparse.Namespace) -> int:
         )
     if args.init_command == "global":
         source = (
-            args.source.expanduser().absolute()
-            if args.source
+            args.directory.expanduser().absolute()
+            if args.directory
             else Path.cwd().expanduser().absolute()
         )
         return run_init(

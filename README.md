@@ -134,7 +134,7 @@ machine state loadout *reads*: a destination template resolves environment varia
 time, per [0011](docs/decisions/0011-a-destination-follows-a-relocated-harness.md).
 
     loadout init global --dry-run --json
-    loadout init global --source /work/dotfiles --harness claude --harness pi --yes
+    loadout init global /work/dotfiles --harness claude --harness pi --yes
 
 Global init discovers existing configuration in live harness roots and the selected directory,
 which defaults to cwd. It migrates into `<source>/loadout/`, with explicit native category routes

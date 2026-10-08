@@ -248,7 +248,7 @@ def test_global_runtime_fields_and_source_managed_skill(tmp_path, fake_home, evi
     pi = fake_home / ".pi/agent/settings.json"
     pi.parent.mkdir(parents=True)
     pi.write_text(json.dumps({"defaultModel": "qa-model", "lastChangelogVersion": "qa-runtime"}))
-    arguments = ["init", "global", "--source", str(root), "--json"]
+    arguments = ["init", "global", str(root), "--json"]
     for agent in ("claude", "codex", "opencode", "pi"):
         arguments.extend(("--harness", agent))
     result = json.loads(evidence.cli(root, *arguments, "--yes").stdout)
@@ -303,7 +303,6 @@ def test_global_conflicting_copies_require_selection(tmp_path, fake_home, eviden
     arguments = [
         "init",
         "global",
-        "--source",
         str(root),
         "--harness",
         "claude",

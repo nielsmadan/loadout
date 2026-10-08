@@ -44,12 +44,7 @@ def entries(root: Path) -> dict:
 
 
 def arguments(case: dict, root: Path, home: Path) -> list[str]:
-    args = [
-        "init",
-        case["scope"],
-        "--root" if case["scope"] == "project" else "--source",
-        str(root),
-    ]
+    args = ["init", case["scope"], *(["--root"] if case["scope"] == "project" else []), str(root)]
     for agent in case["agents"]:
         args += ["--harness", agent]
     for mapping in case.get("mappings", []):

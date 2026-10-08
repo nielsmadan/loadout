@@ -29,8 +29,8 @@ machine config or run sync against the real harness directories.
 - Clone with HTTPS. The repositories are public; SSH credentials are not required.
 - Put every clone, evidence file and fake machine config below one temporary directory.
 - Set `XDG_CONFIG_HOME` separately for every global case.
-- Run `uv run loadout ...` from the loadout checkout, using `--root` or `--source` to name the
-  clone. Running `uv` from a sampled repository can select that repository's Python project.
+- Run `uv run loadout ...` from the loadout checkout, using `--root` (project) or the
+  directory argument (`init global <dir>`) to name the clone. Running `uv` from a sampled repository can select that repository's Python project.
 - Read the complete command output and record the exit code. Expected failures must not be
   hidden with `|| true`.
 - Do not run installers from the sampled repositories. Inspect them as evidence of deployment
@@ -167,7 +167,7 @@ Run these commands once per global case:
 repo="$CORPUS_ROOT/CASE"
 case_config="$MACHINE_CONFIG_ROOT/CASE"
 
-XDG_CONFIG_HOME="$case_config" uv run loadout init global --source "$repo" \
+XDG_CONFIG_HOME="$case_config" uv run loadout init global "$repo" \
   >"$EVIDENCE_ROOT/CASE-global-init.txt" 2>&1
 init_exit=$?
 cat "$EVIDENCE_ROOT/CASE-global-init.txt"
@@ -194,7 +194,7 @@ sync_exit=$?
 cat "$EVIDENCE_ROOT/CASE-global-sync.txt"
 printf 'sync_exit=%s\n' "$sync_exit"
 
-XDG_CONFIG_HOME="$case_config" uv run loadout init global --source "$repo" \
+XDG_CONFIG_HOME="$case_config" uv run loadout init global "$repo" \
   >"$EVIDENCE_ROOT/CASE-global-init-again.txt" 2>&1
 init_again_exit=$?
 cat "$EVIDENCE_ROOT/CASE-global-init-again.txt"

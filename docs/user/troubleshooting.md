@@ -48,7 +48,7 @@ overwriting generated files by hand makes the next sync undo those changes.
 Run:
 
 ```sh
-loadout init global --source ~/agent-config
+loadout init global ~/agent-config
 ```
 
 Then configure the created source as described in [global setup](guides/global.md).

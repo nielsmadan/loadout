@@ -44,26 +44,25 @@ It does not resolve invalid sources or merge a modified vendored template.
 ```sh
 loadout init project --harness claude --harness codex
 loadout init project --harness opencode --root /path/to/repository
-loadout init global --source ~/agent-config
+loadout init global ~/agent-config
 ```
 
 | Option | Commands | Meaning |
 | --- | --- | --- |
 | `--harness NAME` | `init project`, `init global` | Select a harness; repeat for several |
 | `--root PATH` | `init project` | Project directory to initialise |
-| `--source PATH` | `init global` | Existing global source, or directory in which to scaffold a new one |
+| `DIR` (positional) | `init global` | Existing global source, or directory in which to scaffold a new one |
 
 Scope is a subcommand: `init project` for a repository, `init global` for machine-wide
-configuration. `--source` on `init global` defaults to the current directory, so a bare
-`init global` adopts the cwd. `--root` exists only on `init project`; `--registration keep|replace` only on `init global`. An
+configuration. `init global [DIR]` takes the directory as an optional argument, like
+`git init [dir]`, and defaults to the current directory, so a bare `init global` adopts the cwd. `--root` exists only on `init project`; `--registration keep|replace` only on `init global`. An
 interrupted migration is resumed or recovered with `loadout init resume <journal> --yes` or
 `loadout init recover <journal> --yes`.
 
 Fresh project initialisation uses explicit `--harness` options, then the machine configuration's
 `harnesses` default, then discovered project configuration. If none establishes membership, it
 requires a selection. Global initialisation accepts `--harness` and automatically records its
-resolved harness list as the project default. In a non-interactive shell, supply `--source` for
-global setup.
+resolved harness list as the project default.
 
 Re-running project initialisation with the same harness set preserves its configuration and
 extends the generated paths in `.gitignore`.

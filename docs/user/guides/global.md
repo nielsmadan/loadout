@@ -14,7 +14,7 @@ or a [template](templates.md).
 Choose a directory for your configuration:
 
 ```sh
-loadout init global --source ~/agent-config
+loadout init global ~/agent-config
 ```
 
 For a new directory, Loadout creates a nested `loadout/` directory:
@@ -98,7 +98,7 @@ Version-control the configuration source using your normal git workflow. On anot
 clone it and point Loadout at the directory containing `loadout.toml`:
 
 ```sh
-loadout init global --source ~/agent-config/loadout
+loadout init global ~/agent-config/loadout
 loadout sync --global
 ```
 

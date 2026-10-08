@@ -4,7 +4,7 @@ Start with a read-only preview:
 
 ```sh
 loadout init project --harness claude --harness codex --dry-run --json
-loadout init global --source /work/dotfiles --harness pi --dry-run --json
+loadout init global /work/dotfiles --harness pi --dry-run --json
 ```
 
 Scope is a subcommand: `init project` or `init global`. Global source selection defaults to cwd.
@@ -43,7 +43,7 @@ Confirm unusual source layouts with repeatable JSON arguments. Paths are literal
 against cwd when relative; no shell or environment expressions inside JSON are evaluated.
 
 ```sh
-loadout init global --source /work/dotfiles --harness claude \
+loadout init global /work/dotfiles --harness claude \
   --mapping '{"source":"/work/dotfiles/claude","destination":"/home/user/.claude","agents":["claude"]}' \
   --select-source '{"source":"/work/dotfiles/claude","destination":"/home/user/.claude"}' \
   --dry-run --json
