@@ -28,7 +28,8 @@ Use `just install-editable` to have source edits take effect without reinstallin
     loadout sync --global         # regenerate this machine's global configuration
     loadout sync --profile NAME   # regenerate under a specific active profile (see Profiles below)
     loadout sync --force          # regenerate even over files modified outside loadout
-    loadout check                 # exit 1 if any generated file has drifted
+    loadout check                 # exit 1 if any generated file has drifted; the preview of sync
+    loadout check --json          # the same, as JSON (not covered by a stability promise in 1.0)
     loadout check --global        # check drift in this machine's global configuration
     loadout check --profile NAME  # check drift under a specific active profile
 

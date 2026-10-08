@@ -151,3 +151,20 @@ class TestCli:
         )
         typed = {"sync", "check", "init", "template", "integrate"}
         assert set(result.stdout.split()) == typed
+
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
+    def test_the_bash_script_completes_check_json(self) -> None:
+        assert self._run("install") == 0
+        probe = (
+            'source "$1" || exit 1\n'
+            'COMP_WORDS=(loadout check --j); COMP_CWORD=2; COMP_LINE="loadout check --j"\n'
+            "COMP_POINT=${#COMP_LINE}; _shtab_loadout\n"
+            'echo "${COMPREPLY[*]}"\n'
+        )
+        result = subprocess.run(
+            ["bash", "-c", probe, "probe", str(self.script)],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert result.stdout.split() == ["--json"]

@@ -28,13 +28,17 @@ loadout check --global --profile focused
 | `--global` | `sync`, `check` | Resolve the source and default profile from this machine's configuration |
 | `--profile NAME` | `sync`, `check` | Select a global manifest profile |
 | `--force` | `sync` | Overwrite generated files protected as modified outside Loadout |
+| `--json` | `check` | Emit `status`, `exit_code`, each out-of-sync `path` and any notes as JSON; not with `--staged` |
 
 `--root` and `--global` are mutually exclusive. The explicit profile wins over the machine
 configuration's selection; otherwise the default is `default`.
 
 `sync` writes generated outputs. `check` compares them with the current source and reports
-drift without rewriting the generated files. A root containing both global and project
-configuration renders both scopes.
+drift without rewriting the generated files, so `check` is the preview of `sync`; there is no
+`sync --dry-run`. `check --json` exits with the same code as `check`. A root containing both
+global and project configuration renders both scopes.
+
+JSON output (`init --json`, `check --json`) is not covered by a stability promise in 1.0.
 
 Use `--force` only after reviewing the reported output edits and deciding to discard them.
 It does not resolve invalid sources or merge a modified vendored template.

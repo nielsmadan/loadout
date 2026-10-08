@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import contextlib
 import difflib
 import hashlib
 import io
+import json
 import os
 import subprocess
 import sys
@@ -483,25 +485,51 @@ def _report_notices(root: Path, profile: str) -> None:
         print(f"note: {notice.render()}")
 
 
-def cmd_check(root: Path, profile: str = "default") -> int:
-    drift = check_all(root, profile)
-    _report_notices(root, profile)
+def _check_notes(root: Path, profile: str) -> list[str]:
+    notes = [notice.render() for notice in collect_notices(root, profile)]
     # Reported, never failed: check's contract is that generated output matches
     # its source, and a vendored template *is* source — so it falls outside that
     # jurisdiction by definition rather than by exemption (ADR 0014). Saying
     # nothing at all would let a project drift from its template indefinitely,
     # which is the failure vendoring exists to avoid.
-    for name in template_divergence(root):
-        print(
-            f"note: the vendored template {name!r} was modified after it was vendored — "
-            f"`loadout template sync {name}` will refuse until those edits go upstream"
-        )
-    for name in unverifiable_templates(root):
-        print(
-            f"note: the vendored template {name!r} has no recorded provenance, so nothing "
-            f"can tell your edits from its source — `loadout template add {name} --vendored` takes "
-            f"the source wholesale and records one"
-        )
+    notes += [
+        f"the vendored template {name!r} was modified after it was vendored — "
+        f"`loadout template sync {name}` will refuse until those edits go upstream"
+        for name in template_divergence(root)
+    ]
+    notes += [
+        f"the vendored template {name!r} has no recorded provenance, so nothing "
+        f"can tell your edits from its source — `loadout template add {name} --vendored` takes "
+        f"the source wholesale and records one"
+        for name in unverifiable_templates(root)
+    ]
+    return notes
+
+
+def _check_json(root: Path, profile: str) -> int:
+    """Each drifted path as an object, so a drift kind can join it once P-30 is ruled."""
+    captured = io.StringIO()
+    with contextlib.redirect_stdout(captured):
+        drift = check_all(root, profile)
+    notes = [line.removeprefix("note: ") for line in captured.getvalue().splitlines()]
+    notes += _check_notes(root, profile)
+    code = 1 if drift else 0
+    result = {
+        "status": "drift" if drift else "clean",
+        "exit_code": code,
+        "drift": [{"path": str(path)} for path, _, _ in drift],
+        "notes": notes,
+    }
+    print(json.dumps(result, indent=2))
+    return code
+
+
+def cmd_check(root: Path, profile: str = "default", *, as_json: bool = False) -> int:
+    if as_json:
+        return _check_json(root, profile)
+    drift = check_all(root, profile)
+    for note in _check_notes(root, profile):
+        print(f"note: {note}")
     if not drift:
         print("generated files are up to date")
         return 0

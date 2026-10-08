@@ -59,10 +59,10 @@ def build_parser() -> argparse.ArgumentParser:
             )
 
     for name, help_text in (
-        ("sync", "regenerate every generated file under the repo root"),
+        ("sync", "regenerate every generated file; preview with `loadout check`"),
         ("check", "exit 1 if any generated file has drifted"),
     ):
-        sub = subparsers.add_parser(name, help=help_text)
+        sub = subparsers.add_parser(name, help=help_text, description=help_text)
         add_root(sub, allow_global=True)
         sub.add_argument(
             "--profile",
@@ -79,6 +79,9 @@ def build_parser() -> argparse.ArgumentParser:
         else:
             sub.add_argument(
                 "--staged", action="store_true", help="validate the isolated Git index"
+            )
+            sub.add_argument(
+                "--json", action="store_true", help="emit each out-of-sync path as JSON"
             )
 
     init = subparsers.add_parser(
@@ -439,8 +442,10 @@ def _dispatch_outputs(args: argparse.Namespace) -> int:
     if args.command == "sync":
         return cmd_sync(root, profile=profile, force=args.force)
     if args.staged:
+        if args.json:
+            raise UsageError("--json is not available with --staged")
         return check_staged(root, profile)
-    return cmd_check(root, profile=profile)
+    return cmd_check(root, profile=profile, as_json=args.json)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -469,11 +474,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return _dispatch(args)
     except UsageError as error:
-        _init_error_json(args, 2)
+        _error_json(args, 2)
         print(f"loadout: {error}", file=sys.stderr)
         return 2
     except LoadoutError as error:
-        _init_error_json(args, 3)
+        _error_json(args, 3)
         print(f"loadout: {error}", file=sys.stderr)
         return 3
     except Exception:  # noqa: BLE001 - top-level handler reports unexpected errors
@@ -481,6 +486,8 @@ def main(argv: list[str] | None = None) -> int:
         return 4
 
 
-def _init_error_json(args: argparse.Namespace, code: int) -> None:
+def _error_json(args: argparse.Namespace, code: int) -> None:
     if args.command == "init" and args.json:
         print(json.dumps({"status": "error", "complete": False, "exit_code": code}))
+    elif args.command == "check" and args.json:
+        print(json.dumps({"status": "error", "exit_code": code}))

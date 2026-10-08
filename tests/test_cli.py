@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -709,3 +710,53 @@ def test_a_project_without_permissions_toml_syncs_as_if_it_were_empty(tmp_path: 
 
     assert Path(".claude/settings.json") in _generated(absent)
     assert _generated(absent) == _generated(empty)
+
+
+def _check(root: Path, capsys, *extra: str) -> tuple[int, str]:
+    code = loadout.main(["check", "--root", str(root), *extra])
+    return code, capsys.readouterr().out
+
+
+def test_check_json_names_each_drifted_path_with_the_plain_exit_code(root: Path, capsys) -> None:
+    assert loadout.main(["sync", "--root", str(root), "--force"]) == 0
+    (root / "out" / "shared.md").write_text("tampered\n")
+    capsys.readouterr()
+
+    plain, _ = _check(root, capsys)
+    code, out = _check(root, capsys, "--json")
+
+    assert code == plain == 1
+    result = json.loads(out)
+    assert result["status"] == "drift"
+    assert result["exit_code"] == 1
+    assert result["drift"] == [{"path": str(root / "out" / "shared.md")}]
+
+
+def test_check_json_on_a_clean_tree_is_an_empty_result(root: Path, capsys) -> None:
+    assert loadout.main(["sync", "--root", str(root), "--force"]) == 0
+    capsys.readouterr()
+
+    plain, _ = _check(root, capsys)
+    code, out = _check(root, capsys, "--json")
+
+    assert code == plain == 0
+    result = json.loads(out)
+    assert (result["status"], result["drift"]) == ("clean", [])
+    assert any("[shell] default" in note for note in result["notes"])
+
+
+def test_check_json_reports_an_error_as_json(tmp_path: Path, capsys) -> None:
+    code, out = _check(tmp_path, capsys, "--json")
+    assert code == 3
+    assert json.loads(out) == {"status": "error", "exit_code": 3}
+
+
+def test_check_json_is_not_offered_with_staged(root: Path, capsys) -> None:
+    assert loadout.main(["check", "--root", str(root), "--staged", "--json"]) == 2
+    assert "--json is not available with --staged" in capsys.readouterr().err
+
+
+def test_sync_help_points_at_check_as_its_preview(capsys) -> None:
+    with pytest.raises(SystemExit):
+        loadout.main(["sync", "--help"])
+    assert "preview with `loadout check`" in capsys.readouterr().out
