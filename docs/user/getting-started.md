@@ -33,8 +33,8 @@ cd loadout-demo
 loadout init project --harness claude --harness codex
 ```
 
-This creates `loadout/config.toml`, shared and personal permission files, and entries in
-`.gitignore`. Project setup works without a global configuration.
+This creates `loadout/config.toml` and `loadout/permissions.toml`, renders each agent's generated
+files and lists them in `.gitignore`. Project setup works without a global configuration.
 
 Replace the freshly created `loadout/config.toml` with:
 
@@ -74,11 +74,9 @@ personal `loadout/permissions.local.toml` can stay absent too.
 
 ## Render both agents' files
 
-Run `init` again with the same harnesses to extend `.gitignore` for the instruction documents,
-then render:
+`init` already rendered the setup it found. Now that the source has changed, render again:
 
 ```sh
-loadout init project --harness claude --harness codex
 loadout sync
 loadout check
 ```

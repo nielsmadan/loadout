@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import difflib
+import hashlib
 import io
 import os
 import subprocess
@@ -8,6 +9,7 @@ import sys
 import tarfile
 import tempfile
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 
 from .bundled_skill import bundled_skill_path
@@ -16,6 +18,7 @@ from .emit import (
     Copied,
     Merged,
     Output,
+    applied_document,
     artifact_deployment_scopes,
     check_all,
     collect_notices,
@@ -73,7 +76,7 @@ from .written import (
     text_entry,
 )
 
-_DIFF_LIMIT = 40
+DIFF_LIMIT = 40
 
 
 def cmd_init(root: Path, harnesses: tuple[str, ...]) -> int:
@@ -319,7 +322,7 @@ def _write_full_diff(lines: list[str]) -> Path:
     return Path(name)
 
 
-def _diff(rel: str, actual: str, expected: str, context: int) -> list[str]:
+def diff_lines(rel: str, actual: str, expected: str, context: int) -> list[str]:
     return list(
         difflib.unified_diff(
             actual.splitlines(keepends=True),
@@ -345,11 +348,11 @@ def cmd_sync(root: Path, profile: str = "default", force: bool = False) -> int:
                 print(f"WARNING: {rel} was modified outside loadout", file=sys.stderr)
                 # Tight context: on a 16k settings.json the one runtime-added entry
                 # should be readable without scrolling past the whole document.
-                lines = _diff(rel, actual, expected, context=1)
+                lines = diff_lines(rel, actual, expected, context=1)
                 full.extend(lines)
-                sys.stderr.writelines(lines[:_DIFF_LIMIT])
-                if len(lines) > _DIFF_LIMIT:
-                    print(f"    ... {len(lines) - _DIFF_LIMIT} more line(s)", file=sys.stderr)
+                sys.stderr.writelines(lines[:DIFF_LIMIT])
+                if len(lines) > DIFF_LIMIT:
+                    print(f"    ... {len(lines) - DIFF_LIMIT} more line(s)", file=sys.stderr)
             print(
                 "\nSync aborted — the '-' lines would be lost. Move them into the source, "
                 "or run `loadout sync --force` to discard them.",
@@ -360,33 +363,95 @@ def cmd_sync(root: Path, profile: str = "default", force: bool = False) -> int:
             # thing it exists to prevent. Whatever the terminal truncates, the file
             # holds in full — the decision stays reviewable.
             if any(
-                len(_diff(_display(p, root), a, e, context=1)) > _DIFF_LIMIT for p, a, e in modified
+                len(diff_lines(_display(p, root), a, e, context=1)) > DIFF_LIMIT
+                for p, a, e in modified
             ):
                 print(f"\nThe complete diff is at {_write_full_diff(full)}", file=sys.stderr)
             return 1
 
     try:
-        written = write_outputs(
-            outputs, scopes=artifact_deployment_scopes(root, profile), force=force
-        )
+        written, ignored = deploy(root, profile, outputs, force=force)
     except DeploymentConflict as error:
         print(f"Sync aborted: {error}", file=sys.stderr)
         return 1
     for path in written:
         action = "wrote" if path.exists() else "retired"
         print(f"{action} {_display(path, root)}")
-    record_written(root, profile, _entries_for(outputs))
-    if project_config_path(root).is_file():
-        # Root-anchored, the form init's migration writes: a bare "CLAUDE.md"
-        # would also ignore loadout/instructions/native/claude/CLAUDE.md, and
-        # `git add loadout` then silently drops that source from the index.
-        entries = [
-            f"/{path}" for path in project_outputs(load_project_config(project_config_path(root)))
-        ]
-        if _append_gitignore(root, entries):
-            print(f"added {len(entries)} entries to .gitignore")
+    if ignored:
+        print(f"added {ignored} entries to .gitignore")
     _report_notices(root, profile)
     return 0
+
+
+def deploy(
+    root: Path, profile: str, outputs: Mapping[Path, Output], *, force: bool = False
+) -> tuple[list[Path], int]:
+    """Write rendered outputs, record them, and ignore them: what sync does once the
+    guard has passed, shared with init's first render. Returns the paths written and
+    how many `.gitignore` entries were added."""
+    written = write_outputs(outputs, scopes=artifact_deployment_scopes(root, profile), force=force)
+    record_written(root, profile, _entries_for(outputs))
+    if not project_config_path(root).is_file():
+        return written, 0
+    # Root-anchored, the form init's migration writes: a bare "CLAUDE.md"
+    # would also ignore loadout/instructions/native/claude/CLAUDE.md, and
+    # `git add loadout` then silently drops that source from the index.
+    entries = [
+        f"/{path}" for path in project_outputs(load_project_config(project_config_path(root)))
+    ]
+    return written, len(entries) if _append_gitignore(root, entries) else 0
+
+
+@dataclass(frozen=True)
+class RenderedChange:
+    """One output against the file on disk. `kind` is identical, update or create;
+    `actual` and `wanted` are text for a diff, or a size and digest for a copy."""
+
+    path: Path
+    kind: str
+    actual: str
+    wanted: str
+
+
+def _copy_summary(content: bytes, mode: int) -> str:
+    return f"{len(content)} bytes, mode {mode & 0o777:o}, sha256 {hashlib.sha256(content).hexdigest()}\n"
+
+
+def compare_with_disk(outputs: Mapping[Path, Output]) -> list[RenderedChange]:
+    """What writing `outputs` would do, judged the way the guard judges a change:
+    equal under `normalise` is identical, so a banner or a JSON re-serialisation is
+    not a difference."""
+    texts: dict[Path, str] = {}
+    copies: dict[Path, tuple[bytes, int]] = {}
+    for path, content in outputs.items():
+        if isinstance(content, FrozenFile):
+            copies[path] = (content.content, content.mode)
+        elif isinstance(content, Copied):
+            copies[path] = (content.read_bytes(), content.file_mode())
+        elif isinstance(content, Merged):
+            texts[path] = applied_document(path, content)
+            texts.update(content.records)
+        else:
+            texts[path] = content
+    changes = [_text_change(path, wanted) for path, wanted in texts.items()]
+    changes += [_copy_change(path, *copy) for path, copy in copies.items()]
+    return changes
+
+
+def _text_change(path: Path, wanted: str) -> RenderedChange:
+    if not path.is_file():
+        return RenderedChange(path, "create", "", wanted)
+    actual = path.read_text(encoding="utf-8", newline="")
+    same = normalise(path, actual) == normalise(path, wanted)
+    return RenderedChange(path, "identical" if same else "update", actual, wanted)
+
+
+def _copy_change(path: Path, content: bytes, mode: int) -> RenderedChange:
+    wanted = _copy_summary(content, mode)
+    if not path.is_file():
+        return RenderedChange(path, "create", "", wanted)
+    actual = _copy_summary(path.read_bytes(), path.stat().st_mode)
+    return RenderedChange(path, "identical" if actual == wanted else "update", actual, wanted)
 
 
 def _entries_for(outputs: Mapping[Path, Output]) -> dict[Path, WrittenEntry]:
@@ -443,10 +508,10 @@ def cmd_check(root: Path, profile: str = "default") -> int:
     for path, actual, expected in drift:
         rel = _display(path, root)
         print(f"DRIFT: {rel}", file=sys.stderr)
-        lines = list(_diff(rel, actual, expected, context=3))
-        sys.stderr.writelines(lines[:_DIFF_LIMIT])
-        if len(lines) > _DIFF_LIMIT:
-            print(f"    ... {len(lines) - _DIFF_LIMIT} more diff line(s)", file=sys.stderr)
+        lines = list(diff_lines(rel, actual, expected, context=3))
+        sys.stderr.writelines(lines[:DIFF_LIMIT])
+        if len(lines) > DIFF_LIMIT:
+            print(f"    ... {len(lines) - DIFF_LIMIT} more diff line(s)", file=sys.stderr)
     # `check` used to end every drift with "run `loadout sync`" even where sync was
     # about to refuse, sending the reader in a circle and teaching them --force. Ask
     # the guard the same question sync will, and say which answer applies.
@@ -635,14 +700,14 @@ def _tree_diff(local: Path, upstream: Path, label: str) -> list[str]:
                 lines.append(f"{label}/{relative}: differs (binary)\n")
             continue
         if actual != expected:
-            lines.extend(_diff(f"{label}/{relative}", actual, expected, context=3))
+            lines.extend(diff_lines(f"{label}/{relative}", actual, expected, context=3))
     return lines
 
 
 def _report_diff(lines: list[str]) -> None:
-    sys.stderr.writelines(lines[:_DIFF_LIMIT])
-    if len(lines) > _DIFF_LIMIT:
-        print(f"    ... {len(lines) - _DIFF_LIMIT} more diff line(s)", file=sys.stderr)
+    sys.stderr.writelines(lines[:DIFF_LIMIT])
+    if len(lines) > DIFF_LIMIT:
+        print(f"    ... {len(lines) - DIFF_LIMIT} more diff line(s)", file=sys.stderr)
 
 
 def cmd_template_sync(root: Path, name: str) -> int:

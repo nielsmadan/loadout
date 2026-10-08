@@ -149,6 +149,8 @@ time, per [0011](docs/decisions/0011-a-destination-follows-a-relocated-harness.m
     loadout init global --dry-run --json
     loadout init global /work/dotfiles --harness claude --harness pi --yes
 
+`init` finishes with the first render. It compares what loadout would write with what is on disk, writes it and says so when the two match, and shows the diff before applying when they do not. A `sync` straight after `init` changes nothing. It records what it wrote, so the first `sync` has a baseline.
+
 Global init discovers existing configuration in live harness roots and the selected directory,
 which defaults to cwd. It migrates into `<source>/loadout/`, with explicit native category routes
 and private sources where required, and registers that actual manifest directory and resolved
@@ -547,6 +549,8 @@ in once:
 
     loadout init project --harness claude --harness opencode --dry-run
     loadout init project --harness claude --harness opencode --yes
+
+`init` finishes with the first render. It compares what loadout would write with what is on disk, writes it and says so when the two match, and shows the diff before applying when they do not. A `sync` straight after `init` changes nothing.
 
 To start from a small instruction seed, apply a bundled template after init with
 `loadout template add frontend --vendored` (or `backend`), then `loadout sync`. Bundled templates

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 import loadout
-from loadout.commands import _DIFF_LIMIT
+from loadout.commands import DIFF_LIMIT
 from loadout.written import normalise as _normalise
 from loadout.written import written_state_path
 
@@ -139,7 +139,7 @@ def test_the_warning_names_what_would_be_lost(root: Path, capsys) -> None:
 
 def test_a_truncated_abort_still_names_the_complete_diff(root: Path, capsys) -> None:
     _adopt(root)
-    # Comfortably more lines than _DIFF_LIMIT on their own, so the note appears
+    # Comfortably more lines than DIFF_LIMIT on their own, so the note appears
     # whatever the rendered document happens to be.
     bulk = {f"key-{index}": index for index in range(60)}
     (root / "perm" / "opencode.json").write_text(
@@ -156,7 +156,7 @@ def test_a_truncated_abort_still_names_the_complete_diff(root: Path, capsys) -> 
     # reaching for --force — the thing the guard exists to prevent.
     path = Path(err.rsplit("The complete diff is at ", 1)[1].strip())
     assert path.is_file()
-    assert len(path.read_text(encoding="utf-8").splitlines()) > _DIFF_LIMIT
+    assert len(path.read_text(encoding="utf-8").splitlines()) > DIFF_LIMIT
 
 
 def test_force_overwrites_a_file_modified_outside_loadout(root: Path, capsys) -> None:

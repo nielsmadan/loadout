@@ -32,6 +32,10 @@ nothing. `README.md` shows the full layout and how to add hooks, plugins and set
 `init` adopts from your existing agent configuration lands beside these: instructions, settings,
 hooks, plugins and skills, each in its own directory.
 
+`init` then renders, as the first sync: when loadout reproduces your existing files it writes them
+and says so, and when it would change one it shows the diff and asks first. There is no need to
+run `loadout sync` straight after `init`.
+
 It also writes the machine configuration at `~/.config/loadout/config.toml`, or
 `$XDG_CONFIG_HOME/loadout/config.toml` when XDG_CONFIG_HOME is set. That file points at
 `~/agent-config/loadout`.

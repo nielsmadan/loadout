@@ -1373,7 +1373,7 @@ def write_outputs(
         elif isinstance(content, Copied):
             frozen[path] = FrozenFile(content.read_bytes(), content.file_mode())
         elif isinstance(content, Merged):
-            frozen[path] = _applied(path, content)
+            frozen[path] = applied_document(path, content)
             frozen.update(content.records)
         else:
             frozen[path] = content
@@ -1424,7 +1424,7 @@ def check_all(root: Path, profile: str = "default") -> list[tuple[Path, str, str
         # Applying is identity on everything loadout does not own, so this compares
         # owned keys alone: the harness writing its own project table cannot read
         # as drift.
-        wanted = _applied(path, expected) if isinstance(expected, Merged) else expected
+        wanted = applied_document(path, expected) if isinstance(expected, Merged) else expected
         if actual != wanted:
             drift.append((path, actual, wanted))
         if isinstance(expected, Merged):
@@ -1448,7 +1448,7 @@ def _atomic_frozen_copy(path: Path, content: bytes, mode: int) -> None:
         raise
 
 
-def _applied(path: Path, merged: Merged) -> str:
+def applied_document(path: Path, merged: Merged) -> str:
     """The destination with loadout's keys written in. The caller reads the file;
     the renderer that produced `merged` never did (ADR 0001)."""
     existing = path.read_text(encoding="utf-8", newline="") if path.is_file() else ""

@@ -18,6 +18,11 @@ project starts with `loadout/config.toml` and `loadout/permissions.toml`. Global
 canonical global slice sources it needs. Command trees, subagents and unsupported harness-specific
 files remain where they are. Repeat init preserves existing source layouts.
 
+Init then renders, as the first sync. When the render matches the existing files under loadout's
+comparison it writes them and reports an exact reproduction; when it does not, the preview shows
+the diff and approval covers overwriting. Do not tell the user to run `sync` after init; run it
+after changing the source.
+
 After project init, offer a bundled template: `loadout template add frontend --vendored` (or
 `backend`), then `loadout sync`. These packaged templates work offline and provide short
 instruction seeds with empty categories, vendored with content-hash provenance. Global scope

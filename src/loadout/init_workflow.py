@@ -3,14 +3,19 @@ from __future__ import annotations
 import json
 import shlex
 import sys
+import tempfile
 import tomllib
+from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import tomlkit
 
+from .commands import DIFF_LIMIT, RenderedChange, compare_with_disk, deploy, diff_lines
+from .deployment import DeploymentConflict
 from .discovery import discover, initialized_project_path
+from .emit import render_all
 from .errors import LoadoutError, UsageError
 from .harnesses import KNOWN_HARNESSES
 from .init_options import InitOptions, parse_mapping, parse_selection
@@ -25,6 +30,7 @@ from .migration_transaction import (
     recover_migration,
     resume_migration,
 )
+from .output import Merged, Output
 
 
 class _Cancelled(Exception):
@@ -184,10 +190,102 @@ def _show(preview: dict[str, Any], *, as_json: bool) -> None:
         print(f"{original['action']}: {original['path']} ({original['reason']})")
     if preview.get("registration"):
         print(f"Register global source: {preview['registration']}")
+    _show_render(preview.get("render", ()))
     for issue in preview["issues"]:
         print(f"{issue['code']}: {issue['message']}", file=sys.stderr)
         for path in issue["paths"]:
             print(f"  {path}", file=sys.stderr)
+
+
+def _show_render(changes: tuple[RenderedChange, ...]) -> None:
+    if not changes:
+        return
+    updates = [c for c in changes if c.kind == "update"]
+    if updates:
+        print(f"Render changes {len(updates)} existing file(s); applying overwrites them:")
+        for change in updates:
+            sys.stdout.writelines(
+                diff_lines(str(change.path), change.actual, change.wanted, context=1)[:DIFF_LIMIT]
+            )
+    else:
+        print("Render: loadout reproduces your setup exactly.")
+    for change in changes:
+        if change.kind == "create":
+            print(f"Create: {change.path}")
+
+
+def _render_profile(plan: MigrationPlan) -> str:
+    if plan.inventory.scope == "project":
+        return "default"
+    machine = load_machine_config(machine_config_path(), require_source=False)
+    if machine is None or machine.source.resolve() != plan.inventory.source_root.resolve():
+        return "default"
+    return machine.profile or "default"
+
+
+def _render_root(plan: MigrationPlan) -> Path:
+    return plan.inventory.root if plan.inventory.scope == "project" else plan.inventory.source_root
+
+
+def _rebased(outputs: Mapping[Path, Output], scratch: Path, real: Path) -> dict[Path, Output]:
+    def move(path: Path) -> Path:
+        return real / path.relative_to(scratch) if path.is_relative_to(scratch) else path
+
+    def records_moved(content: Output) -> Output:
+        if not isinstance(content, Merged):
+            return content
+        return replace(content, records=tuple((move(r), t) for r, t in content.records))
+
+    return {move(path): records_moved(content) for path, content in outputs.items()}
+
+
+def planned_render(plan: MigrationPlan, profile: str) -> tuple[RenderedChange, ...]:
+    """The first sync, judged before the migration writes anything.
+
+    The planned source is materialised in scratch and rendered with the real
+    environment, so global destinations are the real ones. A project output that
+    preserves foreign keys reads its existing file, so the real one is copied in
+    beside the source before the render that counts.
+    """
+    real = _render_root(plan).absolute()
+    with tempfile.TemporaryDirectory(prefix="loadout-init-render-") as name:
+        scratch = Path(name).resolve() / "root"
+        source = scratch / "loadout" if plan.inventory.scope == "project" else scratch
+        for write in plan.source_writes:
+            path = source / write.path.relative_to(plan.inventory.source_root)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(write.content)
+            path.chmod(write.mode)
+        for path in render_all(scratch, profile):
+            original = real / path.relative_to(scratch) if path.is_relative_to(scratch) else None
+            if original is not None and original.is_file() and not path.exists():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(original.read_bytes())
+        outputs = _rebased(render_all(scratch, profile), scratch, real)
+        return tuple(compare_with_disk(outputs))
+
+
+def _first_sync(
+    plan: MigrationPlan, profile: str, approved: tuple[RenderedChange, ...], *, as_json: bool
+) -> int:
+    root = _render_root(plan).absolute()
+    outputs = render_all(root, profile)
+    wanted = {change.path: change.wanted for change in compare_with_disk(outputs)}
+    if wanted != {change.path: change.wanted for change in approved}:
+        print(
+            "loadout: rendered output changed after the preview, so nothing was written; "
+            "review it with `loadout check`, then run `loadout sync`",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        written, _ = deploy(root, profile, outputs)
+    except DeploymentConflict as error:
+        print(f"loadout: the first render was not written: {error}", file=sys.stderr)
+        return 1
+    if not as_json:
+        print(f"Rendered {len(written)} generated file(s).")
+    return 0
 
 
 def _result(result: MigrationResult, *, as_json: bool) -> None:
@@ -226,7 +324,13 @@ def _run_init(options: InitOptions) -> int:
         _show(plan.preview(), as_json=options.json)
         return 2
     prepared = prepare_migration(plan, machine_write=machine)
+    profile = _render_profile(plan)
+    render = () if plan.already_initialized else planned_render(plan, profile)
     preview = {**prepared.preview(), "registration": str(machine.path) if machine else None}
+    if options.json:
+        preview["outputs"] = [{"path": str(c.path), "change": c.kind} for c in render]
+    else:
+        preview["render"] = render
     if options.dry_run or not options.json:
         _show(preview, as_json=options.json)
     if options.dry_run:
@@ -246,13 +350,24 @@ def _run_init(options: InitOptions) -> int:
     except MigrationFailure as error:
         return report_failure(error, as_json=options.json)
     _result(result, as_json=options.json)
-    if not options.json and not result.already_initialized:
-        print(_hook_hint(plan))
-    if (
-        plan.inventory.scope == "project"
-        and not options.json
-        and not machine_config_path().is_file()
-    ):
+    return _after_migration(plan, result, profile, render, as_json=options.json)
+
+
+def _after_migration(
+    plan: MigrationPlan,
+    result: MigrationResult,
+    profile: str,
+    render: tuple[RenderedChange, ...],
+    *,
+    as_json: bool,
+) -> int:
+    if not result.already_initialized:
+        rendered = _first_sync(plan, profile, render, as_json=as_json)
+        if rendered:
+            return rendered
+        if not as_json:
+            print(_hook_hint(plan))
+    if plan.inventory.scope == "project" and not as_json and not machine_config_path().is_file():
         print("Global scope is not configured; use loadout init global when needed.")
     return 0
 
