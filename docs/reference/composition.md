@@ -57,7 +57,9 @@ Explicit `keys` constrain each input individually. This rule also governs partia
 documents, so removal reaches the deployed document without touching foreign fields.
 
 Native receipts manage retirement. Skill and module selection changes the generated item set.
-The override operator does not introduce general orphan removal outside native receipt scopes.
+The override operator does not introduce orphan removal of its own: outside native receipt
+scopes, `sync` retires what it no longer renders from the written record
+([0022](../decisions/0022-sync-retires-what-it-no-longer-renders.md)).
 
 Bundled-skill commands use the same declared skill winner as rendering. Uninstall removes the
 owned copy and its `loadout` override entry together, preserving other overrides and the manifest's

@@ -10,8 +10,9 @@ The cost turned out larger than that estimate. Two cases it does not name: editi
 source twice before committing leaves an output rendered from a state that is neither
 baseline, and a skill's supporting file has no accept set at all, so the first edit
 blocks every later sync until `--force`. This module supplies the missing third
-variant. Orphan removal is the next consumer, which is why entries are retained rather
-than pruned: a destination loadout no longer renders is exactly what that needs.
+variant. Retirement is the other consumer, which is why entries are retained until a
+destination is retired rather than pruned when a run stops rendering it: a destination
+loadout no longer renders is exactly what retirement needs to find.
 
 **It only ever widens acceptance.** Every check is `entry is not None and the hash
 matches`, so a missing, corrupt or version-bumped record reproduces the two-variant
@@ -79,12 +80,12 @@ class WrittenEntry:
 
     `norm_sha256` is what the guard compares, because a harness reordering keys in a
     file it shares with loadout is not a hand edit. `sha256` is the raw bytes, which is
-    what a copied file is compared by and what orphan removal will want.
+    what a copied file is compared by.
 
     A merged destination carries **no hash**: the applied document embeds bytes the
     harness owns and may rewrite a second later, so a hash of it would go stale without
-    anything having gone wrong. `owned` is recorded instead — the key names orphan
-    removal must strip rather than deleting a file loadout does not own.
+    anything having gone wrong. `owned` is recorded instead — the key names retirement
+    strips rather than deleting a file loadout does not own.
     """
 
     kind: str
@@ -143,16 +144,21 @@ def record_written(
     profile: str,
     entries: Mapping[Path, WrittenEntry],
     env: Mapping[str, str] | None = None,
+    *,
+    dropped: Iterable[Path] = (),
 ) -> Path | None:
     """Merge this run's writes into the record, keeping what earlier runs wrote.
 
     Retention is the point, not laziness: a destination this run no longer renders is
-    precisely what orphan removal needs to find, and pruning it here would throw that
-    away every time a target was deleted.
+    precisely what retirement needs to find, and pruning it here would throw that away
+    every time a target was deleted. Only `dropped`, what retirement has dealt with,
+    leaves the record.
     """
     path = written_state_path(root, env)
     merged = dict(read_written(root, env))
     merged.update(entries)
+    for gone in dropped:
+        merged.pop(gone, None)
     document: dict[str, Any] = {
         "version": VERSION,
         "root": str(root.resolve()),

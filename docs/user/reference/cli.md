@@ -35,12 +35,17 @@ configuration's selection; otherwise the default is `default`.
 
 `sync` writes generated outputs. It rewrites only files whose bytes change, so an unchanged file
 keeps its modification time, prints `wrote <path>` for each one it changed, and ends with
-`N written, M unchanged`, or `Up to date.` when nothing changed. `check` compares them with the current source and reports
+`N written, M unchanged`, or `Up to date.` when nothing changed. It also retires what it wrote
+before and no longer renders, printing `retired <path>` and adding `, N retired` to the summary:
+an unchanged file is deleted with its `.gitignore` entry, and a shared file loses only the keys
+loadout recorded writing. A retired file edited since sync wrote it is refused like any other
+hand edit. `check` compares them with the current source and reports
 drift without rewriting the generated files, so `check` is the preview of `sync`; there is no
 `sync --dry-run`. Each drifted file carries a kind, judged by the same comparison `sync` uses to
 refuse an overwrite: `source-changed` (the source moved on; run `sync`), `hand-edited` (it differs
 from what sync last wrote; move the edit into the source, or `sync --force` to discard it),
-`unknown` (no record and no committed baseline to judge by; review the diff first) or `missing`.
+`unknown` (no record and no committed baseline to judge by; review the diff first), `missing`,
+or `orphaned` (sync wrote it, the source no longer produces it, and the next `sync` retires it).
 `check --json` reports the same kind per path and exits with the same code as `check`. A root containing both
 global and project configuration renders both scopes.
 

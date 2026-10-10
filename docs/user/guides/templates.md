@@ -147,6 +147,6 @@ to update the source on disk, then sync the consuming projects.
 Remove its name from `templates` in `loadout/config.toml`. For a vendored template, also
 remove its matching `[template.NAME]` hash block and the copy in `loadout/templates/`.
 
-Run `loadout sync` and inspect the generated files. Loadout does not currently clean up every
-orphaned file when a source, skill, or output disappears. Remove obsolete generated files after
-reviewing what stopped producing them.
+Run `loadout sync`. It retires the generated files it wrote for the template earlier and no
+longer renders, printing `retired <path>` for each. A file you edited since is refused instead;
+`loadout check` lists both kinds before you sync.

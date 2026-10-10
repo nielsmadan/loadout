@@ -260,18 +260,17 @@ def project_slices(harnesses: Iterable[str]) -> tuple[tuple[str, str, SliceOutpu
     )
 
 
-def gitignore_entries(
-    root: Path, written: Iterable[Path], config: ProjectConfig
-) -> tuple[str, ...]:
+def gitignore_entries(root: Path, written: Iterable[Path]) -> tuple[str, ...]:
     """The root-anchored `.gitignore` lines for what sync wrote, and nothing else.
 
     A skill's files collapse to its folder, never the skills directory, because
     loadout owns only the folders it writes: a skill installed there by hand has
-    to stay visible to git beside them.
+    to stay visible to git beside them. Every harness's skills directory counts, so
+    a retired harness's skill folder maps to the entry that was added for it.
     """
     skill_dirs = tuple(
         PurePosixPath(spec.output)
-        for _, name, spec in project_slices(config.harnesses)
+        for _, name, spec in project_slices(PROJECT_PRESET)
         if name == "skills" and spec.output is not None
     )
 

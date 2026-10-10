@@ -75,8 +75,9 @@ holds `mcp-cache.json`, `run-history.jsonl`, `trust.json`, `auth.json` and
 `mcp-onboarding.json` — module and harness state, none of it trackable without breaking
 [0008](../decisions/0008-generated-files-carry-no-machine-state.md).
 
-**Orphan removal.** Legacy module-config sync leaves a destination in place when its source file
-is removed. Cleanup remains manual.
+**Orphan removal.** When a source file is removed, the next `sync` retires the destination it
+wrote, if that destination is unchanged since; see
+[0022](../decisions/0022-sync-retires-what-it-no-longer-renders.md).
 
 ## The module writes the same file
 

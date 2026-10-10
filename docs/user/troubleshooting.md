@@ -41,7 +41,11 @@ setup, then pass `--force` once.
 `check` labels each drifted file. `source-changed` and `missing` mean the source is ahead: run
 the matching `loadout sync`, then check again.
 
-`hand-edited` means the file was edited directly; follow the protected-edits steps above.
+`hand-edited` means the file was edited directly; follow the protected-edits steps above. This
+includes a file the source no longer produces: sync refuses to retire it until you move the edit
+into the source, delete the file yourself, or pass `--force`.
+`orphaned` means loadout wrote the file and the source no longer produces it; the next `sync`
+retires it.
 `unknown` means loadout has neither a record of what it wrote nor a committed baseline, so it cannot
 tell a source change from a hand edit: read the diff before syncing. Repeatedly
 overwriting generated files by hand makes the next sync undo those changes.
@@ -50,8 +54,8 @@ overwriting generated files by hand makes the next sync undo those changes.
 
 A skill is `skills/<name>/SKILL.md`. Older versions also read every `skills/*.md` file as a skill,
 so a `skills/README.md` rendered as a skill named `README`. Loadout no longer renders those files,
-but it does not delete skill folders it wrote earlier. Remove a stale one by hand, for example
-`~/.claude/skills/README/`. A skill you kept as `skills/<name>.md` must move to
+and the next `sync` retires the folders it wrote for them, such as `~/.claude/skills/README/`,
+unless you edited them. A skill you kept as `skills/<name>.md` must move to
 `skills/<name>/SKILL.md`; `sync` and `check` name any loose file they skip.
 
 ## No global configuration

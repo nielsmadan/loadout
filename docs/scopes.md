@@ -120,8 +120,8 @@ Consequences:
 
 - `loadout init project --harness <name>` (repeatable) scaffolds both sources and adds the personal
   source plus every generated output to `.gitignore`; a harness added later is a `harnesses` edit
-  in `loadout/config.toml`, and `sync` extends `.gitignore` the same way — entries are appended,
-  never removed. A
+  in `loadout/config.toml`, and `sync` extends `.gitignore` the same way, and drops an entry
+  when it retires the output the entry names. A
   committed `.gitignore` rather than `.git/info/exclude`, which is per-clone and silently fails
   to apply on a fresh checkout. `init` warns when a tracked `CLAUDE.md`, `AGENTS.md` or
   `GEMINI.md` exists and proceeds — that file is now something loadout generates as soon as an

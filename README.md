@@ -111,6 +111,19 @@ vouch for the other's write.
 `check` asks the same question and says which answer applies, rather than sending you to `sync`
 where `sync` is about to refuse.
 
+### Outputs the source no longer produces
+
+Remove a skill, a harness or the last MCP server from the source, and `sync` retires what it
+wrote for them before: it deletes each file, takes a skill's folder with it, and drops the file's
+`.gitignore` entry, printing `retired <path>`. In a file loadout shares with its harness, such as
+`~/.codex/config.toml`, it removes only the keys it recorded writing and leaves the rest.
+
+Only provably loadout's own, unchanged output is retired. The record above is the proof: a file
+it does not list is never touched, however generated it looks. A file edited since loadout wrote
+it is refused like any other hand edit, and `--force` retires it anyway. A skill folder holding a
+file loadout never wrote keeps that file and the folder. `check` reports each pending retirement
+as `orphaned`.
+
 ## Shell completions
 
     loadout integrate completions install            # for the shell running loadout

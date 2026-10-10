@@ -47,17 +47,6 @@ def test_sync_extends_gitignore_when_a_harness_is_added_to_the_list(tmp_path: Pa
     assert "/loadout/instructions/main.md" not in repeated
 
 
-def test_sync_leaves_gitignore_entries_of_removed_harnesses_in_place(tmp_path: Path) -> None:
-    """Entries are appended, never retired: loadout has no deletion story for its
-    own outputs, so sync does not invent one for their ignore entries either."""
-    config = _preset_project(tmp_path, '"claude", "codex"')
-    assert cli(tmp_path, "sync") == 0
-    config.write_text('harnesses = ["claude"]\ninstructions = ["main"]\n', encoding="utf-8")
-    assert cli(tmp_path, "sync") == 0
-    ignored = (tmp_path / ".gitignore").read_text(encoding="utf-8").splitlines()
-    assert "/.codex/rules/permissions.rules" in ignored
-
-
 def test_sync_maintains_gitignore_without_a_git_repository(tmp_path: Path) -> None:
     """`init project` neither requires nor creates a repository, so a plain
     directory is a supported project root and its `.gitignore` must be

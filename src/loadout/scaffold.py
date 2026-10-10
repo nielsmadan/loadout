@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+from collections.abc import Iterable
 from pathlib import Path
 
 from .errors import LoadoutError
@@ -63,6 +64,20 @@ def _append_gitignore(root: Path, entries: list[str]) -> bool:
     lines = existing + additions
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return True
+
+
+def _remove_gitignore(root: Path, entries: Iterable[str]) -> int:
+    """Drop exactly these lines, keeping every other line where it is."""
+    path = root / ".gitignore"
+    if not path.is_file():
+        return 0
+    unwanted = set(entries)
+    existing = path.read_text(encoding="utf-8").splitlines()
+    kept = [line for line in existing if line not in unwanted]
+    if len(kept) == len(existing):
+        return 0
+    path.write_text("".join(f"{line}\n" for line in kept), encoding="utf-8")
+    return len(existing) - len(kept)
 
 
 def init_project(

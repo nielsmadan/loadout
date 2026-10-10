@@ -33,7 +33,11 @@ fresh project init uses. It is not the only machine state that is *read*:
 destination, which is the third variant the modified-outside-loadout guard compares against and
 the sidecar [0008](../decisions/0008-generated-files-carry-no-machine-state.md) deferred for
 orphan removal — see [0019](../decisions/0019-sync-records-what-it-wrote.md). It only widens
-acceptance: no record means the guard behaves exactly as it did before one existed. Do not
+acceptance: no record means the guard behaves exactly as it did before one existed.
+`retirement.py` consumes it: a recorded destination the run no longer renders is deleted, or has
+its recorded keys stripped, once `commands.unaccepted_outputs` (the guard's classifier) accepts
+it — see [0022](../decisions/0022-sync-retires-what-it-no-longer-renders.md). With no record,
+nothing is retired. Do not
 confuse it with `record.py`, which records owned key *names* beside a fragment in the source
 repo and is committed.
 `project.py` (harness preset) is project scope; `scaffold.py` holds both scopes' scaffolding

@@ -39,7 +39,8 @@ from .project import (
     load_project_config,
     project_config_path,
 )
-from .scaffold import _append_gitignore, init_global, init_project
+from .retirement import orphan_drift, orphaned, retire
+from .scaffold import _append_gitignore, _remove_gitignore, init_global, init_project
 from .skill_installation import (
     SkillSourceLocation,
     SourceSkillState,
@@ -255,12 +256,14 @@ def _committed_variants(root: Path, profiles: Iterable[str]) -> dict[Path, set[s
 @dataclass(frozen=True)
 class Unaccepted:
     """A file on disk no baseline accounts for. `kind` is hand-edited when a commit or
-    a record says what loadout wrote there, and unknown when neither exists."""
+    a record says what loadout wrote there, and unknown when neither exists. `orphaned`
+    marks a recorded destination this run no longer renders, which sync would retire."""
 
     path: Path
     kind: str
     actual: str
     expected: str
+    orphaned: bool = False
 
 
 def _modified_outside_loadout(
@@ -269,19 +272,30 @@ def _modified_outside_loadout(
     return [(u.path, u.actual, u.expected) for u in unaccepted_outputs(root, outputs, profile)]
 
 
+def _text_accepted(path: Path, actual: str, forms: set[str], entry: WrittenEntry | None) -> bool:
+    return normalise(path, actual) in forms or accepts_text(entry, path, actual)
+
+
+def _bytes_accepted(data: bytes, expected: bytes | None, entry: WrittenEntry | None) -> bool:
+    return data == expected or accepts_bytes(entry, data)
+
+
 def unaccepted_outputs(
     root: Path, outputs: Mapping[Path, Output], profile: str = "default"
 ) -> list[Unaccepted]:
     """Files matching no output loadout itself could have written.
 
-    The one classifier behind both sync's refusal and check's drift kinds, so the
-    two cannot disagree about what counts as a hand edit.
+    The one classifier behind sync's refusal, check's drift kinds and retirement, so
+    none of them can disagree about what counts as a hand edit.
 
     The accept set spans the committed source, the working source, every declared
     profile and the record of what sync last wrote, so an unsynced source edit, a
     synced one and a profile switch all match something. With neither a commit nor a
     record, only the working source remains: a file that does not match it is content
     loadout did not write, and is refused rather than overwritten.
+
+    A recorded destination this run no longer renders is judged the same way, with
+    deletion as the change, so an edit made to it after sync wrote it is refused too.
     """
     profiles = declared_profiles(root)
     committed = _committed_variants(root, profiles)
@@ -302,10 +316,8 @@ def unaccepted_outputs(
         if path in artifacts:
             continue
         if isinstance(expected, FrozenFile):
-            if (
-                path.is_file()
-                and path.read_bytes() != expected.content
-                and not accepts_bytes(written.get(path), path.read_bytes())
+            if path.is_file() and not _bytes_accepted(
+                path.read_bytes(), expected.content, written.get(path)
             ):
                 modified.append(
                     unaccepted(path, describe_file(path), f"{len(expected.content)} bytes\n")
@@ -316,10 +328,8 @@ def unaccepted_outputs(
             # source directly. check_all only *reports* drift; this is the guard
             # that stops sync overwriting a hand edit, and it has to cover a
             # supporting file just as much as a SKILL.md.
-            if (
-                path.is_file()
-                and path.read_bytes() != expected.read_bytes()
-                and not accepts_bytes(written.get(path), path.read_bytes())
+            if path.is_file() and not _bytes_accepted(
+                path.read_bytes(), expected.read_bytes(), written.get(path)
             ):
                 modified.append(
                     unaccepted(
@@ -338,10 +348,28 @@ def unaccepted_outputs(
         if not path.is_file() or not forms:
             continue
         actual = path.read_text(encoding="utf-8")
-        if normalise(path, actual) not in forms and not accepts_text(
-            written.get(path), path, actual
-        ):
+        if not _text_accepted(path, actual, forms, written.get(path)):
             modified.append(unaccepted(path, actual, expected))
+    modified += _unaccepted_orphans(orphaned(written, outputs), acceptable)
+    return modified
+
+
+def _unaccepted_orphans(
+    orphans: Mapping[Path, WrittenEntry], acceptable: Mapping[Path, set[str]]
+) -> list[Unaccepted]:
+    modified: list[Unaccepted] = []
+    for path, entry in sorted(orphans.items()):
+        # A merged orphan loses only loadout's keys, which the guard never protects.
+        if entry.kind == "merged" or not path.is_file():
+            continue
+        if entry.kind == "text":
+            actual = path.read_text(encoding="utf-8")
+            if not _text_accepted(path, actual, acceptable.get(path, set()), entry):
+                modified.append(Unaccepted(path, "hand-edited", actual, "", orphaned=True))
+        elif not _bytes_accepted(path.read_bytes(), None, entry):
+            modified.append(
+                Unaccepted(path, "hand-edited", describe_file(path), "(absent)\n", orphaned=True)
+            )
     return modified
 
 
@@ -371,15 +399,16 @@ def cmd_sync(root: Path, profile: str = "default", force: bool = False) -> int:
     # recorded is provably what was written rather than a third render of it.
     outputs = render_all(root, profile)
     if not force:
-        modified = _modified_outside_loadout(root, outputs, profile)
+        modified = unaccepted_outputs(root, outputs, profile)
         if modified:
             full: list[str] = []
-            for path, actual, expected in modified:
-                rel = _display(path, root)
-                print(f"WARNING: {rel} was modified outside loadout", file=sys.stderr)
+            for item in modified:
+                rel = _display(item.path, root)
+                state = " and is no longer rendered" if item.orphaned else ""
+                print(f"WARNING: {rel} was modified outside loadout{state}", file=sys.stderr)
                 # Tight context: on a 16k settings.json the one runtime-added entry
                 # should be readable without scrolling past the whole document.
-                lines = diff_lines(rel, actual, expected, context=1)
+                lines = diff_lines(rel, item.actual, item.expected, context=1)
                 full.extend(lines)
                 sys.stderr.writelines(lines[:DIFF_LIMIT])
                 if len(lines) > DIFF_LIMIT:
@@ -394,8 +423,9 @@ def cmd_sync(root: Path, profile: str = "default", force: bool = False) -> int:
             # thing it exists to prevent. Whatever the terminal truncates, the file
             # holds in full — the decision stays reviewable.
             if any(
-                len(diff_lines(_display(p, root), a, e, context=1)) > DIFF_LIMIT
-                for p, a, e in modified
+                len(diff_lines(_display(u.path, root), u.actual, u.expected, context=1))
+                > DIFF_LIMIT
+                for u in modified
             ):
                 print(f"\nThe complete diff is at {_write_full_diff(full)}", file=sys.stderr)
             return 1
@@ -408,14 +438,19 @@ def cmd_sync(root: Path, profile: str = "default", force: bool = False) -> int:
     for path in written:
         action = "wrote" if path.exists() else "retired"
         print(f"{action} {_display(path, root)}")
-    print(_sync_summary(outputs, written))
+    retired, unignored = retire_orphans(root, profile, outputs)
+    for path in retired:
+        print(f"retired {_display(path, root)}")
+    print(_sync_summary(outputs, written, retired))
     if ignored:
         print(f"added {ignored} entries to .gitignore")
+    if unignored:
+        print(f"removed {unignored} entries from .gitignore")
     _report_notices(root, profile)
     return 0
 
 
-def _sync_summary(outputs: Mapping[Path, Output], written: list[Path]) -> str:
+def _sync_summary(outputs: Mapping[Path, Output], written: list[Path], retired: list[Path]) -> str:
     paths = set(outputs) | {
         record
         for content in outputs.values()
@@ -423,9 +458,29 @@ def _sync_summary(outputs: Mapping[Path, Output], written: list[Path]) -> str:
         for record, _ in content.records
     }
     changed = sum(1 for path in written if path in paths)
-    if not changed:
+    if not changed and not retired:
         return "Up to date."
-    return f"{changed} written, {len(paths) - changed} unchanged"
+    summary = f"{changed} written, {len(paths) - changed} unchanged"
+    return f"{summary}, {len(retired)} retired" if retired else summary
+
+
+def retire_orphans(
+    root: Path, profile: str, outputs: Mapping[Path, Output]
+) -> tuple[list[Path], int]:
+    """Retire every recorded destination this run no longer renders, once the guard
+    has passed or been forced, and forget them. Returns the paths changed on disk and
+    how many `.gitignore` entries were dropped."""
+    written = read_written(root)
+    orphans = orphaned(written, outputs)
+    if not orphans:
+        return [], 0
+    retired = retire(orphans, written)
+    record_written(root, profile, {}, dropped=orphans)
+    if not project_config_path(root).is_file():
+        return retired, 0
+    deleted = [path for path in retired if orphans[path].kind != "merged"]
+    unwanted = set(gitignore_entries(root, deleted)) - set(gitignore_entries(root, outputs))
+    return retired, _remove_gitignore(root, unwanted)
 
 
 def deploy(
@@ -441,8 +496,7 @@ def deploy(
     # Root-anchored, the form init's migration writes: a bare "CLAUDE.md"
     # would also ignore loadout/instructions/native/claude/CLAUDE.md, and
     # `git add loadout` then silently drops that source from the index.
-    config = load_project_config(project_config_path(root))
-    entries = list(gitignore_entries(root, outputs, config))
+    entries = list(gitignore_entries(root, outputs))
     return written, len(entries) if _append_gitignore(root, entries) else 0
 
 
@@ -555,35 +609,43 @@ DRIFT_ADVICE = {
     "`loadout sync --force` to discard it",
     "unknown": "no record of what loadout wrote here and no committed baseline, so a source "
     "change cannot be told from a hand edit; review the diff before syncing",
+    "orphaned": "written by loadout but no longer rendered; run `loadout sync` to retire it",
 }
 
 
-def drift_kinds(root: Path, profile: str, drift: list[tuple[Path, str, str]]) -> dict[Path, str]:
-    """Each drifted path's kind, from the guard's own verdict.
+def classified_drift(
+    root: Path, profile: str
+) -> tuple[list[tuple[Path, str, str]], dict[Path, str]]:
+    """Every drifted path, retirements included, with its kind from the guard's verdict.
 
     A merged output is outside the guard, which records owned keys but no hash, so
-    its drift is unknown rather than a guess.
+    its drift is unknown rather than a guess. An orphan the guard accepts is
+    orphaned; one it refuses is hand-edited, because sync will refuse it.
     """
+    drift = check_all(root, profile)
     outputs = render_all(root, profile)
+    orphans = orphaned(read_written(root), outputs)
+    drift += orphan_drift(orphans)
     verdicts = {u.path: u.kind for u in unaccepted_outputs(root, outputs, profile)}
 
     def kind(path: Path) -> str:
         if not path.exists():
             return "missing"
+        if path in orphans:
+            return verdicts.get(path, "orphaned")
         if isinstance(outputs.get(path), Merged):
             return "unknown"
         return verdicts.get(path, "source-changed")
 
-    return {path: kind(path) for path, _, _ in drift}
+    return drift, {path: kind(path) for path, _, _ in drift}
 
 
 def _check_json(root: Path, profile: str) -> int:
     captured = io.StringIO()
     with contextlib.redirect_stdout(captured):
-        drift = check_all(root, profile)
+        drift, kinds = classified_drift(root, profile)
     notes = [line.removeprefix("note: ") for line in captured.getvalue().splitlines()]
     notes += _check_notes(root, profile)
-    kinds = drift_kinds(root, profile, drift)
     code = 1 if drift else 0
     result = {
         "status": "drift" if drift else "clean",
@@ -598,16 +660,15 @@ def _check_json(root: Path, profile: str) -> int:
 def cmd_check(root: Path, profile: str = "default", *, as_json: bool = False) -> int:
     if as_json:
         return _check_json(root, profile)
-    drift = check_all(root, profile)
+    # `check` used to end every drift with "run `loadout sync`" even where sync was
+    # about to refuse, sending the reader in a circle and teaching them --force. Ask
+    # the guard the same question sync will, and say which answer applies.
+    drift, kinds = classified_drift(root, profile)
     for note in _check_notes(root, profile):
         print(f"note: {note}")
     if not drift:
         print("generated files are up to date")
         return 0
-    # `check` used to end every drift with "run `loadout sync`" even where sync was
-    # about to refuse, sending the reader in a circle and teaching them --force. Ask
-    # the guard the same question sync will, and say which answer applies.
-    kinds = drift_kinds(root, profile, drift)
     for path, actual, expected in drift:
         rel = _display(path, root)
         print(f"DRIFT ({kinds[path]}): {rel}", file=sys.stderr)
