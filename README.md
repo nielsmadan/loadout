@@ -177,7 +177,8 @@ is recognized as source and left intact; repeat init reports no migration while 
 saved harness default.
 A `~/.claude` symlinked into a dotfiles repo, or one made of per-file links, is adopted by
 de-linking it: loadout's outputs become real files, everything else links back into the repo, and
-the repo is left unchanged. Init names each link it replaced; see
+the repo is left unchanged. Init names each link it replaced and which later additions to the repo
+will not appear; see
 [symlinked deployments](docs/reference/migration.md#symlinked-deployments).
 A conflicting machine registration requires `--registration replace` or `--registration keep`.
 `--yes` approves resolved operations.

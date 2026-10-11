@@ -114,7 +114,8 @@ def test_a_symlinked_claude_directory_is_adopted_by_de_linking(
     assert (
         f"{claude} was a symlink into {dotfiles}. Loadout's files are now real files here; "
         f"everything else still links into {dotfiles}. {dotfiles}'s copies of CLAUDE.md, "
-        "settings.json, skills/review/SKILL.md are no longer used."
+        "settings.json, skills/review/SKILL.md are no longer used. Entries added later to "
+        f"{dotfiles}'s top level, or inside skills/, will not appear here."
     ) in out
     assert not claude.is_symlink()
     _assert_adopted(claude, dotfiles)
@@ -124,6 +125,11 @@ def test_a_symlinked_claude_directory_is_adopted_by_de_linking(
     assert (claude / "commands").readlink() == dotfiles / "commands"
     (dotfiles / "commands/later.md").write_text("Later.\n")
     assert (claude / "commands/later.md").read_text() == "Later.\n"
+    (dotfiles / "later.md").write_text("Top.\n")
+    (dotfiles / "skills/added/SKILL.md").parent.mkdir()
+    (dotfiles / "skills/added/SKILL.md").write_text("Added.\n")
+    assert not (claude / "later.md").exists()
+    assert sorted(p.name for p in (claude / "skills").iterdir()) == ["review"]
 
 
 def test_stow_style_per_file_links_are_adopted_by_de_linking(
@@ -141,7 +147,13 @@ def test_stow_style_per_file_links_are_adopted_by_de_linking(
         f"{claude / 'settings.json'} was a symlink to {dotfiles / 'settings.json'}. It is now a "
         f"real file written by loadout; {dotfiles / 'settings.json'} is no longer used."
     ) in out
-    assert (f"{claude / 'skills/review'} was a symlink into {dotfiles / 'skills/review'}.") in out
+    assert (
+        f"{claude / 'skills/review'} was a symlink into {dotfiles / 'skills/review'}. Loadout's "
+        f"files are now real files here; everything else still links into "
+        f"{dotfiles / 'skills/review'}. {dotfiles / 'skills/review'}'s copies of SKILL.md are no "
+        f"longer used. Entries added later to {dotfiles / 'skills/review'}'s top level will not "
+        "appear here."
+    ) in out
     _assert_adopted(claude, dotfiles)
     for unmanaged in ("commands", "agents", "projects", ".credentials.json"):
         assert (claude / unmanaged).is_symlink()

@@ -301,10 +301,15 @@ def delinked_notice(delinked: Delinked) -> str:
         f"{delinked.link} was a symlink into {delinked.target}. Loadout's files are now real "
         f"files here; everything else still links into {delinked.target}."
     )
-    if not delinked.superseded:
-        return notice
-    copies = ", ".join(p.relative_to(delinked.target).as_posix() for p in delinked.superseded)
-    return f"{notice} {delinked.target}'s copies of {copies} are no longer used."
+    if delinked.superseded:
+        copies = ", ".join(p.relative_to(delinked.target).as_posix() for p in delinked.superseded)
+        notice = f"{notice} {delinked.target}'s copies of {copies} are no longer used."
+    directories = ", ".join(f"{name}/" for name in delinked.written_into)
+    inside = f", or inside {directories}," if directories else ""
+    return (
+        f"{notice} Entries added later to {delinked.target}'s top level{inside} "
+        "will not appear here."
+    )
 
 
 def _result(result: MigrationResult, delinked: tuple[Delinked, ...], *, as_json: bool) -> None:

@@ -112,7 +112,8 @@ The preview lists each link as `Replace symlink: <link> -> <target>`, and `--jso
 
     ~/.claude was a symlink into ~/dotfiles/claude. Loadout's files are now real files here;
     everything else still links into ~/dotfiles/claude. ~/dotfiles/claude's copies of CLAUDE.md,
-    settings.json are no longer used.
+    settings.json are no longer used. Entries added later to ~/dotfiles/claude's top level, or
+    inside skills/, will not appear here.
 
 Only links at or below a harness root are deployment links. A link above one — macOS's
 `/tmp` → `/private/tmp`, a symlinked home directory, `~/.config` for OpenCode — is resolved, never

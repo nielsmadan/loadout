@@ -45,6 +45,7 @@ class Delinked:
     target: Path
     directory: bool
     superseded: tuple[Path, ...]
+    written_into: tuple[str, ...] = ()
 
     def document(self) -> dict[str, Any]:
         return {
@@ -95,7 +96,9 @@ class MigrationPreparation:
                 target / path.relative_to(link) for path in outputs if path.is_relative_to(link)
             )
             superseded = tuple(sorted(copy for copy in copies if copy.is_file()))
-            result.append(Delinked(link, target, target.is_dir(), superseded))
+            nested = (path.relative_to(link).parts for path in outputs if path.is_relative_to(link))
+            written_into = tuple(sorted({parts[0] for parts in nested if len(parts) > 1}))
+            result.append(Delinked(link, target, target.is_dir(), superseded, written_into))
         return tuple(result)
 
 
