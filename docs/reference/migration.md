@@ -117,7 +117,14 @@ The preview lists each link as `Replace symlink: <link> -> <target>`, and `--jso
 Only links at or below a harness root are deployment links. A link above one — macOS's
 `/tmp` → `/private/tmp`, a symlinked home directory, `~/.config` for OpenCode — is resolved, never
 replaced, and loadout writes through it. A `~/.config` that links into a dotfiles repo therefore
-receives OpenCode's generated files in that repo.
+receives OpenCode's generated files in that repo, and loadout's own machine config and write
+records with them. The preview says so in one line per link:
+
+    ~/.config is a symlink to ~/dotfiles/config; loadout writes through it, so the files it writes
+    under ~/.config land in ~/dotfiles/config.
+
+`sync` writes through the same way and prints nothing about it. A file that already exists in the
+target and differs from what loadout last wrote is still refused as modified outside loadout.
 
 Still refused: a symlink cycle, and in project scope a harness root linked outside the repository,
 whose content would otherwise become committed project source. That refusal has no override; it

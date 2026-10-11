@@ -130,6 +130,36 @@ def _registration(
     return SourceWrite(path, tomlkit.dumps(registration).encode(), 0o600, True), None
 
 
+def written_through(plan: MigrationPlan, machine: SourceWrite | None) -> tuple[str, ...]:
+    """A link above a harness root stays a link, so what loadout writes beneath it lands in
+    the link's target."""
+    home = dict(plan.inventory.destination_environment).get("HOME")
+    boundary = Path(home) if plan.inventory.scope == "global" and home else plan.inventory.root
+    destinations = (
+        *(m.source for m in plan.inventory.mappings),
+        *((machine.path,) if machine else ()),
+    )
+    links = dict.fromkeys(
+        link for path in destinations if (link := _link_above(path, boundary)) is not None
+    )
+    return tuple(
+        f"{link} is a symlink to {link.resolve()}; loadout writes through it, so the files it "
+        f"writes under {link} land in {link.resolve()}."
+        for link in links
+    )
+
+
+def _link_above(path: Path, boundary: Path) -> Path | None:
+    return next(
+        (
+            ancestor
+            for ancestor in reversed(path.parents)
+            if ancestor != boundary and ancestor.is_relative_to(boundary) and ancestor.is_symlink()
+        ),
+        None,
+    )
+
+
 def _show(preview: dict[str, Any], *, as_json: bool) -> None:
     if as_json:
         print(json.dumps(preview, indent=2))
@@ -320,6 +350,7 @@ def _run_init(options: InitOptions) -> int:
     profile = _render_profile(plan)
     render = () if plan.already_initialized else planned_render(plan, profile)
     preview = {**prepared.preview(), "registration": str(machine.path) if machine else None}
+    preview["notes"] = [*preview["notes"], *written_through(plan, machine)]
     if options.json:
         preview["outputs"] = [{"path": str(c.path), "change": c.kind} for c in render]
     else:
