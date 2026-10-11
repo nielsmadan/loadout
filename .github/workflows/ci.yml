@@ -63,6 +63,25 @@ jobs:
       - name: Migration integration tests
         run: uv run --no-sync pytest -q -m migration_integration
 
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: "0.8.10"
+          python-version: "3.13"
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: "24"
+      - name: Install locked dependencies
+        run: uv sync --locked
+      - name: Tests with branch coverage
+        run: uv run --no-sync pytest -q --cov --cov-report=term-missing:skip-covered
+      - name: Coverage summary
+        run: uv run --no-sync coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
+
   check:
     if: always()
     needs: [unit, integration, migration]

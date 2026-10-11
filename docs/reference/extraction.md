@@ -60,14 +60,12 @@ Extraction diagnoses it structurally — a map whose key order is not the concat
 decision groups — and emits a note. It does not diagnose it by re-rendering, so the document
 property stays an independent check rather than a tautology.
 
-**This page and `coverage.md` describe different halves, and neither is the whole story.**
-[coverage](coverage.md#reachable-only-by-calling-a-renderer-directly) records that the state
-distinguishing those two renderers is *unreachable through the pipeline*: `merge_rules` resolves
+**What loadout can produce is narrower than what extraction may be handed.** The state that
+distinguishes those two renderers is *unreachable through the pipeline*: `merge_rules` resolves
 deny > ask > allow before any renderer runs, so nothing loadout writes contains a rule in two
-categories. That is true and it does not narrow anything here, because **extraction's input is
-not loadout's output.** It reads what a person, a harness, or another tool already wrote, where
-the shape is ordinary. Read `coverage.md` for what loadout can produce and this page for what
-extraction may be handed.
+categories, and whole-document comparison never exercises it. That does not narrow anything
+here, because **extraction's input is not loadout's output.** It reads what a person, a harness,
+or another tool already wrote, where the shape is ordinary.
 
 ## `base` is the render-time residual, not the settings fragment
 

@@ -50,6 +50,10 @@ test-migration:
 test-all:
     @uv run pytest -q
 
+# Every tier's tests with branch coverage; a report, not a gate.
+coverage:
+    @uv run pytest -q --cov --cov-report=term-missing:skip-covered
+
 lint:
     @uv run ruff check
 

@@ -17,6 +17,7 @@ Codex, Factory Droid, OpenCode and Pi. Antigravity (`agy`) was dropped — see
     just test-integration  # CLI, subprocess, packaging and transactional integration tests
     just test-migration  # Git-backed migration integration tests
     just test-all     # every pytest test
+    just coverage     # every pytest test, with a branch coverage report
 
 ## Constraints that silently corrupt output if violated
 
@@ -46,8 +47,7 @@ These are not style preferences. Each one has already caused, or nearly caused, 
   rewrites existing output*" was considered and rejected — the case arises about once a
   milestone, and a conditional that fires that rarely is one people misremember.
 - **The fixture's reach is load-bearing.** `tests/fixtures/permissions.toml` exists to provoke
-  shapes, not to be realistic; `tests/test_fixture_shapes.py` fails if one is dropped, and
-  `docs/reference/coverage.md` maps every documented behaviour to the test that pins it. When a
+  shapes, not to be realistic; `tests/test_fixture_shapes.py` fails if one is dropped. When a
   test fails after a fixture change, ask whether the fixture stopped provoking the behaviour
   before you touch the assertion.
 - **Key insertion order is load-bearing.** Python dicts preserve it and the output depends on
@@ -178,7 +178,6 @@ The implementation path, renderer ownership boundaries, extraction flow, and sou
 - `docs/reference/` — per-harness matcher semantics, pattern shapes, verified quirks
 - `docs/reference/extraction.md` — the renderers run backwards: what round-trips, what is reported
 - `docs/reference/templates.md` — declared vs vendored, name resolution, the content hash, sync
-- `docs/reference/coverage.md` — every documented behaviour and the test that pins it
 - `docs/decisions/` — ADRs; append-only, superseded rather than edited
 
 When behaviour changes, update the doc that covers it in the same commit.

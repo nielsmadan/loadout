@@ -1,6 +1,6 @@
 # Synthetic manifest. Declares one of every wiring shape the expected output has
-# to prove — see docs/reference/coverage.md, "Covered only by whole-document
-# comparison". Not a copy of anyone's real manifest.
+# to prove: renderers, bases, preserve, profiles and composition order, which only
+# whole-document comparison covers. Not a copy of anyone's real manifest.
 
 [[source]]
 name = "test"

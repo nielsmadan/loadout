@@ -2,7 +2,7 @@
 
 The expected-output comparison is only as good as the shapes its source carries. A
 trimmed fixture would still pass every comparison while quietly covering less, so each
-shape docs/reference/coverage.md relies on is asserted here. A failure means the fixture
+shape the comparison relies on is asserted here. A failure means the fixture
 lost reach — restore the entry rather than deleting the assertion.
 
 Matcher semantics are not tested here; tests/test_permissions_renderers.py owns those.
@@ -76,7 +76,7 @@ def test_an_entry_appears_in_two_categories_and_is_not_last() -> None:
     longer can: after resolution no entry is in two categories, so render_pi's
     pop-and-reassign never fires through the pipeline. The quirk is pinned by
     test_pi_reorders_cross_key_entries_so_later_category_wins_position, which
-    builds Rules directly. See docs/reference/coverage.md.
+    builds Rules directly.
     """
     shared = set(RULES.allow) & set(RULES.deny)
     assert shared, "no entry is in both allow and deny"

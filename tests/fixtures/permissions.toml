@@ -1,8 +1,7 @@
 # Synthetic permission source. Nothing here is anyone's real configuration.
 #
 # Every entry exists to give the whole-document comparison a shape to carry
-# through the wiring — see docs/reference/coverage.md, "Covered only by
-# whole-document comparison". The matcher semantics themselves are pinned by
+# through the wiring, which no unit test covers. The matcher semantics are pinned by
 # tests/test_permissions_renderers.py against inline Rules(...), not by this
 # file, so this stays small on purpose.
 #
