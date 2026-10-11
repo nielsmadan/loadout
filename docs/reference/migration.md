@@ -50,16 +50,38 @@ Project scope, relative to the repository root:
 | `.agents` | `skills/` |
 | repository | `opencode.json`, `opencode.jsonc`, `.mcp.json`, and every `AGENTS.md`, `AGENTS.override.md`, `CLAUDE.md`, `CLAUDE.local.md` and `opencode.md` outside the harness roots |
 
-Two more kinds of read go beyond the table:
+One more kind of read goes beyond the table. A file that an adopted document references, such as
+a hook script named by a command, is read when it lies under a selected root. A reference that is
+missing, outside the roots, dynamic (`$VAR/…`), a glob or a directory is left as written: the
+adopted document keeps pointing at the original path, which keeps working because loadout does not
+move it.
 
-- A file that an adopted document references, such as a hook script named by a command, is read to
-  confirm that it exists. It stays where it is.
-- Global init in a directory that already holds a harness-shaped tree (`claude/`, `.claude/`, …)
-  still reports that tree for confirmation.
+The selected directory is never scanned. A dotfiles copy there (`claude/`, `.claude/`, an installer,
+a `Makefile`) is not read; init always adopts the live deployment. Runtime state inside a listed
+tree, such as `node_modules/` or `.env`, is still excluded.
 
-Runtime state inside a listed tree, such as `node_modules/` or `.env`, is still excluded.
-A file at a listed path that loadout cannot adopt, such as `opencode.jsonc` or a `.tmpl` inside a
-skill, still blocks the preview; leaving it would let it shadow what loadout writes.
+## What init refuses
+
+Discovery has no option to point it at another layout, so every refusal names the file to change;
+fix it on disk and run init again. An incomplete preview exits 2 and changes nothing.
+
+| code | when |
+|---|---|
+| `agents-required` | no harness was given and none has configuration at a known path |
+| `symlink-target`, `symlink-cycle` | a link at a read path is missing its target or loops |
+| `external-symlink` | in project scope, a harness root links outside the repository; its content would become committed source |
+| `unadoptable-format` | `opencode.jsonc`: loadout writes `opencode.json` and cannot carry JSONC comments |
+| `invalid-native-document` | a document at a read path does not parse |
+| `dependency-activation` | an adopted declaration references a de-linked original instead of the copy loadout deploys |
+| `source-composition` | two originals would write different content to one source file, such as a skill with the same name in two harnesses; make them identical or remove one |
+| `source-exists`, `initialized-source`, `initialized-conflict` | the source directory already holds conflicting loadout source |
+| `registration-conflict` | global: another source is registered; choose `--registration` |
+| `reconstruction-failed` | the serialized source does not reproduce the originals |
+
+Project `CLAUDE.md` and `AGENTS.md` holding different content stop init with *"project instruction
+documents disagree across harnesses"* (exit 3, before any preview), since project scope keeps one
+instruction source. In global
+scope each harness keeps its own, so `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` may differ.
 
 ## Source shape
 
@@ -73,7 +95,7 @@ apply. Existing generated destinations are reconstructed in isolation before app
 ## Symlinked deployments
 
 A global harness root that is a symlink, such as `~/.claude` pointing into a dotfiles repo, is
-adopted without `--mapping`, and so are stow-style per-file links inside it. Adoption **de-links**
+adopted, and so are stow-style per-file links inside it. Adoption **de-links**
 them; see [0023](../decisions/0023-adoption-de-links-a-symlinked-deployment.md):
 
 - loadout's outputs become real files at the harness path;
@@ -98,8 +120,7 @@ replaced, and loadout writes through it. A `~/.config` that links into a dotfile
 receives OpenCode's generated files in that repo.
 
 Still refused: a symlink cycle, and in project scope a harness root linked outside the repository,
-whose content would otherwise become committed project source. The latter takes an explicit
-`--mapping`.
+whose content would otherwise become committed project source.
 
 ## Older adopted repositories
 

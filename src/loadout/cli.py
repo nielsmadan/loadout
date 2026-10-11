@@ -27,7 +27,7 @@ from .completions import (
 from .errors import LoadoutError, UsageError
 from .git_hook_commands import run_hook
 from .git_hooks import EVENTS, install_hooks, status_hooks, uninstall_hooks
-from .init_options import InitOptions, parse_mapping, parse_selection
+from .init_options import InitOptions
 from .init_workflow import run_init, run_recovery
 from .machine import load_machine_config, machine_config_path
 from .project import project_config_path
@@ -303,18 +303,6 @@ def _add_init_choices(init: argparse.ArgumentParser) -> None:
         help="configured harness (repeatable); otherwise use machine defaults, then detection",
     )
     init.add_argument(
-        "--mapping",
-        action="append",
-        default=[],
-        help="root mapping JSON: source, destination, agents; optional kind/category/destination_template",
-    )
-    init.add_argument(
-        "--select-source",
-        action="append",
-        default=[],
-        help="conflicting-copy selection JSON: destination, source",
-    )
-    init.add_argument(
         "--dry-run",
         action="store_true",
         help="preview without changing source, Git or destinations",
@@ -378,8 +366,6 @@ def _dispatch_init(args: argparse.Namespace) -> int:
                 scope="global",
                 source=source,
                 agents=tuple(args.harnesses or ()),
-                mappings=tuple(parse_mapping(value) for value in args.mapping),
-                selections=tuple(parse_selection(value) for value in args.select_source),
                 registration=args.registration,
                 dry_run=args.dry_run,
                 json=args.json,
@@ -391,8 +377,6 @@ def _dispatch_init(args: argparse.Namespace) -> int:
             root=args.root.expanduser().absolute(),
             scope="project",
             agents=tuple(args.harnesses or ()),
-            mappings=tuple(parse_mapping(value) for value in args.mapping),
-            selections=tuple(parse_selection(value) for value in args.select_source),
             dry_run=args.dry_run,
             json=args.json,
             yes=args.yes,

@@ -38,7 +38,7 @@ def test_unresolved_json_preview_does_not_mutate(tmp_path, capsys):
         == 2
     )
     data = json.loads(capsys.readouterr().out)
-    assert {i["code"] for i in data["issues"]} == {"agents-required", "source-mapping"}
+    assert {i["code"] for i in data["issues"]} == {"agents-required"}
     assert list(tmp_path.iterdir()) == [tmp_path / "AGENTS.md"]
 
 
@@ -214,33 +214,6 @@ def test_a_conflicting_registration_names_the_flag_that_replaces_it(tmp_path, ca
     assert tomllib.loads(machine_config_path().read_text())["source"] == str(tmp_path / "loadout")
 
 
-def test_global_copy_conflict_requires_selection_even_with_yes(tmp_path, fake_home, capsys):
-    _repo(tmp_path)
-    live = fake_home / ".claude"
-    live.mkdir()
-    (live / "settings.json").write_text('{"model":"live"}\n')
-    source = tmp_path / "claude"
-    source.mkdir()
-    (source / "settings.json").write_text('{"model":"source"}\n')
-    mapping = json.dumps({"source": str(source), "destination": str(live), "agents": ["claude"]})
-    args = [
-        "init",
-        "global",
-        str(tmp_path),
-        "--harness",
-        "claude",
-        "--mapping",
-        mapping,
-    ]
-    assert loadout.main([*args, "--yes", "--json"]) == 2
-    assert "source-conflict" in {i["code"] for i in json.loads(capsys.readouterr().out)["issues"]}
-    assert (source / "settings.json").read_text() == '{"model":"source"}\n'
-    selection = json.dumps({"source": str(source), "destination": str(live)})
-    assert loadout.main([*args, "--select-source", selection, "--yes"]) == 0
-    assert json.loads((live / "settings.json").read_text())["model"] == "source"
-    assert not (source / "settings.json").exists()
-
-
 def test_existing_source_registration_is_an_explicit_transaction(tmp_path, capsys):
     _repo(tmp_path)
     assert loadout.main(["init", "global", str(tmp_path), "--harness", "claude", "--yes"]) == 0
@@ -287,13 +260,13 @@ def test_noninteractive_apply_requires_explicit_approval(tmp_path, capsys):
     assert list(tmp_path.iterdir()) == []
 
 
-@pytest.mark.parametrize("kind", [[], {}, 1])
-def test_invalid_mapping_shape_is_usage_error(tmp_path, capsys, kind):
-    mapping = json.dumps(
-        {"source": str(tmp_path), "destination": str(tmp_path), "agents": ["claude"], "kind": kind}
-    )
-    assert loadout.main(["init", "project", "--mapping", mapping]) == 2
-    assert "mapping kind" in capsys.readouterr().err
+@pytest.mark.parametrize("scope", ["project", "global"])
+def test_init_has_no_mapping_option(tmp_path, capsys, scope):
+    mapping = json.dumps({"source": str(tmp_path), "destination": str(tmp_path)})
+    with pytest.raises(SystemExit) as exit_info:
+        loadout.main(["init", scope, "--mapping", mapping])
+    assert exit_info.value.code == 2
+    assert "unrecognized arguments: --mapping" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("action", ["resume", "recover"])

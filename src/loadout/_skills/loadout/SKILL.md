@@ -37,7 +37,7 @@ Edit the declared source for each configured consumer. Generated harness files a
 
 ## Troubleshooting
 
-- An unresolved preview needs an explicit scope, mapping, source selection or ownership decision;
+- An unresolved preview needs an explicit scope, a harness choice, or a fix to the file it names;
   `--yes` only approves a resolved plan. Retain unsupported inputs and report their paths.
 - A missing personal producer requires a scope decision. Do not silently edit shared source or
   invent a second contributor claiming the same keys.

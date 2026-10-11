@@ -41,23 +41,10 @@ output conflict and retry normal sync, without adding `--force`.
 
 Read the complete JSON `issues`, candidates and dispositions. An incomplete preview exits 2 and
 changes nothing. Prompts are available in an interactive terminal; JSON and dry-run never prompt.
-Resolve only actual ambiguities, preserving unsupported and runtime/private entries. Unknown
-installer activation stays unresolved; do not run the discovered code to make it disappear.
-
-Confirm unusual source layouts with repeatable JSON arguments. Paths are literal strings, resolved
-against cwd when relative; no shell or environment expressions inside JSON are evaluated.
-
-```sh
-loadout init global /work/dotfiles --harness claude \
-  --mapping '{"source":"/work/dotfiles/claude","destination":"/home/user/.claude","agents":["claude"]}' \
-  --select-source '{"source":"/work/dotfiles/claude","destination":"/home/user/.claude"}' \
-  --dry-run --json
-```
-
-Mapping keys are `source`, `destination`, `agents`, optionally `kind` (`harness`, `shared`, `file`),
-`category`, and `destination_template`. File mappings name a category. Selections choose an
-inventoried original for a destination; directory selections cover corresponding relative files.
-Do not invent a mapping before confirming its agent and activation path with the user.
+Init reads only the live deployment at each harness's known paths. A dotfiles copy in the
+selected directory is not read; if the user keeps one, install it first so the live deployment
+holds what they want adopted. Each refusal names the file to change; fix it on disk and run init
+again. Never edit a harness file just to make a refusal disappear without telling the user.
 
 Before applying, show scope, agents, authored sources, output destinations, exact Git baseline
 paths, retained/private entries, removals and final staging. Explain that credential detection is

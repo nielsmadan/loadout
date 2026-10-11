@@ -21,12 +21,6 @@ class RootMapping:
 
 
 @dataclass(frozen=True)
-class SourceSelection:
-    destination: Path
-    source: Path
-
-
-@dataclass(frozen=True)
 class EntryState:
     path: Path
     kind: str

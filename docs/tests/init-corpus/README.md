@@ -7,9 +7,11 @@ and [its results](../init-corpus-results-2026-09-05.md) remain historical.
 
 ## Inputs and isolation
 
-The exact nine project and five global upstream revisions, harness choices and explicit mapping
-bases live in [init_corpus.json](../../../tests/fixtures/init_corpus.json). Public repositories
-are read as data: never execute their installers, hooks, skills or application scripts. Reuse
+The exact nine project and five global upstream revisions, harness choices and deploy bases live
+in [init_corpus.json](../../../tests/fixtures/init_corpus.json). Init reads only a live deployment,
+so for each global case the runner copies the trees named under `deploy` into the fake HOME, as the
+checkout's README installs them, before running init. Public repositories are read as data: never
+execute their installers, hooks, skills or application scripts. Reuse
 retained object stores read-only, cloning into fresh disposable repositories at the pinned commit.
 Do not reset old samples or manufacture history by committing sampled content.
 

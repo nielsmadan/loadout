@@ -14,7 +14,7 @@ each harness makes of it, and which half of it each one has to drop.
 be read back into, which pattern forms have to be collapsed, and what is reported rather than
 guessed at.
 
-[migration.md](migration.md) describes read-only inventory, explicit source mapping and verified
+[migration.md](migration.md) describes read-only inventory of the live deployment and verified
 migration plans, including private source and the boundary consumed by a later transaction.
 
 [composition.md](composition.md) maps profile inheritance, fragment composition, native input

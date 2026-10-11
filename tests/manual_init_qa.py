@@ -286,45 +286,24 @@ def test_global_runtime_fields_and_source_managed_skill(tmp_path, fake_home, evi
     )
 
 
-def test_global_conflicting_copies_require_selection(tmp_path, fake_home, evidence):
-    root = _repository(tmp_path / "conflicting global")
+def test_global_source_directory_copy_is_not_read(tmp_path, fake_home, evidence):
+    root = _repository(tmp_path / "dotfiles global")
     native = fake_home / ".claude/settings.json"
-    candidate = root / "claude/settings.json"
+    copy = root / "claude/settings.json"
     native.parent.mkdir(parents=True)
-    candidate.parent.mkdir()
+    copy.parent.mkdir()
     native.write_text('{"model":"live-qa-model"}\n')
-    candidate.write_text('{"model":"source-qa-model"}\n')
+    copy.write_text('{"model":"source-qa-model"}\n')
     _git(root, "add", "claude/settings.json")
     _git(root, "commit", "-qm", "source configuration")
-    before = _git(root, "rev-parse", "HEAD")
-    mapping = json.dumps(
-        {"source": str(candidate.parent), "destination": str(native.parent), "agents": ["claude"]}
-    )
-    arguments = [
-        "init",
-        "global",
-        str(root),
-        "--harness",
-        "claude",
-        "--mapping",
-        mapping,
-        "--json",
-    ]
-    preview = json.loads(evidence.cli(root, *arguments, "--dry-run", expected=2).stdout)
-    assert preview["complete"] is False
-    assert "source-conflict" in {issue["code"] for issue in preview["issues"]}
-    unresolved = json.loads(evidence.cli(root, *arguments, "--yes", expected=2).stdout)
-    assert unresolved["complete"] is False
-    assert _git(root, "rev-parse", "HEAD") == before
-    assert _git(root, "status", "--porcelain") == ""
-    assert json.loads(native.read_text()) == {"model": "live-qa-model"}
-    selection = json.dumps({"source": str(candidate), "destination": str(native)})
-    result = json.loads(
-        evidence.cli(root, *arguments, "--select-source", selection, "--yes").stdout
-    )
+    arguments = ["init", "global", str(root), "--harness", "claude", "--json"]
+    preview = json.loads(evidence.cli(root, *arguments, "--dry-run").stdout)
+    assert preview["complete"] is True
+    assert {candidate["path"] for candidate in preview["candidates"]} == {str(native)}
+    result = json.loads(evidence.cli(root, *arguments, "--yes").stdout)
     assert result["status"] == "complete"
-    assert json.loads(native.read_text()) == {"model": "source-qa-model"}
-    assert not candidate.exists()
+    assert json.loads(native.read_text())["model"] == "live-qa-model"
+    assert copy.read_text() == '{"model":"source-qa-model"}\n'
     evidence.cli(root, "check", "--global")
     evidence.save(result="Pass", scenarios=["Q04"])
 

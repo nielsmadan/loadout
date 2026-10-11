@@ -11,7 +11,7 @@ from loadout import migration_git, migration_journal, migration_transaction
 from loadout.discovery import discover
 from loadout.errors import LoadoutError
 from loadout.migration import plan_migration
-from loadout.migration_models import MigrationPlan, RootMapping, SourceWrite
+from loadout.migration_models import MigrationPlan, SourceWrite
 from loadout.migration_transaction import (
     MigrationFailure,
     apply_migration,
@@ -49,9 +49,8 @@ def plan(
     *,
     scope: ArtifactScope = "project",
     agents: tuple[str, ...] = ("claude",),
-    mappings: tuple[RootMapping, ...] = (),
 ) -> MigrationPlan:
-    result = plan_migration(discover(root, scope=scope, agents=agents, mappings=mappings))
+    result = plan_migration(discover(root, scope=scope, agents=agents))
     assert result.complete, result.preview()
     return result
 
@@ -162,17 +161,11 @@ def test_nested_global_source_uses_enclosing_repository_only(
     git(tmp_path, "add", "unrelated.txt")
     git(tmp_path, "commit", "-qm", "base")
     nested = tmp_path / "dotfiles/agents"
-    write(nested, "claude/settings.json", '{"model":"source"}')
-    prepared = prepare_migration(
-        plan(
-            nested,
-            scope="global",
-            mappings=(RootMapping(nested / "claude", fake_home / ".claude", ("claude",)),),
-        )
-    )
+    nested.mkdir(parents=True)
+    write(fake_home, ".claude/settings.json", '{"model":"live"}')
+    prepared = prepare_migration(plan(nested, scope="global"))
     assert prepared.git is not None
     assert prepared.git.root == tmp_path
-    assert prepared.git.baseline == ("dotfiles/agents/claude/settings.json",)
     apply_migration(prepared)
     assert (nested / ".git").exists() is False
     assert git(tmp_path, "show", "HEAD:unrelated.txt") == b"base\n"
@@ -418,14 +411,16 @@ def interrupt_migration(
 
     real = migration_git.replace_index
     count = 0
+    # The final staging is the second index replacement only when a checkpoint came first.
+    staging = 2 if prepared.git is not None and prepared.git.baseline else 1
 
     def replace_index(path: Path, before: bytes | None, after: bytes | None) -> None:
         nonlocal count
         count += 1
-        if count == 2 and phase == "before-index":
+        if count == staging and phase == "before-index":
             raise KeyboardInterrupt()
         real(path, before, after)
-        if count == 2 and phase == "after-index":
+        if count == staging and phase == "after-index":
             raise KeyboardInterrupt()
 
     with monkeypatch.context() as patch:
@@ -445,11 +440,14 @@ def interrupt_migration(
 
 
 @pytest.mark.parametrize("phase", ["checkpoint", "finish", "before-index", "after-index"])
-@pytest.mark.parametrize("target", ["original", "source", "canonical"])
+@pytest.mark.parametrize("target", ["source", "canonical"])
 def test_resume_rechecks_privacy_after_checkpoint_and_before_staging(
     tmp_path: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch, phase: str, target: str
 ) -> None:
     repository(tmp_path)
+    write(tmp_path, "README.md", "base\n")
+    git(tmp_path, "add", "README.md")
+    git(tmp_path, "commit", "-qm", "base")
     external = fake_home / "external"
     repository(external)
     canonical = external / "claude"
@@ -457,28 +455,15 @@ def test_resume_rechecks_privacy_after_checkpoint_and_before_staging(
     destination = fake_home / ".claude"
     destination.mkdir()
     (destination / "settings.json").symlink_to(settings)
-    write(tmp_path, "claude/CLAUDE.md", "shared instructions\n")
-    prepared = prepare_migration(
-        plan(
-            tmp_path,
-            scope="global",
-            mappings=(
-                RootMapping(canonical, destination, ("claude",)),
-                RootMapping(tmp_path / "claude", destination, ("claude",)),
-            ),
-        )
-    )
+    write(destination, "CLAUDE.md", "shared instructions\n")
+    prepared = prepare_migration(plan(tmp_path, scope="global"))
     journal = interrupt_migration(prepared, phase, monkeypatch)
     head = git(tmp_path, "rev-parse", "HEAD")
     index = (tmp_path / ".git/index").read_bytes()
     if target == "canonical":
         write(external, ".git/info/exclude", "claude/settings.json\n")
     else:
-        selected = (
-            next(w.path for w in prepared.plan.source_writes if b'"before"' in w.content)
-            if target == "source"
-            else tmp_path / "claude/CLAUDE.md"
-        )
+        selected = next(w.path for w in prepared.plan.source_writes if b'"before"' in w.content)
         write(tmp_path, ".git/info/exclude", selected.relative_to(tmp_path).as_posix() + "\n")
     with pytest.raises(MigrationFailure, match="privacy"):
         resume_migration(journal)

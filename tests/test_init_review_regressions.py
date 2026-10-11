@@ -3,9 +3,6 @@ from __future__ import annotations
 import pytest
 
 import loadout.migration as planner
-from loadout.discovery import discover
-from loadout.migration import plan_migration
-from loadout.migration_models import RootMapping
 from loadout.migration_transaction import prepare_migration, recover_migration
 from run_init_corpus import expected_outputs
 from test_migration import migration, write
@@ -49,13 +46,3 @@ def test_corpus_oracle_catches_joint_planner_renderer_omission(tmp_path, monkeyp
     )
     with pytest.raises(AssertionError, match="output inventory"):
         expected_outputs(plan.preview())
-
-
-def mapped_retirements(root, home, count=3):
-    repository(root)
-    for number in range(count):
-        write(root, f"claude/skills/test/{number:03}.bin", f"original {number}\n")
-    mapping = RootMapping(root / "claude", home / ".claude", ("claude",))
-    plan = plan_migration(discover(root, scope="global", agents=("claude",), mappings=(mapping,)))
-    assert plan.complete, plan.preview()
-    return prepare_migration(plan)

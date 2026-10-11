@@ -180,11 +180,10 @@ de-linking it: loadout's outputs become real files, everything else links back i
 the repo is left unchanged. Init names each link it replaced; see
 [symlinked deployments](docs/reference/migration.md#symlinked-deployments).
 A conflicting machine registration requires `--registration replace` or `--registration keep`.
-`--yes` approves resolved operations;
-it never chooses between conflicting sources.
+`--yes` approves resolved operations.
 
-Use `--mapping` and `--select-source` JSON arguments for unusual layouts or duplicate copies.
-The [migration reference](docs/reference/migration.md#cli-workflow) documents their exact shape.
+Init always reads the live deployment, never a dotfiles copy of it in the selected directory, and
+has no option to point it elsewhere; see [what init refuses](docs/reference/migration.md#what-init-refuses).
 Unresolved previews exit 2 without mutation. Supported configurations get a read-only preview of
 checkpoint paths, source/output writes, private exclusions and removals before approval. Applying
 checkpoints eligible originals through Git, migrates and syncs, then stages the final source and

@@ -1,50 +1,55 @@
 from __future__ import annotations
 
 import argparse
-import json
 import shutil
 import statistics
 import tempfile
 from pathlib import Path
 
-from benchmark_init import fixture
+from benchmark_init import PAYLOAD, SKILL
 from init_evidence import (
     assert_exit,
     code_identity,
     command,
     digest,
     git,
+    identity,
     isolated_environment,
     write_json,
 )
+
+
+def deployment(home: Path, count: int) -> dict[str, bytes]:
+    expected = {".claude/skills/corpus/SKILL.md": SKILL}
+    expected.update(
+        {f".claude/skills/corpus/references/{index:04}.bin": PAYLOAD for index in range(count)}
+    )
+    for name, content in expected.items():
+        target = home / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+        target.chmod(0o644)
+    return expected
+
+
+def source_repository(root: Path, environment: dict[str, str]) -> str:
+    root.mkdir()
+    git(root, "init", "-q", env=environment)
+    identity(root, environment)
+    (root / "README.md").write_text("benchmark source\n")
+    git(root, "add", "README.md", env=environment)
+    git(root, "commit", "-qm", "benchmark source", env=environment)
+    return git(root, "rev-parse", "HEAD", env=environment).decode().strip()
 
 
 def run_case(directory: Path, count: int) -> dict:
     home = directory / "home"
     environment = isolated_environment(home)
     root, logs = directory / "repo", directory / "logs"
-    expected = fixture(root, count, environment)
-    baseline = git(root, "rev-parse", "HEAD", env=environment).decode().strip()
-    mapping = json.dumps(
-        {
-            "source": str(root / ".claude"),
-            "destination": str(home / ".claude"),
-            "agents": ["claude"],
-            "kind": "harness",
-        }
-    )
+    expected = deployment(home, count)
+    baseline = source_repository(root, environment)
     result = command(
-        [
-            "init",
-            "global",
-            str(root),
-            "--harness",
-            "claude",
-            "--mapping",
-            mapping,
-            "--yes",
-            "--json",
-        ],
+        ["init", "global", str(root), "--harness", "claude", "--yes", "--json"],
         environment,
         logs,
         "init",
@@ -71,7 +76,6 @@ def run_case(directory: Path, count: int) -> dict:
     for name, content in expected.items():
         assert (home / name).read_bytes() == content
         assert (home / name).stat().st_mode & 0o7777 == 0o644
-        assert not (root / name).exists(), name
     indexed = git(root, "ls-files", "-z", env=environment).decode().split("\0")
     assert all(name not in indexed for name in expected)
     assert "loadout/loadout.toml" in indexed
@@ -85,10 +89,10 @@ def run_case(directory: Path, count: int) -> dict:
     result.update(
         journal_bytes=0,
         payload_bytes=0,
-        retirements=len(expected),
+        retirements=0,
         output_files=len(expected),
         output_bytes=sum(map(len, expected.values())),
-        correctness="exact deployed bytes/modes; mapped originals retired and removed from index; global source staged; baseline retained; check and staged check",
+        correctness="exact deployed bytes/modes; live originals read in place; global source staged; baseline retained; check and staged check",
     )
     write_json(directory / "result.json", result)
     return result

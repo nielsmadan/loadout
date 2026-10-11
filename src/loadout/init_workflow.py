@@ -18,7 +18,7 @@ from .discovery import discover, initialized_project_path
 from .emit import render_all
 from .errors import LoadoutError, UsageError
 from .harnesses import KNOWN_HARNESSES
-from .init_options import InitOptions, parse_mapping, parse_selection
+from .init_options import InitOptions
 from .machine import load_machine_config, machine_config_path
 from .migration import plan_migration
 from .migration_models import Issue, MigrationPlan, SourceWrite
@@ -51,15 +51,7 @@ def _plan(options: InitOptions) -> MigrationPlan:
         raise LoadoutError(
             f"selected directory must exist: {selected}; create a dedicated project/source directory first"
         )
-    return plan_migration(
-        discover(
-            selected,
-            scope=options.scope,
-            agents=options.agents,
-            mappings=options.mappings,
-        ),
-        selections=options.selections,
-    )
+    return plan_migration(discover(selected, scope=options.scope, agents=options.agents))
 
 
 def _project_harness_defaults(options: InitOptions) -> InitOptions:
@@ -87,29 +79,7 @@ def _resolve(options: InitOptions) -> tuple[InitOptions, MigrationPlan]:
             return options, plan
         options = replace(options, agents=tuple(a.strip() for a in answer.split(",")))
         plan = _plan(options)
-    while plan.issues:
-        for issue in plan.issues:
-            print(f"{issue.code}: {issue.message}", file=sys.stderr)
-            for path in issue.paths:
-                print(f"  {path}", file=sys.stderr)
-        answer = _answer("Resolution: mapping JSON or selection JSON (empty leaves unresolved): ")
-        if not answer:
-            break
-        options = _resolution(options, answer)
-        plan = _plan(options)
     return options, plan
-
-
-def _resolution(options: InitOptions, answer: str) -> InitOptions:
-    try:
-        resolution = json.loads(answer)
-    except ValueError as error:
-        raise UsageError("resolution must be a JSON object") from error
-    if isinstance(resolution, dict) and "agents" in resolution:
-        return replace(options, mappings=(*options.mappings, parse_mapping(answer)))
-    selection = parse_selection(answer)
-    previous = tuple(s for s in options.selections if s.destination != selection.destination)
-    return replace(options, selections=(*previous, selection))
 
 
 def _updated_registration(path: Path, text: str, agents: tuple[str, ...]) -> SourceWrite | None:

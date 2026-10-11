@@ -16,7 +16,7 @@ from .harnesses import KNOWN_HARNESSES
 from .migration_models import Candidate, EntryState, Inventory, Issue, RootMapping
 from .migration_paths import DestinationLayout, entry_path
 from .native_documents import parse_document
-from .output import CATEGORIES, ArtifactScope
+from .output import ArtifactScope
 
 GLOBAL_ROOTS = {
     "claude": ("CLAUDE_CONFIG_DIR", ".claude"),
@@ -32,16 +32,6 @@ PROJECT_ROOTS = {
     "opencode": ".opencode",
     "pi": ".pi",
 }
-SOURCE_LAYOUTS = {
-    "claude": (".claude", "claude"),
-    "codex": (".codex", "codex"),
-    "droid": (".factory", "droid"),
-    "opencode": (".config/opencode", "opencode"),
-    "pi": (".pi/agent", ".pi", "pi"),
-}
-UNSUPPORTED_HARNESS_ROOTS = frozenset(
-    {".gemini", ".cursor", ".windsurf", ".antigravity", ".kiro", ".continue"}
-)
 RUNTIME_DIRECTORIES = frozenset(
     {
         ".git",
@@ -91,9 +81,6 @@ RUNTIME_FILES = frozenset(
 )
 INSTRUCTION_FILES = frozenset(
     {"AGENTS.md", "AGENTS.override.md", "CLAUDE.md", "CLAUDE.local.md", "opencode.md"}
-)
-WALK_EXCLUSIONS = RUNTIME_DIRECTORIES | frozenset(
-    {".venv", "venv", "vendor", "dist", "build", "loadout"}
 )
 _MODULE_TREES = ("hooks/", "rules/", "scripts/", "providers/", "profiles/", "plugin/")
 # The only paths discovery reads beneath a harness or shared root, per scope and
@@ -450,18 +437,15 @@ class _InventoryBuilder:
         runtime_roots: tuple[Path, ...],
         *,
         scope: str,
-        explicit: tuple[RootMapping, ...] = (),
     ) -> None:
         self.root = layout.root
         self.layout = layout
         self.allowed = allowed
         self.scope = scope
-        self.explicit = explicit
         # A project's harness root linked outside the repository would pull external
         # content into committed source; a global root is de-linked at adoption instead.
         self.confined = scope != "global"
         self.runtime_roots = runtime_roots
-        self.confirmed_roots: tuple[Path, ...] = ()
         self.candidates: dict[tuple[Path, Path | None], Candidate] = {}
         self.states: dict[Path, EntryState] = {}
         self.issues: list[Issue] = []
@@ -472,14 +456,13 @@ class _InventoryBuilder:
             if previous is None or previous.digest is None:
                 self.states[state.path] = state
 
-    def walk(self, mapping: RootMapping, *, confirmed: bool = True) -> None:
-        self._walk(mapping.source, mapping, (), confirmed=confirmed)
+    def walk(self, mapping: RootMapping) -> None:
+        self._walk(mapping.source, mapping, ())
 
-    def _walk(
-        self, path: Path, mapping: RootMapping, ancestors: tuple[Path, ...], *, confirmed: bool
-    ) -> None:
+    def _walk(self, path: Path, mapping: RootMapping, ancestors: tuple[Path, ...]) -> None:
         relative = path.relative_to(mapping.source) if mapping.kind != "file" else Path(path.name)
-        if self._unread(path, relative, mapping, confirmed=confirmed):
+        entries = managed_paths(self.scope, mapping)
+        if entries is not None and not _managed(relative, entries, directory=path.is_dir()):
             return
         if not path.exists() and not path.is_symlink():
             self.remember(path, read=False)
@@ -523,7 +506,8 @@ class _InventoryBuilder:
                 destination,
                 mapping.agents,
                 "external-symlink",
-                "Supply an explicit source/shared-root mapping for this symlink target.",
+                "This links outside the repository; adopting it would copy external content "
+                "into committed project source.",
             )
             return
         self.remember(canonical, read=False)
@@ -540,15 +524,9 @@ class _InventoryBuilder:
             self.remember(path)
             self.remember(canonical)
             for child in sorted(path.iterdir()):
-                self._walk(child, mapping, (*ancestors, canonical), confirmed=confirmed)
+                self._walk(child, mapping, (*ancestors, canonical))
         else:
-            self._file(path, canonical, destination, mapping, confirmed=confirmed)
-
-    def _unread(self, path: Path, relative: Path, mapping: RootMapping, *, confirmed: bool) -> bool:
-        if not confirmed:
-            return path in self.confirmed_roots
-        entries = None if mapping in self.explicit else managed_paths(self.scope, mapping)
-        return entries is not None and not _managed(relative, entries, directory=path.is_dir())
+            self._file(path, canonical, destination, mapping)
 
     def _file(
         self,
@@ -556,18 +534,11 @@ class _InventoryBuilder:
         canonical: Path,
         destination: Path,
         mapping: RootMapping,
-        *,
-        confirmed: bool,
     ) -> None:
         relative = path.relative_to(mapping.source) if mapping.kind != "file" else Path(path.name)
-        if not path.is_file():
-            self._unresolved(
-                path,
-                destination,
-                mapping.agents,
-                "special-entry",
-                "Map this non-regular filesystem entry explicitly.",
-            )
+        agents = _agents_for(relative, mapping)
+        category = mapping.category or _category(relative, agents[0] if agents else "")
+        if not path.is_file() or not agents or category is None:
             return
         self.remember(path)
         self.remember(canonical)
@@ -582,15 +553,14 @@ class _InventoryBuilder:
                 "Empty-directory tracking marker remains at its original path.",
             )
             return
-        agents = _agents_for(relative, mapping)
-        category = mapping.category or _category(relative, agents[0] if agents else "")
-        if not confirmed or not agents or category is None or path.suffix in {".tmpl", ".jsonc"}:
+        if path.suffix == ".jsonc":
             self._unresolved(
                 path,
-                destination if confirmed else None,
+                destination,
                 agents,
-                "source-mapping",
-                "Confirm this authored file's category, consumers and deployed destination.",
+                "unadoptable-format",
+                "Loadout writes opencode.json and cannot carry JSONC comments; convert this file "
+                "to opencode.json, then run init again.",
             )
             return
         content = path.read_bytes()
@@ -612,11 +582,6 @@ class _InventoryBuilder:
         )
         format_name = destination.suffix[1:] if document else "copy"
         privacy_format = destination.suffix[1:] or path.suffix[1:]
-        self.issues = [
-            issue
-            for issue in self.issues
-            if not (issue.code == "source-mapping" and path in issue.paths)
-        ]
         self.candidates[path, destination] = Candidate(
             path,
             canonical,
@@ -702,31 +667,11 @@ def _instruction_mappings(
     return tuple(mappings)
 
 
-def _validate_mappings(mappings: tuple[RootMapping, ...]) -> tuple[RootMapping, ...]:
-    result = []
-    for mapping in mappings:
-        if not mapping.agents or set(mapping.agents) - KNOWN_HARNESSES:
-            raise LoadoutError("root mappings require known consumer agents")
-        if mapping.category is not None and mapping.category not in CATEGORIES:
-            raise LoadoutError("root mapping requires a known artifact category")
-        if mapping.kind not in {"harness", "shared", "file"}:
-            raise LoadoutError("root mapping kind must be harness, shared or file")
-        if (
-            ".." in mapping.source.parts
-            or not mapping.destination.is_absolute()
-            or ".." in mapping.destination.parts
-        ):
-            raise LoadoutError("root mapping paths must stay inside their declared absolute roots")
-        result.append(replace(mapping, source=mapping.source.absolute()))
-    return tuple(result)
-
-
 def discover(
     root: Path,
     *,
     scope: ArtifactScope | None = None,
     agents: tuple[str, ...] = (),
-    mappings: tuple[RootMapping, ...] = (),
     environ: Mapping[str, str] | None = None,
 ) -> Inventory:
     environment = dict(os.environ if environ is None else environ)
@@ -735,7 +680,6 @@ def discover(
     if set(agents) - KNOWN_HARNESSES or len(agents) != len(set(agents)):
         raise LoadoutError("agents must be distinct supported harness names")
     root = root.absolute() if scope == "global" else project_root(root)
-    mappings = _validate_mappings(mappings)
     project = initialized_project_path(root) if scope != "global" else None
     existing = [
         *((("project", project),) if project is not None else ()),
@@ -750,7 +694,7 @@ def discover(
             config.parent,
             "project" if inferred == "project" else "global",
             agents,
-            mappings,
+            (),
             (),
             path_preconditions(config),
             initialized=config,
@@ -783,9 +727,7 @@ def discover(
             live if scope == "global" else _project_mappings(root, tuple(sorted(KNOWN_HARNESSES)))
         )
         agents = tuple(
-            dict.fromkeys(
-                a for m in (*evidence, *mappings) if _configuration_evidence(m) for a in m.agents
-            )
+            dict.fromkeys(a for m in evidence if _configuration_evidence(m) for a in m.agents)
         )
     if not agents:
         issues.append(
@@ -795,15 +737,12 @@ def discover(
                 "Select the configured harnesses; shared instructions and installed binaries do not establish membership.",
             )
         )
-    if scope == "project" and any(not m.destination.is_relative_to(root) for m in mappings):
-        raise LoadoutError("project mapping destinations must remain inside the project")
     automatic = (
         tuple(replace(m, agents=tuple(a for a in m.agents if a in agents)) for m in live)
         if scope == "global"
         else _project_mappings(root, agents)
     )
-    automatic = tuple(m for m in automatic if m.agents)
-    selected_mappings = tuple(dict.fromkeys((*automatic, *mappings)))
+    selected_mappings = tuple(m for m in automatic if m.agents)
     allowed = tuple(
         dict.fromkeys(
             (
@@ -826,16 +765,14 @@ def discover(
             )
         ),
         scope="global" if scope == "global" else "project",
-        explicit=mappings,
     )
-    builder.confirmed_roots = tuple(m.source for m in selected_mappings)
     for mapping in selected_mappings:
         builder.walk(mapping)
     if scope != "global":
         for mapping in _instruction_mappings(builder, agents):
             builder.walk(mapping)
     else:
-        _global_sources(builder, root, agents, selected_mappings, live)
+        builder.remember(root)
     _dependencies(builder, scope, environment)
     ignored = ignored_paths(
         c.canonical or c.path for c in builder.candidates.values() if c.disposition == "migrated"
@@ -992,13 +929,6 @@ def _dependency(
             expanded = expanded.replace("${" + name + "}", value).replace("$" + name, value)
     path = _home_path(expanded, Path(environment.get("HOME") or Path.home()))
     if "$" in expanded or any(character in expanded for character in "*?["):
-        builder.issues.append(
-            Issue(
-                "dependency-mapping",
-                (candidate.path,),
-                "A dynamic or glob dependency needs an explicit materialized source mapping.",
-            )
-        )
         return
     bases = (
         (builder.root, candidate.path.parent)
@@ -1052,7 +982,7 @@ def _dependency(
             Issue(
                 "dependency-activation",
                 (candidate.path, retained.path),
-                "This declaration still references an original at a different deployment path; select its active mapping before migration.",
+                "This declaration references an original at a different path from the copy loadout deploys; point it at the deployed path, then run init again.",
             )
         )
         return
@@ -1067,97 +997,8 @@ def _dependency(
         ),
         None,
     )
-    if existing is None:
-        builder.issues.append(
-            Issue(
-                "dependency-mapping",
-                (candidate.path,),
-                "A referenced local dependency is missing or outside the selected roots; supply its source/destination mapping.",
-            )
-        )
-        return
-    if existing.is_dir():
-        builder.issues.append(
-            Issue(
-                "dependency-mapping",
-                (candidate.path, existing),
-                "Confirm the consumer and category of this referenced directory with an explicit root mapping.",
-            )
-        )
+    # Left in place, the reference keeps working: loadout never moves what it did not adopt.
+    if existing is None or existing.is_dir():
         return
     destination = deployed[targets.index(existing)]
     builder.walk(RootMapping(existing, destination, candidate.agents, "file", "support"))
-
-
-def _global_sources(
-    builder: _InventoryBuilder,
-    root: Path,
-    agents: tuple[str, ...],
-    mappings: tuple[RootMapping, ...],
-    live: tuple[RootMapping, ...],
-) -> None:
-    mapped = {m.source for m in mappings}
-    builder.remember(root)
-    for agent, layouts in SOURCE_LAYOUTS.items():
-        destination = next(
-            m.destination for m in live if m.agents == (agent,) and m.kind == "harness"
-        )
-        for layout in layouts:
-            source = root / layout
-            if (
-                source in mapped
-                or any(source.is_relative_to(p) for p in mapped)
-                or not source.exists()
-            ):
-                continue
-            builder.walk(RootMapping(source, destination, (agent,)), confirmed=False)
-    for child in sorted(root.iterdir()):
-        if (
-            child in mapped
-            or any(child.is_relative_to(p) for p in mapped)
-            or child.name in WALK_EXCLUSIONS
-            or child.name
-            in {
-                ".claude",
-                ".codex",
-                ".factory",
-                ".pi",
-                ".config",
-                "claude",
-                "codex",
-                "droid",
-                "opencode",
-                "pi",
-            }
-        ):
-            continue
-        if child.name == ".agents":
-            builder.walk(
-                RootMapping(
-                    child,
-                    next(m.destination for m in live if m.kind == "shared"),
-                    agents or ("codex", "opencode", "pi"),
-                    "shared",
-                ),
-                confirmed=False,
-            )
-        elif child.is_dir() and child.name in UNSUPPORTED_HARNESS_ROOTS:
-            builder._unresolved(
-                child,
-                None,
-                (),
-                "unsupported-harness",
-                "This recognizable harness tree has no supported migration mapping; resolve its ownership explicitly.",
-            )
-        elif child.is_file() and (
-            child.suffix in {".sh", ".tmpl"}
-            or child.name in INSTRUCTION_FILES
-            or child.name in {"settings.json", "config.toml", "install", "Makefile", "justfile"}
-        ):
-            builder._unresolved(
-                child,
-                None,
-                (),
-                "deployment-activation",
-                "Retain this installer/template dependency and supply its deployment mapping; discovered code is never executed.",
-            )

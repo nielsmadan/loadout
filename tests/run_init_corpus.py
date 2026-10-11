@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -43,24 +44,23 @@ def entries(root: Path) -> dict:
     return result
 
 
-def arguments(case: dict, root: Path, home: Path) -> list[str]:
+def arguments(case: dict, root: Path) -> list[str]:
     args = ["init", case["scope"], *(["--root"] if case["scope"] == "project" else []), str(root)]
     for agent in case["agents"]:
         args += ["--harness", agent]
-    for mapping in case.get("mappings", []):
-        source, target, agents, *kind = mapping
-        args += [
-            "--mapping",
-            json.dumps(
-                {
-                    "source": str(root / source),
-                    "destination": str((home if case["scope"] == "global" else root) / target),
-                    "agents": agents.split(","),
-                    "kind": kind[0] if kind else "harness",
-                }
-            ),
-        ]
     return args
+
+
+def deploy(case: dict, root: Path, home: Path) -> None:
+    """Install a dotfiles checkout the way its README does, so init reads a live deployment."""
+    for source, target in case.get("deploy", []):
+        shutil.copytree(
+            root / source,
+            home / target,
+            symlinks=True,
+            ignore=shutil.ignore_patterns(".git"),
+            dirs_exist_ok=True,
+        )
 
 
 def parse(content: bytes, format_name: str):
@@ -278,7 +278,7 @@ def lifecycle(root: Path, source: Path, preview: dict, env: dict, logs: Path) ->
 def adopt(case: dict, root: Path, preview: dict, env: dict, logs: Path) -> dict:
     home = Path(env["HOME"])
     expected = expected_outputs(preview)
-    result = command([*arguments(case, root, home), "--yes", "--json"], env, logs, "init")
+    result = command([*arguments(case, root), "--yes", "--json"], env, logs, "init")
     assert_exit(result)
     result["comparisons"] = compare(expected)
     result["baseline"] = git(root, "rev-parse", "HEAD", env=env).decode().strip()
@@ -303,7 +303,7 @@ def adopt(case: dict, root: Path, preview: dict, env: dict, logs: Path) -> dict:
         ("check", ["check", "--root", str(source)]),
         ("sync", ["sync", "--root", str(source)]),
         ("check-again", ["check", "--root", str(source)]),
-        ("init-again", [*arguments(case, root, home), "--yes", "--json"]),
+        ("init-again", [*arguments(case, root), "--yes", "--json"]),
         ("staged", ["check", "--staged", "--root", str(source)]),
     ):
         result[label] = command(args, env, logs, label)
@@ -382,6 +382,7 @@ def run_case(case: dict, retained: Path, directory: Path, *, fetch_public: bool 
     home = directory / "home"
     env = isolated_environment(home)
     root = clone_input(case, retained, directory, env, fetch_public=fetch_public)
+    deploy(case, root, home)
     logs = directory / "logs"
     identity(root, env)
     assert git(root, "rev-parse", "HEAD", env=env).decode().strip() == case["revision"]
@@ -392,9 +393,7 @@ def run_case(case: dict, retained: Path, directory: Path, *, fetch_public: bool 
     before = entries(root)
     before_home = entries(home)
     initial_index = (root / ".git/index").read_bytes()
-    preview_result = command(
-        [*arguments(case, root, home), "--dry-run", "--json"], env, logs, "preview"
-    )
+    preview_result = command([*arguments(case, root), "--dry-run", "--json"], env, logs, "preview")
     preview = json.loads((logs / "preview.stdout").read_bytes())
     assert entries(root) == before, "preview changed worktree"
     assert (root / ".git/index").read_bytes() == initial_index, "preview changed index"
@@ -408,7 +407,7 @@ def run_case(case: dict, retained: Path, directory: Path, *, fetch_public: bool 
     if not preview.get("complete"):
         assert_exit(preview_result, 2)
         result["apply_refusal"] = command(
-            [*arguments(case, root, home), "--yes", "--json"], env, logs, "refusal"
+            [*arguments(case, root), "--yes", "--json"], env, logs, "refusal"
         )
         assert_exit(result["apply_refusal"], 2)
         assert entries(root) == before
@@ -497,13 +496,13 @@ def synthetic_input(directory: Path) -> dict:
         "repository": "Loadout authored inert fixture",
         "revision": git(root, "rev-parse", "HEAD", env=env).decode().strip(),
         "agents": ["claude", "codex", "opencode", "pi"],
-        "mappings": [
-            [".claude", ".claude", "claude"],
-            [".codex", ".codex", "codex"],
-            [".config/opencode", ".config/opencode", "opencode"],
-            [".pi/agent", ".pi/agent", "pi"],
+        "deploy": [
+            [".claude", ".claude"],
+            [".codex", ".codex"],
+            [".config/opencode", ".config/opencode"],
+            [".pi/agent", ".pi/agent"],
         ],
-        "mapping_basis": "Synthetic fixture explicitly assigns each source to the corresponding fake-home root",
+        "deploy_basis": "Synthetic fixture installs each tree at the corresponding fake-home root",
     }
 
 

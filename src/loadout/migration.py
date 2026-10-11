@@ -23,7 +23,6 @@ from .migration_models import (
     MigrationPlan,
     OriginalEntry,
     RootMapping,
-    SourceSelection,
     SourceWrite,
 )
 from .migration_paths import DestinationLayout, entry_path
@@ -210,9 +209,7 @@ def _authored(candidate: Candidate) -> Candidate:
     )
 
 
-def _choose(
-    inventory: Inventory, selections: tuple[SourceSelection, ...]
-) -> tuple[tuple[Candidate, ...], tuple[Issue, ...]]:
+def _choose(inventory: Inventory) -> tuple[tuple[Candidate, ...], tuple[Issue, ...]]:
     grouped: dict[Path, list[Candidate]] = defaultdict(list)
     issues: list[Issue] = []
     for candidate in inventory.candidates:
@@ -225,45 +222,15 @@ def _choose(
                 Issue(
                     "invalid-native-document",
                     (candidate.path,),
-                    "Native document could not be parsed safely; repair it or provide an explicit opaque-file mapping.",
+                    "Native document could not be parsed safely; repair it, then run init again.",
                 )
             )
     chosen = []
     for destination, candidates in grouped.items():
-        selection = next((s for s in selections if s.destination == destination), None)
-        if selection is None:
-            ancestor = next(
-                (s for s in selections if destination.is_relative_to(s.destination)), None
-            )
-            selection = (
-                SourceSelection(
-                    destination, ancestor.source / destination.relative_to(ancestor.destination)
-                )
-                if ancestor
-                else None
-            )
-        if selection is not None:
-            selected = next((c for c in candidates if c.path == selection.source), None)
-            if selected is None:
-                issues.append(
-                    Issue(
-                        "invalid-source-selection",
-                        (selection.source, destination),
-                        "The selected source is not a candidate for this destination.",
-                    )
-                )
-                continue
-        elif len({(c.content, c.mode) for c in candidates}) > 1:
-            issues.append(
-                Issue(
-                    "source-conflict",
-                    tuple(c.path for c in candidates),
-                    "Different originals map to one destination; select the authoritative source explicitly.",
-                )
-            )
-            continue
-        else:
-            selected = candidates[0]
+        # Every original is its own destination, so a group only ever repeats one file.
+        if len({(c.content, c.mode) for c in candidates}) > 1:
+            raise LoadoutError(f"two different originals claim one destination: {destination}")
+        selected = candidates[0]
         chosen.append(
             replace(
                 selected,
@@ -383,7 +350,8 @@ class _PlanBuilder:
         previous = self.writes.get(path)
         if previous is not None and previous != item:
             raise LoadoutError(
-                "Migration sources collide; provide distinct explicit destination mappings."
+                f"two originals would write different {relative.as_posix()}; make them "
+                "identical or remove one, then run init again"
             )
         self.writes[path] = item
 
@@ -1091,12 +1059,10 @@ def _global_config(inventory: Inventory, builder: _PlanBuilder) -> dict[str, Any
     return config
 
 
-def plan_migration(
-    inventory: Inventory, *, selections: tuple[SourceSelection, ...] = ()
-) -> MigrationPlan:
+def plan_migration(inventory: Inventory) -> MigrationPlan:
     if inventory.initialized is not None:
         return _initialized(inventory)
-    candidates, conflicts = _choose(inventory, selections)
+    candidates, conflicts = _choose(inventory)
     issues = (*inventory.issues, *conflicts)
     if issues:
         return MigrationPlan(inventory, preconditions=inventory.preconditions, issues=issues)
@@ -1358,7 +1324,7 @@ def _readiness(builder: _PlanBuilder) -> tuple[CategoryReadiness, ...]:
                         (agent,),
                         (),
                         "unsupported",
-                        "No verified independent destination for this scope/category; preserve explicit existing mappings.",
+                        "No verified independent destination for this scope/category; existing files stay in place.",
                     )
                 )
     return tuple(result)
