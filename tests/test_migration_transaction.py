@@ -207,9 +207,10 @@ def test_partially_staged_adopted_files_require_resolution_even_when_private(
     tmp_path: Path, private: bool
 ) -> None:
     repository(tmp_path)
-    name = ".claude/settings.local.json" if private else ".claude/settings.json"
+    name = ".claude/skills/s/notes.local.md" if private else ".claude/settings.json"
+    write(tmp_path, ".claude/skills/s/SKILL.md", "# s\n")
     target = write(tmp_path, name, '{"model":"base"}')
-    git(tmp_path, "add", name)
+    git(tmp_path, "add", ".claude")
     git(tmp_path, "commit", "-qm", "base")
     target.write_text('{"model":"staged"}')
     git(tmp_path, "add", name)

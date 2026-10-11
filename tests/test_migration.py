@@ -67,9 +67,11 @@ def test_nested_instructions_and_program_dependency_layout(tmp_path: Path) -> No
     assert plan.generated_writes == ()
     retained = {entry.path for entry in plan.originals if entry.action == "retain"}
     assert tmp_path / "src/AGENTS.md" in retained
-    assert tmp_path / ".claude/rules/python.md" in retained
-    assert tmp_path / ".claude/commands/check.md" in retained
     assert tmp_path / ".claude/skills/a/SKILL.md" not in retained
+    read = {candidate.path for candidate in plan.inventory.candidates}
+    assert read.isdisjoint(
+        {tmp_path / ".claude/rules/python.md", tmp_path / ".claude/commands/check.md"}
+    )
     assert {w.path.name for w in plan.source_writes} >= {
         "config.toml",
         "permissions.toml",
@@ -86,10 +88,9 @@ def test_project_init_leaves_commands_and_agents_in_place(tmp_path: Path) -> Non
     agent = write(tmp_path, ".claude/agents/auditor.md", "audit\n")
     plan = migration(tmp_path, ("claude",))
     assert plan.generated_writes == ()
-    assert {entry.path for entry in plan.originals if entry.action == "retain"} >= {
-        command,
-        agent,
-    }
+    assert {c.path for c in plan.inventory.candidates}.isdisjoint({command, agent})
+    assert command.read_text() == "ship\n"
+    assert agent.read_text() == "audit\n"
     assert "/.claude/commands" not in plan.ignores
     assert "/.claude/agents" not in plan.ignores
     assert all("commands" not in write.path.parts for write in plan.source_writes)
@@ -110,10 +111,12 @@ def test_credentials_and_personal_sources_are_excluded_from_checkpoints(tmp_path
             }
         ),
     )
-    personal = write(tmp_path, ".claude/settings.local.json", '{"model":"personal"}')
-    auth = write(tmp_path, ".claude/auth.json", secret)
+    skill = write(tmp_path, ".claude/skills/s/SKILL.md", "# s\n")
+    personal = write(tmp_path, ".claude/skills/s/notes.local.md", "personal\n")
+    auth = write(tmp_path, ".claude/skills/s/auth.json", secret)
     plan = migration(tmp_path)
     assert {mcp, personal, auth} <= set(plan.private_paths)
+    assert skill not in set(plan.private_paths)
     assert set(plan.checkpoint_paths).isdisjoint({mcp, personal, auth})
     assert secret not in json.dumps(plan.preview())
     assert all(w.private for w in plan.source_writes if secret.encode() in w.content)
@@ -156,11 +159,20 @@ def test_symlink_into_known_runtime_root_is_excluded(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     "name", ["preferences.md", "unrecognized.data", "opencode.jsonc", "config.json.tmpl"]
 )
-def test_unknown_native_and_materialization_inputs_block_complete_migration(
+def test_unmanaged_entries_under_a_harness_root_are_never_read(tmp_path: Path, name: str) -> None:
+    path = write(tmp_path, f".claude/{name}", "unknown authored content")
+    plan = migration(tmp_path)
+    assert path not in {c.path for c in plan.inventory.candidates}
+    assert path.read_text() == "unknown authored content"
+
+
+@pytest.mark.parametrize("name", ["opencode.jsonc", ".claude/skills/s/config.json.tmpl"])
+def test_unreadable_inputs_at_managed_paths_block_complete_migration(
     tmp_path: Path, name: str
 ) -> None:
-    path = write(tmp_path, f".claude/{name}", "unknown authored content")
-    plan = plan_migration(discover(tmp_path, scope="project", agents=("claude",)))
+    path = write(tmp_path, name, "unknown authored content")
+    agents = ("opencode",) if name == "opencode.jsonc" else ("claude",)
+    plan = plan_migration(discover(tmp_path, scope="project", agents=agents))
     assert not plan.complete
     assert any(c.path == path and c.disposition == "unresolved" for c in plan.inventory.candidates)
 
@@ -217,10 +229,10 @@ def test_unmapped_external_hook_dependency_blocks_completion(tmp_path: Path) -> 
 
 
 def test_directory_precondition_detects_a_new_authored_input(tmp_path: Path) -> None:
-    write(tmp_path, ".claude/commands/first.md", "first\n")
+    write(tmp_path, ".claude/skills/first/SKILL.md", "first\n")
     plan = migration(tmp_path)
-    state = next(s for s in plan.preconditions if s.path == tmp_path / ".claude/commands")
-    write(tmp_path, ".claude/commands/second.md", "second\n")
+    state = next(s for s in plan.preconditions if s.path == tmp_path / ".claude/skills")
+    write(tmp_path, ".claude/skills/second/SKILL.md", "second\n")
     assert entry_state(state.path) != state
 
 
@@ -429,22 +441,24 @@ def test_mapped_private_and_runtime_originals_have_retained_dispositions(
 
 @pytest.mark.parametrize("source_alias", [False, True])
 def test_symlinked_harness_absolute_dependency_on_retired_source_is_blocked(
-    tmp_path: Path, source_alias: bool
+    tmp_path: Path, fake_home: Path, source_alias: bool
 ) -> None:
-    project = tmp_path / "project"
-    helper = write(project, "canonical/scripts/common.sh", "true\n")
+    dotfiles = tmp_path / "dotfiles"
+    helper = write(dotfiles, "canonical/scripts/common.sh", "true\n")
     reference = helper
     if source_alias:
         alias = tmp_path / "alias"
-        alias.symlink_to(project, target_is_directory=True)
+        alias.symlink_to(dotfiles, target_is_directory=True)
         reference = alias / "canonical/scripts/common.sh"
-    write(project, "canonical/hooks/check.sh", f"source {reference}\n")
-    (project / ".claude").symlink_to("canonical", target_is_directory=True)
-    plan = plan_migration(discover(project, scope="project", agents=("claude",)))
+    write(dotfiles, "canonical/hooks/check.sh", f"source {reference}\n")
+    (fake_home / ".claude").symlink_to(dotfiles / "canonical", target_is_directory=True)
+    source = tmp_path / "source"
+    source.mkdir()
+    plan = plan_migration(discover(source, scope="global", agents=("claude",)))
     assert {issue.code for issue in plan.issues} == {"dependency-activation"}
     assert plan.issues[0].paths == (
-        project / ".claude/hooks/check.sh",
-        project / ".claude/scripts/common.sh",
+        fake_home / ".claude/hooks/check.sh",
+        fake_home / ".claude/scripts/common.sh",
     )
     assert not plan.complete
 

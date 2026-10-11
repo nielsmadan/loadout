@@ -16,6 +16,10 @@ UNMANAGED = (
     "agents/helper.md",
     "projects/p1/log.jsonl",
     ".credentials.json",
+    ".DS_Store",
+    "ide/1.lock",
+    "notes.txt",
+    "mystery/deep/x.md",
 )
 
 
@@ -30,6 +34,10 @@ def _dotfiles(root: Path) -> Path:
         "agents/helper.md": "---\nname: helper\ndescription: h\n---\nHelp.\n",
         "projects/p1/log.jsonl": '{"m": 1}\n',
         ".credentials.json": '{"token": "opaque"}\n',
+        ".DS_Store": "\x00\x01finder",
+        "ide/1.lock": '{"pid": 1}\n',
+        "notes.txt": "scratch\n",
+        "mystery/deep/x.md": "unknown\n",
     }
     for relative, content in files.items():
         (claude / relative).parent.mkdir(parents=True, exist_ok=True)
@@ -50,9 +58,9 @@ def _snapshot(root: Path) -> dict[str, bytes | str]:
 
 def _link_per_file(dotfiles: Path, claude: Path) -> None:
     (claude / "skills").mkdir(parents=True)
-    for name in ("CLAUDE.md", "settings.json", "commands", "agents", "projects"):
-        (claude / name).symlink_to(dotfiles / name)
-    (claude / ".credentials.json").symlink_to(dotfiles / ".credentials.json")
+    for entry in dotfiles.iterdir():
+        if entry.name != "skills":
+            (claude / entry.name).symlink_to(entry)
     (claude / "skills" / "review").symlink_to(dotfiles / "skills" / "review")
 
 
@@ -113,6 +121,9 @@ def test_a_symlinked_claude_directory_is_adopted_by_de_linking(
     assert _snapshot(dotfiles) == before
     assert loadout.main(["sync", "--global"]) == 0
     assert "Up to date." in capsys.readouterr().out
+    assert (claude / "commands").readlink() == dotfiles / "commands"
+    (dotfiles / "commands/later.md").write_text("Later.\n")
+    assert (claude / "commands/later.md").read_text() == "Later.\n"
 
 
 def test_stow_style_per_file_links_are_adopted_by_de_linking(

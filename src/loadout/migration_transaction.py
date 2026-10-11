@@ -202,16 +202,10 @@ def _mirror(
             _mirror(builder, child, outputs, plan)
             continue
         original = originals.get(child) or originals.get(entry_path(child))
-        if original is None:
-            if child.is_dir() and not child.is_symlink():
-                builder.put(child, Image("directory", mode=0o755), "topology")
-                _mirror(builder, child, outputs, plan)
-                continue
-            raise LoadoutError(f"uninventoried entry under a destination symlink: {child}")
-        if original.action == "retain":
+        if original is None or original.action == "retain":
             target = entry_path(child)
             if any(target.is_relative_to(p) for p in retired):
-                raise LoadoutError(f"retained runtime entry depends on a retired source: {child}")
+                raise LoadoutError(f"retained entry depends on a retired source: {child}")
             builder.put(child, Image("symlink", os.fsencode(target), 0o777), "topology")
 
 

@@ -95,6 +95,59 @@ INSTRUCTION_FILES = frozenset(
 WALK_EXCLUSIONS = RUNTIME_DIRECTORIES | frozenset(
     {".venv", "venv", "vendor", "dist", "build", "loadout"}
 )
+_MODULE_TREES = ("hooks/", "rules/", "scripts/", "providers/", "profiles/", "plugin/")
+# The only paths discovery reads beneath a harness or shared root, per scope and
+# harness. A trailing slash names a tree. Everything else under a root is left
+# alone unread, which is what lets init adopt a root it does not fully understand.
+MANAGED_PATHS: dict[str, dict[str, tuple[str, ...]]] = {
+    "global": {
+        "claude": ("CLAUDE.md", "settings.json", "mcp-permissions.json", "skills/", *_MODULE_TREES),
+        "codex": (
+            "AGENTS.md",
+            "AGENTS.override.md",
+            "config.toml",
+            "hooks.json",
+            "rules/",
+            "skills/",
+        ),
+        "droid": (
+            "AGENTS.md",
+            "settings.json",
+            "hooks.json",
+            "mcp.json",
+            "skills/",
+            "plugins/",
+            *_MODULE_TREES,
+        ),
+        "opencode": (
+            "AGENTS.md",
+            "opencode.json",
+            "opencode.jsonc",
+            "skills/",
+            "plugins/",
+            *_MODULE_TREES,
+        ),
+        "pi": (
+            "AGENTS.md",
+            "settings.json",
+            "mcp.json",
+            "extensions/pi-permission-system/config.json",
+            "skills/",
+            "plugins/",
+            *_MODULE_TREES,
+        ),
+        "shared": ("skills/", "mcp.json", "mcp/mcp.json"),
+    },
+    "project": {
+        "claude": ("settings.json", "mcp-permissions.json", "skills/"),
+        "codex": ("rules/",),
+        "droid": ("settings.json", "hooks.json", "mcp.json", "skills/"),
+        "opencode": ("skills/",),
+        "pi": ("extensions/pi-permission-system/config.json", "skills/"),
+        "shared": ("skills/",),
+    },
+}
+UNMANAGED_NAMES = frozenset({".DS_Store"})
 PROJECT_WALK_EXCLUSIONS = frozenset(
     {
         ".git",
@@ -355,6 +408,28 @@ def _category(relative: Path, agent: str) -> str | None:
     return directories.get(first, names.get(relative.name, fallback))
 
 
+def managed_paths(scope: str, mapping: RootMapping) -> tuple[str, ...] | None:
+    """The allowlist for a root, or None for a file mapping, which names its one file."""
+    if mapping.kind == "file":
+        return None
+    key = "shared" if mapping.kind == "shared" else mapping.agents[0]
+    return MANAGED_PATHS[scope][key]
+
+
+def _managed(relative: Path, entries: tuple[str, ...], *, directory: bool) -> bool:
+    if relative.name in UNMANAGED_NAMES:
+        return False
+    if not relative.parts:
+        return True
+    for entry in entries:
+        path = Path(entry)
+        if relative == path or (entry.endswith("/") and relative.is_relative_to(path)):
+            return True
+        if directory and path.is_relative_to(relative):
+            return True
+    return False
+
+
 def _agents_for(relative: Path, mapping: RootMapping) -> tuple[str, ...]:
     if mapping.kind != "shared":
         return mapping.agents
@@ -374,14 +449,17 @@ class _InventoryBuilder:
         allowed: tuple[Path, ...],
         runtime_roots: tuple[Path, ...],
         *,
-        confined: bool,
+        scope: str,
+        explicit: tuple[RootMapping, ...] = (),
     ) -> None:
         self.root = layout.root
         self.layout = layout
         self.allowed = allowed
+        self.scope = scope
+        self.explicit = explicit
         # A project's harness root linked outside the repository would pull external
         # content into committed source; a global root is de-linked at adoption instead.
-        self.confined = confined
+        self.confined = scope != "global"
         self.runtime_roots = runtime_roots
         self.confirmed_roots: tuple[Path, ...] = ()
         self.candidates: dict[tuple[Path, Path | None], Candidate] = {}
@@ -400,12 +478,12 @@ class _InventoryBuilder:
     def _walk(
         self, path: Path, mapping: RootMapping, ancestors: tuple[Path, ...], *, confirmed: bool
     ) -> None:
-        if not confirmed and path in self.confirmed_roots:
+        relative = path.relative_to(mapping.source) if mapping.kind != "file" else Path(path.name)
+        if self._unread(path, relative, mapping, confirmed=confirmed):
             return
         if not path.exists() and not path.is_symlink():
             self.remember(path, read=False)
             return
-        relative = path.relative_to(mapping.source) if mapping.kind != "file" else Path(path.name)
         destination = (
             mapping.destination / relative if mapping.kind != "file" else mapping.destination
         )
@@ -465,6 +543,12 @@ class _InventoryBuilder:
                 self._walk(child, mapping, (*ancestors, canonical), confirmed=confirmed)
         else:
             self._file(path, canonical, destination, mapping, confirmed=confirmed)
+
+    def _unread(self, path: Path, relative: Path, mapping: RootMapping, *, confirmed: bool) -> bool:
+        if not confirmed:
+            return path in self.confirmed_roots
+        entries = None if mapping in self.explicit else managed_paths(self.scope, mapping)
+        return entries is not None and not _managed(relative, entries, directory=path.is_dir())
 
     def _file(
         self,
@@ -741,7 +825,8 @@ def discover(
                 for path in (m.source, m.source.resolve())
             )
         ),
-        confined=scope != "global",
+        scope="global" if scope == "global" else "project",
+        explicit=mappings,
     )
     builder.confirmed_roots = tuple(m.source for m in selected_mappings)
     for mapping in selected_mappings:

@@ -168,7 +168,9 @@ time, per [0011](docs/decisions/0011-a-destination-follows-a-relocated-harness.m
 `init` finishes with the first render. It compares what loadout would write with what is on disk, writes it and says so when the two match, and shows the diff before applying when they do not. A `sync` straight after `init` changes nothing. It records what it wrote, so the first `sync` has a baseline.
 
 Global init discovers existing configuration in live harness roots and the selected directory,
-which defaults to cwd. It migrates into `<source>/loadout/`, with explicit native category routes
+which defaults to cwd. Under a harness root it reads only the paths loadout manages and leaves
+everything else alone unread, so runtime state, `.DS_Store` files and notes never stop it; the
+[list](docs/reference/migration.md#what-discovery-reads) is per harness. It migrates into `<source>/loadout/`, with explicit native category routes
 and private sources where required, and registers that actual manifest directory and resolved
 harness list. That list becomes the default for fresh project init. An existing Loadout manifest
 is recognized as source and left intact; repeat init reports no migration while refreshing the
