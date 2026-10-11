@@ -660,7 +660,6 @@ def _check_json(root: Path, profile: str) -> int:
 
 
 def cmd_check(root: Path, profile: str = "default", *, as_json: bool = False) -> int:
-    prune_vanished()
     if as_json:
         return _check_json(root, profile)
     # `check` used to end every drift with "run `loadout sync`" even where sync was

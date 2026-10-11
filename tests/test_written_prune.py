@@ -55,15 +55,19 @@ def test_sync_deletes_the_record_of_a_vanished_root_and_keeps_the_live_one(
     assert _files(live) == files
 
 
-def test_check_deletes_the_record_of_a_vanished_root(tmp_path: Path, capsys) -> None:
+def test_check_leaves_the_state_directory_unchanged(
+    tmp_path: Path, scratch_state: Path, capsys
+) -> None:
     live = _project(tmp_path / "live")
     assert loadout.main(["sync", "--root", str(live)]) == 0
     dead = _dead_record(tmp_path / "gone")
+    before = _files(scratch_state)
+    assert dead in before
 
     assert loadout.main(["check", "--root", str(live), "--json"]) == 0
+    assert loadout.main(["check", "--root", str(live)]) == 0
 
-    assert not dead.exists()
-    assert written_state_path(live).is_file()
+    assert _files(scratch_state) == before
     assert '"status": "clean"' in capsys.readouterr().out
 
 
