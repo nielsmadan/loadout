@@ -96,7 +96,9 @@ There is a third comparison beside those two renders: **what `sync` recorded wri
 last**, kept per destination under `$XDG_CONFIG_HOME/loadout/written/`. Without it, editing a
 source twice before committing left an output rendered from a state that is neither baseline,
 and `sync` refused a file it had written itself. The record only ever widens acceptance — delete
-it and the guard behaves exactly as it did before, warning and all.
+it and the guard behaves exactly as it did before, warning and all. `sync` and `check` delete the
+record of any root that no longer exists; a root they cannot examine, such as one a sandbox hides,
+keeps its record.
 
 The guard does not need git. Outside a repository, or before the first commit, the working
 source and the record are the baseline: an unsynced source edit leaves the output matching what

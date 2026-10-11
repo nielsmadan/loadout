@@ -139,6 +139,46 @@ def read_written(root: Path, env: Mapping[str, str] | None = None) -> dict[Path,
     return out
 
 
+def prune_vanished(env: Mapping[str, str] | None = None) -> None:
+    """Delete the records of roots that no longer exist.
+
+    Safe for the same reason losing a record is: without one, the guard accepts less
+    and retirement touches nothing. A root that cannot be stat'ed for any reason other
+    than being absent, such as a sandbox denying it, keeps its record.
+    """
+    try:
+        records = sorted((machine_state_dir(env) / "written").glob("*.json"))
+    except OSError:
+        return
+    for record in records:
+        root = _recorded_root(record)
+        if root is None or not _vanished(root):
+            continue
+        try:
+            record.unlink()
+        except OSError:
+            continue
+
+
+def _recorded_root(record: Path) -> Path | None:
+    try:
+        document = json.loads(record.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    root = document.get("root") if isinstance(document, dict) else None
+    return Path(root) if isinstance(root, str) and Path(root).is_absolute() else None
+
+
+def _vanished(path: Path) -> bool:
+    try:
+        path.stat()
+    except (FileNotFoundError, NotADirectoryError):
+        return True
+    except OSError:
+        return False
+    return False
+
+
 def record_written(
     root: Path,
     profile: str,

@@ -74,6 +74,7 @@ from .written import (
     frozen_entry,
     merged_entry,
     normalise,
+    prune_vanished,
     read_written,
     record_written,
     text_entry,
@@ -395,6 +396,7 @@ def diff_lines(rel: str, actual: str, expected: str, context: int) -> list[str]:
 
 def cmd_sync(root: Path, profile: str = "default", force: bool = False) -> int:
     root = root.absolute()
+    prune_vanished()
     # Rendered once and reused for the guard, the write and the record, so what is
     # recorded is provably what was written rather than a third render of it.
     outputs = render_all(root, profile)
@@ -658,6 +660,7 @@ def _check_json(root: Path, profile: str) -> int:
 
 
 def cmd_check(root: Path, profile: str = "default", *, as_json: bool = False) -> int:
+    prune_vanished()
     if as_json:
         return _check_json(root, profile)
     # `check` used to end every drift with "run `loadout sync`" even where sync was
