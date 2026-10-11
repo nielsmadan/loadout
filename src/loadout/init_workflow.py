@@ -261,8 +261,14 @@ def planned_render(plan: MigrationPlan, profile: str) -> tuple[RenderedChange, .
             path.chmod(write.mode)
         for path in render_all(scratch, profile):
             original = real / path.relative_to(scratch) if path.is_relative_to(scratch) else None
-            if original is not None and original.is_file() and not path.exists():
-                path.parent.mkdir(parents=True, exist_ok=True)
+            if original is None or not original.is_file() or path.exists() or path.is_symlink():
+                continue
+            path.parent.mkdir(parents=True, exist_ok=True)
+            # An in-repo link decides what is rendered there, so scratch keeps it a link.
+            target = original.resolve()
+            if original.is_symlink() and target.is_relative_to(real.resolve()):
+                path.symlink_to(scratch / target.relative_to(real.resolve()))
+            else:
                 path.write_bytes(original.read_bytes())
         outputs = _rebased(render_all(scratch, profile), scratch, real)
         return tuple(compare_with_disk(outputs))

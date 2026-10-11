@@ -1163,8 +1163,13 @@ def _render_project_slices(root: Path, config: ProjectConfig) -> dict[Path, Outp
             # the order is the project's, not the agent's, so every one of them
             # renders the same bytes. Skipping the repeat rather than claiming
             # the path is what makes `AGENTS.md` shared instead of contested.
+            # Beside another harness, Claude's CLAUDE.md imports it instead.
             if instructions is not None:
-                outputs[path] = instructions
+                outputs[path] = (
+                    CLAUDE_IMPORT
+                    if agent == "claude" and _imports_agents(root, config)
+                    else instructions
+                )
             continue
         if not _contributes(slice_name):
             # A source offering no mcp.toml contributes no tier, the same as a
@@ -1308,6 +1313,19 @@ def _expand_project_catalog(
             spec = PROJECT_PRESET[agent]["skills"]
             assert spec.output is not None
             _write_project_skill(skill, agent, root / spec.output, state, render=should_render)
+
+
+# Claude reads AGENTS.md only when no CLAUDE.md is on the path, so with another
+# harness present the content lives in AGENTS.md and CLAUDE.md imports it.
+CLAUDE_IMPORT = f"{HEADER}\n\n@AGENTS.md\n"
+
+
+def _imports_agents(root: Path, config: ProjectConfig) -> bool:
+    """A CLAUDE.md linked to AGENTS.md is that document; writing the stub through
+    the link would replace the content."""
+    claude = root / "CLAUDE.md"
+    linked = claude.is_symlink() and claude.resolve() == (root / "AGENTS.md").resolve()
+    return set(config.harnesses) != {"claude"} and not linked
 
 
 def project_instructions(

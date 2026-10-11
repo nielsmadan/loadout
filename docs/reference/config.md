@@ -213,6 +213,19 @@ existed, and `~/.claude/CLAUDE.md` began `# Global CLAUDE.md`.
 The four `AGENTS.md`-family documents are typically byte-identical, which is why extraction can
 collapse them into one fragment by exact comparison rather than judgement.
 
+**Claude reads a project `AGENTS.md` only as a fallback.** Upstream
+([memory](https://code.claude.com/docs/en/memory), fetched 2026-10-11): *"By default, Claude reads
+`AGENTS.md` only when you have no `CLAUDE.md` or `CLAUDE.local.md` in your working directory or above
+it."* Reading it at all needs v2.1.277, and the **Project instructions** setting can turn it off. So
+with Claude and another harness, loadout writes the content to `AGENTS.md` and a `CLAUDE.md` holding
+only its banner and `@AGENTS.md`, which upstream covers for every setting: *"Keeping the import never
+makes Claude read `AGENTS.md` twice, whichever **Project instructions** value you use."* The banner is
+an HTML comment, and *"Block-level HTML comments (`<!-- maintainer notes -->`) in CLAUDE.md files are
+stripped before the content is injected into Claude's context."* For a `CLAUDE.md` symlinked to
+`AGENTS.md`, upstream says *"Either way Claude reads the content once."* Global scope keeps
+`~/.claude/CLAUDE.md`: Claude loads every `AGENTS.md` in the working directory and above it, so a
+`~/.claude/AGENTS.md` or `~/AGENTS.md` would reach every project under `HOME`.
+
 ## permissions
 
 | harness | global | project |

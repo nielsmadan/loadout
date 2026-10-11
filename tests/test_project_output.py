@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from loadout.agents import SliceOutput
-from loadout.emit import Copied, render_all, render_project
+from loadout.emit import CLAUDE_IMPORT, Copied, render_all, render_project
 from loadout.errors import LoadoutError
 from loadout.project import PROJECT_PRESET
 
@@ -374,12 +374,50 @@ def _fragment(bare_project: Path, name: str, body: str) -> None:
     (directory / f"{name}.md").write_text(body, encoding="utf-8")
 
 
-def test_the_two_instruction_documents_are_byte_identical(project: Path) -> None:
-    """Codex, Droid, OpenCode and Pi share one repo-root AGENTS.md, so a per-agent order
-    could not be honoured. One order is what makes the two documents equal by
-    construction rather than by luck."""
+def _with_harnesses(project: Path, *harnesses: str) -> None:
+    config = project / "loadout" / "config.toml"
+    lines = config.read_text(encoding="utf-8").splitlines(keepends=True)
+    quoted = ", ".join(f'"{h}"' for h in harnesses)
+    config.write_text(
+        "".join(
+            f"harnesses = [{quoted}]\n" if line.startswith("harnesses") else line for line in lines
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_with_claude_and_another_harness_claude_md_imports_agents_md(project: Path) -> None:
+    """Claude reads AGENTS.md only as a fallback when no CLAUDE.md is on the path, so
+    the content lives in AGENTS.md and CLAUDE.md imports it."""
+    _with_harnesses(project, "claude", "pi")
+    rendered = render_project(project)
+    assert rendered[project / "CLAUDE.md"] == CLAUDE_IMPORT
+    assert CLAUDE_IMPORT.endswith("\n\n@AGENTS.md\n")
+    assert "Declared first while sorting second" in rendered[project / "AGENTS.md"]
+
+
+def test_a_claude_only_project_writes_the_content_to_claude_md(project: Path) -> None:
+    both = render_project(project)[project / "AGENTS.md"]
+    _with_harnesses(project, "claude")
+    rendered = render_project(project)
+    assert rendered[project / "CLAUDE.md"] == both
+    assert project / "AGENTS.md" not in rendered
+
+
+def test_a_project_without_claude_writes_only_agents_md(project: Path) -> None:
+    both = render_project(project)[project / "AGENTS.md"]
+    _with_harnesses(project, "codex", "opencode")
+    rendered = render_project(project)
+    assert rendered[project / "AGENTS.md"] == both
+    assert project / "CLAUDE.md" not in rendered
+
+
+def test_a_claude_md_linked_to_agents_md_receives_the_same_content(project: Path) -> None:
+    """Writing the stub through the link would replace AGENTS.md's content with it."""
+    (project / "CLAUDE.md").symlink_to("AGENTS.md")
     rendered = render_project(project)
     assert rendered[project / "CLAUDE.md"] == rendered[project / "AGENTS.md"]
+    assert "Declared first while sorting second" in rendered[project / "CLAUDE.md"]
 
 
 def test_instruction_blocks_appear_in_declared_order_below_the_template(project: Path) -> None:
@@ -545,10 +583,10 @@ def test_two_agents_may_not_share_one_document(
 
 
 def test_the_shared_instruction_document_is_still_allowed(project: Path) -> None:
-    """The exemption survives the guard: three agents naming one AGENTS.md is the
+    """The exemption survives the guard: four agents naming one AGENTS.md is the
     designed case, and claiming it would have broken the render outright."""
     rendered = render_project(project)
-    assert rendered[project / "AGENTS.md"] == rendered[project / "CLAUDE.md"]
+    assert "Declared second while sorting first" in rendered[project / "AGENTS.md"]
 
 
 def test_removing_the_plugins_fragment_retires_the_keys_it_wrote(project: Path) -> None:

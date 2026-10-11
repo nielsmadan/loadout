@@ -10,6 +10,7 @@ from typing import Any, Literal
 import tomlkit
 
 from .agents import GLOBAL_PRESET
+from .composition import HEADER
 from .discovery import PROJECT_ROOTS, credential_material, digest, path_preconditions
 from .errors import LoadoutError
 from .extract import extract, extract_codex_plugins, extract_codex_servers, extract_value
@@ -575,11 +576,13 @@ class _PlanBuilder:
 
     def finish_project_sources(self) -> tuple[str, ...]:
         instructions: tuple[str, ...] = ()
-        if self.project_instructions:
-            contents = {candidate.content for candidate in self.project_instructions}
+        documents = [c for c in self.project_instructions if not _imports_agents_md(c)]
+        documents = documents or self.project_instructions
+        if documents:
+            contents = {candidate.content for candidate in documents}
             if len(contents) != 1:
                 raise LoadoutError("project instruction documents disagree across harnesses")
-            candidate = self.project_instructions[0]
+            candidate = documents[0]
             self.write(Path("instructions/main.md"), candidate.content, mode=candidate.mode)
             instructions = ("main",)
         for category, values in self.project_values.items():
@@ -1191,6 +1194,17 @@ def plan_migration(inventory: Inventory) -> MigrationPlan:
         ),
     )
     return validate_plan(plan)
+
+
+def _imports_agents_md(candidate: Candidate) -> bool:
+    """A CLAUDE.md holding only an import of AGENTS.md, with or without loadout's banner."""
+    if candidate.path.name != "CLAUDE.md":
+        return False
+    try:
+        text = candidate.content.decode("utf-8").strip()
+    except UnicodeDecodeError:
+        return False
+    return text.removeprefix(HEADER).strip() in {"@AGENTS.md", "@./AGENTS.md"}
 
 
 def _original_paths(candidate: Candidate) -> tuple[Path, ...]:

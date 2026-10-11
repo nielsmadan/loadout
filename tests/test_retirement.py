@@ -189,12 +189,14 @@ def test_without_a_record_nothing_is_retired(tmp_path: Path) -> None:
     """An output no record lists is not provably loadout's, however generated it looks."""
     source = _project(tmp_path, '"claude", "codex"')
     assert _sync(tmp_path) == 0
+    claude = (tmp_path / "CLAUDE.md").read_text()
     written_state_path(tmp_path).unlink()
-    (source / "config.toml").write_text('harnesses = ["claude"]\ninstructions = ["main"]\n')
+    (source / "config.toml").write_text('harnesses = ["codex"]\ninstructions = ["main"]\n')
 
     assert _sync(tmp_path) == 0
 
-    assert (tmp_path / "AGENTS.md").read_text().endswith("Shared rules.\n")
+    assert (tmp_path / "CLAUDE.md").read_text() == claude
+    assert claude.endswith("@AGENTS.md\n")
 
 
 def test_check_reports_what_sync_would_retire(tmp_path: Path, capsys) -> None:
@@ -216,6 +218,7 @@ def test_check_reports_what_sync_would_retire(tmp_path: Path, capsys) -> None:
         ".claude/skills/gone/scripts/run.sh": "orphaned",
         ".codex/rules/permissions.rules": "orphaned",
         "AGENTS.md": "hand-edited",
+        "CLAUDE.md": "source-changed",
     }
     err = capsys.readouterr().err
     assert "DRIFT (orphaned): .codex/rules/permissions.rules" in err

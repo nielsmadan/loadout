@@ -633,9 +633,13 @@ Loadout derives every output path from its project preset:
 ### Project instructions
 
 `instructions` in `loadout/config.toml` names fragments in `loadout/instructions/`, in reading
-order. They compose into `CLAUDE.md` and `AGENTS.md`. One order serves the whole repository because
-four harnesses share `AGENTS.md`. With no instructions or template prose, neither document is
-generated.
+order. One order serves the whole repository because four harnesses share `AGENTS.md`. With Claude
+and any other harness, the content goes to `AGENTS.md` and `CLAUDE.md` holds only the banner and
+`@AGENTS.md`: Claude reads `AGENTS.md` only when no `CLAUDE.md` is on the path, and its docs promise
+the import never makes it read `AGENTS.md` twice. A Claude-only project writes the content to
+`CLAUDE.md`; a project without Claude writes only `AGENTS.md`. A `CLAUDE.md` that is a symlink to
+`AGENTS.md` stays one, and is the same document. With no instructions or template prose, neither
+document is generated.
 
 ```toml
 instructions = ["conventions", "testing"]

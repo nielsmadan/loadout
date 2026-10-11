@@ -29,9 +29,8 @@ class ProjectConfig:
     `instructions` is **one order for the whole project, not one per harness**,
     and that is forced by the harnesses rather than chosen: Codex, Droid,
     OpenCode and Pi all read a repo-root `AGENTS.md` (reference/config.md), so
-    one path would have to hold four orders. With a single order the two generated documents
-    are byte-identical by construction — `composition.render` takes no agent
-    argument — rather than by an assertion that could fail open.
+    one path would have to hold four orders. Beside another harness, Claude's
+    `CLAUDE.md` imports that `AGENTS.md` rather than repeating it.
     """
 
     harnesses: tuple[str, ...]

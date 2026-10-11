@@ -152,9 +152,9 @@ Two consequences worth stating because they look inconsistent side by side:
 - **Project instructions are one order for the repo, not one per harness.** Codex, Droid,
   OpenCode and Pi all read a repo-root `AGENTS.md`
   ([reference/config.md](reference/config.md#instructions)),
-  so one path would have to hold four orders. One order makes `CLAUDE.md` and `AGENTS.md`
-  byte-identical by construction — `composition.render` takes no agent argument — rather than by
-  a check that would pass whenever nothing was rendered.
+  so one path would have to hold four orders. With Claude among other harnesses, `CLAUDE.md`
+  imports `AGENTS.md` rather than repeating it
+  ([0027](decisions/0027-project-claude-md-imports-agents-md.md)).
 - **Skills share a source catalog, not necessarily rendered bytes.** `render_skill` takes a
   harness: `::: <harness>` sections are kept or dropped and `:concept[…]` expands per harness.
   Loadout therefore renders each selected harness separately. Codex, OpenCode, and Pi share

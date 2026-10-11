@@ -80,7 +80,9 @@ fix it on disk and run init again. An incomplete preview exits 2 and changes not
 
 Project `CLAUDE.md` and `AGENTS.md` holding different content stop init with *"project instruction
 documents disagree across harnesses"* (exit 3, before any preview), since project scope keeps one
-instruction source. In global
+instruction source. A `CLAUDE.md` that is a symlink to `AGENTS.md`, or whose whole content is
+`@AGENTS.md` (or `@./AGENTS.md`), surrounded by whitespace and optionally preceded by loadout's
+banner, is the same document as `AGENTS.md`; anything more in it is a disagreement. In global
 scope each harness keeps its own, so `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` may differ.
 
 ## Source shape

@@ -76,7 +76,7 @@ def test_two_templates_share_one_vendored_part_and_render_once(
     assert list(local.rglob("SKILL.md")) == [local / "skills/review-typescript/SKILL.md"]
     machine_config_path().unlink()
     output = render_project(bare_project)
-    instructions = output[bare_project / "CLAUDE.md"]
+    instructions = output[bare_project / "AGENTS.md"]
     assert isinstance(instructions, str)
     assert instructions.count("Shared TypeScript advice") == 1
     assert "Next.js advice" in instructions
