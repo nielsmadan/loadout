@@ -65,6 +65,7 @@ The operator map is [composition.md](composition.md). Profile tests are in
 | initialized source produces an idempotent no-migration result | `test_existing_source_is_not_reinterpreted` |
 | ignored generated links preserve tracked source privacy | `test_ignored_symlink_output_keeps_tracked_canonical_source_public` |
 | canonical runtime roles through symlinked harness roots, with unchanged crawl limits | `test_symlinked_harness_root_excludes_canonical_runtime_aliases`, `test_symlinked_harness_root_does_not_expand_inventory_boundary`, `test_symlink_cycle_in_harness_root_is_reported` |
+| a mapping source or HOME spelled through a symlinked prefix is inside its own boundary, and global init under such a HOME adopts and registers | `test_a_mapping_source_under_a_symlinked_prefix_is_not_external`, `test_global_init_under_a_symlinked_home_prefix_adopts_and_registers` in `tests/test_init_workflow.py` |
 | private canonical originals and future private tree entries stay excluded | `test_private_instruction_excludes_canonical_original_and_aliases`, `test_private_tree_namespace_ignores_future_entries` |
 | dependency mappings agree in original and deployed coordinates | `test_mapped_relative_dependencies_preserve_source_and_deployed_layout`, `test_absolute_dependency_on_relocated_original_stays_blocked`, `test_relative_dependency_with_disagreeing_mapping_stays_blocked` |
 | recognizable unsupported global harness trees block migration | `test_global_unsupported_harness_tree_is_unresolved` |

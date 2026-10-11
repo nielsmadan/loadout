@@ -14,7 +14,7 @@ from .errors import LoadoutError
 from .git_privacy import ignored_paths
 from .harnesses import KNOWN_HARNESSES
 from .migration_models import Candidate, EntryState, Inventory, Issue, RootMapping
-from .migration_paths import DestinationLayout
+from .migration_paths import DestinationLayout, entry_path
 from .native_documents import parse_document
 from .output import CATEGORIES, ArtifactScope
 
@@ -713,7 +713,13 @@ def discover(
     automatic = tuple(m for m in automatic if m.agents)
     selected_mappings = tuple(dict.fromkeys((*automatic, *mappings)))
     allowed = tuple(
-        dict.fromkeys((root.resolve(), *(m.source.absolute() for m in selected_mappings)))
+        dict.fromkeys(
+            (
+                root.resolve(),
+                *(m.source.absolute() for m in selected_mappings),
+                *(entry_path(m.source) for m in selected_mappings),
+            )
+        )
     )
     home = environment.get("HOME")
     builder = _InventoryBuilder(

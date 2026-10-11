@@ -379,6 +379,22 @@ def test_symlinked_harness_root_does_not_expand_inventory_boundary(tmp_path: Pat
     assert plan.source_writes == ()
 
 
+def test_a_mapping_source_under_a_symlinked_prefix_is_not_external(tmp_path: Path) -> None:
+    """The macOS /tmp case: the source is spelled through a link above it, so its
+    canonical path never started with the spelling the boundary was given."""
+    project = tmp_path / "project"
+    project.mkdir()
+    write(tmp_path, "external/skills/one/SKILL.md", "---\nname: one\ndescription: d\n---\nx\n")
+    alias = tmp_path / "alias"
+    alias.symlink_to(tmp_path, target_is_directory=True)
+    mapping = RootMapping(alias / "external", project / ".claude", ("claude",))
+    plan = plan_migration(
+        discover(project, scope="project", agents=("claude",), mappings=(mapping,))
+    )
+    assert plan.complete, plan.preview()
+    assert project / "loadout/skills/one/SKILL.md" in {w.path for w in plan.source_writes}
+
+
 def test_symlink_cycle_in_harness_root_is_reported(tmp_path: Path) -> None:
     (tmp_path / ".claude").symlink_to(".claude", target_is_directory=True)
     plan = plan_migration(discover(tmp_path, scope="project", agents=("claude",)))

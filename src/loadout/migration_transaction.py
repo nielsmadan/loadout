@@ -381,9 +381,10 @@ def _filesystem_plan(
             raise LoadoutError(f"retirement must name an individual adopted source: {path}")
         builder.put(target, Image(), "retire")
     if machine_write is not None:
-        builder.parents(machine_write.path, "registration")
+        registration = entry_path(machine_write.path)
+        builder.parents(registration, "registration")
         builder.put(
-            machine_write.path,
+            registration,
             Image("file", machine_write.content, machine_write.mode),
             "registration",
         )

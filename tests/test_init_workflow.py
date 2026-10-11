@@ -717,3 +717,26 @@ def test_global_init_writes_every_skill_in_directory_form(tmp_path, fake_home):
     assert (source / "deploy" / "SKILL.md").is_file()
     assert (source / "deploy" / "scripts" / "ship.sh").is_file()
     assert sorted(p.name for p in source.iterdir() if p.is_file()) == []
+
+
+def test_global_init_under_a_symlinked_home_prefix_adopts_and_registers(
+    tmp_path, monkeypatch, capsys
+):
+    """The macOS /tmp case: HOME, and the machine config beneath it, sit under a link."""
+    real = tmp_path / "real"
+    (real / "home" / ".claude").mkdir(parents=True)
+    (real / "home" / ".claude" / "CLAUDE.md").write_text("# global\n")
+    alias = tmp_path / "alias"
+    alias.symlink_to(real, target_is_directory=True)
+    monkeypatch.setenv("HOME", str(alias / "home"))
+    (real / "src").mkdir()
+
+    init = ["init", "global", str(alias / "src"), "--harness", "claude", "--yes"]
+    assert loadout.main(init) == 0
+
+    assert alias.readlink() == real
+    assert (real / "home/.config/loadout/config.toml").is_file()
+    assert (real / "src/loadout/instructions").is_dir()
+    capsys.readouterr()
+    assert loadout.main(["sync", "--global"]) == 0
+    assert "Up to date." in capsys.readouterr().out
