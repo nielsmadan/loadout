@@ -69,7 +69,7 @@ fix it on disk and run init again. An incomplete preview exits 2 and changes not
 |---|---|
 | `agents-required` | no harness was given and none has configuration at a known path |
 | `symlink-target`, `symlink-cycle` | a link at a read path is missing its target or loops |
-| `external-symlink` | in project scope, a harness root links outside the repository; its content would become committed source |
+| `external-symlink` | in project scope, a harness root links outside the repository; its content would become committed source. There is no override: share it as a loadout template, or replace the link with a real copy (`cp -RL`) and run init again ([0026](../decisions/0026-a-project-root-linked-outside-the-repository-has-no-override.md)) |
 | `unadoptable-format` | `opencode.jsonc`: loadout writes `opencode.json` and cannot carry JSONC comments |
 | `invalid-native-document` | a document at a read path does not parse |
 | `dependency-activation` | an adopted declaration references a de-linked original instead of the copy loadout deploys |
@@ -120,7 +120,8 @@ replaced, and loadout writes through it. A `~/.config` that links into a dotfile
 receives OpenCode's generated files in that repo.
 
 Still refused: a symlink cycle, and in project scope a harness root linked outside the repository,
-whose content would otherwise become committed project source.
+whose content would otherwise become committed project source. That refusal has no override; it
+names the link's target and the two remedies, a loadout template or a real copy made with `cp -RL`.
 
 ## Older adopted repositories
 

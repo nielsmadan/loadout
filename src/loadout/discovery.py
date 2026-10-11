@@ -506,8 +506,10 @@ class _InventoryBuilder:
                 destination,
                 mapping.agents,
                 "external-symlink",
-                "This links outside the repository; adopting it would copy external content "
-                "into committed project source.",
+                f"{path} links to {canonical}, outside the repository, so adopting it would copy "
+                "that content into committed project source. Share it as a loadout template "
+                f"instead, or replace the link with a real copy (cp -RL {path} <copy>, then move "
+                "the copy into its place) and run init again.",
             )
             return
         self.remember(canonical, read=False)

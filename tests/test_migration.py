@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import loadout
 from loadout.discovery import discover, entry_state, live_roots
 from loadout.emit import render_all
 from loadout.errors import LoadoutError
@@ -400,6 +401,28 @@ def test_symlinked_harness_root_does_not_expand_inventory_boundary(tmp_path: Pat
     plan = plan_migration(discover(project, scope="project", agents=("claude",)))
     assert {issue.code for issue in plan.issues} == {"external-symlink"}
     assert plan.source_writes == ()
+
+
+def test_a_project_root_linked_outside_the_repository_names_both_remedies(
+    tmp_path: Path, capsys
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    external = write(tmp_path, "shared/claude/settings.json", '{"model": "opus"}\n').parent
+    claude = project / ".claude"
+    claude.symlink_to(external, target_is_directory=True)
+
+    assert loadout.main(["init", "project", "--root", str(project), "--harness", "claude"]) == 2
+
+    err = capsys.readouterr().err
+    assert (
+        f"external-symlink: {claude} links to {external.resolve()}, outside the repository, so "
+        "adopting it would copy that content into committed project source. Share it as a "
+        "loadout template instead, or replace the link with a real copy "
+        f"(cp -RL {claude} <copy>, then move the copy into its place) and run init again."
+    ) in err
+    assert claude.readlink() == external
+    assert not (project / "loadout").exists()
 
 
 def test_a_project_under_a_symlinked_prefix_is_not_external(tmp_path: Path) -> None:
