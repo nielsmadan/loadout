@@ -171,6 +171,10 @@ and private sources where required, and registers that actual manifest directory
 harness list. That list becomes the default for fresh project init. An existing Loadout manifest
 is recognized as source and left intact; repeat init reports no migration while refreshing the
 saved harness default.
+A `~/.claude` symlinked into a dotfiles repo, or one made of per-file links, is adopted by
+de-linking it: loadout's outputs become real files, everything else links back into the repo, and
+the repo is left unchanged. Init names each link it replaced; see
+[symlinked deployments](docs/reference/migration.md#symlinked-deployments).
 A conflicting machine registration requires `--registration replace` or `--registration keep`.
 `--yes` approves resolved operations;
 it never chooses between conflicting sources.

@@ -20,14 +20,19 @@ class DestinationLayout:
         roots = (self.root, self.home) if self.home else (self.root,)
         boundaries = tuple((root, root.resolve()) for root in roots)
         destinations = tuple(
-            (mapping.destination, entry_path(mapping.destination))
-            for mapping in self.mappings
-            if mapping.kind != "file"
+            (mapping.destination, entry_path(mapping.destination)) for mapping in self.mappings
         )
-        for boundary, canonical in (*boundaries, *destinations):
-            for base in (boundary, canonical):
-                if path.is_relative_to(base):
-                    return canonical / path.relative_to(base)
+        # The deepest root wins, so a link above a harness root resolves rather than
+        # surviving as an ancestor the transaction would have to replace.
+        matches = tuple(
+            (base, canonical)
+            for boundary, canonical in (*boundaries, *destinations)
+            for base in (boundary, canonical)
+            if path.is_relative_to(base)
+        )
+        if matches:
+            base, canonical = max(matches, key=lambda match: len(match[0].parts))
+            return canonical / path.relative_to(base)
 
         # Match outer aliases before traversing replaceable destination links.
         for ancestor in reversed((path, *path.parents)):

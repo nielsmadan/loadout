@@ -25,6 +25,33 @@ directory in the machine config. Neither scope writes `artifacts.toml`.
 Migration previews, privacy checks, Git staging, interruption journals, resume and recovery still
 apply. Existing generated destinations are reconstructed in isolation before approval.
 
+## Symlinked deployments
+
+A global harness root that is a symlink, such as `~/.claude` pointing into a dotfiles repo, is
+adopted without `--mapping`, and so are stow-style per-file links inside it. Adoption **de-links**
+them; see [0023](../decisions/0023-adoption-de-links-a-symlinked-deployment.md):
+
+- loadout's outputs become real files at the harness path;
+- every entry loadout does not manage becomes a link back into the original target, so runtime
+  state, credentials, commands and subagents keep working;
+- the target's bytes are not changed. Its copies of the adopted files are simply no longer read.
+
+The preview lists each link as `Replace symlink: <link> -> <target>`, and `--json` lists it under
+`delinked`. After applying, init says what it did:
+
+    ~/.claude was a symlink into ~/dotfiles/claude. Loadout's files are now real files here;
+    everything else still links into ~/dotfiles/claude. ~/dotfiles/claude's copies of CLAUDE.md,
+    settings.json are no longer used.
+
+Only links at or below a harness root are deployment links. A link above one — macOS's
+`/tmp` → `/private/tmp`, a symlinked home directory, `~/.config` for OpenCode — is resolved, never
+replaced, and loadout writes through it. A `~/.config` that links into a dotfiles repo therefore
+receives OpenCode's generated files in that repo.
+
+Still refused: a symlink cycle, and in project scope a harness root linked outside the repository,
+whose content would otherwise become committed project source. The latter takes an explicit
+`--mapping`.
+
 ## Older adopted repositories
 
 Nothing using artifact routes was published. Re-initialise repositories adopted by a route-based

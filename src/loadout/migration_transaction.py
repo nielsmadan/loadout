@@ -38,6 +38,24 @@ class MigrationFailure(LoadoutError):
 
 
 @dataclass(frozen=True)
+class Delinked:
+    """A deployment link the migration replaces with a real directory or file."""
+
+    link: Path
+    target: Path
+    directory: bool
+    superseded: tuple[Path, ...]
+
+    def document(self) -> dict[str, Any]:
+        return {
+            "link": str(self.link),
+            "target": str(self.target),
+            "directory": self.directory,
+            "superseded": [str(p) for p in self.superseded],
+        }
+
+
+@dataclass(frozen=True)
 class MigrationPreparation:
     plan: MigrationPlan = field(repr=False)
     git: migration_git.GitPreparation | None
@@ -60,7 +78,25 @@ class MigrationPreparation:
                 for o in self.operations
             ],
             "recovery_directory": str(self.plan.inventory.root / ".loadout-state/migrations"),
+            "delinked": [d.document() for d in self.delinked()],
         }
+
+    def delinked(self) -> tuple[Delinked, ...]:
+        """Read before applying: afterwards the links are gone."""
+        layout = _layout(self.plan)
+        outputs = tuple(layout.normalize(w.path) for w in self.plan.generated_writes)
+        result = []
+        for operation in self.operations:
+            if operation.phase != "topology" or operation.before.kind != "symlink":
+                continue
+            link = operation.path
+            target = (link.parent / os.fsdecode(operation.before.content)).resolve()
+            copies = (
+                target / path.relative_to(link) for path in outputs if path.is_relative_to(link)
+            )
+            superseded = tuple(sorted(copy for copy in copies if copy.is_file()))
+            result.append(Delinked(link, target, target.is_dir(), superseded))
+        return tuple(result)
 
 
 @dataclass(frozen=True)

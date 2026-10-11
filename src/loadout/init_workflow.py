@@ -23,6 +23,7 @@ from .machine import load_machine_config, machine_config_path
 from .migration import plan_migration
 from .migration_models import Issue, MigrationPlan, SourceWrite
 from .migration_transaction import (
+    Delinked,
     MigrationFailure,
     MigrationResult,
     apply_migration,
@@ -188,6 +189,8 @@ def _show(preview: dict[str, Any], *, as_json: bool) -> None:
             print(f"{label}: {entry['path']}")
     for original in preview["originals"]:
         print(f"{original['action']}: {original['path']} ({original['reason']})")
+    for delinked in preview.get("delinked", ()):
+        print(f"Replace symlink: {delinked['link']} -> {delinked['target']}")
     if preview.get("registration"):
         print(f"Register global source: {preview['registration']}")
     _show_render(preview.get("render", ()))
@@ -288,7 +291,23 @@ def _first_sync(
     return 0
 
 
-def _result(result: MigrationResult, *, as_json: bool) -> None:
+def delinked_notice(delinked: Delinked) -> str:
+    if not delinked.directory:
+        return (
+            f"{delinked.link} was a symlink to {delinked.target}. It is now a real file "
+            f"written by loadout; {delinked.target} is no longer used."
+        )
+    notice = (
+        f"{delinked.link} was a symlink into {delinked.target}. Loadout's files are now real "
+        f"files here; everything else still links into {delinked.target}."
+    )
+    if not delinked.superseded:
+        return notice
+    copies = ", ".join(p.relative_to(delinked.target).as_posix() for p in delinked.superseded)
+    return f"{notice} {delinked.target}'s copies of {copies} are no longer used."
+
+
+def _result(result: MigrationResult, delinked: tuple[Delinked, ...], *, as_json: bool) -> None:
     data = {
         "status": "complete",
         "journal": str(result.journal) if result.journal else None,
@@ -296,6 +315,7 @@ def _result(result: MigrationResult, *, as_json: bool) -> None:
         "written": [str(p) for p in result.written],
         "staged": list(result.staged),
         "already_initialized": result.already_initialized,
+        "delinked": [d.document() for d in delinked],
     }
     if as_json:
         print(json.dumps(data, indent=2))
@@ -305,6 +325,8 @@ def _result(result: MigrationResult, *, as_json: bool) -> None:
         )
     else:
         print(f"Migration complete; {len(result.staged)} source paths staged.")
+        for each in delinked:
+            print(delinked_notice(each))
 
 
 def run_init(options: InitOptions) -> int:
@@ -324,6 +346,7 @@ def _run_init(options: InitOptions) -> int:
         _show(plan.preview(), as_json=options.json)
         return 2
     prepared = prepare_migration(plan, machine_write=machine)
+    delinked = prepared.delinked()
     profile = _render_profile(plan)
     render = () if plan.already_initialized else planned_render(plan, profile)
     preview = {**prepared.preview(), "registration": str(machine.path) if machine else None}
@@ -349,7 +372,7 @@ def _run_init(options: InitOptions) -> int:
         result = apply_migration(prepared)
     except MigrationFailure as error:
         return report_failure(error, as_json=options.json)
-    _result(result, as_json=options.json)
+    _result(result, delinked, as_json=options.json)
     return _after_migration(plan, result, profile, render, as_json=options.json)
 
 
@@ -405,7 +428,7 @@ def run_recovery(path: Path, *, recover: bool, yes: bool, as_json: bool) -> int:
             return 0
     try:
         if not recover:
-            _result(resume_migration(path), as_json=as_json)
+            _result(resume_migration(path), (), as_json=as_json)
             return 0
         result = recover_migration(path)
     except MigrationFailure as error:

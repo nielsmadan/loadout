@@ -369,11 +369,19 @@ def _agents_for(relative: Path, mapping: RootMapping) -> tuple[str, ...]:
 
 class _InventoryBuilder:
     def __init__(
-        self, layout: DestinationLayout, allowed: tuple[Path, ...], runtime_roots: tuple[Path, ...]
+        self,
+        layout: DestinationLayout,
+        allowed: tuple[Path, ...],
+        runtime_roots: tuple[Path, ...],
+        *,
+        confined: bool,
     ) -> None:
         self.root = layout.root
         self.layout = layout
         self.allowed = allowed
+        # A project's harness root linked outside the repository would pull external
+        # content into committed source; a global root is de-linked at adoption instead.
+        self.confined = confined
         self.runtime_roots = runtime_roots
         self.confirmed_roots: tuple[Path, ...] = ()
         self.candidates: dict[tuple[Path, Path | None], Candidate] = {}
@@ -431,7 +439,7 @@ class _InventoryBuilder:
             )
             return
         self.remember(path, read=False)
-        if not any(canonical.is_relative_to(root) for root in self.allowed):
+        if self.confined and not any(canonical.is_relative_to(root) for root in self.allowed):
             self._unresolved(
                 path,
                 destination,
@@ -733,6 +741,7 @@ def discover(
                 for path in (m.source, m.source.resolve())
             )
         ),
+        confined=scope != "global",
     )
     builder.confirmed_roots = tuple(m.source for m in selected_mappings)
     for mapping in selected_mappings:
