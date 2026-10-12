@@ -29,6 +29,7 @@ def _project(root: Path, harnesses: str = '"claude"') -> Path:
     (source / "config.toml").write_text(
         f'harnesses = [{harnesses}]\ninstructions = ["main"]\n', encoding="utf-8"
     )
+    (source / "permissions.toml").write_text('[shell]\nallow = ["ls"]\n', encoding="utf-8")
     return source
 
 

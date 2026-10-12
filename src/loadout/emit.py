@@ -830,6 +830,20 @@ def _owns_its_file(target: PermissionTarget) -> bool:
     return not isinstance(spec, MergedJsonSpec)
 
 
+def _rule_less(renderer: str, rules: Rules) -> bool:
+    """Whether a whole permission file would hold no rule, and so is not written (P-35).
+
+    Pi's file is not among these: its empty render still makes `bash` ask.
+    """
+    if renderer in {"codex", "codex-project"}:
+        spec = RENDERERS[renderer]
+        assert isinstance(spec, TextSpec)
+        return "prefix_rule(" not in spec.fn(rules)
+    if renderer == "claude-mcp-permissions":
+        return not (rules.mcp_allow or rules.mcp_ask or rules.mcp_deny)
+    return False
+
+
 def render_global(root: Path, profile: str = "default") -> dict[Path, Output]:
     manifest = load_profile(root, profile)
     declared = _declared_profiles(manifest) | declared_profile_files(root)
@@ -861,7 +875,12 @@ def render_global(root: Path, profile: str = "default") -> dict[Path, Output]:
             # inside a file it does not own, so rendering nothing leaves the last
             # server registered forever. Skipping here is how "delete the only
             # server" silently did nothing.
-            if target.renderer.endswith("-servers") and not servers and _owns_its_file(target):
+            #
+            # A whole permission file with no rule in it is not written either.
+            if _owns_its_file(target) and (
+                (target.renderer.endswith("-servers") and not servers)
+                or _rule_less(target.renderer, rules if target.select_all else EMPTY_RULES)
+            ):
                 continue
             content = _permission_content(target, servers, manifest)
             residual = settings_document(target, manifest, root)
@@ -1164,6 +1183,8 @@ def _render_project_slices(root: Path, config: ProjectConfig) -> dict[Path, Outp
             # template offering no permissions.toml — nothing to write. The keys
             # it owns were retired above rather than left in the co-owner's base.
             continue
+        if _rule_less(spec.renderer or "", rules):
+            continue
         owner = f"{agent}.{slice_name}"
         contributor = PermissionTarget(
             agent=agent,
@@ -1392,17 +1413,8 @@ def write_outputs(
         raise DeploymentConflict("; ".join(deployment.conflicts))
     frozen: dict[Path, str | FrozenFile] = {}
     for path, content in outputs.items():
-        if path in deployment.managed:
-            continue
-        if isinstance(content, FrozenFile):
-            frozen[path] = content
-        elif isinstance(content, Copied):
-            frozen[path] = FrozenFile(content.read_bytes(), content.file_mode())
-        elif isinstance(content, Merged):
-            frozen[path] = applied_document(path, content)
-            frozen.update(content.records)
-        else:
-            frozen[path] = content
+        if path not in deployment.managed:
+            frozen.update(_frozen(path, content))
     written = apply_deployment(deployment)
     for path in deployment.detached:
         print(f"note: detached deployment retained for explicit cleanup: {path}")
@@ -1416,6 +1428,17 @@ def write_outputs(
             atomic_write(path, frozen_content)
         written.append(path)
     return written
+
+
+def _frozen(path: Path, content: Output) -> dict[Path, str | FrozenFile]:
+    if isinstance(content, FrozenFile):
+        return {path: content}
+    if isinstance(content, Copied):
+        return {path: FrozenFile(content.read_bytes(), content.file_mode())}
+    if isinstance(content, Merged):
+        applied = created_document(path, content)
+        return {**({path: applied} if applied is not None else {}), **dict(content.records)}
+    return {path: content}
 
 
 def _unchanged(path: Path, content: str | FrozenFile) -> bool:
@@ -1486,6 +1509,12 @@ def _atomic_frozen_copy(path: Path, content: bytes, mode: int) -> None:
     except BaseException:
         Path(temporary).unlink(missing_ok=True)
         raise
+
+
+def created_document(path: Path, merged: Merged) -> str | None:
+    """The applied document, or None when the file is absent and would stay empty."""
+    applied = applied_document(path, merged)
+    return applied if applied or path.is_file() else None
 
 
 def applied_document(path: Path, merged: Merged) -> str:

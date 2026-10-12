@@ -102,7 +102,7 @@ def test_unprofiled_target_renders_under_a_non_default_profile(tmp_path: Path) -
 def test_unprofiled_permission_target_renders_under_a_non_default_profile(tmp_path: Path) -> None:
     """Guards rule 3 for permission targets specifically, not just instructions."""
     root = build(tmp_path, UNPROFILED_PERMISSION_MANIFEST)
-    (root / "permissions.toml").write_text("[shell]\nallow = []\n", encoding="utf-8")
+    (root / "permissions.toml").write_text('[shell]\nallow = ["ls"]\n', encoding="utf-8")
     assert paths(render_global(root, profile="autonomous")) == {"out/auto.md", "out/perm.rules"}
 
 

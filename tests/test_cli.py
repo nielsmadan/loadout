@@ -427,7 +427,6 @@ def test_init_sync_check_round_trips_for_a_project_only_repo(tmp_path: Path, cap
         "/.loadout-state/",
         "/loadout/.loadout-state/",
         "/.claude/settings.json",
-        "/.claude/mcp-permissions.json",
         "/opencode.json",
     ]
     assert (tmp_path / ".claude" / "settings.json").is_file()

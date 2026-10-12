@@ -20,10 +20,10 @@ from .emit import (
     Copied,
     Merged,
     Output,
-    applied_document,
     artifact_deployment_scopes,
     check_all,
     collect_notices,
+    created_document,
     declared_profiles,
     describe_file,
     render_all,
@@ -529,7 +529,8 @@ def compare_with_disk(outputs: Mapping[Path, Output]) -> list[RenderedChange]:
         elif isinstance(content, Copied):
             copies[path] = (content.read_bytes(), content.file_mode())
         elif isinstance(content, Merged):
-            texts[path] = applied_document(path, content)
+            if (applied := created_document(path, content)) is not None:
+                texts[path] = applied
             texts.update(content.records)
         else:
             texts[path] = content

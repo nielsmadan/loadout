@@ -100,7 +100,7 @@ def build(tmp_path: Path, manifest_body: str) -> Path:
     fragments.mkdir(parents=True, exist_ok=True)
     (fragments / "plain.md").write_text("plain fragment\n", encoding="utf-8")
 
-    (tmp_path / "permissions.toml").write_text("[shell]\nallow = []\n", encoding="utf-8")
+    (tmp_path / "permissions.toml").write_text('[shell]\nallow = ["ls"]\n', encoding="utf-8")
     return tmp_path
 
 

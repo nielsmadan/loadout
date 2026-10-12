@@ -13,7 +13,7 @@ def _preset_project(root: Path, harnesses: str) -> Path:
     though only instructions are declared, or sync exits 3 (P-21)."""
     config = root / "loadout/config.toml"
     (root / "loadout").mkdir()
-    (root / "loadout/permissions.toml").write_text("", encoding="utf-8")
+    (root / "loadout/permissions.toml").write_text('[shell]\nallow = ["ls"]\n', encoding="utf-8")
     (root / "loadout/instructions").mkdir()
     (root / "loadout/instructions/main.md").write_text("Shared rules.\n", encoding="utf-8")
     config.write_text(
@@ -129,4 +129,4 @@ def test_a_one_line_source_change_writes_exactly_one_file(tmp_path: Path, capsys
 
     lines = capsys.readouterr().out.splitlines()
     assert [line for line in lines if line.startswith("wrote ")] == ["wrote CLAUDE.md"]
-    assert lines[-1] == "1 written, 2 unchanged"
+    assert lines[-1] == "1 written, 1 unchanged"

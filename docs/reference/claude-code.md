@@ -79,7 +79,7 @@ Claude-specific — do not carry it into another harness's output.
 |---|---|
 | `claude/settings.json` | `permissions.allow` / `deny` / `ask` only |
 | `claude/settings.autonomous.json` | same document, all three lists emptied |
-| `claude/mcp-permissions.json` | fully owned — `PermissionRequest` hook policy |
+| `claude/mcp-permissions.json` | fully owned — `PermissionRequest` hook policy; written only when `[mcp]` has a rule |
 
 `claude/settings.json` carries **16 top-level keys**, of which exactly one
 (`permissions`) is generated. The other 15 are hand-maintained: `$schema`,

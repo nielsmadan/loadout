@@ -639,7 +639,7 @@ def test_the_json_preview_classifies_each_rendered_output(tmp_path, capsys):
         Path(o["path"]).name: o["change"] for o in json.loads(capsys.readouterr().out)["outputs"]
     }
     assert changes["CLAUDE.md"] == "identical"
-    assert changes["mcp-permissions.json"] == "create"
+    assert changes["settings.json"] == "create"
 
 
 def test_global_init_renders_and_records_so_sync_changes_nothing(

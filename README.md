@@ -611,6 +611,13 @@ key empty and clears whatever rules were there. Deleting the file clears your ru
 sync, just as emptying it does. Rules loadout did not write are refused first; see
 [Files modified outside loadout](#files-modified-outside-loadout).
 
+A file that holds nothing but permission rules is written only when it has one, in both scopes:
+Codex's `permissions.rules` needs a shell rule Codex can express, and Claude's
+`mcp-permissions.json` needs an `[mcp]` rule. Once its last rule is gone, the next sync removes a
+file loadout wrote, unless it was edited since. Pi's permission file is always written, and keys
+inside shared files such as `settings.json` and `opencode.json` are always written, empty when
+there are no rules. Nor does sync create `~/.codex/config.toml` just to leave it empty.
+
 Generated project files are ignored and removed from the final index while remaining available to
 the harness. `.gitignore` lists exactly what sync wrote: with no `mcp.toml` there is no `.mcp.json`
 entry, so one written by `claude mcp add` stays committable, and a skill is listed by its own folder

@@ -216,8 +216,8 @@ def test_staged_ownership_selects_profile_before_resolving_destinations(repo, mo
     monkeypatch.delenv("LOADOUT_REVIEW_OTHER", raising=False)
     (repo / "instructions").mkdir()
     (repo / "instructions/rule.md").write_text("selected instructions\n")
-    (repo / "permissions.toml").write_text("")
-    other_input = 'order=["rule"]' if target == "instructions" else 'render="codex"\nrules=[]'
+    (repo / "permissions.toml").write_text('[shell]\nallow = ["ls"]\n')
+    other_input = 'order=["rule"]' if target == "instructions" else 'render="codex"'
     (repo / "loadout.toml").write_text(
         '[[source]]\nname="local"\npath="."\n'
         '[instructions.default]\noutput="default.md"\norder=["rule"]\n'

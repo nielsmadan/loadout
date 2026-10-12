@@ -256,12 +256,6 @@ def codex_rule(entry: str, decision: str) -> str:
 
 def render_codex(rules: Rules) -> str:
     lines = [f"# {line}" for line in HEADER_LINES]
-    lines += [
-        "#",
-        "# Read-only commands are allowed; remote-publishing and destructive",
-        "# ops are forbidden; `ask` commands prompt. Glob entries are skipped",
-        "# (see end of file) — Codex's token matcher can't express them.",
-    ]
     skipped: list[str] = []
     for category in CATEGORIES:
         decision = CODEX_DECISION[category]

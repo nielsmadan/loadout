@@ -81,7 +81,7 @@ the allowlist in the same class. See [README](README.md#the-wrapper-command-bypa
 
 | output | ownership |
 |---|---|
-| `~/.codex/rules/permissions.rules` | fully owned, text |
+| `~/.codex/rules/permissions.rules` | fully owned, text; written only when it holds a rule |
 | `~/.codex/config.toml` | **declared keys only** — see below |
 | `~/.codex/AGENTS.md`, `~/.codex/hooks.json`, `~/.codex/skills/` | fully owned |
 
