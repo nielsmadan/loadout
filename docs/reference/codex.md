@@ -45,10 +45,15 @@ Codex reads more than that spelling. Its documentation
 trailing commas, and lists the fields: *"`pattern`**(required)**"*, *"`decision`**(defaults to
 `"allow"`)**"*, *"`justification`**(optional)**"* and *"`match` and `not_match`**(defaults to
 `[]`)**"*. A pattern element may be *"A union of literals (for example, `["view", "list"]`)"*.
-The 0.162.1 binary's execpolicy parser lists the same parameters (`pattern`, `match`,
-`not_match`, `justification`, next to `prefix_rule` in its builtins table) and the decisions
-`allow`, `prompt` and `forbidden`. When you approve a command in the TUI, Codex appends
-`prefix_rule(pattern=[...], decision="allow")`, with no spaces, to `~/.codex/rules/default.rules`.
+The 0.162.1 binary shows these names exist, not that they are the whole set: `pattern`, `match`,
+`not_match` and `justification` sit next to `prefix_rule` in the execpolicy parser's strings, but
+that blob is linker-deduplicated rather than a parameter list, and `decision` is absent from it
+(see [The catch-all default](README.md#the-catch-all-default)). The decision words `allow`,
+`prompt` and `forbidden` appear together in its strings. Measured with `codex execpolicy check` on
+0.162.1: the compact, single-quoted, multi-line and union forms load with the verdicts adoption
+reads, a rule with no `decision` is an allow, and a rule with an unknown `when` parameter fails to
+parse. When you approve a command in the TUI, Codex appends `prefix_rule(pattern=[...],
+decision="allow")`, with no spaces, to `~/.codex/rules/default.rules`.
 How adoption reads each form is in
 [extraction](extraction.md#a-hand-written-codex-rules-file).
 
