@@ -59,9 +59,31 @@ default, the project file is not written at all.
 
 ## Pattern shape
 
-Pi matches with **minimatch**, where `foo *` never matches a bare `foo`. So a plain
-prefix must be emitted in both forms — `<entry>` and `<entry> *`. Entries ending in `*`
-are kept literal. An exact entry (`=pwd`) is emitted as the bare form only, at both scopes.
+Pi matches with its own wildcard regex, not minimatch: `*` compiles to `.*`, `?` to one
+character, and the last matching pattern wins. Since v5.12.0 a pattern ending in ` *` also matches
+the bare command. The current source says so (`src/policy/wildcard-matcher.ts` in
+[gotgenes/pi-packages](https://github.com/gotgenes/pi-packages) at `c8f89b5`, package version
+40.2.0):
+
+```ts
+  // If the pattern ends with " *" (space + wildcard), make the trailing
+  // space-and-arguments portion optional so that e.g. "git *" matches both
+  // "git status" and bare "git". Mirrors OpenCode wildcard semantics.
+  if (escaped.endsWith(" .*")) {
+    escaped = `${escaped.slice(0, -3)}( .*)?`;
+  }
+```
+
+That arrived in `c25b0b5` (*"feat: support trailing wildcard optionality (#123)"*, 2026-05-08),
+first released in v5.12.0 of the standalone repo, gotgenes/pi-permission-system. Through v5.11.2 a
+trailing ` *` required arguments, so `foo *` did not match a bare `foo`. Verified negative: no
+`minimatch` in `package.json` at any of the standalone repo's 83 tags (v0.1.4 to v5.18.1), nor in
+the current monorepo package; the monorepo's own releases in between were not checked.
+
+Loadout still emits a plain prefix in both forms, `<entry>` and `<entry> *`. On v5.12.0 and later
+the bare form is redundant and harmless; on earlier versions it is what makes the rule cover the
+bare command. Entries ending in `*` are kept literal. An exact entry (`=pwd`) is emitted as the
+bare form only, at both scopes.
 
 ### MCP targets are derived, not `server/tool`
 
