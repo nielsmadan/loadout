@@ -43,17 +43,16 @@ __all__ = [
 ]
 
 # Where each shell-carrying renderer that is *not* a catch-all carrier keeps its
-# catch-all instead. Keyed by renderer, not agent: `pi` authors one and
-# `pi-project` does not. A renderer absent here states no shell rules at all
-# (the MCP-only ones), so the key was never its to carry and there is nothing to
-# report.
+# catch-all instead. Keyed by renderer, not agent: `codex` and `codex-project`
+# differ in what they write, though neither carries a default. A renderer absent
+# here states no shell rules at all (the MCP-only ones), so the key was never its
+# to carry and there is nothing to report.
 CATCH_ALL_ELSEWHERE = {
     "claude": "Claude's is permissions.defaultMode, hand-maintained through the settings slice",
     "claude-project": "Claude's is permissions.defaultMode, hand-maintained through the settings slice",
     "codex": "Codex's is approval_policy in config.toml, which loadout does not write",
     "codex-project": "Codex's is approval_policy in config.toml, which loadout does not write",
     "droid": "Droid's unmatched-command behavior comes from the session autonomy level",
-    "pi-project": "Pi emits no catch-all at project scope",
 }
 
 # OpenCode scans `.claude/skills` as well as its own directory and keys the result

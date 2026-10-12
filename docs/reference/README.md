@@ -110,7 +110,7 @@ of where each keeps one and who owns that key:
 | harness | catch-all lives in | loadout |
 |---|---|---|
 | OpenCode | `permission.bash["*"]`, first key of the map it renders | authors it |
-| Pi | `permission.bash["*"]`, same | authors it |
+| Pi | `permission.bash["*"]`, same | authors it; at project scope only when the source states one, since the project map is merged over the global one |
 | Claude | `permissions.defaultMode`, in the same `settings.json` | **preserves** it — hand-maintained through the settings slice, and `render_claude` copies it back rather than writing a second spelling |
 | Codex | `approval_policy` in `config.toml` | does not write that file at all |
 | Droid | session autonomy level | reports that the portable default is not represented |

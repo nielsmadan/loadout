@@ -373,13 +373,6 @@ def test_pi_project_omits_schema_and_catch_alls() -> None:
     assert "*" not in doc["permission"]
 
 
-def test_pi_project_has_no_catch_all_for_a_default_to_seed() -> None:
-    """manage.py emits no catch-all at project scope, so there is nothing to state
-    the default into — the key is silently inert here, not silently applied."""
-    doc = render_pi_project(Rules(allow=("just build",), default="allow"), {})
-    assert "*" not in doc["permission"]["bash"]
-
-
 def test_pi_project_emits_both_bare_and_argument_forms() -> None:
     assert pi_project_patterns("just build") == ["just build", "just build *"]
 

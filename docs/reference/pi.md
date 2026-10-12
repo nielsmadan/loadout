@@ -49,10 +49,12 @@ Both `bash` and `mcp` maps are seeded with a catch-all as their first entry. `ba
 a shell key, and MCP policy has its own three lists. See
 [The catch-all default](README.md#the-catch-all-default).
 
-`render_pi_project` emits no catch-all at all, so a project source stating a default renders no
-seed for Pi at project scope — and `loadout sync` says so. OpenCode has no project variant
-(`project.py` wires its project output to the same `opencode` renderer), so the *same* project
-source does get its catch-all there. A project stating one gets it on OpenCode only.
+`render_pi_project` writes the catch-all only when the project source states a default. Pi merges
+the project config over the global one, shallow-merging each pattern map
+(`mergeFlatPermissions` in pi-permission-system's `src/policy/permission-merge.ts`:
+`{ ...baseVal, ...value }`), and resolves a map last-match-wins (`patterns.findLast` in
+`src/policy/wildcard-matcher.ts`). So a project `*` replaces the global `*`'s verdict in its
+first position, and a project that states nothing keeps the global catch-all.
 
 ## Pattern shape
 

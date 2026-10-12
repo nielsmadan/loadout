@@ -58,9 +58,10 @@ CATEGORIES = ("allow", "deny", "ask")
 # The renderers that author `permission.bash["*"]` — the only documents a
 # `[shell] default` can reach. Declared once: `extract.CAPABILITIES` says who may
 # vote on the key and `emit.py` reports the targets it does not reach, and both
-# have to mean the same set. `pi-project` is absent deliberately — manage.py
-# emits no catch-all at project scope (ADR 0006), so there is nothing to seed.
-CATCH_ALL_RENDERERS = frozenset({"opencode", "pi"})
+# have to mean the same set. `pi-project` writes one only when the source states
+# a default: pi-permission-system merges the project `bash` map over the global
+# one, so an unstated `*` there would override the global catch-all.
+CATCH_ALL_RENDERERS = frozenset({"opencode", "pi", "pi-project"})
 
 
 @dataclass(frozen=True)
@@ -637,7 +638,7 @@ def render_claude_project(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
 
 
 def render_pi_project(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
-    bash: dict[str, str] = {}
+    bash: dict[str, str] = {} if rules.default is None else {"*": rules.default}
     for category in PROJECT_CATEGORIES:
         for entry in rules.shell(category):
             for pattern in pi_project_patterns(entry):

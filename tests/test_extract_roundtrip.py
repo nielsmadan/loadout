@@ -348,7 +348,7 @@ def _opencode_carried(rules: Rules) -> Rules:
 
 
 def _pi_carried(rules: Rules) -> Rules:
-    """Pi carries the default; `pi-project` emits no catch-all, so it does not.
+    """Pi carries the default; a stated `ask` reads back unstated, since Pi seeds it.
 
     Spelled out rather than composed from `_shell_and_mcp`, because a projection
     built from another projection restates it instead of declaring Pi's contract.
@@ -364,6 +364,19 @@ def _pi_carried(rules: Rules) -> Rules:
     )
 
 
+def _pi_project_carried(rules: Rules) -> Rules:
+    """Pi's project file carries the default exactly as stated: nothing seeds it there."""
+    return Rules(
+        allow=rules.allow,
+        ask=rules.ask,
+        deny=rules.deny,
+        mcp_allow=rules.mcp_allow,
+        mcp_ask=rules.mcp_ask,
+        mcp_deny=rules.mcp_deny,
+        default=rules.default,
+    )
+
+
 PROJECTIONS = {
     "claude": _claude_carried,
     "claude-project": _claude_carried,
@@ -374,7 +387,7 @@ PROJECTIONS = {
     "droid": _droid_carried,
     "opencode": _opencode_carried,
     "pi": _pi_carried,
-    "pi-project": _shell_and_mcp,
+    "pi-project": _pi_project_carried,
 }
 
 
@@ -410,20 +423,6 @@ def _refused(name: str, rules: Rules) -> bool:
 # --------------------------------------------------------------------------
 # The properties.
 # --------------------------------------------------------------------------
-
-
-def test_pi_project_keeps_a_leading_star_because_nothing_seeded_it() -> None:
-    """`render_pi_project` writes no catch-all, so a leading `*` there is a source
-    rule. Reading it as the default deleted it and re-rendered a different
-    document — silently, with empty notes claiming a clean round trip."""
-    document = _render("pi-project", Rules(allow=("*",)), {})
-    extraction = extract("pi-project", document)
-    assert extraction.rules.allow == ("*",)
-    assert extraction.rules.default is None
-    assert extraction.notes == ()
-    assert _serialize("pi-project", _render("pi-project", extraction.rules, {})) == _serialize(
-        "pi-project", document
-    )
 
 
 @pytest.mark.parametrize("name", ["opencode", "pi"])

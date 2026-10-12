@@ -218,7 +218,7 @@ ARGUMENT_SUFFIX = " *"
 
 
 def _split_default(
-    patterns: dict[str, str], label: str
+    patterns: dict[str, str], label: str, *, seeded: bool = True
 ) -> tuple[Decision | None, dict[str, str], list[Note]]:
     """Take the `*` off a bash map that a renderer seeded.
 
@@ -231,23 +231,26 @@ def _split_default(
     dropped and named, which keeps the effective policy: keeping them would put
     them after the `*` on the next render, where they would start to apply.
 
-    Only call this for a renderer that actually writes a seed: where none is
-    written, a leading `*` is a source rule and eating it deletes policy. There
-    is no rule to confuse it with here — `parse_rules` refuses a bare `*` entry.
+    `seeded` is False for `pi-project`, which writes a `*` only when the source
+    states a default. There a written `ask` was stated and stays stated, and a map
+    with no `*` is ordinary rather than missing its catch-all. No rule can be
+    confused with the `*`: `parse_rules` refuses a bare `*` entry.
 
     An unrecognised verdict stays in the map so `_collapse_shell` reports it, the
     same contract every other decision in a bash map gets.
     """
     items = list(patterns.items())
     position = next((i for i, (pattern, _) in enumerate(items) if pattern == CATCH_ALL_ENTRY), None)
+    if position is None and not seeded:
+        return None, dict(patterns), []
     if position is None:
         return (
             None,
             dict(patterns),
             [Note("cannot", f"{label}: no catch-all to read a default from")],
         )
-    seeded = items[position][1]
-    if seeded not in DECISIONS:
+    verdict = items[position][1]
+    if verdict not in DECISIONS:
         return None, dict(patterns), []
     shadowed = [
         Note(
@@ -257,8 +260,8 @@ def _split_default(
         )
         for pattern, decision in items[:position]
     ]
-    default = None if seeded == UNSTATED_DEFAULT else seeded
-    return default, dict(items[position + 1 :]), shadowed
+    unstated = verdict == UNSTATED_DEFAULT and seeded
+    return (None if unstated else verdict), dict(items[position + 1 :]), shadowed
 
 
 def _drop_mcp_seed(patterns: dict[str, str]) -> dict[str, str]:
@@ -350,15 +353,13 @@ PI_ORDER = ("allow", "ask", "deny")
 def _extract_pi(document: Any, label: str, seeded: bool) -> Extraction:
     """Shared body. `seeded` is the whole difference between the two scopes.
 
-    `render_pi` writes a bash catch-all; `render_pi_project` writes none, so a
-    leading `*` there is a source rule. Reading one as the other deletes it from
-    the source and re-renders a document that is not the one it read.
+    `render_pi` always writes a bash catch-all, seeded `ask` when the source states
+    none; `render_pi_project` writes one only when the source states it. The MCP
+    map is seeded at global scope only.
     """
     permission = document.get("permission", {})
     raw_bash = permission.get("bash", {})
-    default, bash, default_notes = (
-        _split_default(raw_bash, label) if seeded else (None, dict(raw_bash), [])
-    )
+    default, bash, default_notes = _split_default(raw_bash, label, seeded=seeded)
     raw_mcp = _drop_mcp_seed(permission.get("mcp", {})) if seeded else permission.get("mcp", {})
     shell, shell_notes = _collapse_shell(bash, label)
     mcp, mcp_notes = _collapse_pi_mcp(raw_mcp, label)
@@ -1387,7 +1388,7 @@ CAPABILITIES: dict[str, Capability] = {
     "droid": Capability(shell=True, mcp=False, globs=False, exact=False),
     "opencode": Capability(shell=True, mcp=True, default=True),
     "pi": Capability(shell=True, mcp=True, default=True),
-    "pi-project": Capability(shell=True, mcp=True),
+    "pi-project": Capability(shell=True, mcp=True, default=True),
 }
 
 

@@ -150,12 +150,15 @@ and `init` prints those names before it writes. Keeping them instead would rende
 `*`, where they would start to apply, and here that would allow `echo`. The effective policy is
 unchanged, and `init`'s first-sync diff shows the rewritten map.
 
-**Only where a seed was written.** `render_pi_project` emits no catch-all, so a leading `*` in a
-project-scope Pi document is a genuine rule; `pi-project` therefore has its own extractor that
-does not split one off. Reading it as the default deleted policy and re-rendered a different
-document while reporting no loss at all. Pi's **mcp** map takes no default either, so there the
-strict form still applies: only `*: ask` still in first position is the seed, and any other
-leading `*` is left for the MCP collapse to report.
+**At project scope the `*` is never a seed.** `render_pi_project` writes the catch-all only when
+the source states a default, because the project map is merged over the global one and an
+unstated `*` would override the global catch-all. So in a project Pi document a `*` reads back as
+exactly the verdict written, `ask` included, and a map without one carries no note. Reading (b)
+applies there as well. With loadout's global Pi file the project `*` takes the global `*`'s first
+position when the two maps merge, so entries before it would in fact have applied; dropping them
+can only make the policy stricter, never looser. Pi's **mcp** map takes no default either, so
+there the strict form still applies: only `*: ask` still in first position at global scope is the
+seed, and any other `*` is left for the MCP collapse to report.
 
 ## Ambiguities that do not change the bytes
 
