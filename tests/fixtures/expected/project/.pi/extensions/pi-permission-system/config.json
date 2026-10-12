@@ -1,6 +1,7 @@
 {
   "permission": {
     "bash": {
+      "*": "deny",
       "omicron build": "allow",
       "omicron build *": "allow",
       "alpha": "allow",
