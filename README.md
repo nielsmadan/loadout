@@ -229,8 +229,9 @@ target that doesn't share its destination with anyone else doesn't need one.)
 
 ### Several sources
 
-`[[source]]` is an ordered list. Permissions merge every contributing `permissions.toml`;
-MCP definitions use the last source for each server name. Named fragments require an unambiguous
+`[[source]]` is an ordered list. Permissions merge every contributing `permissions.toml`; a
+source without one contributes no rules, and when no source has one the permission outputs render
+exactly as they would from an empty file. MCP definitions use the last source for each server name. Named fragments require an unambiguous
 name or a `source/name` qualifier. Skills and module files require an explicit declaration to
 override an earlier source:
 

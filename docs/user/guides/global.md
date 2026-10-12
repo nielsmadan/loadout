@@ -28,7 +28,9 @@ For a new directory, Loadout creates a nested `loadout/` directory:
 ```
 
 `mcp.toml` holds a commented example until you define a server; commented out, it changes
-nothing. `README.md` shows the full layout and how to add hooks, plugins and settings. Anything
+nothing. `init` writes `permissions.toml` unless Codex is the only harness and has no
+`~/.codex/rules/permissions.rules` yet. A missing `permissions.toml` means the same as an empty
+one. `README.md` shows the full layout and how to add hooks, plugins and settings. Anything
 `init` adopts from your existing agent configuration lands beside these: instructions, settings,
 hooks, plugins and skills, each in its own directory.
 

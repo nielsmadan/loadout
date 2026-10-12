@@ -94,18 +94,14 @@ def permission_sources(manifest: Manifest) -> tuple[Source, ...]:
     Order is load-bearing, not incidental: `merge_rules` resolves a decision
     order-independently but keeps emission order from tier order, and OpenCode
     and Pi are last-match-wins. So the manifest's `[[source]]` order is the tier
-    order — lowest priority first.
+    order — lowest priority first. A source without the file contributes no
+    tier, so a manifest with none renders as one whose file is empty.
     """
-    offering = tuple(
+    return tuple(
         source
         for source in manifest.sources
         if "permissions" in source.use and (source.path.joinpath(*PERMISSIONS_SOURCE)).is_file()
     )
-    if not offering:
-        raise LoadoutError(
-            "no source provides permissions.toml, but the manifest declares [permissions.*] targets"
-        )
-    return offering
 
 
 def _load_base(path: Path) -> dict[str, Any]:
@@ -218,12 +214,7 @@ def slice_document(names: tuple[str, ...], slice_name: str, manifest: Manifest) 
 
 
 def global_servers(manifest: Manifest) -> dict[str, Server]:
-    """Every server every source offering mcp.toml declares, last source wins.
-
-    Read independently of `permission_sources`, the way `_unpermitted_servers`
-    already does: that helper raises when no source offers permissions.toml,
-    which is a legitimate shape for a manifest that only defines servers.
-    """
+    """Every server every source offering mcp.toml declares, last source wins."""
     servers: dict[str, Server] = {}
     for source in manifest.sources:
         if "mcp" in source.use:
@@ -675,18 +666,15 @@ def _unpermitted_servers(manifest: Manifest) -> tuple[Notice, ...]:
     """Every server no source's `[mcp]` policy names, across every source.
 
     Two files, two merge algebras (docs/reference/config.md), so this reads both
-    independently rather than through `permission_sources` or `project_servers`
-    — the former raises when no source offers permissions.toml, which is a
-    legitimate shape for a manifest that only defines servers. Silent when no
-    source offers mcp.toml: a manifest defining no servers has nothing to check.
+    independently rather than through `project_servers`. Silent when no source
+    offers mcp.toml: a manifest defining no servers has nothing to check.
     """
     servers = global_servers(manifest)
     if not servers:
         return ()
     tiers = [
         parse_rules(source.path.joinpath(*PERMISSIONS_SOURCE))
-        for source in manifest.sources
-        if "permissions" in source.use and source.path.joinpath(*PERMISSIONS_SOURCE).is_file()
+        for source in permission_sources(manifest)
     ]
     rules = merge_rules(*tiers)
     return tuple(
