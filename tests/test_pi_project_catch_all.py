@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 import loadout
+from loadout.emit import render_project
 from loadout.extract import extract
 from loadout.permissions.renderers import render_pi_project
 from loadout.permissions.rules import Rules
@@ -61,6 +62,39 @@ def test_a_trailing_catch_all_becomes_the_default_and_names_what_it_shadowed() -
         "*": "ask",
         "rm": "deny",
     }
+
+
+def _project(root: Path, permissions: str) -> Path:
+    (root / "loadout").mkdir(parents=True)
+    (root / "loadout" / "config.toml").write_text('harnesses = ["pi"]\n')
+    (root / "loadout" / "permissions.toml").write_text(permissions)
+    return root
+
+
+def test_a_rule_less_project_pi_file_is_not_written(tmp_path: Path) -> None:
+    root = _project(tmp_path / "p", "")
+
+    assert root / CONFIG not in render_project(root)
+
+
+def test_a_stated_default_alone_writes_the_project_pi_file(tmp_path: Path) -> None:
+    root = _project(tmp_path / "p", '[shell]\ndefault = "deny"\n')
+
+    document = json.loads(str(render_project(root)[root / CONFIG]))
+
+    assert document == {"permission": {"bash": {"*": "deny"}, "mcp": {}}}
+
+
+@pytest.mark.integration
+def test_sync_retires_the_project_pi_file_once_its_last_rule_is_gone(tmp_path: Path) -> None:
+    root = _project(tmp_path / "p", '[shell]\ndeny = ["rm"]\n')
+    assert loadout.main(["sync", "--root", str(root)]) == 0
+    assert (root / CONFIG).is_file()
+
+    (root / "loadout" / "permissions.toml").write_text("")
+    assert loadout.main(["sync", "--root", str(root)]) == 0
+
+    assert not (root / CONFIG).exists()
 
 
 @pytest.mark.migration_integration

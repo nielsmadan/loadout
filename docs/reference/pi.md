@@ -54,7 +54,8 @@ the project config over the global one, shallow-merging each pattern map
 (`mergeFlatPermissions` in pi-permission-system's `src/policy/permission-merge.ts`:
 `{ ...baseVal, ...value }`), and resolves a map last-match-wins (`patterns.findLast` in
 `src/policy/wildcard-matcher.ts`). So a project `*` replaces the global `*`'s verdict in its
-first position, and a project that states nothing keeps the global catch-all.
+first position, and a project that states nothing keeps the global catch-all. With no rule and no
+default, the project file is not written at all.
 
 ## Pattern shape
 

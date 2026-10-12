@@ -58,6 +58,7 @@ from .permissions.renderers import (
     TextSpec,
     ValueSpec,
     ValuesSpec,
+    render_pi_project,
 )
 from .permissions.rules import EMPTY_RULES, Rules, parse_rules
 from .plugins import marketplaces
@@ -833,7 +834,7 @@ def _owns_its_file(target: PermissionTarget) -> bool:
 def _rule_less(renderer: str, rules: Rules) -> bool:
     """Whether a whole permission file would hold no rule, and so is not written (P-35).
 
-    Pi's file is not among these: its empty render still makes `bash` ask.
+    Global Pi's file is not among these: its empty render still makes `bash` ask.
     """
     if renderer in {"codex", "codex-project"}:
         spec = RENDERERS[renderer]
@@ -841,6 +842,9 @@ def _rule_less(renderer: str, rules: Rules) -> bool:
         return "prefix_rule(" not in spec.fn(rules)
     if renderer == "claude-mcp-permissions":
         return not (rules.mcp_allow or rules.mcp_ask or rules.mcp_deny)
+    if renderer == "pi-project":
+        permission = render_pi_project(rules, {})["permission"]
+        return not (permission["bash"] or permission["mcp"])
     return False
 
 

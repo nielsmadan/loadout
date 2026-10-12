@@ -2,6 +2,7 @@
 
 Keys inside shared files are still claimed and written empty, and Pi's global
 `config.json` is still written: its empty render carries a policy (`bash` asks).
+Pi's project file carries none when empty, so it follows the rule.
 """
 
 from __future__ import annotations
@@ -62,10 +63,10 @@ def test_project_scope_writes_no_rule_less_whole_permission_file(tmp_path: Path)
         ".claude/settings.json",
         ".factory/settings.json",
         "opencode.json",
-        ".pi/extensions/pi-permission-system/config.json",
     } <= written
     assert ".codex/rules/permissions.rules" not in written
     assert ".claude/mcp-permissions.json" not in written
+    assert ".pi/extensions/pi-permission-system/config.json" not in written
 
 
 def test_a_rule_brings_the_whole_files_back(tmp_path: Path, fake_home: Path) -> None:
