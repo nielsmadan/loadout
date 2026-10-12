@@ -142,6 +142,14 @@ The catch-all that Pi and OpenCode write first is not a source rule. A leading `
 confuse it with — `parse_rules` refuses a bare `*` entry — and an unrecognised verdict stays in
 the map so the shell collapse reports it, the same contract every other decision gets.
 
+**A `*` that is not first.** Loadout writes the catch-all first, but a hand-written map may put
+it later, as in `{"echo *": "allow", "*": "ask"}`. Both harnesses apply the last matching entry,
+so nothing before the `*` can ever apply: `echo` asks. Extraction still reads the `*` as
+`[shell] default`, keeps the entries after it, and drops the entries before it, naming each one,
+and `init` prints those names before it writes. Keeping them instead would render them after the
+`*`, where they would start to apply, and here that would allow `echo`. The effective policy is
+unchanged, and `init`'s first-sync diff shows the rewritten map.
+
 **Only where a seed was written.** `render_pi_project` emits no catch-all, so a leading `*` in a
 project-scope Pi document is a genuine rule; `pi-project` therefore has its own extractor that
 does not split one off. Reading it as the default deleted policy and re-rendered a different

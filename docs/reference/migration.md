@@ -94,6 +94,10 @@ directory in the machine config. Neither scope writes `artifacts.toml`.
 Migration previews, privacy checks, Git staging, interruption journals, resume and recovery still
 apply. Existing generated destinations are reconstructed in isolation before approval.
 
+When reading an existing permission document loses something, such as an entry a trailing `*`
+shadows or a Codex `justification`, the preview names it, file first, before anything is
+written. What each harness can lose is listed in [extraction](extraction.md#what-each-renderer-loses).
+
 ## Symlinked deployments
 
 A global harness root that is a symlink, such as `~/.claude` pointing into a dotfiles repo, is

@@ -446,7 +446,10 @@ class _PlanBuilder:
                 renderer = _permission_renderer(candidate, False)
                 if renderer is not None:
                     self.global_values["permissions"].append(
-                        (agent, extract(renderer, document).rules)
+                        (
+                            agent,
+                            self.extracted_rules(renderer, candidate, document, existing=existing),
+                        )
                     )
                     self.global_slices[agent].add("permissions")
                 continue
@@ -499,9 +502,10 @@ class _PlanBuilder:
                 ):
                     continue
                 if category == "permissions":
-                    self.project_values[category].append(
-                        (agent, extract(spec.renderer or "", document).rules)
+                    rules = self.extracted_rules(
+                        spec.renderer or "", candidate, document, existing=existing
                     )
+                    self.project_values[category].append((agent, rules))
                 elif category in {"hooks", "plugins", "mcp"}:
                     value = extract_value(spec.renderer or "", document).value
                     if not existing and not value:
@@ -539,7 +543,7 @@ class _PlanBuilder:
             renderer = _permission_renderer(candidate, False)
             if renderer is not None and candidate.content:
                 self.global_values["permissions"].append(
-                    (agent, self.extracted_rules(renderer, candidate))
+                    (agent, self.extracted_rules(renderer, candidate, candidate.content.decode()))
                 )
                 self.global_slices[agent].add("permissions")
                 if existing:
@@ -566,7 +570,7 @@ class _PlanBuilder:
         if candidate.category == "permissions":
             renderer = _permission_renderer(candidate, True)
             if renderer is not None:
-                rules = self.extracted_rules(renderer, candidate)
+                rules = self.extracted_rules(renderer, candidate, candidate.content.decode())
                 self.project_values["permissions"].append((candidate.agents[0], rules))
                 self.records[candidate.destination] = self.record(
                     candidate.destination, candidate.agents, candidate.format
@@ -574,12 +578,15 @@ class _PlanBuilder:
                 return
         self.retained.update(_original_paths(candidate))
 
-    def extracted_rules(self, renderer: str, candidate: Candidate) -> Rules:
+    def extracted_rules(
+        self, renderer: str, candidate: Candidate, document: Any, *, existing: bool = True
+    ) -> Rules:
         try:
-            extracted = extract(renderer, candidate.content.decode())
+            extracted = extract(renderer, document)
         except LoadoutError as error:
             raise LoadoutError(f"{candidate.destination}: {error}") from None
-        self.notes.extend(f"{candidate.destination}: {note.detail}" for note in extracted.notes)
+        if existing:
+            self.notes.extend(f"{candidate.destination}: {note.detail}" for note in extracted.notes)
         return extracted.rules
 
     def finish_project_sources(self) -> tuple[str, ...]:

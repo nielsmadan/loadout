@@ -220,11 +220,16 @@ ARGUMENT_SUFFIX = " *"
 def _split_default(
     patterns: dict[str, str], label: str
 ) -> tuple[Decision | None, dict[str, str], list[Note]]:
-    """Take the leading `*` off a bash map that a renderer seeded.
+    """Take the `*` off a bash map that a renderer seeded.
 
-    `[shell] default` chooses the seeded verdict, so the value at index 0 is the
-    catch-all rather than a fixed `ask`. `ask` reads back as *unstated*, since
-    stating it renders the same bytes as saying nothing.
+    `[shell] default` chooses the seeded verdict, so the `*` is the catch-all
+    rather than a fixed `ask`. `ask` reads back as *unstated*, since stating it
+    renders the same bytes as saying nothing.
+
+    Loadout writes the `*` first; a hand-written map may put it later. These maps
+    are last-match-wins, so every entry before the `*` can never apply. Those are
+    dropped and named, which keeps the effective policy: keeping them would put
+    them after the `*` on the next render, where they would start to apply.
 
     Only call this for a renderer that actually writes a seed: where none is
     written, a leading `*` is a source rule and eating it deletes policy. There
@@ -234,16 +239,26 @@ def _split_default(
     same contract every other decision in a bash map gets.
     """
     items = list(patterns.items())
-    if not items or items[0][0] != CATCH_ALL_ENTRY:
+    position = next((i for i, (pattern, _) in enumerate(items) if pattern == CATCH_ALL_ENTRY), None)
+    if position is None:
         return (
             None,
             dict(patterns),
             [Note("cannot", f"{label}: no catch-all to read a default from")],
         )
-    seeded = items[0][1]
+    seeded = items[position][1]
     if seeded not in DECISIONS:
         return None, dict(patterns), []
-    return (None if seeded == UNSTATED_DEFAULT else seeded), dict(items[1:]), []
+    shadowed = [
+        Note(
+            "cannot",
+            f"{label}: {pattern!r} ({decision}) comes before the '*' catch-all, so it never "
+            "applies and will be dropped",
+        )
+        for pattern, decision in items[:position]
+    ]
+    default = None if seeded == UNSTATED_DEFAULT else seeded
+    return default, dict(items[position + 1 :]), shadowed
 
 
 def _drop_mcp_seed(patterns: dict[str, str]) -> dict[str, str]:
