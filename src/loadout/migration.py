@@ -539,7 +539,7 @@ class _PlanBuilder:
             renderer = _permission_renderer(candidate, False)
             if renderer is not None and candidate.content:
                 self.global_values["permissions"].append(
-                    (agent, extract(renderer, candidate.content.decode()).rules)
+                    (agent, self.extracted_rules(renderer, candidate))
                 )
                 self.global_slices[agent].add("permissions")
                 if existing:
@@ -566,13 +566,21 @@ class _PlanBuilder:
         if candidate.category == "permissions":
             renderer = _permission_renderer(candidate, True)
             if renderer is not None:
-                extracted = extract(renderer, candidate.content.decode())
-                self.project_values["permissions"].append((candidate.agents[0], extracted.rules))
+                rules = self.extracted_rules(renderer, candidate)
+                self.project_values["permissions"].append((candidate.agents[0], rules))
                 self.records[candidate.destination] = self.record(
                     candidate.destination, candidate.agents, candidate.format
                 )
                 return
         self.retained.update(_original_paths(candidate))
+
+    def extracted_rules(self, renderer: str, candidate: Candidate) -> Rules:
+        try:
+            extracted = extract(renderer, candidate.content.decode())
+        except LoadoutError as error:
+            raise LoadoutError(f"{candidate.destination}: {error}") from None
+        self.notes.extend(f"{candidate.destination}: {note.detail}" for note in extracted.notes)
+        return extracted.rules
 
     def finish_project_sources(self) -> tuple[str, ...]:
         instructions: tuple[str, ...] = ()

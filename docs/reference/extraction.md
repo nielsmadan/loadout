@@ -67,6 +67,30 @@ categories, and whole-document comparison never exercises it. That does not narr
 here, because **extraction's input is not loadout's output.** It reads what a person, a harness,
 or another tool already wrote, where the shape is ordinary.
 
+## A hand-written Codex rules file
+
+Codex's rules files are Starlark, and the ones adoption reads need not be in loadout's spelling:
+Codex appends `prefix_rule(pattern=[...], decision="allow")` to `~/.codex/rules/default.rules`
+itself, and its documentation writes one rule across several lines with comments. So the file is
+parsed, not matched line by line, and every statement ends one of three ways:
+
+- **carried:** a `prefix_rule` call whose `pattern` and `decision` the scope's own renderer writes
+  back as the same rule. A union of literals, `["git", ["push", "reset"]]`, becomes one entry per
+  alternative. A rule with no `decision` is an allow, Codex's documented default.
+- **carried, with a note:** `justification`, `match` and `not_match` are dropped, because the
+  source has nowhere to keep them and none of them changes which commands run. `init` names each
+  one before it writes anything.
+- **refused:** anything else stops `init` with the file, the line and the statement quoted. That
+  covers an unknown parameter or decision, a positional argument, a value that is not a literal, a
+  statement other than `prefix_rule` (`network_rule`, a variable), invalid syntax, and a rule the
+  renderer would write back differently: at global scope a token holding whitespace, a `*` or a
+  leading `=`. A rule that silently vanished could be a `forbidden` one, which would loosen the
+  policy.
+
+The document property is claimed for files loadout rendered. A hand-written file in another
+spelling comes back in loadout's spelling with the same rules, and `init` shows that rewrite as a
+diff before applying it.
+
 ## `base` is the render-time residual, not the settings fragment
 
 `Extraction.base` holds everything the renderer did not write, so that

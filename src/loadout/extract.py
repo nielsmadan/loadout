@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import ast
 import copy
-import json
+import itertools
 import re
 import shlex
 import tomllib
@@ -11,7 +12,7 @@ from typing import Any
 
 from .errors import LoadoutError
 from .hooks import foreign_variables
-from .permissions.renderers import pi_mcp_patterns
+from .permissions.renderers import pi_mcp_patterns, render_codex, render_codex_project
 from .permissions.rules import (
     CATCH_ALL_ENTRY,
     DECISIONS,
@@ -430,8 +431,15 @@ def extract_opencode(document: Any) -> Extraction:
 
 
 # --------------------------------------------------------------------------
-# codex / codex-project — Starlark-ish text, one prefix_rule per line. Both
-# scopes emit the same decision vocabulary, so one parser serves both.
+# codex / codex-project — a Starlark file of prefix_rule calls. Codex appends
+# `prefix_rule(pattern=[...], decision="allow")` itself, and its documentation
+# spells a rule across lines with comments, so the file is parsed rather than
+# matched line by line. Starlark's calls and literals are Python syntax, which
+# lets `ast` read them without evaluating anything.
+#
+# A rule is carried only when the scope's own renderer writes it back as the
+# same rule; anything else is refused by line, because a forbidden rule that
+# silently vanished would loosen the user's policy.
 #
 # `codex` lists glob entries in a trailing comment block with no category
 # attached, so they are reported and never extracted. `codex-project` runs the
@@ -439,14 +447,29 @@ def extract_opencode(document: Any) -> Extraction:
 # document records that it was there.
 # --------------------------------------------------------------------------
 
-PREFIX_RULE = re.compile(r'^prefix_rule\(pattern = \[(?P<tokens>.*)\], decision = "(?P<d>\w+)"\)$')
-
 SKIPPED_MARKER = "# Skipped —"
 
 CODEX_CATEGORY = {"allow": "allow", "forbidden": "deny", "prompt": "ask"}
 
+# A reason and inline examples: Codex shows or validates them, and none of them
+# changes which commands run, so they are dropped with a note rather than refused.
+CODEX_UNCARRIED = ("justification", "match", "not_match")
 
-def _join_tokens(tokens: list[str]) -> str:
+CODEX_RENDERERS: dict[str, Callable[[Rules], str]] = {
+    "codex": render_codex,
+    "codex-project": render_codex_project,
+}
+
+
+@dataclass(frozen=True)
+class CodexRule:
+    line: int
+    alternatives: tuple[tuple[str, ...], ...]
+    decision: str
+    dropped: tuple[str, ...]
+
+
+def _join_tokens(tokens: tuple[str, ...]) -> str:
     """Rejoin a prefix_rule's tokens, re-quoting only where a plain space would not survive.
 
     `render_codex_project` tokenises with `shlex.split`, so a token may itself
@@ -459,28 +482,118 @@ def _join_tokens(tokens: list[str]) -> str:
     return " ".join(shlex.quote(t) if any(c.isspace() for c in t) else t for t in tokens)
 
 
-def extract_codex(document: Any) -> Extraction:
+def _codex_refusal(label: str, document: str, node: ast.AST, reason: str) -> LoadoutError:
+    text = ast.get_source_segment(document, node) or ""
+    return LoadoutError(f"{label}: line {getattr(node, 'lineno', 0)}: {reason}: {text}")
+
+
+def _codex_pattern(value: Any) -> tuple[tuple[str, ...], ...] | None:
+    """Every token list a pattern matches, a union of literals expanded in place."""
+    if not isinstance(value, list) or not value:
+        return None
+    positions: list[list[str]] = []
+    for element in value:
+        options = [element] if isinstance(element, str) else element
+        if not isinstance(options, list) or not options:
+            return None
+        if not all(isinstance(option, str) and option for option in options):
+            return None
+        positions.append(options)
+    return tuple(itertools.product(*positions))
+
+
+def _codex_rule(label: str, document: str, statement: ast.stmt) -> CodexRule:
+    call = statement.value if isinstance(statement, ast.Expr) else None
+    if not (
+        isinstance(call, ast.Call)
+        and isinstance(call.func, ast.Name)
+        and call.func.id == "prefix_rule"
+    ):
+        raise _codex_refusal(label, document, statement, "only prefix_rule calls can be adopted")
+    if call.args or any(keyword.arg is None for keyword in call.keywords):
+        raise _codex_refusal(label, document, call, "positional arguments cannot be adopted")
+    values: dict[str, Any] = {}
+    for keyword in call.keywords:
+        assert keyword.arg is not None
+        if keyword.arg not in {"pattern", "decision", *CODEX_UNCARRIED}:
+            raise _codex_refusal(
+                label, document, call, f"prefix_rule parameter {keyword.arg!r} cannot be adopted"
+            )
+        try:
+            values[keyword.arg] = ast.literal_eval(keyword.value)
+        except ValueError:
+            raise _codex_refusal(
+                label, document, call, f"{keyword.arg} must be written as a literal"
+            ) from None
+    alternatives = _codex_pattern(values.get("pattern"))
+    if alternatives is None:
+        raise _codex_refusal(
+            label, document, call, "pattern must be a non-empty list of strings or string lists"
+        )
+    decision = values.get("decision", "allow")
+    if decision not in CODEX_CATEGORY:
+        raise _codex_refusal(label, document, call, f"decision {decision!r} is not one Codex reads")
+    dropped = tuple(name for name in CODEX_UNCARRIED if name in values)
+    return CodexRule(call.lineno, alternatives, decision, dropped)
+
+
+def _codex_rules(document: str, label: str) -> list[CodexRule]:
+    try:
+        module = ast.parse(document)
+    except SyntaxError as error:
+        line = (error.text or "").strip()
+        raise LoadoutError(f"{label}: line {error.lineno}: not valid Starlark: {line}") from None
+    return [_codex_rule(label, document, statement) for statement in module.body]
+
+
+def _carried(name: str, tokens: tuple[str, ...], decision: str) -> str | None:
+    """The source entry for one rule, or None when rendering it back gives another rule."""
+    entry = _join_tokens(tokens)
+    single = {c: (entry,) if c == CODEX_CATEGORY[decision] else () for c in CATEGORIES}
+    rendered = CODEX_RENDERERS[name](
+        Rules(allow=single["allow"], ask=single["ask"], deny=single["deny"])
+    )
+    back = [
+        (alternative, rule.decision)
+        for rule in _codex_rules(rendered, name)
+        for alternative in rule.alternatives
+    ]
+    return entry if back == [(tokens, decision)] else None
+
+
+def _extract_codex(name: str, document: str) -> Extraction:
     buckets: dict[str, list[str]] = {category: [] for category in CATEGORIES}
     notes: list[Note] = []
-    in_skipped = False
 
+    in_skipped = False
     for line in document.splitlines():
         if line.startswith(SKIPPED_MARKER):
             in_skipped = True
-            continue
-        if in_skipped and line.startswith("#   "):
+        elif in_skipped and line.startswith("#   "):
             notes.append(
-                Note("cannot", f"codex: skipped glob {line[len('#   ') :]!r} has no category")
+                Note("cannot", f"{name}: skipped glob {line[len('#   ') :]!r} has no category")
             )
-            continue
-        match = PREFIX_RULE.match(line)
-        if match is None:
-            continue
-        category = CODEX_CATEGORY.get(match["d"])
-        if category is None:
-            notes.append(Note("unrecognised", f"codex: decision {match['d']!r}"))
-            continue
-        buckets[category].append(_join_tokens(json.loads(f"[{match['tokens']}]")))
+
+    for rule in _codex_rules(document, name):
+        entries = []
+        for tokens in rule.alternatives:
+            entry = _carried(name, tokens, rule.decision)
+            if entry is None:
+                raise LoadoutError(
+                    f"{name}: line {rule.line}: the rule for {list(tokens)} cannot be carried: "
+                    "loadout would write it back as a different rule"
+                )
+            entries.append(entry)
+        buckets[CODEX_CATEGORY[rule.decision]].extend(entries)
+        if rule.dropped:
+            named = " or ".join(repr(entry) for entry in entries)
+            notes.append(
+                Note(
+                    "cannot",
+                    f"{name}: line {rule.line}: {', '.join(rule.dropped)} of the rule for "
+                    f"{named} will be dropped, which does not change which commands run",
+                )
+            )
 
     return Extraction(
         Rules(
@@ -490,6 +603,14 @@ def extract_codex(document: Any) -> Extraction:
         ),
         notes=tuple(notes),
     )
+
+
+def extract_codex(document: Any) -> Extraction:
+    return _extract_codex("codex", document)
+
+
+def extract_codex_project(document: Any) -> Extraction:
+    return _extract_codex("codex-project", document)
 
 
 # --------------------------------------------------------------------------
@@ -1172,7 +1293,7 @@ EXTRACTORS: dict[str, Extractor] = {
     "claude-mcp-permissions": extract_claude_mcp,
     "codex": extract_codex,
     "codex-mcp-permissions": extract_codex_mcp,
-    "codex-project": extract_codex,
+    "codex-project": extract_codex_project,
     "droid": extract_droid,
     "opencode": extract_opencode,
     "pi": extract_pi,

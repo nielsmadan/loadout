@@ -73,7 +73,7 @@ fix it on disk and run init again. An incomplete preview exits 2 and changes not
 | `unadoptable-format` | `opencode.jsonc`: loadout writes `opencode.json` and cannot carry JSONC comments |
 | `invalid-native-document` | a document at a read path does not parse |
 | `dependency-activation` | an adopted declaration references a de-linked original instead of the copy loadout deploys |
-| `source-composition` | two originals would write different content to one source file, such as a skill with the same name in two harnesses; make them identical or remove one |
+| `source-composition` | two originals would write different content to one source file, such as a skill with the same name in two harnesses; make them identical or remove one. Also a Codex rules file holding a statement adoption cannot carry, quoted with its line; see [extraction](extraction.md#a-hand-written-codex-rules-file) |
 | `source-exists`, `initialized-source`, `initialized-conflict` | the source directory already holds conflicting loadout source |
 | `registration-conflict` | global: another source is registered; choose `--registration` |
 | `reconstruction-failed` | the serialized source does not reproduce the originals |

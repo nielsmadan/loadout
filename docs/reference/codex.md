@@ -40,6 +40,18 @@ prefix_rule(pattern = ["git", "push"], decision = "forbidden")
 The entry is split on whitespace into tokens; each token is JSON-quoted. Decisions map
 `allow → allow`, `deny → forbidden`, `ask → prompt`.
 
+Codex reads more than that spelling. Its documentation
+(<https://developers.openai.com/codex/rules>) spells a rule across lines with comments and
+trailing commas, and lists the fields: *"`pattern`**(required)**"*, *"`decision`**(defaults to
+`"allow"`)**"*, *"`justification`**(optional)**"* and *"`match` and `not_match`**(defaults to
+`[]`)**"*. A pattern element may be *"A union of literals (for example, `["view", "list"]`)"*.
+The 0.162.1 binary's execpolicy parser lists the same parameters (`pattern`, `match`,
+`not_match`, `justification`, next to `prefix_rule` in its builtins table) and the decisions
+`allow`, `prompt` and `forbidden`. When you approve a command in the TUI, Codex appends
+`prefix_rule(pattern=[...], decision="allow")`, with no spaces, to `~/.codex/rules/default.rules`.
+How adoption reads each form is in
+[extraction](extraction.md#a-hand-written-codex-rules-file).
+
 **No exact match either.** A `prefix_rule` matches its tokens as a prefix of argv, and the
 policy language has no other command rule — verified negative: the execpolicy builtins in the
 0.159.2 binary are `prefix_rule`, `network_rule` and `host_executable`, located from the
