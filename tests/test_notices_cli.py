@@ -145,10 +145,11 @@ def test_a_project_only_repo_reports_nothing_rather_than_failing(
     monkeypatch.setenv("OPENCODE_DISABLE_EXTERNAL_SKILLS", "1")
     messages = [f"{n.agent}.{n.slice}: {n.message}" for n in collect_notices(project)]
 
-    # OpenCode authors its own catch-all at project scope, so it is the one
-    # harness that stays silent — the loser that proves the rest were asked.
+    # OpenCode and Pi author their own catch-all at project scope, so they stay
+    # silent about it — the losers that prove the rest were asked.
     assert not any(m.startswith("opencode.") for m in messages)
-    assert sum("[shell] default" in m for m in messages) == 4
+    assert not any(m.startswith("pi.") and "[shell] default" in m for m in messages)
+    assert sum("[shell] default" in m for m in messages) == 3
     assert "droid.permissions: allow glob 'gamma-*' is not rendered" in " | ".join(messages)
     assert "codex.permissions: deny '=nu wipe' is rendered as 'nu wipe'" in " | ".join(messages)
 
