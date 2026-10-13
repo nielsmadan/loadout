@@ -109,6 +109,11 @@ When reading an existing permission document loses something, such as an entry a
 shadows or a Codex `justification`, the preview names it, file first, before anything is
 written. What each harness can lose is listed in [extraction](extraction.md#what-each-renderer-loses).
 
+A Codex rules file other than `permissions.rules`, such as the approvals Codex keeps in
+`default.rules`, is adopted and then deleted, since Codex reads every file in its rules folder.
+The preview lists it as `retire`. This is the one original init deletes outside the project or
+source root, and it stays inside the Codex root init read.
+
 ## Symlinked deployments
 
 A global harness root that is a symlink, such as `~/.claude` pointing into a dotfiles repo, is

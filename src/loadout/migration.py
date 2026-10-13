@@ -39,6 +39,7 @@ from .project import PROJECT_PRESET, load_project_config
 from .servers import serialize_servers
 from .skills import SKILL_DOCUMENT
 
+CODEX_RULES_OUTPUT = Path(PROJECT_PRESET["codex"]["permissions"].output or "").name
 RUNTIME_KEYS = {
     "codex": frozenset({"projects", "trust"}),
     "droid": frozenset({"trustedFolders"}),
@@ -299,6 +300,7 @@ class _PlanBuilder:
         self.retained: set[Path] = set()
         self.unadopted: list[Unadopted] = []
         self.unadopted_paths: set[Path] = set()
+        self.absorbed: set[Path] = set()
 
     def leave_out(self, kind: str, name: str, candidates: list[Candidate]) -> None:
         """Adopt nothing of an item whose copies disagree, and name every copy."""
@@ -561,9 +563,7 @@ class _PlanBuilder:
                 )
                 self.global_slices[agent].add("permissions")
                 if existing:
-                    self.records[candidate.destination] = self.record(
-                        candidate.destination, candidate.agents, candidate.format
-                    )
+                    self.adopt_rules_file(candidate)
             return
         if existing:
             self.retained.update(_original_paths(candidate))
@@ -586,11 +586,21 @@ class _PlanBuilder:
             if renderer is not None:
                 rules = self.extracted_rules(renderer, candidate, candidate.content.decode())
                 self.project_values["permissions"].append((candidate.agents[0], rules))
-                self.records[candidate.destination] = self.record(
-                    candidate.destination, candidate.agents, candidate.format
-                )
+                self.adopt_rules_file(candidate)
                 return
         self.retained.update(_original_paths(candidate))
+
+    def adopt_rules_file(self, candidate: Candidate) -> None:
+        """Codex reads its whole rules folder, so a rules file loadout does not render,
+        such as the approvals Codex writes to default.rules, is deleted once its rules
+        are in the source rather than left enforcing beside it (D-04)."""
+        assert candidate.destination is not None
+        if candidate.agents[0] == "codex" and candidate.destination.name != CODEX_RULES_OUTPUT:
+            self.absorbed.update(_original_paths(candidate))
+            return
+        self.records[candidate.destination] = self.record(
+            candidate.destination, candidate.agents, candidate.format
+        )
 
     def extracted_rules(
         self, renderer: str, candidate: Candidate, document: Any, *, existing: bool = True
@@ -1336,6 +1346,11 @@ def _original_entries(
                 )
             elif path in builder.retained or any(entry.is_relative_to(p) for p in retained):
                 action, reason = "retain", candidate.reason
+            elif path in builder.absorbed:
+                action, reason = (
+                    "retire",
+                    "Its rules are adopted into the source, and Codex reads every file in this folder.",
+                )
             elif any(planned == p or p.is_relative_to(planned) for p in destinations) or any(
                 record["format"] == "tree" and planned.is_relative_to(layout.normalize(destination))
                 for destination, record in builder.records.items()

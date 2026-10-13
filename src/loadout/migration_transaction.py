@@ -410,7 +410,7 @@ def _filesystem_plan(
         target = entry_path(path)
         if target in frozen or target in builder.images:
             continue
-        if not target.is_relative_to(plan.inventory.root.resolve()) or target.is_dir():
+        if not _retirable(plan, target) or target.is_dir():
             raise LoadoutError(f"retirement must name an individual adopted source: {path}")
         builder.put(target, Image(), "retire")
     if machine_write is not None:
@@ -1061,6 +1061,15 @@ def _resume_checkpoint(journal: Journal) -> None:
     journal.metadata["expected_index"] = _bytes(refreshed)
     journal.status = "apply"
     journal.save()
+
+
+def _retirable(plan: MigrationPlan, target: Path) -> bool:
+    """Inside the root, or inside a harness root init read: never anywhere else."""
+    bases = (
+        plan.inventory.root,
+        *(m.destination for m in plan.inventory.mappings if m.kind == "harness"),
+    )
+    return any(target.is_relative_to(base.resolve()) for base in bases)
 
 
 def _retirement_outputs(plan: MigrationPlan) -> dict[str, list[str]]:

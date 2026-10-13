@@ -91,6 +91,12 @@ The document property is claimed for files loadout rendered. A hand-written file
 spelling comes back in loadout's spelling with the same rules, and `init` shows that rewrite as a
 diff before applying it.
 
+**Only `permissions.rules` is rendered back.** Codex reads every file in its rules folder, so any
+other rules file, `default.rules` included, would go on enforcing its rules beside the source.
+Once its rules are adopted, `init` deletes it, journaled like any other original it retires. Codex
+writing a new approval there afterwards is reported by `check` as `unmanaged`, for the `/loadout`
+skill to port.
+
 ## `base` is the render-time residual, not the settings fragment
 
 `Extraction.base` holds everything the renderer did not write, so that

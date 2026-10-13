@@ -63,3 +63,44 @@ def test_init_names_the_parameters_it_drops_before_writing(
     assert code == 0
     assert "justification of the rule for 'rm' will be dropped" in capsys.readouterr().out
     assert tomllib.loads((source / "permissions.toml").read_text())["shell"]["deny"] == ["rm"]
+
+
+APPROVAL = 'prefix_rule(pattern=["npm", "test"], decision="allow")\n'
+
+
+def test_codex_approvals_are_adopted_and_their_file_deleted(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    approvals = fake_home / ".codex" / "rules" / "default.rules"
+    approvals.parent.mkdir(parents=True)
+    approvals.write_text(APPROVAL)
+    source = tmp_path / "source"
+    source.mkdir()
+
+    assert loadout.main(["init", "global", str(source), "--harness", "codex", "--yes"]) == 0
+
+    shell = tomllib.loads((source / "loadout" / "permissions.toml").read_text())["shell"]
+    assert shell["allow"] == ["npm test"]
+    rendered = (fake_home / ".codex" / "rules" / "permissions.rules").read_text()
+    assert 'prefix_rule(pattern = ["npm", "test"], decision = "allow")' in rendered
+    assert sorted(p.name for p in approvals.parent.iterdir()) == ["permissions.rules"]
+    capsys.readouterr()
+    assert loadout.main(["check", "--global"]) == 0
+
+
+def test_a_project_rules_file_beside_the_rendered_one_is_adopted_and_deleted(
+    tmp_path: Path, capsys
+) -> None:
+    root = tmp_path / "project"
+    extra = root / ".codex" / "rules" / "extra.rules"
+    extra.parent.mkdir(parents=True)
+    extra.write_text(APPROVAL)
+
+    argv = ["init", "project", "--root", str(root), "--harness", "codex", "--yes"]
+    assert loadout.main(argv) == 0
+
+    shell = tomllib.loads((root / "loadout" / "permissions.toml").read_text())["shell"]
+    assert shell["allow"] == ["npm test"]
+    assert sorted(p.name for p in extra.parent.iterdir()) == ["permissions.rules"]
+    capsys.readouterr()
+    assert loadout.main(["check", "--root", str(root)]) == 0
