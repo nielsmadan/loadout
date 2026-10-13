@@ -10,6 +10,9 @@ the matcher does*.
 [plugins.md](plugins.md) is one slice across all of them: the portable plugin reference, what
 each harness makes of it, and which half of it each one has to drop.
 
+[models.md](models.md) is another cross-cutting slice: where each harness lets a model be pinned
+on a skill or a subagent, and the value each one accepts.
+
 [extraction.md](extraction.md) runs the tables here backwards: what each rendered artifact can
 be read back into, which pattern forms have to be collapsed, and what is reported rather than
 guessed at.
