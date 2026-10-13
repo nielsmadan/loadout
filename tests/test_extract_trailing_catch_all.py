@@ -59,6 +59,9 @@ def test_a_trailing_catch_all_carries_its_own_verdict(name: str) -> None:
 
 
 def _opencode_init(fake_home: Path, tmp_path: Path, scope: str) -> tuple[int, Path]:
+    (fake_home / ".gitconfig").write_text(
+        "[user]\nname = Fixture\nemail = fixture@example.invalid\n"
+    )
     document = json.dumps({"permission": {"bash": BASH}})
     if scope == "global":
         config = fake_home / ".config" / "opencode"
