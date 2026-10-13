@@ -416,8 +416,8 @@ def cmd_sync(root: Path, profile: str = "default", force: bool = False) -> int:
                 if len(lines) > DIFF_LIMIT:
                     print(f"    ... {len(lines) - DIFF_LIMIT} more line(s)", file=sys.stderr)
             print(
-                "\nSync aborted — the '-' lines would be lost. Move them into the source, "
-                "or run `loadout sync --force` to discard them.",
+                "\nSync aborted — the '-' lines would be lost. Port them into the source "
+                "with /loadout, or run `loadout sync --force` to discard them.",
                 file=sys.stderr,
             )
             # A blocking prompt the reader cannot see all of is one they learn to
@@ -608,10 +608,11 @@ def _check_notes(root: Path, profile: str) -> list[str]:
 DRIFT_ADVICE = {
     "source-changed": "the source changed since the last sync; run `loadout sync`",
     "missing": "not on disk; run `loadout sync`",
-    "hand-edited": "edited outside loadout; move the edit into the source, or run "
+    "hand-edited": "edited outside loadout; port the edit into the source with /loadout, or run "
     "`loadout sync --force` to discard it",
     "unknown": "no record of what loadout wrote here and no committed baseline, so a source "
-    "change cannot be told from a hand edit; review the diff before syncing",
+    "change cannot be told from a hand edit; review the diff, then port what to keep into the "
+    "source with /loadout, or run `loadout sync --force` to discard it",
     "orphaned": "written by loadout but no longer rendered; run `loadout sync` to retire it",
 }
 

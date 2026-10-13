@@ -43,8 +43,9 @@ hand edit. `check` compares them with the current source and reports
 drift without rewriting the generated files, so `check` is the preview of `sync`; there is no
 `sync --dry-run`. Each drifted file carries a kind, judged by the same comparison `sync` uses to
 refuse an overwrite: `source-changed` (the source moved on; run `sync`), `hand-edited` (it differs
-from what sync last wrote; move the edit into the source, or `sync --force` to discard it),
-`unknown` (no record and no committed baseline to judge by; review the diff first), `missing`,
+from what sync last wrote; port the edit into the source with `/loadout`, or `sync --force` to
+discard it), `unknown` (no record and no committed baseline to judge by; review the diff, then port
+or discard the same way), `missing`,
 or `orphaned` (sync wrote it, the source no longer produces it, and the next `sync` retires it).
 `check --json` reports the same kind per path and exits with the same code as `check`. A root containing both
 global and project configuration renders both scopes.

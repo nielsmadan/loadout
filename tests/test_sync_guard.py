@@ -117,6 +117,10 @@ def test_hand_edited_output_blocks_sync(root: Path, capsys) -> None:
     assert loadout.main(["sync", "--root", str(root)]) == 1
     err = capsys.readouterr().err
     assert "out/shared.md was modified outside loadout" in err
+    assert (
+        "Port them into the source with /loadout, or run `loadout sync --force` to discard them."
+        in err
+    )
     assert output.read_text().endswith("hand-written line\n")
 
 
@@ -508,7 +512,10 @@ def test_check_tells_a_hand_edit_how_to_keep_it(tmp_path: Path, capsys) -> None:
     kind, err = _drift(tmp_path, capsys)
 
     assert kind == "hand-edited"
-    assert "move the edit into the source, or run `loadout sync --force` to discard it" in err
+    assert (
+        "edited outside loadout; port the edit into the source with /loadout, "
+        "or run `loadout sync --force` to discard it"
+    ) in err
     assert loadout.main(["sync", "--root", str(tmp_path)]) == 1
     assert output.read_text().endswith("my own line\n")
 
@@ -523,6 +530,10 @@ def test_check_says_when_there_is_no_baseline_to_judge_by(tmp_path: Path, capsys
 
     assert kind == "unknown"
     assert "no record of what loadout wrote here and no committed baseline" in err
+    assert (
+        "review the diff, then port what to keep into the source with /loadout, "
+        "or run `loadout sync --force` to discard it"
+    ) in err
     assert loadout.main(["sync", "--root", str(tmp_path)]) == 1
 
 

@@ -86,8 +86,8 @@ loadout itself could have produced: rendered from the committed source and from 
 tree, under every declared profile. A file matching none of them was written by something
 else, so `sync` names it, changes nothing, and exits 1. It prints a diff alongside the name —
 the `-` lines are the ones that exist only on disk, so a permission a harness granted itself at
-runtime is reported verbatim rather than silently discarded. Move the edit into the source, or
-pass `--force` to discard it.
+runtime is reported verbatim rather than silently discarded. Port the edit into the source with
+the bundled `/loadout` skill, or pass `--force` to discard it.
 
 Comparison is by parsed document for JSON targets, not by bytes, so a harness re-serialising
 its own config in a different key order does not read as an edit.
