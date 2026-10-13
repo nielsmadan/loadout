@@ -11,7 +11,8 @@ from loadout.written import record_written, text_entry
 
 pytestmark = pytest.mark.migration_integration
 
-REPOSITORY = Path(__file__).resolve().parents[1]
+# A copy of this repository's AGENTS.md as of 2026-10-12.
+MULTI_SECTION = Path(__file__).parent / "fixtures" / "adoption" / "AGENTS.md"
 CONTENT = "# Rules\n\nBe brief.\n"
 
 
@@ -86,9 +87,9 @@ def test_an_import_with_other_content_still_disagrees(tmp_path: Path, capsys) ->
     assert (root / "CLAUDE.md").read_text() == "@AGENTS.md\n\nAlso run the linter.\n"
 
 
-def test_this_repositorys_own_instruction_layout_is_adopted(tmp_path: Path) -> None:
-    agents = (REPOSITORY / "AGENTS.md").read_text()
-    root = _project(tmp_path / "p", (REPOSITORY / "CLAUDE.md").read_text(), agents)
+def test_a_multi_section_agents_md_behind_an_import_is_adopted_whole(tmp_path: Path) -> None:
+    agents = MULTI_SECTION.read_text()
+    root = _project(tmp_path / "p", "@AGENTS.md\n", agents)
 
     assert _init(root) == 0
 
