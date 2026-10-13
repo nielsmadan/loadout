@@ -40,10 +40,26 @@ source states none. Being first is what lets every rule refine it — see
 "bash": { "*": "ask", "pwd": "allow", "pwd *": "allow", "git push": "deny" }
 ```
 
-**A plain prefix must be emitted in both forms** — `<entry>` and `<entry> *` — because
-`pwd *` does not match a bare `pwd`. Entries ending in `*` are kept literal; OpenCode's
-matcher handles the glob. An exact entry (`=pwd`) is emitted as the bare form **only**, which
-is what makes it exact here.
+**A plain prefix is emitted in both forms**, `<entry>` and `<entry> *`. Since v1.1.15, `pwd *`
+also matches a bare `pwd`, so on current OpenCode the bare form is redundant and harmless; before
+that it was what made the rule cover the bare command. The current source
+(`packages/core/src/util/wildcard.ts` in
+[anomalyco/opencode](https://github.com/anomalyco/opencode) at `4acdeffbe`, the file's latest
+commit; the same line is in v1.18.33):
+
+```ts
+  if (escaped.endsWith(" .*")) escaped = escaped.slice(0, -3) + "( .*)?"
+```
+
+That arrived in `62702fbd11` (*"fix: permissions wildcarding so that for ex: 'ls *' includes ls *
+AND 'ls' to prevent having to double state commands or use 'ls*'"*, 2026-01-12), then in
+`packages/opencode/src/util/wildcard.ts`. The first release containing it is v1.1.15; v1.1.14
+does not. Before it, `*` compiled to `.*` inside `^…$`, so `pwd *` required an argument. This is
+established from upstream history through the GitHub API, not from an installed binary: the
+sandboxed session that checked it could not read one.
+
+Entries ending in `*` are kept literal; OpenCode's matcher handles the glob. An exact entry
+(`=pwd`) is emitted as the bare form **only**, which is what makes it exact here.
 
 MCP entries become top-level keys under `permission`, not nested:
 

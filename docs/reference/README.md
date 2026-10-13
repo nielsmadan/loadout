@@ -34,7 +34,7 @@ the findings were expensive to establish and re-adding support depends on them.
 | resolution | deny → ask → allow | most-restrictive | native lists | deny > ask > allow | last match | last match |
 | specificity affects order | no | no | no | no | n/a | n/a |
 | glob patterns | yes | **no** | **no** | **no** | yes | yes |
-| bare matches with-args | yes, via `:*` | yes (prefix) | native list semantics | yes (prefix) | **no** | yes since v5.12.0 (`foo *`) |
+| bare matches with-args | yes, via `:*` | yes (prefix) | native list semantics | yes (prefix) | yes since v1.1.15 (`foo *`) | yes since v5.12.0 (`foo *`) |
 | exact match | yes, `Bash(x)` | **no** | **no** | not evaluated | yes, bare `x` | yes, bare `x` |
 | permissions in own file | no | **yes** | no | no | no | **yes** |
 | emission order matters | no | no | no | no | **yes** | **yes** |
@@ -94,14 +94,13 @@ Three matchers prefix-match, so `pwd` matches `pwd --help` for free. Two do not:
 - **Droid** goes further than prefix-matching: an entry matches a whole-word token run
   *anywhere* in the command, so `rm -rf` also matches `x && rm -rf /foo`
   ([droid.md](droid.md#how-an-entry-matches-and-what-that-costs-a-glob)).
-- **OpenCode** needs **both** `<entry>` and `<entry> *` emitted, because its matcher treats
-  `foo *` as not matching a bare `foo`.
-- **Pi** gets both too. Since pi-permission-system v5.12.0, `foo *` also matches a bare `foo`,
-  so there the bare form is redundant and harmless; through v5.11.2 it was needed
-  ([pi.md](pi.md#pattern-shape)).
+- **OpenCode and Pi** get both `<entry>` and `<entry> *`. Both matchers now let `foo *` match a
+  bare `foo`, OpenCode since v1.1.15 and pi-permission-system since v5.12.0, so there the bare
+  form is redundant and harmless; on earlier versions it was needed
+  ([opencode.md](opencode.md#pattern-shape), [pi.md](pi.md#pattern-shape)).
 
-Emitting only one form on OpenCode, or on Pi before v5.12.0, produces a rule that silently
-covers half of what it appears to. This is a live bug in `~/ac/permissions/manage.py`, whose local-scope
+Emitting only one form on OpenCode before v1.1.15, or on Pi before v5.12.0, produces a rule that
+silently covers half of what it appears to. This is a live bug in `~/ac/permissions/manage.py`, whose local-scope
 renderer emits only the `<entry> *` form.
 
 ### The catch-all default

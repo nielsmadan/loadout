@@ -187,7 +187,8 @@ def render_claude_mcp(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
 # --------------------------------------------------------------------------
 # pi — pi/permissions.json, fully owned. Last-match-wins, so a pattern set by
 # a later category is deleted and reinserted to move it to the end of the map.
-# minimatch means `foo *` never matches a bare `foo`, so both forms are emitted.
+# Both `foo` and `foo *` are emitted: before pi-permission-system v5.12.0,
+# `foo *` did not match a bare `foo` (docs/reference/pi.md#pattern-shape).
 # --------------------------------------------------------------------------
 
 
@@ -566,8 +567,9 @@ def render_droid(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
 # --------------------------------------------------------------------------
 # opencode — opencode.json: replace the `permission` key, preserve model /
 # provider from the base. Last-match-wins, so deny is emitted after allow.
-# A plain prefix emits BOTH `<entry>` and `<entry> *`, because `pwd *` does
-# not match a bare `pwd` under OpenCode's matcher. A glob entry is kept literal.
+# A plain prefix emits BOTH `<entry>` and `<entry> *`: before OpenCode v1.1.15,
+# `pwd *` did not match a bare `pwd` (docs/reference/opencode.md#pattern-shape).
+# A glob entry is kept literal.
 # --------------------------------------------------------------------------
 
 

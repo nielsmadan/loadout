@@ -123,9 +123,10 @@ The boundary is pinned by `test_the_base_keeps_keys_other_slices_own`.
 
 Rendering is not injective, and three forms have to be undone:
 
-- **`foo` and `foo *`.** OpenCode and Pi emit both for one source entry, because neither matcher
-  lets `foo *` match a bare `foo`. Extraction drops the ` *` form when the bare form carries the
-  same decision. Missing this doubles the rule on the next render.
+- **`foo` and `foo *`.** OpenCode and Pi emit both for one source entry, because older versions
+  of both matchers did not let `foo *` match a bare `foo` (OpenCode before v1.1.15, Pi before
+  v5.12.0). Extraction drops the ` *` form when the bare form carries the same decision. Missing
+  this doubles the rule on the next render.
 - **`Bash(foo:*)`.** Claude's colon form is stripped back to `foo`.
 - **Exact entries.** `Bash(foo)` with neither `:*` nor a `*` reads back as `=foo`, and so does
   an OpenCode or Pi bare form with no `foo *` companion carrying the same decision. Before exact
