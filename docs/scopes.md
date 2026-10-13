@@ -23,6 +23,22 @@ That single fact settles most of the design. Because a generated file never has 
 someone who cannot regenerate it, generated files never need to be committed, and shared
 content can travel as *source* rather than as output.
 
+## One source of truth
+
+loadout's source is the only place configuration lives. A change made in a harness's own UI or
+CLI — a Codex "always allow", `claude mcp add`, an installer adding a hook — is absorbed into the
+source at `sync`, and the harness-local copy is then overwritten or deleted. A harness-local copy
+is never left beside the source: two places holding the same rule is the drift loadout exists to
+remove. Files of kinds loadout does not manage, such as Claude's `keybindings.json`, are not
+affected.
+
+**This is ruled but not yet implemented.** Today `sync` does not absorb anything. It refuses a
+file edited outside loadout: it names the file, prints the diff and exits 1, and `check` reports
+the file as `hand-edited`. You move the edit into the source yourself, or discard it with
+`sync --force` — see [Files modified outside loadout](../README.md#files-modified-outside-loadout).
+How prose edits are ported, and which source receives an absorbed change, is still being
+designed.
+
 ## Two scopes
 
 `init` adopts only slices whose destinations Loadout knows. Project commands, subagents and
