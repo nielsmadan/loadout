@@ -64,6 +64,7 @@ def build_project_root(destination: Path) -> Path:
         PROJECT_FIXTURES / "instructions", directory / "instructions", dirs_exist_ok=True
     )
     shutil.copytree(PROJECT_FIXTURES / "skills", directory / "skills", dirs_exist_ok=True)
+    shutil.copytree(PROJECT_FIXTURES / "agents", directory / "agents", dirs_exist_ok=True)
     for name in (
         "permissions.toml",
         "permissions.local.toml",

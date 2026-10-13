@@ -1,7 +1,7 @@
 """Files loadout did not write, in folders a harness reads whole (D-04).
 
 Codex reads every file in its rules folder and each harness reads every folder in
-its skills directory, so a file there that no loadout root wrote takes effect beside
+its skills directory and every file in its agents directory, so a file there that no loadout root wrote takes effect beside
 the source. It is flagged rather than absorbed: porting it is the /loadout skill's job.
 """
 
@@ -25,8 +25,9 @@ def managed_folders(root: Path, profile: str = "default") -> tuple[Path, ...]:
     if manifest_path(root).is_file():
         manifest = load_profile(root, profile)
         folders += [
-            resolve_destination(str(destination), f"{target.agent}.skills")
-            for target in manifest.skills
+            resolve_destination(str(destination), f"{target.agent}.{slice_name}")
+            for slice_name, targets in (("skills", manifest.skills), ("agents", manifest.agents))
+            for target in targets
             for destination in target.destinations
         ]
         folders += [
@@ -46,7 +47,8 @@ def managed_folders(root: Path, profile: str = "default") -> tuple[Path, ...]:
         folders += [
             root / spec.output
             for harness in config.harnesses
-            for spec in (PROJECT_PRESET[harness].get("skills"),)
+            for slice_name in ("skills", "agents")
+            for spec in (PROJECT_PRESET[harness].get(slice_name),)
             if spec is not None and spec.output is not None
         ]
         folders += [

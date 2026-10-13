@@ -75,6 +75,16 @@ class SkillsTarget:
 
 
 @dataclass(frozen=True)
+class AgentsTarget:
+    """Which harness gets the source's agents, and the directory they land in.
+
+    Like skills, discovered rather than named: the directory is the declaration."""
+
+    agent: str
+    destinations: tuple[PurePosixPath, ...]
+
+
+@dataclass(frozen=True)
 class ModuleConfigTarget:
     """Which agent gets the module-config tree, and the root it lands under.
 
@@ -129,6 +139,7 @@ class Manifest:
     skill_policies: tuple[SkillPolicy, ...] = ()
     module_config: tuple[ModuleConfigTarget, ...] = ()
     config_paths: tuple[Path, ...] = ()
+    agents: tuple[AgentsTarget, ...] = ()
 
 
 def _require(block: dict[str, object], key: str, label: str) -> object:
@@ -433,7 +444,7 @@ RESERVED_KEYS = frozenset(
 # tree in renders it everywhere. instructions and settings must be
 # named: instructions need an `order` (spec 1 §7 — alphabetical demonstrably
 # fails), and settings names an input rather than an output.
-AUTOMATIC_SLICES = ("permissions", "mcp-permissions", "mcp", "skills", "module-config")
+AUTOMATIC_SLICES = ("permissions", "mcp-permissions", "mcp", "skills", "agents", "module-config")
 
 
 def _agent_slice_names(agent: str, block: dict[str, object]) -> list[str]:
@@ -483,6 +494,7 @@ def _parse_agents(
     tuple[PermissionTarget, ...],
     tuple[SkillsTarget, ...],
     tuple[ModuleConfigTarget, ...],
+    tuple[AgentsTarget, ...],
 ]:
     """Agent-keyed blocks: `[claude]` with slices beneath it.
 
@@ -507,6 +519,7 @@ def _parse_agents(
     permissions: list[PermissionTarget] = []
     skills: list[SkillsTarget] = []
     module_config: list[ModuleConfigTarget] = []
+    agent_definitions: list[AgentsTarget] = []
     for agent in sorted(known_agents()):
         declared = data.get(agent)
         if declared is None:
@@ -541,8 +554,9 @@ def _parse_agents(
                 if out in claimed:
                     raise LoadoutError(f"{label}: output {str(out)!r} is already claimed")
                 claimed.add(out)
-            if slice_name == "skills":
-                skills.append(SkillsTarget(agent=agent, destinations=destinations))
+            if slice_name in {"skills", "agents"}:
+                # The directory is the declaration for both, so neither takes a value.
+                _add_directory_target(slice_name, agent, destinations, skills, agent_definitions)
                 continue
             if slice_name == "module-config":
                 module_config.append(ModuleConfigTarget(agent=agent, destinations=destinations))
@@ -587,7 +601,26 @@ def _parse_agents(
                     destinations=destinations,
                 )
             )
-    return tuple(targets), tuple(permissions), tuple(skills), tuple(module_config)
+    return (
+        tuple(targets),
+        tuple(permissions),
+        tuple(skills),
+        tuple(module_config),
+        tuple(agent_definitions),
+    )
+
+
+def _add_directory_target(
+    slice_name: str,
+    agent: str,
+    destinations: tuple[PurePosixPath, ...],
+    skills: list[SkillsTarget],
+    agents: list[AgentsTarget],
+) -> None:
+    if slice_name == "skills":
+        skills.append(SkillsTarget(agent=agent, destinations=destinations))
+    else:
+        agents.append(AgentsTarget(agent=agent, destinations=destinations))
 
 
 def _build_manifest(
@@ -601,8 +634,8 @@ def _build_manifest(
     claimed: set[PurePosixPath] = set()
     targets = _parse_instructions(data.get("instructions", {}), path, claimed)
     permissions = _parse_permissions(data.get("permissions", {}), path, claimed)
-    agent_targets, agent_permissions, agent_skills, agent_module_config = _parse_agents(
-        data, path, claimed
+    agent_targets, agent_permissions, agent_skills, agent_module_config, agent_definitions = (
+        _parse_agents(data, path, claimed)
     )
     targets += agent_targets
     permissions += agent_permissions
@@ -636,4 +669,5 @@ def _build_manifest(
         skill_policies=skill_policies,
         module_config=agent_module_config,
         config_paths=config_paths or (path,),
+        agents=agent_definitions,
     )

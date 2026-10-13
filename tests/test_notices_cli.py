@@ -147,8 +147,11 @@ def test_a_project_only_repo_reports_nothing_rather_than_failing(
 
     # OpenCode and Pi author their own catch-all at project scope, so they stay
     # silent about it — the losers that prove the rest were asked.
-    assert not any(m.startswith("opencode.") for m in messages)
+    assert not any(m.startswith("opencode.") and "[shell] default" in m for m in messages)
     assert not any(m.startswith("pi.") and "[shell] default" in m for m in messages)
+    assert "opencode.agents: agent 'reviewer': OpenCode agents have no effort field" in " | ".join(
+        messages
+    )
     assert sum("[shell] default" in m for m in messages) == 3
     assert "droid.permissions: allow glob 'gamma-*' is not rendered" in " | ".join(messages)
     assert "codex.permissions: deny '=nu wipe' is rendered as 'nu wipe'" in " | ".join(messages)

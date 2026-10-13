@@ -2,8 +2,8 @@
 
 How each supported agent harness handles permissions, and what `loadout` emits for it.
 
-[config.md](config.md) is the other axis: where each harness keeps each of the seven kinds of
-configuration — settings, instructions, permissions, hooks, mcp, plugins, skills — at global
+[config.md](config.md) is the other axis: where each harness keeps each of the eight kinds of
+configuration — settings, instructions, permissions, hooks, mcp, plugins, skills, agents — at global
 and project scope. Start there when the question is *which file*; start here when it is *what
 the matcher does*.
 

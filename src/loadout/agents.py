@@ -62,6 +62,7 @@ class SliceOutput:
 GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
     "claude": {
         "skills": SliceOutput(destination="${CLAUDE_CONFIG_DIR:-~/.claude}/skills"),
+        "agents": SliceOutput(destination="${CLAUDE_CONFIG_DIR:-~/.claude}/agents"),
         # A root, not a file — see the pi entry below. Claude's case is hook
         # scripts: the hooks slice registers a command by path, and this puts the
         # script at that path. Two slices, one for the declaration and one for the
@@ -110,6 +111,7 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
     },
     "codex": {
         "skills": SliceOutput(destination="${CODEX_HOME:-~/.codex}/skills"),
+        "agents": SliceOutput(destination="${CODEX_HOME:-~/.codex}/agents"),
         "instructions": SliceOutput(destination="${CODEX_HOME:-~/.codex}/AGENTS.md"),
         "permissions": SliceOutput(
             renderer="codex",
@@ -162,6 +164,7 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
     },
     "droid": {
         "skills": SliceOutput(destination="${FACTORY_HOME_OVERRIDE:-~}/.factory/skills"),
+        "agents": SliceOutput(destination="${FACTORY_HOME_OVERRIDE:-~}/.factory/droids"),
         "module-config": SliceOutput(destination="${FACTORY_HOME_OVERRIDE:-~}/.factory"),
         "instructions": SliceOutput(destination="${FACTORY_HOME_OVERRIDE:-~}/.factory/AGENTS.md"),
         "permissions": SliceOutput(
@@ -192,6 +195,7 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
     },
     "opencode": {
         "skills": SliceOutput(destination="${XDG_CONFIG_HOME:-~/.config}/opencode/skills"),
+        "agents": SliceOutput(destination="${XDG_CONFIG_HOME:-~/.config}/opencode/agents"),
         # A root, as for claude and pi. Here it carries plugin `.ts` files: a
         # plugin is on because its file is in `plugins/`, so there is no
         # enablement list and the plugins slice has nothing to render — the file
@@ -231,6 +235,7 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
     },
     "pi": {
         "skills": SliceOutput(destination="${PI_CODING_AGENT_DIR:-~/.pi/agent}/skills"),
+        "agents": SliceOutput(destination="${PI_CODING_AGENT_DIR:-~/.pi/agent}/agents"),
         # The destination is a *root*, not a file: each path under
         # <source>/module-config/pi/ lands beneath it as authored. Pi fixes the
         # directory and never the filename, and a module's directory need not

@@ -186,6 +186,7 @@ PROJECT_PRESET: dict[str, dict[str, SliceOutput]] = {
         "mcp": SliceOutput(renderer="claude-project-servers", output=".mcp.json"),
         "instructions": SliceOutput(output="CLAUDE.md"),
         "skills": SliceOutput(output=".claude/skills"),
+        "agents": SliceOutput(output=".claude/agents"),
     },
     "codex": {
         "permissions": SliceOutput(
@@ -193,6 +194,7 @@ PROJECT_PRESET: dict[str, dict[str, SliceOutput]] = {
         ),
         "instructions": SliceOutput(output="AGENTS.md"),
         "skills": SliceOutput(output=".agents/skills"),
+        "agents": SliceOutput(output=".codex/agents"),
         # No mcp entry either: whether [mcp_servers.*] survives Codex's
         # project-config filter is unverified, and its own warning says
         # unsupported project-local keys are ignored. See docs/reference/servers.md.
@@ -215,6 +217,7 @@ PROJECT_PRESET: dict[str, dict[str, SliceOutput]] = {
         "mcp": SliceOutput(renderer="droid-servers", output=".factory/mcp.json"),
         "instructions": SliceOutput(output="AGENTS.md"),
         "skills": SliceOutput(output=".factory/skills"),
+        "agents": SliceOutput(output=".factory/droids"),
     },
     "opencode": {
         "permissions": SliceOutput(
@@ -228,6 +231,7 @@ PROJECT_PRESET: dict[str, dict[str, SliceOutput]] = {
         # skill written twice under one name is resolved by a race rather than by
         # precedence. See reference/opencode.md; the env flag is required setup.
         "skills": SliceOutput(output=".opencode/skills"),
+        "agents": SliceOutput(output=".opencode/agents"),
     },
     "pi": {
         "permissions": SliceOutput(
@@ -237,6 +241,7 @@ PROJECT_PRESET: dict[str, dict[str, SliceOutput]] = {
         # Three agents, one path, on purpose — see ProjectConfig.instructions.
         "instructions": SliceOutput(output="AGENTS.md"),
         "skills": SliceOutput(output=".pi/skills"),
+        "agents": SliceOutput(output=".pi/agents"),
         # No mcp entry: pi-mcp-adapter's shipped README calls .mcp.json the
         # "Preferred project config" and reads it directly, so writing
         # .pi/mcp.json too would hand Pi the same servers twice under two names.

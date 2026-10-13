@@ -49,6 +49,7 @@ files outside a known slice remain harness-owned and stay in place.
 | `mcp` | unsupported | `loadout/mcp.toml` | `mcp.toml` from selected sources |
 | `instructions` | unsupported | `loadout/config.toml` and `loadout/instructions/*.md` | manifest selection and `instructions/*.md` fragments |
 | `skills` | unsupported | supported for `claude`, `codex`, `droid`, `opencode`, `pi` via `loadout/skills/<name>/SKILL.md` | `skills/<name>/SKILL.md` from selected sources |
+| `agents` | unsupported | supported for `claude`, `codex`, `droid`, `opencode`, `pi` via `loadout/agents/<name>.md` | `agents/<name>.md` from selected sources |
 | `settings` | unsupported | unsupported | supported for `claude`, `droid`, `opencode` via `settings/<name>.json` fragments; Codex uses `defaults`; Pi unsupported |
 | `defaults` | unsupported | unsupported | Codex top-level and nested settings via `defaults/<name>.json` fragments |
 | `hooks` | unsupported | Droid via `loadout/hooks.json` | `hooks/<name>.json` fragments selected by agents offering hooks |
@@ -125,6 +126,19 @@ supporting files beside it; that is the only form, and a loose file in `skills/`
 `[skills.<name>] agents = [...]` narrows the default set of configured consumers. Templates are
 declared by name; use `loadout template add <name> --tracked`, `--vendored`, or
 `template sync <name>` when that command exactly expresses the request.
+
+Agents (subagents) are `agents/<name>.md` in a global source, or `loadout/agents/<name>.md` in a
+project, and reach every configured harness: Claude, Codex (as TOML), Droid (as a custom droid),
+OpenCode and Pi (which needs the `pi-subagents` package). The frontmatter takes `description`
+(required), an optional `name` equal to the file name, `model` and `effort`; the body is the
+agent's instructions, with `::: <harness>` sections. `model` is `inherit` or a per-harness map, one
+indented `<harness>: <model>` line each; a harness left out inherits its parent's model, and
+OpenCode's needs the `provider/model-id` form. A single model name for every harness is an error,
+because no name means the same model everywhere. `effort` is one of `off`, `minimal`, `low`,
+`medium`, `high`, `xhigh`, `max`, translated per harness (a missing level becomes the nearest
+lower one, with a note; OpenCode has no effort), or a per-harness map written verbatim. Anything
+harness-specific, such as Claude's `tools`, goes in a block keyed by that harness. A request about
+one harness's agent changes that harness's block or map entry, not the shared body.
 
 Global fragments resolve through `[[source]]` entries. A bare fragment name must resolve uniquely;
 use `source/name` when two sources offer it. Reuse an existing selected fragment when ownership is

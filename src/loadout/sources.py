@@ -19,6 +19,7 @@ ARTIFACT_TYPES = frozenset(
         "plugins",
         "defaults",
         "skills",
+        "agents",
         "module-config",
         "templates",
     }
@@ -46,7 +47,7 @@ def _parse_overrides(
         raise LoadoutError(f"{label} must be a table")
     parsed: list[tuple[str, tuple[str, ...]]] = []
     for category, names in raw.items():
-        if category not in {"skills", "module-config"}:
+        if category not in {"skills", "agents", "module-config"}:
             raise LoadoutError(f"{label}: unsupported category {category!r}")
         if category not in use:
             raise LoadoutError(f"{label}: {category!r} must participate in use")
@@ -60,7 +61,7 @@ def _parse_overrides(
                 or path.is_absolute()
                 or path == PurePosixPath(".")
                 or any(p in {"..", ".git", ".loadout-state"} for p in path.parts)
-                or (category == "skills" and len(path.parts) != 1)
+                or (category in {"skills", "agents"} and len(path.parts) != 1)
                 or (
                     category == "module-config"
                     and (len(path.parts) <= 1 or path.parts[0] not in known_agents())

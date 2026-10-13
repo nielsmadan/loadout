@@ -1,7 +1,7 @@
 # Model selection: skills and subagents
 
 Where each harness lets a model be pinned below the session level, on a skill or on a subagent, and
-what loadout does with it today.
+what loadout does with it.
 
 **Verified 2026-10-11** against Claude Code 2.1.296 (installed binary and docs), Codex 0.161.0
 (installed binary and docs), Pi 1.0.1 (shipped `docs/`), and the upstream docs for OpenCode and
@@ -110,11 +110,55 @@ Pi does have **virtual models** (`docs/virtual-models.md`): *"A virtual model is
 picks a physical model for each request"*, registered from an extension. That is session-level routing,
 not a per-skill model, but it is the only Pi mechanism that chooses between models.
 
-## What loadout does today
+## Effort values and identity
 
-- **Skill frontmatter is copied verbatim.** A skill with `model: haiku` renders that line into
-  `.claude/skills`, `.factory/skills` and `.agents/skills`, which serves Codex, OpenCode and Pi.
-  Measured on `4e1768f`. Only Claude reads it. OpenCode's docs ask for custom keys to go under
-  `metadata` instead.
-- **Subagents are not managed.** D-02 leaves `.claude/agents/` and its counterparts untouched, and
-  [droid.md](droid.md) records custom droids as *"not Loadout slices"*.
+**Verified 2026-10-13** against source or binaries; each line below is quoted from it.
+
+- **Claude** (2.1.296 docs and binary): `effort` takes *"`low`, `medium`, `high`, `xhigh`, `max`;
+  available levels depend on the model"*; the binary also accepts an integer
+  (`Valid options: ${Ia.join(", ")} or an integer`). Identity is `name`: *"The filename doesn’t have
+  to match."*
+- **Codex** (`rust-v0.162.1`, `codex-rs/protocol/src/openai_models.rs`): `ReasoningEffort`'s
+  variants are `None`, `Minimal`, `Low`, `Medium` (the default), `High`, `XHigh`, `Max`, `Ultra`,
+  `Persistent` and `Custom(String)`, and any other non-empty string parses as `Custom`. An agent file deserializes into the same `ConfigToml`, so the
+  values are the same as in `config.toml`. `ultra` resolves per model and `persistent` is sent as
+  `disabled`. Identity is `name`: *"Codex identifies the custom agent by its `name` field. Matching
+  the filename to the agent name is the simplest convention, but the `name` field is the source of
+  truth."* `name`, `description` and `developer_instructions` are required.
+- **Droid** (docs; 0.240.1 binary): `reasoningEffort` is *"`low`, `medium`, or `high` for models that
+  support it"*, checked against the chosen model's own list
+  (`supportedReasoningEfforts.includes(r)`). Identity is `name`, with the file name as fallback:
+  `name:f.name||Ve.basename(a,".md")`.
+- **OpenCode** (`v1.19.0`, `packages/core/src/v1/config/agent.ts`): no effort key. Unknown keys go
+  to provider options (`if (!KNOWN_KEYS.has(key)) options[key] = value`), so a provider-specific
+  `reasoningEffort` passes through, but it is not an OpenCode field. Identity is the file name
+  (`configEntryNameFromPath(...)`), which a `name` key overrides. `mode` defaults to `all`
+  (`mode: "all"` in `packages/opencode/src/agent/agent.ts`), which also lists the agent as a
+  primary agent; only `mode: subagent` keeps it out of that set.
+- **Pi** (`pi-subagents` `v0.78.0`, `src/shared/model-info.ts`): `THINKING_LEVELS = ["off",
+  "minimal", "low", "medium", "high", "xhigh", "max"]`, for `thinking` or a `:level` suffix on
+  `model`. Identity is `name`; a file without `name` and `description` is skipped silently.
+
+## What loadout does
+
+loadout renders one source agent, `agents/<name>.md` in a global source or
+`loadout/agents/<name>.md` in a project, to every configured harness: the directories in
+[config.md](config.md#agents). The file name is the agent's identity; a `name` field, if given,
+must equal it, so renaming the file retires the old agent everywhere.
+
+- **`model`** is `inherit` or a per-harness map. A harness the map leaves out gets no model line,
+  so it inherits. A single other value is an error: no model name means the same model in all
+  five. Names are not validated, except that OpenCode's needs `provider/model-id`.
+- **`effort`** is one of `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, written as
+  Claude's `effort`, Codex's `model_reasoning_effort` (`off` becomes `none`), Droid's
+  `reasoningEffort` and Pi's `thinking`. A level a harness lacks becomes the nearest lower one it
+  has, with a note at `sync`; with none lower, none is written. OpenCode gets no effort, with a
+  note. A per-harness map is written verbatim instead, which is how Codex's `ultra` is reached.
+- **OpenCode** gets `mode: subagent` unless the agent's OpenCode block sets a mode.
+- **Pi** output needs the `pi-subagents` package installed; Pi core has no subagents.
+- Anything else harness-specific goes in a block keyed by the harness and is written only there.
+
+**Skill frontmatter is still copied verbatim.** A skill with `model: haiku` renders that line into
+`.claude/skills`, `.factory/skills` and `.agents/skills`, which serves Codex, OpenCode and Pi.
+Measured on `4e1768f`. Only Claude reads it. OpenCode's docs ask for custom keys to go under
+`metadata` instead.

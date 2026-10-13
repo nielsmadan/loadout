@@ -352,10 +352,10 @@ settings     = "claude"
 [pi]
 ```
 
-`[codex]` and `[pi]` with no keys are complete declarations. **`permissions`, `mcp`, `skills`
-and `module-config` render without being asked for**, because none has an authoring decision to
-make — for the last two the directory is the declaration, so dropping a tree in renders it. Say
-`skills = false` or `module-config = false` to opt out; an absent key means *automatic*. `instructions` must
+`[codex]` and `[pi]` with no keys are complete declarations. **`permissions`, `mcp`, `skills`,
+`agents` and `module-config` render without being asked for**, because none has an authoring
+decision to make — for the last three the directory is the declaration, so dropping a tree in
+renders it. Say `skills = false`, `agents = false` or `module-config = false` to opt out; an absent key means *automatic*. `instructions` must
 be named — it needs an order, and alphabetical is wrong (see Profiles). `settings` must be named
 because it is an input rather than an output.
 
@@ -614,6 +614,7 @@ loadout/config.toml          configured harnesses, instructions and templates
 loadout/permissions.toml     shared permission rules, optional
 loadout/instructions/        ordered instruction fragments
 loadout/skills/              authored skills and supporting files
+loadout/agents/              subagents, one Markdown file each
 loadout/mcp.toml             MCP server definitions, when present
 loadout/hooks.json           hook declarations, when supported
 loadout/plugins.json         plugin declarations, when supported
@@ -711,6 +712,38 @@ When Codex and OpenCode need different variants of the same skill, also set
 
 A template contributes `skills/` the same way it contributes `instructions.md`: a tier beneath the
 project, so a skill the project defines under the same name replaces the template's.
+
+### Agents
+
+A subagent is one Markdown file, `agents/<name>.md` in a global source (whose `use` must include
+`agents` if it lists categories) or `loadout/agents/<name>.md` in a project, and it reaches every
+configured harness: Claude (`.claude/agents/`), Codex (`.codex/agents/<name>.toml`), Droid
+(`.factory/droids/`), OpenCode (`.opencode/agents/`) and Pi (`.pi/agents/`, read by the
+`pi-subagents` package, which Pi needs installed). Global scope writes the same folders under
+each harness's home.
+
+```markdown
+---
+description: Reviews a diff for defects.
+model:
+  claude: sonnet
+  codex: gpt-5.5
+  opencode: anthropic/claude-sonnet-5-5
+effort: high
+claude:
+  tools: Read, Grep
+---
+
+Review the staged diff.
+```
+
+The body is the agent's instructions, with `::: <harness>` sections as in a skill. The file name is
+the agent's name; a `name` field must match it. `model` is `inherit` or a map per harness, and a
+harness it leaves out inherits; one name for every harness is refused, since no model name means
+the same thing in all five. `effort` is one word from `off` to `max`, translated per harness, or a
+map. A harness lacking the level gets the nearest lower one, and OpenCode none, each with a note.
+A block keyed by a harness holds what only that harness reads. Removing or renaming the file
+retires the old agent everywhere. Details: [models.md](docs/reference/models.md#what-loadout-does).
 
 ### Project MCP servers
 

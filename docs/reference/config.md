@@ -1,7 +1,7 @@
 # Where each harness keeps each kind of configuration
 
-Agent configuration divides into seven kinds — **settings, instructions, permissions, hooks,
-mcp, plugins, skills**. Each harness stores them in a different place, and the boundaries
+Agent configuration divides into eight kinds — **settings, instructions, permissions, hooks,
+mcp, plugins, skills, agents**. Each harness stores them in a different place, and the boundaries
 between them differ too: what is one file on one harness is three on another.
 
 **Antigravity is recorded here but is not a target** — loadout emits nothing for it, per
@@ -11,7 +11,7 @@ the verified negatives below are precisely what a decision to re-add would have 
 This page records *where things are*. Matcher semantics and rendering behaviour live in the
 per-harness pages; [README.md](README.md) indexes those.
 
-A module's *own* configuration is not one of the seven and gets no row in the summary — it
+A module's *own* configuration is not one of the eight and gets no row in the summary — it
 belongs to the module rather than the harness, and only Pi's is enumerated here. See
 [module config](#module-config).
 
@@ -41,6 +41,7 @@ filename in another harness proves nothing.
 | mcp | ✓ CLI only | ✓ | ✓ | ✓ | ✓ | ✓ |
 | plugins | ✓ | ✓ | ✓ | ✓ npm | ✓ | ✓ |
 | skills | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ project only |
+| agents | ✓ | ✓ TOML | ✓ | ✓ | ✓ via `pi-subagents` | not verified |
 
 Four structural facts fall out of the detail below, and each matters more than any individual
 path.
@@ -502,6 +503,30 @@ details from it that no other harness documents:
 
 Pi also accepts extra skill directories in settings, and documents `~/.claude/skills` and
 `~/.codex/skills` as the intended values.
+
+## agents
+
+Subagents: a named prompt with its own model that the main agent delegates to.
+
+| harness | global | project | format | identity |
+|---|---|---|---|---|
+| Claude | `~/.claude/agents/` | `.claude/agents/` | Markdown + frontmatter | `name` |
+| Codex | `~/.codex/agents/` | `.codex/agents/` | TOML, body in `developer_instructions` | `name` |
+| Droid | `~/.factory/droids/` | `.factory/droids/` | Markdown + frontmatter | `name`, file name if absent |
+| OpenCode | `~/.config/opencode/agents/` | `.opencode/agents/` | Markdown + frontmatter | file name |
+| Pi | `~/.pi/agent/agents/` | `.pi/agents/` | Markdown, **`pi-subagents` package** | `name` |
+
+Verified 2026-10-13 against each harness's source or binary; the quotes are in
+[models.md](models.md). Pi core has no subagents: these paths are read by the `pi-subagents`
+package (nicobailon), which also reads `~/.agents/` and a project's legacy `.agents/`, and skips
+everything under `.agents/skills/` so the skills loadout writes there are not read as agents.
+
+Codex, OpenCode and `pi-subagents` read subdirectories of their agents folder; Droid's 0.240.1
+loader does not (`readdir(t)).filter((m)=>m.endsWith(".md"))`); Claude's was not checked. loadout
+writes one file per agent at the top level, named after the agent, so a name and its file name
+always agree. That matters for Droid in particular: the same binary's save routine writes
+`${name}.md` and unlinks other `.md` files (*"Failed to delete orphaned droid file"*); which actions
+reach it was not established.
 
 ## module config
 

@@ -36,6 +36,19 @@ SKILL_DIRS = {
 SKILL_FILES = ("from-template/SKILL.md", "probe/SKILL.md", "probe/reference.md")
 
 
+AGENT_FILES = {
+    "claude": ".claude/agents/reviewer.md",
+    "codex": ".codex/agents/reviewer.toml",
+    "droid": ".factory/droids/reviewer.md",
+    "opencode": ".opencode/agents/reviewer.md",
+    "pi": ".pi/agents/reviewer.md",
+}
+
+
+def agent_outputs(*harnesses: str) -> set[str]:
+    return {AGENT_FILES[h] for h in harnesses}
+
+
 def skill_outputs(*harnesses: str) -> set[str]:
     outputs = {f"{SKILL_DIRS[h]}/{f}" for h in harnesses for f in SKILL_FILES}
     if "codex" in harnesses:
@@ -54,7 +67,7 @@ def test_every_project_output_matches_the_expected_output(project: Path) -> None
     so the comparison now derives its own list from the render.
     """
     rendered = {str(p.relative_to(project)): c for p, c in render_project(project).items()}
-    assert set(rendered) == set(OUTPUTS) | skill_outputs(*SKILL_DIRS)
+    assert set(rendered) == set(OUTPUTS) | skill_outputs(*SKILL_DIRS) | agent_outputs(*AGENT_FILES)
     for name, content in sorted(rendered.items()):
         actual = content.read_bytes().decode("utf-8") if isinstance(content, Copied) else content
         assert actual == (EXPECTED / name).read_text(encoding="utf-8"), name
@@ -62,7 +75,7 @@ def test_every_project_output_matches_the_expected_output(project: Path) -> None
 
 def test_every_output_is_rendered(project: Path) -> None:
     rendered = {str(p.relative_to(project)) for p in render_project(project)}
-    assert rendered == set(OUTPUTS) | skill_outputs(*SKILL_DIRS)
+    assert rendered == set(OUTPUTS) | skill_outputs(*SKILL_DIRS) | agent_outputs(*AGENT_FILES)
 
 
 def test_only_enabled_harnesses_are_rendered(project: Path) -> None:
@@ -79,7 +92,7 @@ def test_only_enabled_harnesses_are_rendered(project: Path) -> None:
         ".claude/mcp-permissions.json",
         ".mcp.json",
         "CLAUDE.md",
-    } | skill_outputs("claude")
+    } | skill_outputs("claude") | agent_outputs("claude")
 
 
 def test_personal_tier_merges_into_the_output(project: Path) -> None:
@@ -452,7 +465,7 @@ def test_a_project_declaring_no_instructions_generates_neither_document(
         f"{SKILL_DIRS[h]}/{f}"
         for h in SKILL_DIRS
         for f in ("probe/SKILL.md", "probe/reference.md")
-    }
+    } | agent_outputs(*AGENT_FILES)
 
 
 def test_a_template_contributes_instructions_without_being_named(bare_project: Path) -> None:

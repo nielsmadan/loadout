@@ -117,6 +117,11 @@ def test_capability_matrix_pins_every_scope_mapping() -> None:
             "supported for `claude`, `codex`, `droid`, `opencode`, `pi` via `loadout/skills/<name>/SKILL.md`",
             "`skills/<name>/SKILL.md` from selected sources",
         ),
+        "agents": (
+            "unsupported",
+            "supported for `claude`, `codex`, `droid`, `opencode`, `pi` via `loadout/agents/<name>.md`",
+            "`agents/<name>.md` from selected sources",
+        ),
         "settings": (
             "unsupported",
             "unsupported",

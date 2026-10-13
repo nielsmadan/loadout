@@ -77,6 +77,15 @@ from .servers import SERVERS_SOURCE, Server, parse_servers
 from .skill_policy import render_skill_for, selected_skill_agents
 from .skills import SKILL_DOCUMENT, Skill, discover_skills, loose_skill_files, render_skill
 from .sources import Source, select_overrides
+from .subagents import (
+    AGENTS_SUBDIR,
+    Agent,
+    agent_file_name,
+    agent_notes,
+    discover_agents,
+    parse_agent,
+    render_agent,
+)
 from .surgery import apply_json, apply_toml, concat_documents
 from .template_catalog import Catalog, contribution_paths, load_catalogs
 from .templates import VENDORED, resolve_template
@@ -717,6 +726,19 @@ def collect_notices(root: Path, profile: str = "default") -> tuple[Notice, ...]:
         )
     )
     found.extend(_global_skill_race(manifest, os.environ))
+    found.extend(_agent_notices(source_agents(manifest), tuple(t.agent for t in manifest.agents)))
+    found.extend(
+        Notice(
+            agent=source.name,
+            slice=AGENTS_SUBDIR,
+            message=(
+                f"{source.path / AGENTS_SUBDIR} holds agents, but source {source.name!r} does "
+                f'not list "agents" in `use`, so none of them is rendered'
+            ),
+        )
+        for source in manifest.sources
+        if AGENTS_SUBDIR not in source.use and discover_agents(source.path / AGENTS_SUBDIR)
+    )
     found.extend(_permission_notices(manifest, profile))
     found.extend(_unpermitted_servers(manifest))
     for target in manifest.permissions:
@@ -764,6 +786,12 @@ def project_notices(root: Path, environ: Mapping[str, str]) -> tuple[Notice, ...
     config = load_project_config(path)
     found: list[Notice] = []
     found.extend(_loose_skill_notices((root / PROJECT_DIR / SKILLS_SUBDIR,)))
+    found.extend(
+        _agent_notices(
+            project_agents(root),
+            tuple(h for h in config.harnesses if AGENTS_SUBDIR in PROJECT_PRESET[h]),
+        )
+    )
     templates = tuple(resolve_template(name, root).path for name in config.templates)
     catalogs = load_catalogs(templates)
     rules = _project_rules(root, config, catalogs)
@@ -902,8 +930,9 @@ def render_global(root: Path, profile: str = "default") -> dict[Path, Output]:
 
     for skills_target in manifest.skills:
         _expand_skills(skills_target, manifest, outputs, claimed)
-    # After skills, so a module-config path that lands on a rendered destination
-    # collides with it rather than depending on which ran first.
+    _expand_agents(manifest, outputs, claimed)
+    # After skills and agents, so a module-config path that lands on a rendered
+    # destination collides with it rather than depending on which ran first.
     for module_config_target in manifest.module_config:
         _expand_module_config(module_config_target, manifest, outputs, claimed)
     return outputs
@@ -963,6 +992,74 @@ def _expand_skills(
                 path = directory / relative
                 _claim(path, f"{target.agent}.skills", claimed)
                 outputs[path] = Copied(source=skill.supporting_root / relative)
+
+
+def source_agents(manifest: Manifest) -> tuple[Agent, ...]:
+    offerings = [
+        (source, discover_agents(source.path / AGENTS_SUBDIR))
+        for source in manifest.sources
+        if AGENTS_SUBDIR in source.use
+    ]
+    selected = select_overrides(
+        AGENTS_SUBDIR, ((source, {path.stem for path in paths}) for source, paths in offerings)
+    )
+    return tuple(
+        parse_agent(path)
+        for path in sorted(
+            (
+                path
+                for source, paths in offerings
+                for path in paths
+                if selected[path.stem] == source
+            ),
+            key=lambda path: path.stem,
+        )
+    )
+
+
+def _expand_agents(
+    manifest: Manifest, outputs: dict[Path, Output], claimed: dict[Path, str]
+) -> None:
+    agents = source_agents(manifest) if manifest.agents else ()
+    for target in manifest.agents:
+        label = f"{target.agent}.{AGENTS_SUBDIR}"
+        for destination in target.destinations:
+            base = resolve_destination(str(destination), label)
+            _write_agents(agents, target.agent, base, (outputs, claimed))
+
+
+def _write_agents(
+    agents: tuple[Agent, ...],
+    harness: str,
+    base: Path,
+    state: tuple[dict[Path, Output], dict[Path, str]],
+) -> None:
+    outputs, claimed = state
+    for agent in agents:
+        path = base / agent_file_name(agent.name, harness)
+        _claim(path, f"{harness}.{AGENTS_SUBDIR}", claimed)
+        outputs[path] = render_agent(agent, harness)
+
+
+def _expand_project_agents(
+    root: Path, config: ProjectConfig, state: tuple[dict[Path, Output], dict[Path, str]]
+) -> None:
+    agents = project_agents(root)
+    for harness, slice_name, spec in project_slices(config.harnesses):
+        if slice_name == AGENTS_SUBDIR and spec.output is not None:
+            _write_agents(agents, harness, root / spec.output, state)
+
+
+def project_agents(root: Path) -> tuple[Agent, ...]:
+    return tuple(parse_agent(path) for path in discover_agents(root / PROJECT_DIR / AGENTS_SUBDIR))
+
+
+def _agent_notices(agents: tuple[Agent, ...], harnesses: tuple[str, ...]) -> tuple[Notice, ...]:
+    return tuple(
+        Notice(agent=harness, slice=AGENTS_SUBDIR, message=note)
+        for agent in agents
+        for harness, note in agent_notes(agent, harnesses)
+    )
 
 
 def module_config_files(manifest: Manifest, agent: str) -> tuple[tuple[PurePosixPath, Path], ...]:
@@ -1167,7 +1264,8 @@ def _render_project_slices(root: Path, config: ProjectConfig) -> dict[Path, Outp
         if spec.output is None:
             continue
         path = root / spec.output
-        if slice_name == "skills":
+        if slice_name in {"skills", AGENTS_SUBDIR}:
+            # Directories: skills went through the catalog above, agents below.
             continue
         if slice_name == "instructions":
             # Several agents name one document and that is not a collision here:
@@ -1214,6 +1312,7 @@ def _render_project_slices(root: Path, config: ProjectConfig) -> dict[Path, Outp
         else:
             _claim(path, owner, claimed)
         group.append((contributor, residual, content))
+    _expand_project_agents(root, config, (outputs, claimed))
     for path, contributors in groups.items():
         # No records here: a record is tied to a source-slice fragment, and project
         # scope renders from the project's own config rather than the global
