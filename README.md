@@ -195,8 +195,8 @@ A conflicting machine registration requires `--registration replace` or `--regis
 
 Init always reads the live deployment, never a dotfiles copy of it in the selected directory, and
 has no option to point it elsewhere; see [what init refuses](docs/reference/migration.md#what-init-refuses).
-A skill whose copies differ between harnesses, or a project `CLAUDE.md` that disagrees with
-`AGENTS.md`, does not stop init: that one item is left in place and reported for the `/loadout`
+A skill or subagent whose copies differ between harnesses, or a project `CLAUDE.md` that disagrees
+with `AGENTS.md`, does not stop init: that one item is left in place and reported for the `/loadout`
 skill to merge, and everything else is adopted; see
 [what init leaves out](docs/reference/migration.md#what-init-leaves-out).
 Unresolved previews exit 2 without mutation. Supported configurations get a read-only preview of
@@ -604,7 +604,8 @@ worktrees, profiles and post-hook failure behavior.
 
 `init` adopts only configuration with a known slice destination. It extracts permissions,
 instructions, settings, hooks, plugins, MCP servers, skills and global module configuration into
-canonical sources. Harness-specific command and subagent trees stay where their harness reads them;
+canonical sources, and each harness's subagents into one source agent per name. Harness-specific
+command trees stay where their harness reads them;
 Loadout neither moves nor ignores them.
 
 A project source normally contains:

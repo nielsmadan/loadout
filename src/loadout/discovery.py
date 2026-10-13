@@ -88,7 +88,14 @@ _MODULE_TREES = ("hooks/", "rules/", "scripts/", "providers/", "profiles/", "plu
 # alone unread, which is what lets init adopt a root it does not fully understand.
 MANAGED_PATHS: dict[str, dict[str, tuple[str, ...]]] = {
     "global": {
-        "claude": ("CLAUDE.md", "settings.json", "mcp-permissions.json", "skills/", *_MODULE_TREES),
+        "claude": (
+            "CLAUDE.md",
+            "settings.json",
+            "mcp-permissions.json",
+            "skills/",
+            "agents/",
+            *_MODULE_TREES,
+        ),
         "codex": (
             "AGENTS.md",
             "AGENTS.override.md",
@@ -96,6 +103,7 @@ MANAGED_PATHS: dict[str, dict[str, tuple[str, ...]]] = {
             "hooks.json",
             "rules/",
             "skills/",
+            "agents/",
         ),
         "droid": (
             "AGENTS.md",
@@ -103,6 +111,7 @@ MANAGED_PATHS: dict[str, dict[str, tuple[str, ...]]] = {
             "hooks.json",
             "mcp.json",
             "skills/",
+            "droids/",
             "plugins/",
             *_MODULE_TREES,
         ),
@@ -111,6 +120,7 @@ MANAGED_PATHS: dict[str, dict[str, tuple[str, ...]]] = {
             "opencode.json",
             "opencode.jsonc",
             "skills/",
+            "agents/",
             "plugins/",
             *_MODULE_TREES,
         ),
@@ -120,21 +130,23 @@ MANAGED_PATHS: dict[str, dict[str, tuple[str, ...]]] = {
             "mcp.json",
             "extensions/pi-permission-system/config.json",
             "skills/",
+            "agents/",
             "plugins/",
             *_MODULE_TREES,
         ),
         "shared": ("skills/", "mcp.json", "mcp/mcp.json"),
     },
     "project": {
-        "claude": ("settings.json", "mcp-permissions.json", "skills/"),
-        "codex": ("rules/",),
-        "droid": ("settings.json", "hooks.json", "mcp.json", "skills/"),
-        "opencode": ("skills/",),
-        "pi": ("extensions/pi-permission-system/config.json", "skills/"),
+        "claude": ("settings.json", "mcp-permissions.json", "skills/", "agents/"),
+        "codex": ("rules/", "agents/"),
+        "droid": ("settings.json", "hooks.json", "mcp.json", "skills/", "droids/"),
+        "opencode": ("skills/", "agents/"),
+        "pi": ("extensions/pi-permission-system/config.json", "skills/", "agents/"),
         "shared": ("skills/",),
     },
 }
 UNMANAGED_NAMES = frozenset({".DS_Store"})
+AGENT_DIRECTORIES = frozenset({"agents", "droids"})
 PROJECT_WALK_EXCLUSIONS = frozenset(
     {
         ".git",
@@ -348,7 +360,9 @@ def _environment_reference(value: str) -> bool:
 
 def _category(relative: Path, agent: str) -> str | None:
     first = relative.parts[0]
-    if relative.name in INSTRUCTION_FILES or first in {"commands", "agents"}:
+    if first in AGENT_DIRECTORIES and len(relative.parts) > 1:
+        return "agents"
+    if relative.name in INSTRUCTION_FILES or first == "commands":
         return "instructions"
     if first == "rules":
         return "permissions" if agent == "codex" else "instructions"

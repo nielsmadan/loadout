@@ -19,6 +19,7 @@ MANAGED = {
     "settings.json": '{"model": "opus", "permissions": {"allow": ["Bash(git status)"]}}\n',
     "skills/review/SKILL.md": "---\nname: review\ndescription: r\n---\nReview it.\n",
     "hooks/guard.sh": "#!/bin/sh\nexit 0\n",
+    "agents/auditor.md": "---\nname: auditor\ndescription: a\n---\nAudit.\n",
 }
 # Shaped on a real ~/.claude: runtime state, Finder and IDE droppings, files Claude
 # writes beside its settings, and things the user left there.
@@ -36,7 +37,6 @@ UNMANAGED = {
     "plugins/installed_plugins.json": '{"version": 2}\n',
     "plugins/marketplaces/m/README.md": "market\n",
     "commands/ship.md": "Ship it.\n",
-    "agents/auditor.md": "---\nname: auditor\n---\nAudit.\n",
     "history.jsonl": '{"display": "hi"}\n',
     ".credentials.json": '{"claudeAiOauth": {"accessToken": "opaque"}}\n',
     "settings.json.bak": '{"model": "old"}\n',
@@ -80,7 +80,7 @@ def _unmanaged(snapshot: dict[str, object]) -> dict[str, object]:
         key: value
         for key, value in snapshot.items()
         if key not in MANAGED
-        and key not in {"skills", "skills/review", "hooks", "mcp-permissions.json"}
+        and key not in {"skills", "skills/review", "hooks", "agents", "mcp-permissions.json"}
     }
 
 
@@ -118,6 +118,7 @@ def test_a_realistic_claude_directory_adopts_only_what_loadout_manages(
         "instructions/claude.md",
         "settings/claude.json",
         "skills/review/SKILL.md",
+        "agents/auditor.md",
         "module-config/claude/hooks/guard.sh",
     } <= written
     capsys.readouterr()

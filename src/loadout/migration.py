@@ -38,6 +38,14 @@ from .permissions.rules import Rules, parse_rules
 from .project import PROJECT_PRESET, load_project_config
 from .servers import serialize_servers
 from .skills import SKILL_DOCUMENT
+from .subagents import (
+    EFFORT_LEVELS,
+    EFFORT_SCALE,
+    EFFORT_SPELLING,
+    NativeAgent,
+    agent_file_name,
+    extract_agent,
+)
 
 CODEX_RULES_OUTPUT = Path(PROJECT_PRESET["codex"]["permissions"].output or "").name
 RUNTIME_KEYS = {
@@ -675,10 +683,9 @@ class _PlanBuilder:
             self.write(Path("mcp.toml"), SERVERS_EXAMPLE)
         self.write(Path("README.md"), SOURCE_README)
         for agent, slices in self.global_slices.items():
-            if "skills" in slices:
-                blocks[agent]["skills"] = True
-            if "module-config" in slices:
-                blocks[agent]["module-config"] = True
+            for directory in ("skills", "agents", "module-config"):
+                if directory in slices:
+                    blocks[agent][directory] = True
         return blocks
 
     def tree(
@@ -951,7 +958,7 @@ class _PlanBuilder:
             self.dormant(instruction, consumers, "instructions")
             self.available_categories.add((agent, "skills"))
             if not project:
-                self.global_slices[agent].add("skills")
+                self.global_slices[agent].update(("skills", "agents"))
             if agent == "claude":
                 self.dormant(root / "hooks", (agent,), "hooks", "tree")
                 if not project:
@@ -1087,9 +1094,11 @@ def _global_config(inventory: Inventory, builder: _PlanBuilder) -> dict[str, Any
             "hooks",
             "plugins",
             "skills",
+            "agents",
             "module-config",
         )
         if category in offered
+        or category == "agents"
         or any(category in slices for slices in builder.global_slices.values())
     ]
     config: dict[str, Any] = {
@@ -1110,7 +1119,22 @@ def plan_migration(inventory: Inventory) -> MigrationPlan:
     builder = _PlanBuilder(inventory)
     for name, conflicting in _conflicting_skills(inventory, candidates).items():
         builder.leave_out("skill", name, conflicting)
-    candidates = tuple(c for c in candidates if not builder.unadopted_paths & {c.path})
+    try:
+        _adopt_agents(builder, candidates)
+    except LoadoutError as error:
+        return MigrationPlan(
+            inventory,
+            issues=(
+                Issue(
+                    "source-composition",
+                    (inventory.source_root,),
+                    f"The native sources could not be composed safely: {error}",
+                ),
+            ),
+        )
+    candidates = tuple(
+        c for c in candidates if c.category != "agents" and not builder.unadopted_paths & {c.path}
+    )
     try:
         builder.originals(candidates)
         builder.dormant_routes()
@@ -1278,6 +1302,83 @@ def _conflicting_skills(
         ):
             conflicting[name] = [c for group in by_folder.values() for c in group]
     return conflicting
+
+
+def _adopt_agents(builder: _PlanBuilder, candidates: tuple[Candidate, ...]) -> None:
+    """One source agent per name. Copies whose description or instructions differ are
+    left out for /loadout to merge; one adoption cannot read stays where it is."""
+    copies: dict[str, list[tuple[str, Candidate, NativeAgent]]] = defaultdict(list)
+    for candidate in candidates:
+        if candidate.category != "agents" or candidate.destination is None:
+            continue
+        harness = candidate.agents[0]
+        problem = None
+        try:
+            native = extract_agent(
+                harness, candidate.content.decode("utf-8"), candidate.destination.stem
+            )
+        except (LoadoutError, UnicodeError, ValueError) as error:
+            problem = str(error)
+        else:
+            if not native.description:
+                problem = "it has no description, which every harness requires of an agent"
+            elif candidate.destination.name != agent_file_name(native.name, harness):
+                problem = f"its name {native.name!r} does not match its file name"
+        if problem is not None:
+            builder.retained.update(_original_paths(candidate))
+            builder.notes.append(f"{candidate.destination}: not adopted, {problem}")
+            continue
+        copies[native.name].append((harness, candidate, native))
+    for name, group in sorted(copies.items()):
+        texts = {(_unquoted(n.description), n.body.strip()) for _, _, n in group}
+        if len(texts) > 1:
+            builder.leave_out("agent", name, [c for _, c, _ in group])
+            continue
+        builder.write(Path("agents") / f"{name}.md", _source_agent(group).encode())
+        if builder.inventory.scope != "project":
+            # Global scope reaches the agents folders through each block's preset route.
+            continue
+        for harness, candidate, _ in group:
+            assert candidate.destination is not None
+            builder.records[candidate.destination] = builder.record(
+                candidate.destination, (harness,), "copy"
+            )
+
+
+def _unquoted(value: str) -> str:
+    quoted = value[:1] in {'"', "'"} and value.endswith(value[:1]) and len(value) > 1
+    return value[1:-1] if quoted else value
+
+
+def _source_agent(group: list[tuple[str, Candidate, NativeAgent]]) -> str:
+    """The source agent whose render gives each harness what its copy says."""
+    markdown = next((n for h, _, n in group if h != "codex"), None)
+    description = (
+        markdown.description if markdown is not None else _yaml_scalar(group[0][2].description)
+    )
+    body = (markdown or group[0][2]).body
+    lines = [f"description: {description}"]
+    models = [(h, n.model) for h, _, n in group if n.model is not None]
+    if models:
+        lines += ["model:", *(f"  {h}: {m}" for h, m in models)]
+    efforts = [(h, n.effort) for h, _, n in group if n.effort is not None]
+    words = {e for _, e in efforts}
+    shared = next(iter(words)) if len(words) == 1 and len(efforts) == len(group) else None
+    if shared in EFFORT_SCALE and all(shared in EFFORT_LEVELS.get(h, ()) for h, _, _ in group):
+        lines.append(f"effort: {shared}")
+    elif efforts:
+        lines += ["effort:"] + [
+            f"  {h}: {EFFORT_SPELLING.get(h, {}).get(e, e)}" for h, e in efforts
+        ]
+    for harness, _, native in group:
+        if native.extra:
+            lines += [f"{harness}:", *(f"  {line}" for line in native.extra)]
+    return "---\n" + "\n".join(lines) + "\n---\n" + body
+
+
+def _yaml_scalar(text: str) -> str:
+    plain = text and text[0] not in "\"'#&*!|>%@`[]{}-?:," and ": " not in text and " #" not in text
+    return text if plain else json.dumps(text)
 
 
 def _item_path(kind: str, name: str, candidate: Candidate) -> Path:

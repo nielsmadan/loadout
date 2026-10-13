@@ -15,8 +15,8 @@ Repeat `--harness` when membership needs an explicit selection.
 
 Project init creates canonical sources for configuration with known project destinations. An empty
 project starts with `loadout/config.toml` and `loadout/permissions.toml`. Global init creates the
-canonical global slice sources it needs. Command trees, subagents and unsupported harness-specific
-files remain where they are. Repeat init preserves existing source layouts.
+canonical global slice sources it needs, subagents included. Command trees and unsupported
+harness-specific files remain where they are. Repeat init preserves existing source layouts.
 
 Init then renders, as the first sync. When the render matches the existing files under loadout's
 comparison it writes them and reports an exact reproduction; when it does not, the preview shows
@@ -75,10 +75,11 @@ private and never paste its content into the conversation. Report the journal pa
 
 ## Resolving conflicting copies at init
 
-Init does not refuse when one skill has different copies in two harnesses' skills folders, or when
-a project's `CLAUDE.md` and `AGENTS.md` disagree. It adopts everything else, adopts nothing of
+Init does not refuse when one skill has different copies in two harnesses' skills folders, when
+one agent's copies hold different descriptions or instructions, or when a project's `CLAUDE.md`
+and `AGENTS.md` disagree. It adopts everything else, adopts nothing of
 that item, and lists it under `unadopted` in the JSON (in text: "Not adopted, conflicting copies
-of …"): the kind (`skill` or `instructions`), the name, and each copy's path with the harnesses it
+of …"): the kind (`skill`, `agent` or `instructions`), the name, and each copy's path with the harnesses it
 serves. Every copy stays where it is, and nothing records the item as pending; `check` reports a
 left-out skill's folders as `unmanaged` until it is resolved.
 
@@ -86,8 +87,8 @@ left-out skill's folders as `unmanaged` until it is resolved.
 2. Merge them. Unify incidental differences such as wording, order and whitespace. Keep a
    genuinely harness-specific difference as a `::: <harness>` body section, or, for a skill's
    frontmatter, as a block keyed by the harness name whose indented keys override the shared ones.
-3. Write the merged item into the source: `skills/<name>/SKILL.md` in the global source, or
-   `loadout/skills/<name>/SKILL.md` in a project. Project instructions become
+3. Write the merged item into the source: `skills/<name>/SKILL.md` or `agents/<name>.md` in the
+   global source, or `loadout/skills/<name>/SKILL.md` or `loadout/agents/<name>.md` in a project. Project instructions become
    `loadout/instructions/main.md`, named by `instructions = ["main"]` in `loadout/config.toml`.
 4. Sync. It refuses, because the copies hold content loadout never wrote. Show the diff, and run
    `sync --force` only after the user approves replacing them.

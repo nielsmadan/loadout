@@ -11,9 +11,14 @@ known slice destination for it.
 - hook and plugin declarations
 - MCP server definitions
 - skills
+- subagents: each harness's top-level agent files become one source agent per name, with a
+  per-harness `model` map, and an `effort` word or map, recording what differed. A file adoption
+  cannot read (such as a Codex agent holding a table) or whose name differs from its file name
+  stays in place, named in a preview note. Copies whose description or instructions differ are
+  left out (below).
 - global module configuration and support files
 
-Project command trees, subagents and other harness-specific files are left in place. They keep
+Project command trees and other harness-specific files are left in place. They keep
 working because init neither moves them nor adds their paths to `.gitignore`.
 
 ## What discovery reads
@@ -28,13 +33,13 @@ Global scope:
 
 | root | paths read |
 |---|---|
-| `${CLAUDE_CONFIG_DIR:-~/.claude}` | `CLAUDE.md`, `settings.json`, `mcp-permissions.json`, `skills/`, `hooks/`, `rules/`, `scripts/`, `providers/`, `profiles/`, `plugin/` |
+| `${CLAUDE_CONFIG_DIR:-~/.claude}` | `CLAUDE.md`, `settings.json`, `mcp-permissions.json`, `skills/`, `agents/`, `hooks/`, `rules/`, `scripts/`, `providers/`, `profiles/`, `plugin/` |
 | `${CLAUDE_CONFIG_DIR:-~}/.claude.json` | the file itself (only `mcpServers` is adopted) |
-| `${CODEX_HOME:-~/.codex}` | `AGENTS.md`, `AGENTS.override.md`, `config.toml`, `hooks.json`, `rules/`, `skills/` |
-| `${FACTORY_HOME_OVERRIDE:-~}/.factory` | `AGENTS.md`, `settings.json`, `hooks.json`, `mcp.json`, `skills/`, `plugins/`, `hooks/`, `rules/`, `scripts/`, `providers/`, `profiles/`, `plugin/` |
-| `${XDG_CONFIG_HOME:-~/.config}/opencode`, or `$OPENCODE_CONFIG_DIR` | `AGENTS.md`, `opencode.json`, `opencode.jsonc`, `skills/`, `plugins/`, `hooks/`, `rules/`, `scripts/`, `providers/`, `profiles/`, `plugin/` |
+| `${CODEX_HOME:-~/.codex}` | `AGENTS.md`, `AGENTS.override.md`, `config.toml`, `hooks.json`, `rules/`, `skills/`, `agents/` |
+| `${FACTORY_HOME_OVERRIDE:-~}/.factory` | `AGENTS.md`, `settings.json`, `hooks.json`, `mcp.json`, `skills/`, `droids/`, `plugins/`, `hooks/`, `rules/`, `scripts/`, `providers/`, `profiles/`, `plugin/` |
+| `${XDG_CONFIG_HOME:-~/.config}/opencode`, or `$OPENCODE_CONFIG_DIR` | `AGENTS.md`, `opencode.json`, `opencode.jsonc`, `skills/`, `agents/`, `plugins/`, `hooks/`, `rules/`, `scripts/`, `providers/`, `profiles/`, `plugin/` |
 | `$OPENCODE_CONFIG` | the file itself |
-| `${PI_CODING_AGENT_DIR:-~/.pi/agent}` | `AGENTS.md`, `settings.json`, `mcp.json`, `extensions/pi-permission-system/config.json`, `skills/`, `plugins/`, `hooks/`, `rules/`, `scripts/`, `providers/`, `profiles/`, `plugin/` |
+| `${PI_CODING_AGENT_DIR:-~/.pi/agent}` | `AGENTS.md`, `settings.json`, `mcp.json`, `extensions/pi-permission-system/config.json`, `skills/`, `agents/`, `plugins/`, `hooks/`, `rules/`, `scripts/`, `providers/`, `profiles/`, `plugin/` |
 | `${XDG_CONFIG_HOME:-~/.config}/mcp/mcp.json` | the file itself (Pi) |
 | `~/.agents` | `skills/`, `mcp.json`, `mcp/mcp.json` |
 
@@ -42,11 +47,11 @@ Project scope, relative to the repository root:
 
 | root | paths read |
 |---|---|
-| `.claude` | `settings.json`, `mcp-permissions.json`, `skills/` |
-| `.codex` | `rules/` |
-| `.factory` | `settings.json`, `hooks.json`, `mcp.json`, `skills/` |
-| `.opencode` | `skills/` |
-| `.pi` | `extensions/pi-permission-system/config.json`, `skills/` |
+| `.claude` | `settings.json`, `mcp-permissions.json`, `skills/`, `agents/` |
+| `.codex` | `rules/`, `agents/` |
+| `.factory` | `settings.json`, `hooks.json`, `mcp.json`, `skills/`, `droids/` |
+| `.opencode` | `skills/`, `agents/` |
+| `.pi` | `extensions/pi-permission-system/config.json`, `skills/`, `agents/` |
 | `.agents` | `skills/` |
 | repository | `opencode.json`, `opencode.jsonc`, `.mcp.json`, and every `AGENTS.md`, `AGENTS.override.md`, `CLAUDE.md`, `CLAUDE.local.md` and `opencode.md` outside the harness roots |
 
@@ -80,15 +85,16 @@ fix it on disk and run init again. An incomplete preview exits 2 and changes not
 
 ## What init leaves out
 
-Two cases are not refusals. A skill whose copies in two harnesses' skills folders hold different
-bytes or modes for the same file, and a project whose `CLAUDE.md` and `AGENTS.md` hold different
-content, are each **left out**: init adopts everything else, adopts nothing of that item, and
+Three cases are not refusals. A skill whose copies in two harnesses' skills folders hold different
+bytes or modes for the same file, an agent whose copies hold different descriptions or
+instructions (a different model or effort is not a difference: it becomes a per-harness map), and
+a project whose `CLAUDE.md` and `AGENTS.md` hold different content, are each **left out**: init adopts everything else, adopts nothing of that item, and
 leaves every copy where it is. The preview and `--json` (`unadopted`, in the preview and in the
-result) name the item, its kind (`skill` or `instructions`), and each copy's path with the
+result) name the item, its kind (`skill`, `agent` or `instructions`), and each copy's path with the
 harnesses it serves. Merging is judgement, so it belongs to the bundled `/loadout` skill: it writes
 the merged item into the source, and the next `sync` refuses because the copies hold content
 loadout never wrote; with the diff reviewed, `sync --force` replaces them. Until then `check`
-reports a left-out skill's folders as `unmanaged`. Nothing records the item as pending.
+reports a left-out skill's folders, or agent's files, as `unmanaged`. Nothing records the item as pending.
 
 Project scope keeps one instruction source, so a disagreement there is one item, `main`. A
 `CLAUDE.md` that is a symlink to `AGENTS.md`, or whose whole content is `@AGENTS.md` (or

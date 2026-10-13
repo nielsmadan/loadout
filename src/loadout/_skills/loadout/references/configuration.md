@@ -37,8 +37,8 @@ Project configuration uses fixed sources under `loadout/`: `permissions.toml`, o
 and `plugins.json`. Global sources use the corresponding slice directories and agent blocks in
 `loadout.toml`. Do not invent destinations or edit generated outputs.
 
-Templates contribute through the same project slices. Project commands, subagents and support
-files outside a known slice remain harness-owned and stay in place.
+Templates contribute through the same project slices. Project commands and support files
+outside a known slice remain harness-owned and stay in place.
 
 ## Capability matrix
 

@@ -80,17 +80,22 @@ def test_nested_instructions_and_program_dependency_layout(tmp_path: Path) -> No
     assert not any(path.count("/") == 1 and path.startswith("skills/") for path in written)
 
 
-def test_project_init_leaves_commands_and_agents_in_place(tmp_path: Path) -> None:
+def test_project_init_leaves_commands_in_place(tmp_path: Path) -> None:
     command = write(tmp_path, ".claude/commands/ship.md", "ship\n")
-    agent = write(tmp_path, ".claude/agents/auditor.md", "audit\n")
     plan = migration(tmp_path, ("claude",))
     assert plan.generated_writes == ()
-    assert {c.path for c in plan.inventory.candidates}.isdisjoint({command, agent})
+    assert command not in {c.path for c in plan.inventory.candidates}
     assert command.read_text() == "ship\n"
-    assert agent.read_text() == "audit\n"
     assert "/.claude/commands" not in plan.ignores
-    assert "/.claude/agents" not in plan.ignores
     assert all("commands" not in write.path.parts for write in plan.source_writes)
+
+
+def test_project_init_leaves_an_agent_file_it_cannot_read_in_place(tmp_path: Path) -> None:
+    agent = write(tmp_path, ".claude/agents/auditor.md", "audit\n")
+    plan = migration(tmp_path, ("claude",))
+    assert f"{agent}: not adopted, claude agent auditor: no frontmatter" in plan.notes
+    assert {o.path: o.action for o in plan.originals}[agent] == "retain"
+    assert "/.claude/agents/auditor.md" not in plan.ignores
     assert all("agents" not in write.path.parts for write in plan.source_writes)
 
 

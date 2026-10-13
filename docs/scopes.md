@@ -49,8 +49,8 @@ harness. No such case exists today.
 
 ## Two scopes
 
-`init` adopts only slices whose destinations Loadout knows. Project commands, subagents and
-other harness-specific trees are left in place. A project uses `loadout/config.toml`; a global
+`init` adopts only slices whose destinations Loadout knows. Project commands and other
+harness-specific trees are left in place. A project uses `loadout/config.toml`; a global
 source uses `<selected-directory>/loadout/loadout.toml`, and machine registration points at that
 manifest. Private source stays local and is absent from public clones. See
 [migration](reference/migration.md) and the [executed corpus](tests/init-corpus/README.md).

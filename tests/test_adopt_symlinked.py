@@ -13,7 +13,6 @@ pytestmark = pytest.mark.migration_integration
 UNMANAGED = (
     "commands/foo.md",
     "commands/nested/bar.md",
-    "agents/helper.md",
     "projects/p1/log.jsonl",
     ".credentials.json",
     ".DS_Store",
@@ -70,7 +69,7 @@ def _init(source: Path, *extra: str) -> int:
 
 
 def _assert_adopted(claude: Path, dotfiles: Path) -> None:
-    for output in ("CLAUDE.md", "settings.json", "skills/review/SKILL.md"):
+    for output in ("CLAUDE.md", "settings.json", "skills/review/SKILL.md", "agents/helper.md"):
         assert (claude / output).is_file()
         assert not (claude / output).is_symlink()
         assert (claude / output).resolve() == claude / output
@@ -101,6 +100,7 @@ def test_a_symlinked_claude_directory_is_adopted_by_de_linking(
             "directory": True,
             "superseded": [
                 str(dotfiles / "CLAUDE.md"),
+                str(dotfiles / "agents/helper.md"),
                 str(dotfiles / "settings.json"),
                 str(dotfiles / "skills/review/SKILL.md"),
             ],
@@ -114,8 +114,8 @@ def test_a_symlinked_claude_directory_is_adopted_by_de_linking(
     assert (
         f"{claude} was a symlink into {dotfiles}. Loadout's files are now real files here; "
         f"everything else still links into {dotfiles}. {dotfiles}'s copies of CLAUDE.md, "
-        "settings.json, skills/review/SKILL.md are no longer used. Entries added later to "
-        f"{dotfiles}'s top level, or inside skills/, will not appear here."
+        "agents/helper.md, settings.json, skills/review/SKILL.md are no longer used. Entries "
+        f"added later to {dotfiles}'s top level, or inside agents/, skills/, will not appear here."
     ) in out
     assert not claude.is_symlink()
     _assert_adopted(claude, dotfiles)
@@ -155,7 +155,7 @@ def test_stow_style_per_file_links_are_adopted_by_de_linking(
         "appear here."
     ) in out
     _assert_adopted(claude, dotfiles)
-    for unmanaged in ("commands", "agents", "projects", ".credentials.json"):
+    for unmanaged in ("commands", "projects", ".credentials.json"):
         assert (claude / unmanaged).is_symlink()
     assert _snapshot(dotfiles) == before
     assert loadout.main(["sync", "--global"]) == 0
