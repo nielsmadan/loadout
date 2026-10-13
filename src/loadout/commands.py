@@ -66,6 +66,7 @@ from .templates import (
     unverifiable_templates,
     vendored_path,
 )
+from .unmanaged import describe_unmanaged, unmanaged_entries
 from .written import (
     WrittenEntry,
     accepts_bytes,
@@ -449,6 +450,10 @@ def cmd_sync(root: Path, profile: str = "default", force: bool = False) -> int:
     if unignored:
         print(f"removed {unignored} entries from .gitignore")
     _report_notices(root, profile)
+    # Reported, never stopped on: sync overwrites nothing there, so stopping would
+    # only block the outputs it does own.
+    for path in unmanaged_entries(root, outputs, profile):
+        print(f"WARNING: {_display(path, root)} is {UNMANAGED_ADVICE}", file=sys.stderr)
     return 0
 
 
@@ -605,6 +610,10 @@ def _check_notes(root: Path, profile: str) -> list[str]:
     return notes
 
 
+UNMANAGED_ADVICE = (
+    "not written by loadout, in a folder the harness reads whole; port it into the source "
+    "with /loadout, then delete it"
+)
 DRIFT_ADVICE = {
     "source-changed": "the source changed since the last sync; run `loadout sync`",
     "missing": "not on disk; run `loadout sync`",
@@ -614,6 +623,7 @@ DRIFT_ADVICE = {
     "change cannot be told from a hand edit; review the diff, then port what to keep into the "
     "source with /loadout, or run `loadout sync --force` to discard it",
     "orphaned": "written by loadout but no longer rendered; run `loadout sync` to retire it",
+    "unmanaged": UNMANAGED_ADVICE,
 }
 
 
@@ -631,8 +641,12 @@ def classified_drift(
     orphans = orphaned(read_written(root), outputs)
     drift += orphan_drift(orphans)
     verdicts = {u.path: u.kind for u in unaccepted_outputs(root, outputs, profile)}
+    unmanaged = unmanaged_entries(root, outputs, profile)
+    drift += [(path, describe_unmanaged(path), "") for path in unmanaged]
 
     def kind(path: Path) -> str:
+        if path in unmanaged:
+            return "unmanaged"
         if not path.exists():
             return "missing"
         if path in orphans:

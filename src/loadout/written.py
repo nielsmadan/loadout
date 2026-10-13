@@ -139,6 +139,21 @@ def read_written(root: Path, env: Mapping[str, str] | None = None) -> dict[Path,
     return out
 
 
+def every_recorded_path(env: Mapping[str, str] | None = None) -> frozenset[Path]:
+    """Every destination any root's record names, so one root never mistakes another's
+    output for a file loadout did not write."""
+    try:
+        records = sorted((machine_state_dir(env) / "written").glob("*.json"))
+    except OSError:
+        return frozenset()
+    paths: set[Path] = set()
+    for record in records:
+        root = _recorded_root(record)
+        if root is not None:
+            paths.update(read_written(root, env))
+    return frozenset(paths)
+
+
 def prune_vanished(env: Mapping[str, str] | None = None) -> None:
     """Delete the records of roots that no longer exist.
 

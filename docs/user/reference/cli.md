@@ -46,7 +46,10 @@ refuse an overwrite: `source-changed` (the source moved on; run `sync`), `hand-e
 from what sync last wrote; port the edit into the source with `/loadout`, or `sync --force` to
 discard it), `unknown` (no record and no committed baseline to judge by; review the diff, then port
 or discard the same way), `missing`,
-or `orphaned` (sync wrote it, the source no longer produces it, and the next `sync` retires it).
+`orphaned` (sync wrote it, the source no longer produces it, and the next `sync` retires it), or
+`unmanaged` (loadout did not write it, but it sits in a folder the harness reads whole, such as a
+skills folder or Codex's rules folder; port it with `/loadout`, then delete it — `sync` warns
+about it and carries on).
 `check --json` reports the same kind per path and exits with the same code as `check`. A root containing both
 global and project configuration renders both scopes.
 

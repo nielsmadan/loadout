@@ -126,6 +126,16 @@ it is refused like any other hand edit, and `--force` retires it anyway. A skill
 file loadout never wrote keeps that file and the folder. `check` reports each pending retirement
 as `orphaned`.
 
+### Files loadout did not write, in folders it manages
+
+Some folders are read whole: Codex reads every file in `~/.codex/rules/`, and every harness reads
+every folder in its skills directory. A file there that loadout did not write takes effect beside
+the source — Codex writing a new approval to `~/.codex/rules/default.rules` is the common case.
+`check` reports it as `unmanaged` and exits 1; `sync` names it in a warning and carries on, since
+it overwrites nothing there. Port it into the source with the bundled `/loadout` skill, then delete
+it. A folder of files is reported once, as the folder. A file another loadout source wrote is not
+reported, nor is a dot entry such as `.DS_Store` or Codex's own `.system` skills.
+
 ## Shell completions
 
     loadout integrate completions install            # for the shell running loadout
