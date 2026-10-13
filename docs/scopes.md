@@ -25,19 +25,27 @@ content can travel as *source* rather than as output.
 
 ## One source of truth
 
-loadout's source is the only place configuration lives. A change made in a harness's own UI or
-CLI — a Codex "always allow", `claude mcp add`, an installer adding a hook — is absorbed into the
-source at `sync`, and the harness-local copy is then overwritten or deleted. A harness-local copy
-is never left beside the source: two places holding the same rule is the drift loadout exists to
-remove. Files of kinds loadout does not manage, such as Claude's `keybindings.json`, are not
-affected.
+loadout's source is the only place configuration lives. A harness-local copy is never left beside
+it: two places holding the same rule is the drift loadout exists to remove. Files of kinds loadout
+does not manage, such as Claude's `keybindings.json`, are not affected.
 
-**This is ruled but not yet implemented.** Today `sync` does not absorb anything. It refuses a
-file edited outside loadout: it names the file, prints the diff and exits 1, and `check` reports
-the file as `hand-edited`. You move the edit into the source yourself, or discard it with
-`sync --force` — see [Files modified outside loadout](../README.md#files-modified-outside-loadout).
-How prose edits are ported, and which source receives an absorbed change, is still being
-designed.
+A change made in a harness's own UI or CLI — a Codex "always allow", `claude mcp add`, an
+installer adding a hook — is an edge case: changes are meant to go through the bundled `/loadout`
+skill. So loadout flags such a change and delegates it, and builds no reconciling machinery. `sync`
+refuses an output edited outside loadout, naming the file and its diff, and `check` reports it as
+`hand-edited` or `unknown`. A file loadout did not write in a folder a harness reads whole, such as
+a new `~/.codex/rules/default.rules`, is reported as `unmanaged`; `sync` warns about it and carries
+on. Each message names `/loadout`. Its procedure ports the change into the right source, deletes an
+`unmanaged` file once its content is there, and runs `sync --force` to replace an edited output
+only after showing the user the diff and getting their approval. See
+[Files modified outside loadout](../README.md#files-modified-outside-loadout).
+
+`init` follows the same split. A skill whose copies differ between harnesses, or a project
+`CLAUDE.md` that disagrees with `AGENTS.md`, is left in place and reported rather than merged; the
+skill merges it. Codex's `default.rules` is adopted and then deleted.
+
+Absorbing a change automatically is allowed only where it is trivial and works the same for every
+harness. No such case exists today.
 
 ## Two scopes
 
