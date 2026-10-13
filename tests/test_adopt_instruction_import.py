@@ -81,10 +81,11 @@ def test_a_claude_md_linked_to_agents_md_is_adopted_and_stays_a_link(
 def test_an_import_with_other_content_still_disagrees(tmp_path: Path, capsys) -> None:
     root = _project(tmp_path / "p", "@AGENTS.md\n\nAlso run the linter.\n")
 
-    assert _init(root) == 3
+    assert _init(root) == 0
 
-    assert "project instruction documents disagree across harnesses" in capsys.readouterr().err
+    assert "Not adopted, conflicting copies of instructions 'main':" in capsys.readouterr().out
     assert (root / "CLAUDE.md").read_text() == "@AGENTS.md\n\nAlso run the linter.\n"
+    assert (root / "AGENTS.md").read_text() == CONTENT
 
 
 def test_a_multi_section_agents_md_behind_an_import_is_adopted_whole(tmp_path: Path) -> None:

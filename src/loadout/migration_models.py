@@ -161,6 +161,26 @@ class OriginalEntry:
 
 
 @dataclass(frozen=True)
+class Unadopted:
+    """An item whose copies disagree across harnesses: left in place, every copy
+    named with the harnesses it serves, for the /loadout skill to merge (D-05)."""
+
+    kind: str
+    name: str
+    originals: tuple[tuple[Path, tuple[str, ...]], ...]
+
+    def preview(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "name": self.name,
+            "originals": [
+                {"path": str(path), "harnesses": list(harnesses)}
+                for path, harnesses in self.originals
+            ],
+        }
+
+
+@dataclass(frozen=True)
 class MigrationPlan:
     inventory: Inventory
     source_writes: tuple[SourceWrite, ...] = ()
@@ -180,6 +200,7 @@ class MigrationPlan:
     notes: tuple[str, ...] = ()
     categories: tuple[CategoryReadiness, ...] = ()
     artifact_routes: tuple[tuple[str, Path], ...] = ()
+    unadopted: tuple[Unadopted, ...] = ()
 
     @property
     def complete(self) -> bool:
@@ -225,6 +246,7 @@ class MigrationPlan:
             "private_paths": [str(p) for p in self.private_paths],
             "checkpoint_paths": [str(p) for p in self.checkpoint_paths],
             "issues": [_issue_preview(i) for i in self.issues],
+            "unadopted": [u.preview() for u in self.unadopted],
             "notes": list(self.notes),
             "categories": [
                 {

@@ -25,6 +25,7 @@ from .migration_models import (
     OriginalEntry,
     RootMapping,
     SourceWrite,
+    Unadopted,
 )
 from .migration_paths import DestinationLayout, entry_path
 from .migration_validation import validate_plan
@@ -296,6 +297,19 @@ class _PlanBuilder:
         self.global_instructions: dict[str, Candidate] = {}
         self.global_slices: dict[str, set[str]] = defaultdict(set)
         self.retained: set[Path] = set()
+        self.unadopted: list[Unadopted] = []
+        self.unadopted_paths: set[Path] = set()
+
+    def leave_out(self, kind: str, name: str, candidates: list[Candidate]) -> None:
+        """Adopt nothing of an item whose copies disagree, and name every copy."""
+        originals: dict[Path, tuple[str, ...]] = {}
+        for candidate in candidates:
+            item = _item_path(kind, name, candidate)
+            originals[item] = tuple(dict.fromkeys((*originals.get(item, ()), *candidate.agents)))
+            self.unadopted_paths.update(_original_paths(candidate))
+            if candidate.destination is not None:
+                self.records.pop(candidate.destination, None)
+        self.unadopted.append(Unadopted(kind, name, tuple(sorted(originals.items()))))
 
     def source(
         self,
@@ -593,10 +607,9 @@ class _PlanBuilder:
         instructions: tuple[str, ...] = ()
         documents = [c for c in self.project_instructions if not _imports_agents_md(c)]
         documents = documents or self.project_instructions
-        if documents:
-            contents = {candidate.content for candidate in documents}
-            if len(contents) != 1:
-                raise LoadoutError("project instruction documents disagree across harnesses")
+        if documents and len({candidate.content for candidate in documents}) != 1:
+            self.leave_out("instructions", "main", self.project_instructions)
+        elif documents:
             candidate = documents[0]
             self.write(Path("instructions/main.md"), candidate.content, mode=candidate.mode)
             instructions = ("main",)
@@ -1085,6 +1098,9 @@ def plan_migration(inventory: Inventory) -> MigrationPlan:
     if issues:
         return MigrationPlan(inventory, preconditions=inventory.preconditions, issues=issues)
     builder = _PlanBuilder(inventory)
+    for name, conflicting in _conflicting_skills(inventory, candidates).items():
+        builder.leave_out("skill", name, conflicting)
+    candidates = tuple(c for c in candidates if not builder.unadopted_paths & {c.path})
     try:
         builder.originals(candidates)
         builder.dormant_routes()
@@ -1207,8 +1223,61 @@ def plan_migration(inventory: Inventory) -> MigrationPlan:
             "Credential detection is conservative but cannot establish that authored content is secret-free; review checkpoint paths before approval.",
             *builder.notes,
         ),
+        unadopted=tuple(builder.unadopted),
     )
     return validate_plan(plan)
+
+
+def _conflicting_skills(
+    inventory: Inventory, candidates: tuple[Candidate, ...]
+) -> dict[str, list[Candidate]]:
+    """Catalog skills whose copies in two skills folders write one source file with
+    different bytes or modes, which adoption cannot merge without judgement."""
+    copies: dict[str, dict[Path, list[Candidate]]] = defaultdict(lambda: defaultdict(list))
+    for mapping in inventory.mappings:
+        if mapping.kind == "file":
+            continue
+        target = mapping.destination / "skills"
+        entries = [
+            c
+            for c in candidates
+            if c.destination is not None and c.destination.is_relative_to(target)
+        ]
+        if not entries or any(c.format != "copy" for c in entries):
+            continue
+        for candidate in entries:
+            assert candidate.destination is not None
+            name = candidate.destination.relative_to(target).parts[0]
+            copies[name][target].append(candidate)
+    conflicting: dict[str, list[Candidate]] = {}
+    for name, by_folder in copies.items():
+        trees = [
+            {
+                c.destination.relative_to(folder / name): (c.content, c.mode)
+                for c in group
+                if c.destination is not None
+            }
+            for folder, group in by_folder.items()
+            if any(c.destination == folder / name / SKILL_DOCUMENT for c in group)
+        ]
+        if any(
+            first[path] != second[path]
+            for index, first in enumerate(trees)
+            for second in trees[index + 1 :]
+            for path in first.keys() & second.keys()
+        ):
+            conflicting[name] = [c for group in by_folder.values() for c in group]
+    return conflicting
+
+
+def _item_path(kind: str, name: str, candidate: Candidate) -> Path:
+    """The skill folder a candidate file belongs to, or the instruction file itself."""
+    path = candidate.destination or candidate.path
+    if kind != "skill":
+        return path
+    while path.name != name:
+        path = path.parent
+    return path
 
 
 def _imports_agents_md(candidate: Candidate) -> bool:
@@ -1255,7 +1324,12 @@ def _original_entries(
         for path in _original_paths(candidate):
             entry = entry_path(path)
             planned = layout.normalize(path)
-            if any(entry.is_relative_to(p) for p in private):
+            if path in builder.unadopted_paths:
+                action, reason = (
+                    "retain",
+                    "Its copies disagree across harnesses, so it stays in place for /loadout to merge.",
+                )
+            elif any(entry.is_relative_to(p) for p in private):
                 action, reason = (
                     "retain",
                     "Private or runtime original remains excluded and in place.",

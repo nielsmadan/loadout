@@ -10,7 +10,6 @@ import pytest
 import loadout
 from loadout.discovery import discover, entry_state, live_roots
 from loadout.emit import render_all
-from loadout.errors import LoadoutError
 from loadout.migration import plan_migration
 from loadout.migration_models import MigrationPlan
 
@@ -525,22 +524,61 @@ def test_direct_harness_root_absolute_source_dependencies_are_blocked(
     assert not plan.complete
 
 
-def test_one_skill_name_with_two_contents_refuses_without_a_selection(fake_home: Path) -> None:
-    write(fake_home, ".claude/skills/review/SKILL.md", "---\nname: review\n---\nClaude.\n")
-    write(fake_home, ".codex/skills/review/SKILL.md", "---\nname: review\n---\nCodex.\n")
+def test_one_skill_name_with_two_contents_is_left_out_and_the_rest_adopted(
+    fake_home: Path,
+) -> None:
+    claude = write(fake_home, ".claude/skills/review/SKILL.md", "---\nname: review\n---\nClaude.\n")
+    codex = write(fake_home, ".codex/skills/review/SKILL.md", "---\nname: review\n---\nCodex.\n")
+    write(fake_home, ".claude/skills/deploy/SKILL.md", "---\nname: deploy\n---\nDeploy.\n")
     source = fake_home / "agent-config"
     source.mkdir()
+
     plan = plan_migration(discover(source, scope="global", agents=("claude", "codex")))
-    assert [issue.code for issue in plan.issues] == ["source-composition"]
-    assert "skills/review/SKILL.md" in plan.issues[0].message
+
+    assert plan.issues == ()
+    assert plan.complete
+    assert [item.preview() for item in plan.unadopted] == [
+        {
+            "kind": "skill",
+            "name": "review",
+            "originals": [
+                {"path": str(claude.parent), "harnesses": ["claude"]},
+                {"path": str(codex.parent), "harnesses": ["codex"]},
+            ],
+        }
+    ]
+    written = {w.path.relative_to(source).as_posix() for w in plan.source_writes}
+    assert "loadout/skills/deploy/SKILL.md" in written
+    assert "loadout/skills/review/SKILL.md" not in written
+    actions = {o.path: o.action for o in plan.originals}
+    assert actions[claude] == actions[codex] == "retain"
 
 
-def test_different_project_instruction_documents_stop_init(tmp_path: Path) -> None:
-    write(tmp_path, "CLAUDE.md", "Claude rules.\n")
-    write(tmp_path, "AGENTS.md", "Agents rules.\n")
+def test_different_project_instruction_documents_are_left_out(tmp_path: Path) -> None:
+    claude = write(tmp_path, "CLAUDE.md", "Claude rules.\n")
+    agents = write(tmp_path, "AGENTS.md", "Agents rules.\n")
+    write(tmp_path, ".claude/settings.json", '{"permissions": {"allow": ["Bash(ls)"]}}\n')
     inventory = discover(tmp_path, scope="project", agents=("claude", "codex"))
-    with pytest.raises(LoadoutError, match="project instruction documents disagree"):
-        plan_migration(inventory)
+
+    plan = plan_migration(inventory)
+
+    assert plan.complete
+    assert [item.preview() for item in plan.unadopted] == [
+        {
+            "kind": "instructions",
+            "name": "main",
+            "originals": [
+                {"path": str(agents), "harnesses": ["codex"]},
+                {"path": str(claude), "harnesses": ["claude"]},
+            ],
+        }
+    ]
+    written = {w.path.relative_to(tmp_path).as_posix() for w in plan.source_writes}
+    assert "loadout/permissions.toml" in written
+    assert "loadout/instructions/main.md" not in written
+    actions = {o.path: o.action for o in plan.originals}
+    assert actions[claude] == actions[agents] == "retain"
+    assert "/CLAUDE.md" not in plan.ignores
 
 
 def test_different_global_instruction_documents_stay_per_harness(fake_home: Path) -> None:

@@ -21,7 +21,7 @@ from .harnesses import KNOWN_HARNESSES
 from .init_options import InitOptions
 from .machine import load_machine_config, machine_config_path
 from .migration import plan_migration
-from .migration_models import Issue, MigrationPlan, SourceWrite
+from .migration_models import Issue, MigrationPlan, SourceWrite, Unadopted
 from .migration_transaction import (
     Delinked,
     MigrationFailure,
@@ -194,10 +194,19 @@ def _show(preview: dict[str, Any], *, as_json: bool) -> None:
     if preview.get("registration"):
         print(f"Register global source: {preview['registration']}")
     _show_render(preview.get("render", ()))
+    _show_unadopted(preview["unadopted"])
     for issue in preview["issues"]:
         print(f"{issue['code']}: {issue['message']}", file=sys.stderr)
         for path in issue["paths"]:
             print(f"  {path}", file=sys.stderr)
+
+
+def _show_unadopted(items: list[dict[str, Any]]) -> None:
+    for item in items:
+        print(f"Not adopted, conflicting copies of {item['kind']} {item['name']!r}:")
+        for original in item["originals"]:
+            print(f"  {original['path']} ({', '.join(original['harnesses'])})")
+        print("  Each copy stays in place; merge them into the source with /loadout.")
 
 
 def _show_render(changes: tuple[RenderedChange, ...]) -> None:
@@ -318,7 +327,13 @@ def delinked_notice(delinked: Delinked) -> str:
     )
 
 
-def _result(result: MigrationResult, delinked: tuple[Delinked, ...], *, as_json: bool) -> None:
+def _result(
+    result: MigrationResult,
+    delinked: tuple[Delinked, ...],
+    unadopted: tuple[Unadopted, ...],
+    *,
+    as_json: bool,
+) -> None:
     data = {
         "status": "complete",
         "journal": str(result.journal) if result.journal else None,
@@ -327,6 +342,7 @@ def _result(result: MigrationResult, delinked: tuple[Delinked, ...], *, as_json:
         "staged": list(result.staged),
         "already_initialized": result.already_initialized,
         "delinked": [d.document() for d in delinked],
+        "unadopted": [u.preview() for u in unadopted],
     }
     if as_json:
         print(json.dumps(data, indent=2))
@@ -384,7 +400,7 @@ def _run_init(options: InitOptions) -> int:
         result = apply_migration(prepared)
     except MigrationFailure as error:
         return report_failure(error, as_json=options.json)
-    _result(result, delinked, as_json=options.json)
+    _result(result, delinked, plan.unadopted, as_json=options.json)
     return _after_migration(plan, result, profile, render, as_json=options.json)
 
 
@@ -440,7 +456,7 @@ def run_recovery(path: Path, *, recover: bool, yes: bool, as_json: bool) -> int:
             return 0
     try:
         if not recover:
-            _result(resume_migration(path), (), as_json=as_json)
+            _result(resume_migration(path), (), (), as_json=as_json)
             return 0
         result = recover_migration(path)
     except MigrationFailure as error:

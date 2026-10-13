@@ -73,17 +73,28 @@ fix it on disk and run init again. An incomplete preview exits 2 and changes not
 | `unadoptable-format` | `opencode.jsonc`: loadout writes `opencode.json` and cannot carry JSONC comments |
 | `invalid-native-document` | a document at a read path does not parse |
 | `dependency-activation` | an adopted declaration references a de-linked original instead of the copy loadout deploys |
-| `source-composition` | two originals would write different content to one source file, such as a skill with the same name in two harnesses; make them identical or remove one. Also a Codex rules file holding a statement adoption cannot carry, quoted with its line; see [extraction](extraction.md#a-hand-written-codex-rules-file) |
+| `source-composition` | two originals would write different content to one source file outside the cases below; make them identical or remove one. Also a Codex rules file holding a statement adoption cannot carry, quoted with its line; see [extraction](extraction.md#a-hand-written-codex-rules-file) |
 | `source-exists`, `initialized-source`, `initialized-conflict` | the source directory already holds conflicting loadout source |
 | `registration-conflict` | global: another source is registered; choose `--registration` |
 | `reconstruction-failed` | the serialized source does not reproduce the originals |
 
-Project `CLAUDE.md` and `AGENTS.md` holding different content stop init with *"project instruction
-documents disagree across harnesses"* (exit 3, before any preview), since project scope keeps one
-instruction source. A `CLAUDE.md` that is a symlink to `AGENTS.md`, or whose whole content is
-`@AGENTS.md` (or `@./AGENTS.md`), surrounded by whitespace and optionally preceded by loadout's
-banner, is the same document as `AGENTS.md`; anything more in it is a disagreement. In global
-scope each harness keeps its own, so `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` may differ.
+## What init leaves out
+
+Two cases are not refusals. A skill whose copies in two harnesses' skills folders hold different
+bytes or modes for the same file, and a project whose `CLAUDE.md` and `AGENTS.md` hold different
+content, are each **left out**: init adopts everything else, adopts nothing of that item, and
+leaves every copy where it is. The preview and `--json` (`unadopted`, in the preview and in the
+result) name the item, its kind (`skill` or `instructions`), and each copy's path with the
+harnesses it serves. Merging is judgement, so it belongs to the bundled `/loadout` skill: it writes
+the merged item into the source, and the next `sync` refuses because the copies hold content
+loadout never wrote; with the diff reviewed, `sync --force` replaces them. Until then `check`
+reports a left-out skill's folders as `unmanaged`. Nothing records the item as pending.
+
+Project scope keeps one instruction source, so a disagreement there is one item, `main`. A
+`CLAUDE.md` that is a symlink to `AGENTS.md`, or whose whole content is `@AGENTS.md` (or
+`@./AGENTS.md`), surrounded by whitespace and optionally preceded by loadout's banner, is the same
+document as `AGENTS.md`; anything more in it is a disagreement. In global scope each harness keeps
+its own, so `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` may differ.
 
 ## Source shape
 
