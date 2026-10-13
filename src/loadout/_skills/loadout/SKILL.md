@@ -41,7 +41,11 @@ Edit the declared source for each configured consumer. Generated harness files a
   `--yes` only approves a resolved plan. Retain unsupported inputs and report their paths.
 - A missing personal producer requires a scope decision. Do not silently edit shared source or
   invent a second contributor claiming the same keys.
-- External output drift requires reconciliation. Preserve the source edit and output, report the
-  path, and never force sync without an explicit request to discard the external edit.
+- A change made outside loadout belongs in the source, not beside it. When sync refuses an output,
+  or `check` reports `hand-edited`, `unknown` or `unmanaged`, follow
+  “Porting a change made outside loadout” in [configuration routing](references/configuration.md).
+  Run `sync --force` only after showing the diff and getting the user's approval.
+- An init that lists `unadopted` items left copies that disagree across harnesses in place. Merge
+  them by “Resolving conflicting copies at init” in [onboarding](references/onboarding.md).
 - An interrupted init reports a protected journal. Use the onboarding reference to resume or
   recover; successful baseline commits remain.

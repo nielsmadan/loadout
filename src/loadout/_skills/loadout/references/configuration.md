@@ -8,6 +8,7 @@ Read scope selection, then choose the narrowest canonical slice source from the 
 - [Source rules](#source-rules)
 - [Global profiles](#global-profiles)
 - [Sync and failures](#sync-and-failures)
+- [Porting a change made outside loadout](#porting-a-change-made-outside-loadout)
 
 ## Scope selection
 
@@ -182,8 +183,8 @@ profile.
 
 If the skill introduced invalid source, correct it and retry. If source was already invalid,
 report that validation error without broadening the request into an unrelated repair. If sync
-refuses an output modified outside loadout, leave the requested source edit visible and report the
-conflicting path. Use `--force` only after an explicit request to discard those external edits.
+refuses an output modified outside loadout, keep the requested source edit and port the outside
+change as the next section describes before syncing again.
 
 For a permission error, verify the exact blocked path using the running environment's sandbox
 diagnostics, report that path and verdict, and stop. Do not relocate the source or weaken the
@@ -191,3 +192,35 @@ operation to work around a real denial.
 
 Finish by naming changed source files, configured agents reached, unsupported or excluded agents,
 and whether sync completed.
+
+## Porting a change made outside loadout
+
+The source is the only place configuration lives. A change made in a harness's own UI or CLI, such
+as a Codex approval, `claude mcp add` or an installer adding a hook, is ported into the source and
+the harness copy then replaced or deleted. Never leave it in the harness beside the source. Loadout
+flags these changes; it does not merge them.
+
+1. Run `loadout check --json` with the scope's `--root <repo>` or `--global`, and read each
+   drifted path's `kind`. `hand-edited` and `unknown` are outputs that differ from what loadout
+   would write. `unmanaged` is a file or folder loadout did not write, inside a folder its harness
+   reads whole: a skill folder, or a Codex rules file such as `~/.codex/rules/default.rules`.
+   `source-changed`, `missing` and `orphaned` need only a sync.
+2. Read the change. `loadout check` without `--json` prints each diff: `-` lines exist only on
+   disk, `+` lines only in the source. For an `unmanaged` path, read the file or folder itself.
+3. Port each change into the source that owns it:
+   - a global harness file goes to the global source, a project file to the project source, and a
+     project `*.local*` file to the personal tier;
+   - a new entry goes to the `default` profile, and an entry a profile defines goes back to that
+     profile;
+   - a structured entry (a permission, an MCP server, a hook, a setting) is written in its slice
+     source's own form, not the harness's spelling: a Codex `prefix_rule` approval becomes a
+     `[shell]` entry in `permissions.toml`;
+   - for prose (instructions, a skill), decide whether the change applies to every harness or only
+     to the one it was made in, and keep a harness-only change in a `::: <harness>` section.
+4. Tell the user which harnesses the ported change now reaches. An approval clicked in one harness
+   becomes a rule for every configured harness that supports it.
+5. A `+` line missing from disk is an entry removed outside loadout. Ask whether to remove it from
+   the source or restore it; do not decide.
+6. Delete an `unmanaged` file or folder once its content is in the source.
+7. Sync. When the harness copy still differs from the new render, sync refuses; show that diff,
+   and run `sync --force` only after the user approves discarding it.

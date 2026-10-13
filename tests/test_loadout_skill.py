@@ -4,12 +4,16 @@ import re
 from pathlib import Path
 
 from loadout.agents import GLOBAL_PRESET
+from loadout.commands import DRIFT_ADVICE
 from loadout.emit import Merged, render_global
+from loadout.migration_models import Inventory, MigrationPlan
 from loadout.project import PROJECT_PRESET
 from loadout.skills import discover_skills, render_skill, split_frontmatter
 
 ROOT = Path(__file__).parents[1]
 SKILL = ROOT / "src" / "loadout" / "_skills" / "loadout"
+PORTING = "Porting a change made outside loadout"
+RESOLVING = "Resolving conflicting copies at init"
 
 
 def _frontmatter() -> dict[str, str]:
@@ -189,3 +193,30 @@ def test_project_skill_capability_names_only_agents_with_a_destination() -> None
     }
     assert actual == {"claude", "codex", "droid", "opencode", "pi"}
     assert documented == actual
+
+
+def _section(path: Path, heading: str) -> str:
+    return path.read_text(encoding="utf-8").split(f"## {heading}\n", 1)[1].split("\n## ", 1)[0]
+
+
+def test_porting_covers_every_kind_the_cli_sends_to_the_skill() -> None:
+    porting = _section(SKILL / "references" / "configuration.md", PORTING)
+    sent = {kind for kind, advice in DRIFT_ADVICE.items() if "/loadout" in advice}
+
+    assert sent == {"hand-edited", "unknown", "unmanaged"}
+    assert {kind for kind in sent if f"`{kind}`" in porting} == sent
+
+
+def test_conflict_resolution_reads_the_key_init_reports() -> None:
+    resolving = _section(SKILL / "references" / "onboarding.md", RESOLVING)
+    inventory = Inventory(Path("/p"), Path("/p/loadout"), "project", (), (), (), ())
+
+    assert "unadopted" in MigrationPlan(inventory).preview()
+    assert "`unadopted`" in resolving
+
+
+def test_troubleshooting_sends_both_cases_to_their_procedures() -> None:
+    troubleshooting = _section(SKILL / "SKILL.md", "Troubleshooting")
+
+    assert f"“{PORTING}”" in troubleshooting
+    assert f"“{RESOLVING}”" in troubleshooting

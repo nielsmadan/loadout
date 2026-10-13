@@ -73,6 +73,27 @@ and conflict-free recovery delete the transaction's recovery data and return `jo
 The deployment receipt remains for sync. Retain journals from unfinished transactions. Keep recovery data
 private and never paste its content into the conversation. Report the journal path and status.
 
+## Resolving conflicting copies at init
+
+Init does not refuse when one skill has different copies in two harnesses' skills folders, or when
+a project's `CLAUDE.md` and `AGENTS.md` disagree. It adopts everything else, adopts nothing of
+that item, and lists it under `unadopted` in the JSON (in text: "Not adopted, conflicting copies
+of …"): the kind (`skill` or `instructions`), the name, and each copy's path with the harnesses it
+serves. Every copy stays where it is, and nothing records the item as pending; `check` reports a
+left-out skill's folders as `unmanaged` until it is resolved.
+
+1. Read every copy listed.
+2. Merge them. Unify incidental differences such as wording, order and whitespace. Keep a
+   genuinely harness-specific difference as a `::: <harness>` body section, or, for a skill's
+   frontmatter, as a block keyed by the harness name whose indented keys override the shared ones.
+3. Write the merged item into the source: `skills/<name>/SKILL.md` in the global source, or
+   `loadout/skills/<name>/SKILL.md` in a project. Project instructions become
+   `loadout/instructions/main.md`, named by `instructions = ["main"]` in `loadout/config.toml`.
+4. Sync. It refuses, because the copies hold content loadout never wrote. Show the diff, and run
+   `sync --force` only after the user approves replacing them.
+
+## Later changes
+
 The same skill handles later configuration using the configuration reference.
 `loadout integrate skill install` installs this bundled skill into actual global skill source
 routes, deduplicating shared trees. It asks before source changes; `--yes` approves them. Status identifies every source and its
