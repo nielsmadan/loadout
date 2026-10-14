@@ -304,6 +304,12 @@ def _preset_routes(inventory: Inventory, config: dict[str, Any]) -> tuple[tuple[
     )
 
 
+CODEX_RULES_ABSORBED = (
+    "Its rules are adopted into the source, and Codex reads every file in this folder."
+)
+JSONC_ABSORBED = "Its settings are adopted into opencode.json, and OpenCode would read both files."
+
+
 class _PlanBuilder:
     def __init__(self, inventory: Inventory) -> None:
         self.inventory = inventory
@@ -325,7 +331,8 @@ class _PlanBuilder:
         self.retained: set[Path] = set()
         self.unadopted: list[Unadopted] = []
         self.unadopted_paths: set[Path] = set()
-        self.absorbed: set[Path] = set()
+        self.absorbed: dict[Path, str] = {}
+        self.converted: dict[Path, SourceWrite] = {}
 
     def leave_out(self, kind: str, name: str, candidates: list[Candidate]) -> None:
         """Adopt nothing of an item whose copies disagree, and name every copy."""
@@ -439,11 +446,25 @@ class _PlanBuilder:
             )
 
     def document(self, candidate: Candidate, *, existing: bool = True) -> None:
+        if candidate.path.suffix == ".jsonc":
+            self.adopt_jsonc(candidate, existing=existing)
         if self.inventory.scope == "project":
             self.project_document(candidate, existing=existing)
             return
         self.global_document(candidate, existing=existing)
         return
+
+    def adopt_jsonc(self, candidate: Candidate, *, existing: bool) -> None:
+        """OpenCode reads opencode.jsonc beside opencode.json, so the converted document
+        replaces it. At project scope it seeds opencode.json, since loadout writes only
+        its own keys there and the rest would otherwise be lost."""
+        assert candidate.destination is not None
+        self.notes.append(f"{candidate.path}: comments in {candidate.path.name} will be lost")
+        self.absorbed.update(dict.fromkeys(_original_paths(candidate), JSONC_ABSORBED))
+        if existing and self.inventory.scope == "project":
+            self.converted[candidate.destination] = SourceWrite(
+                candidate.destination, candidate.content, candidate.mode
+            )
 
     def global_document(self, candidate: Candidate, *, existing: bool) -> None:
         assert candidate.destination is not None
@@ -621,7 +642,7 @@ class _PlanBuilder:
         are in the source rather than left enforcing beside it (D-04)."""
         assert candidate.destination is not None
         if candidate.agents[0] == "codex" and candidate.destination.name != CODEX_RULES_OUTPUT:
-            self.absorbed.update(_original_paths(candidate))
+            self.absorbed.update(dict.fromkeys(_original_paths(candidate), CODEX_RULES_ABSORBED))
             return
         self.records[candidate.destination] = self.record(
             candidate.destination, candidate.agents, candidate.format
@@ -1249,6 +1270,7 @@ def plan_migration(inventory: Inventory) -> MigrationPlan:
         checkpoint_paths=checkpoint,
         preconditions=tuple(states.values()),
         categories=categories,
+        converted=tuple(builder.converted.values()),
         artifact_routes=(
             ()
             if inventory.scope == "project"
@@ -1457,10 +1479,7 @@ def _original_entries(
             elif path in builder.retained or any(entry.is_relative_to(p) for p in retained):
                 action, reason = "retain", candidate.reason
             elif path in builder.absorbed:
-                action, reason = (
-                    "retire",
-                    "Its rules are adopted into the source, and Codex reads every file in this folder.",
-                )
+                action, reason = "retire", builder.absorbed[path]
             elif any(planned == p or p.is_relative_to(planned) for p in destinations) or any(
                 record["format"] == "tree" and planned.is_relative_to(layout.normalize(destination))
                 for destination, record in builder.records.items()

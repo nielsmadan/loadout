@@ -201,6 +201,7 @@ class MigrationPlan:
     categories: tuple[CategoryReadiness, ...] = ()
     artifact_routes: tuple[tuple[str, Path], ...] = ()
     unadopted: tuple[Unadopted, ...] = ()
+    converted: tuple[SourceWrite, ...] = ()
 
     @property
     def complete(self) -> bool:
@@ -247,6 +248,7 @@ class MigrationPlan:
             "checkpoint_paths": [str(p) for p in self.checkpoint_paths],
             "issues": [_issue_preview(i) for i in self.issues],
             "unadopted": [u.preview() for u in self.unadopted],
+            "converted": [str(w.path) for w in self.converted],
             "notes": list(self.notes),
             "categories": [
                 {

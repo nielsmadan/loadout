@@ -268,6 +268,10 @@ def planned_render(plan: MigrationPlan, profile: str) -> tuple[RenderedChange, .
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(write.content)
             path.chmod(write.mode)
+        for write in plan.converted:
+            path = scratch / write.path.relative_to(plan.inventory.root)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(write.content)
         for path in render_all(scratch, profile):
             original = real / path.relative_to(scratch) if path.is_relative_to(scratch) else None
             if original is None or not original.is_file() or path.exists() or path.is_symlink():

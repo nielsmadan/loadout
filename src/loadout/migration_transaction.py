@@ -399,6 +399,10 @@ def _filesystem_plan(
         path = layout.normalize(write.path)
         builder.parents(path, "source", private=private)
         builder.put(path, Image("file", write.content, write.mode), "source")
+    for write in plan.converted:
+        path = layout.normalize(write.path)
+        builder.parents(path, "convert")
+        builder.put(path, Image("file", write.content, write.mode), "convert")
     deployment = (
         _deployment(builder, plan, frozen)
         if not plan.already_initialized and plan.generated_writes

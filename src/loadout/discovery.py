@@ -15,7 +15,7 @@ from .git_privacy import ignored_paths
 from .harnesses import KNOWN_HARNESSES
 from .migration_models import Candidate, EntryState, Inventory, Issue, RootMapping
 from .migration_paths import DestinationLayout, entry_path
-from .native_documents import parse_document
+from .native_documents import jsonc_to_json, parse_document
 from .output import ArtifactScope
 
 GLOBAL_ROOTS = {
@@ -569,17 +569,24 @@ class _InventoryBuilder:
                 "Empty-directory tracking marker remains at its original path.",
             )
             return
-        if path.suffix == ".jsonc":
-            self._unresolved(
-                path,
-                destination,
-                agents,
-                "unadoptable-format",
-                "Loadout writes opencode.json and cannot carry JSONC comments; convert this file "
-                "to opencode.json, then run init again.",
-            )
-            return
         content = path.read_bytes()
+        if path.suffix == ".jsonc":
+            self.remember(path.with_suffix(".json"), read=False)
+            if path.with_suffix(".json").exists():
+                message = (
+                    f"OpenCode reads both opencode.json and opencode.jsonc in {path.parent} and "
+                    "merges them, the .jsonc's keys winning; combine them into one file, then "
+                    "run init again."
+                )
+                self.candidates[path, destination] = Candidate(
+                    path, None, destination, agents, "support", "unresolved", message
+                )
+                self.issues.append(
+                    Issue("opencode-both-formats", (path, path.with_suffix(".json")), message)
+                )
+                return
+            content = jsonc_to_json(content.decode()).encode()
+            destination = destination.with_suffix(".json")
         native_location = len(relative.parts) == 1 or relative.as_posix() in {
             "extensions/pi-permission-system/config.json",
             "mcp/mcp.json",

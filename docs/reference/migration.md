@@ -75,7 +75,7 @@ fix it on disk and run init again. An incomplete preview exits 2 and changes not
 | `agents-required` | no harness was given and none has configuration at a known path |
 | `symlink-target`, `symlink-cycle` | a link at a read path is missing its target or loops |
 | `external-symlink` | in project scope, a harness root links outside the repository; its content would become committed source. There is no override: share it as a loadout template, or replace the link with a real copy (`cp -RL`) and run init again ([0026](../decisions/0026-a-project-root-linked-outside-the-repository-has-no-override.md)) |
-| `unadoptable-format` | `opencode.jsonc`: loadout writes `opencode.json` and cannot carry JSONC comments |
+| `opencode-both-formats` | `opencode.json` and `opencode.jsonc` side by side: OpenCode reads both and merges them, the `.jsonc`'s keys winning; combine them into one file |
 | `invalid-native-document` | a document at a read path does not parse |
 | `dependency-activation` | an adopted declaration references a de-linked original instead of the copy loadout deploys |
 | `source-composition` | two originals would write different content to one source file outside the cases below; make them identical or remove one. Also a Codex rules file holding a statement adoption cannot carry, quoted with its line; see [extraction](extraction.md#a-hand-written-codex-rules-file) |
@@ -110,6 +110,16 @@ permission entries are unioned into one `permissions.toml`, and an entry two har
 different verdicts takes the stricter one (deny > ask > allow), so a deny from any harness reaches
 every harness, and so does an allow nothing contradicts. MCP servers combine by name into one
 `mcp.toml`; a name two harnesses define differently is a refusal naming the server.
+
+## `opencode.jsonc`
+
+Init adopts `opencode.jsonc` as though it were `opencode.json`: comments and trailing commas are
+dropped, and the preview says *"comments in opencode.jsonc will be lost"*. Approving the preview
+writes `opencode.json` and deletes the `.jsonc`, since OpenCode would otherwise read both. At project
+scope the converted document becomes `opencode.json` before the first sync, so its keys loadout does
+not own, such as `theme`, stay in it. OpenCode 1.19.0 loads `opencode.json` and then
+`opencode.jsonc` from the same directory and merges them (`packages/opencode/src/config/config.ts`
+globally, `config/paths.ts` in a project), so init refuses when both exist rather than pick one.
 
 ## Source shape
 

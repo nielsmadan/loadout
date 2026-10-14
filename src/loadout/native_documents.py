@@ -29,6 +29,40 @@ def parse_document(text: str, format_name: str) -> dict[str, Any]:
         raise LoadoutError(f"invalid partial {format_name.upper()} document: {error}") from error
 
 
+def jsonc_to_json(text: str) -> str:
+    """JSON with comments and trailing commas, as plain JSON: what OpenCode's
+    jsonc-parser accepts, minus everything a JSON reader refuses."""
+    out: list[str] = []
+    index, length, in_string = 0, len(text), False
+    while index < length:
+        char = text[index]
+        if in_string:
+            out.append(text[index : index + 2] if char == "\\" else char)
+            in_string = char != '"'
+            index += 2 if char == "\\" else 1
+            continue
+        if text.startswith("//", index):
+            end = text.find("\n", index)
+            index = length if end == -1 else end
+            continue
+        if text.startswith("/*", index):
+            end = text.find("*/", index + 2)
+            if end == -1:
+                raise LoadoutError("a /* comment in a JSONC document is never closed")
+            index = end + 2
+            continue
+        if char in "}]":
+            last = len(out) - 1
+            while last >= 0 and out[last].isspace():
+                last -= 1
+            if last >= 0 and out[last] == ",":
+                del out[last]
+        in_string = char == '"'
+        out.append(char)
+        index += 1
+    return "".join(out)
+
+
 def key_fingerprints(
     text: str, format_name: str, owned: frozenset[str]
 ) -> tuple[tuple[str, str], ...]:

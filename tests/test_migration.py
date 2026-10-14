@@ -168,11 +168,24 @@ def test_unmanaged_entries_under_a_harness_root_are_never_read(tmp_path: Path, n
     assert path.read_text() == "unknown authored content"
 
 
-def test_jsonc_at_a_managed_path_blocks_complete_migration(tmp_path: Path) -> None:
-    path = write(tmp_path, "opencode.jsonc", "{ // comment\n}\n")
+def test_jsonc_at_a_managed_path_is_adopted_as_opencode_json(tmp_path: Path) -> None:
+    path = write(tmp_path, "opencode.jsonc", '{ // comment\n "theme": "x",\n}\n')
+    plan = plan_migration(discover(tmp_path, scope="project", agents=("opencode",)))
+    assert plan.complete
+    assert [(w.path, json.loads(w.content)) for w in plan.converted] == [
+        (tmp_path / "opencode.json", {"theme": "x"})
+    ]
+    assert path in plan.obsolete
+
+
+def test_jsonc_beside_opencode_json_blocks_complete_migration(tmp_path: Path) -> None:
+    path = write(tmp_path, "opencode.jsonc", "{}\n")
+    json_path = write(tmp_path, "opencode.json", "{}\n")
     plan = plan_migration(discover(tmp_path, scope="project", agents=("opencode",)))
     assert not plan.complete
-    assert [(i.code, i.paths) for i in plan.issues] == [("unadoptable-format", (path,))]
+    assert [(i.code, i.paths) for i in plan.issues] == [
+        ("opencode-both-formats", (path, json_path))
+    ]
 
 
 def test_a_template_file_inside_a_skill_is_adopted_as_written(tmp_path: Path) -> None:
