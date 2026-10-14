@@ -41,6 +41,10 @@ EXCLUDED_DIRECTORIES = frozenset(
 EXCLUDED_SUFFIXES = (".pyc", ".pyo", ".swp")
 EXCLUDED_NAMES = frozenset({".DS_Store", ".loadout-bundle.toml"})
 
+# Skill frontmatter only Claude reads; the other harnesses get none of it unless
+# their own block sets it.
+CLAUDE_ONLY_KEYS = frozenset({"model", "effort", "context", "agent"})
+
 _OPEN_MARKER = re.compile(r"^::: *([a-z][a-z0-9 _-]*?) *$")
 _CLOSE_MARKER = re.compile(r"^::: *$")
 _FENCE = re.compile(r"^\s*(```|~~~)")
@@ -180,12 +184,19 @@ def apply_frontmatter(lines: list[str], harness: str) -> list[str]:
 
     dropped = {position for start, end in block_ranges for position in range(start, end)}
     result: list[str] = []
+    stripping = False
     for position, line in enumerate(lines):
         if position in dropped:
             continue
         match = _TOP_LEVEL_KEY.match(line)
+        if stripping and not match:
+            continue
+        stripping = False
         if match and match.group(1) in overrides:
             result.append(f"{match.group(1)}:{overrides.pop(match.group(1))}")
+            continue
+        if match and harness != "claude" and match.group(1) in CLAUDE_ONLY_KEYS:
+            stripping = True
             continue
         result.append(line)
     # An override naming a key the shared block never defined still has to land.

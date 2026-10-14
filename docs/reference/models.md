@@ -158,7 +158,8 @@ must equal it, so renaming the file retires the old agent everywhere.
 - **Pi** output needs the `pi-subagents` package installed; Pi core has no subagents.
 - Anything else harness-specific goes in a block keyed by the harness and is written only there.
 
-**Skill frontmatter is still copied verbatim.** A skill with `model: haiku` renders that line into
-`.claude/skills`, `.factory/skills` and `.agents/skills`, which serves Codex, OpenCode and Pi.
-Measured on `4e1768f`. Only Claude reads it. OpenCode's docs ask for custom keys to go under
-`metadata` instead.
+**A skill's Claude-only keys go to Claude only.** `model`, `effort`, `context` and `agent` at the top
+level of a skill's frontmatter are written into Claude's copy and left out of every other harness's,
+without a note, since only Claude reads them. A harness's own block can still set any of them for
+that harness. A skill whose `[skills.<name>]` block sets `render = false` is copied verbatim, keys
+and all.

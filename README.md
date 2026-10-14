@@ -700,6 +700,8 @@ complete `review` skill. A local replacement is not an overlay:
 its document and supporting files replace the public variant together.
 
 Loadout renders `::: <harness>` sections and `:concept[…]` separately for each selected harness.
+Frontmatter that only Claude reads (`model`, `effort`, `context` and `agent`) goes into Claude's
+copy only; a harness block such as `droid:` with `model: …` under it sets a key for that harness.
 It writes Claude to `.claude/skills`, Codex to `.agents/skills`, Droid to `.factory/skills`,
 OpenCode to `.opencode/skills`, and Pi to `.pi/skills`. Byte-identical Codex, OpenCode, and Pi
 variants may share the `.agents/skills` convention.

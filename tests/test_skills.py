@@ -192,6 +192,38 @@ def test_frontmatter_without_a_harness_block_is_untouched() -> None:
     assert apply_frontmatter(lines, "claude") == lines
 
 
+CLAUDE_KEYS = [
+    "name: x",
+    "model: haiku",
+    "effort: high",
+    "context: fork",
+    "agent: reviewer",
+    "description: y",
+]
+
+
+def test_claude_only_keys_reach_claude() -> None:
+    assert apply_frontmatter(CLAUDE_KEYS, "claude") == CLAUDE_KEYS
+
+
+@pytest.mark.parametrize("harness", ["codex", "droid", "opencode", "pi"])
+def test_claude_only_keys_are_stripped_from_every_other_harness(harness: str) -> None:
+    assert apply_frontmatter(CLAUDE_KEYS, harness) == ["name: x", "description: y"]
+
+
+def test_a_claude_only_key_spanning_several_lines_is_stripped_whole() -> None:
+    lines = ["name: x", "model:", "  haiku", "description: y"]
+
+    assert apply_frontmatter(lines, "codex") == ["name: x", "description: y"]
+
+
+def test_a_harness_block_still_sets_a_claude_only_key_for_its_harness() -> None:
+    lines = ["name: x", "model: haiku", "droid:", "  model: custom:fast"]
+
+    assert apply_frontmatter(lines, "droid") == ["name: x", "model: custom:fast"]
+    assert apply_frontmatter(lines, "pi") == ["name: x"]
+
+
 def test_split_frontmatter_reports_absence_rather_than_guessing() -> None:
     assert split_frontmatter("# Just a heading\n") == (None, "# Just a heading\n")
 
