@@ -30,10 +30,11 @@ from test_extract_roundtrip import NOT_INVERTED
 EXPECTED = Path(__file__).parent / "fixtures" / "expected"
 
 # The global-scope manifest is tests/fixtures/loadout.toml; each `[permissions.*]`
-# block names an output and a renderer, and both profiles emit the same set.
+# block names an output and a renderer, and both profiles emit the same set. Its
+# [claude] block writes Claude's settings.json, held under destinations/.
+GLOBAL_DESTINATIONS = {"settings.json": "claude"}
 GLOBAL_RENDERERS = {
     "claude.json": "claude",
-    "claude-empty.json": "claude",
     "claude-mcp.json": "claude-mcp-permissions",
     "codex.rules": "codex",
     "codex-mcp.toml": "codex-mcp-permissions",
@@ -49,6 +50,11 @@ def _artifacts() -> list[tuple[Path, str]]:
         for profile in ("default", "variant")
         for path in sorted((EXPECTED / profile / "perm").glob("*"))
         if path.name in GLOBAL_RENDERERS
+    ]
+    found += [
+        (EXPECTED / profile / "destinations" / name, renderer)
+        for profile in ("default", "variant")
+        for name, renderer in GLOBAL_DESTINATIONS.items()
     ]
     found += [
         (EXPECTED / "project" / spec.output, spec.renderer)

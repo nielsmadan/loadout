@@ -100,7 +100,7 @@ def test_naming_instructions_renders_them_in_that_order(tmp_path: Path) -> None:
 
 
 def test_an_empty_permissions_list_selects_nothing(tmp_path: Path) -> None:
-    """The old `rules = []` mechanism, spelled as an empty composition."""
+    """An empty composition renders the target holding no rule."""
     root = build(tmp_path, "\n[pi]\npermissions = []\n")
     doc = next(text for p, text in rendered(root).items() if "pi-permission-system" in p)
     assert "alpha" not in doc

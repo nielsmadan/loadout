@@ -287,15 +287,11 @@ def _parse_permissions(
         if not isinstance(raw_preserve, list) or not all(isinstance(v, str) for v in raw_preserve):
             raise LoadoutError(f"{label}: preserve must be a list of strings")
 
-        select_all = True
         if "rules" in block:
-            raw_rules = block["rules"]
-            if raw_rules != []:
-                raise LoadoutError(
-                    f"{label}: rules only supports [] (select nothing) in milestone 3; "
-                    f"named rule-set selection arrives in milestone 4"
-                )
-            select_all = False
+            raise LoadoutError(
+                f"{label}: unknown key 'rules'. To render a target with no permission rules, "
+                "declare its harness in an agent block with `permissions = []`"
+            )
 
         profile = block.get("profile")
         if profile is not None and not isinstance(profile, str):
@@ -309,7 +305,6 @@ def _parse_permissions(
                 base=base,
                 settings=settings,
                 preserve=tuple(raw_preserve),
-                select_all=select_all,
                 profile=profile,
                 destinations=destinations,
             )

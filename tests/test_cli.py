@@ -202,7 +202,6 @@ def test_sync_profile_variant_selects_the_variant_target(root: Path, fake_home: 
     unprofiled_outputs = (
         "out/shared.md",
         "perm/claude.json",
-        "perm/claude-empty.json",
         "perm/claude-mcp.json",
         "perm/codex.rules",
         "perm/codex-mcp.toml",
@@ -211,6 +210,7 @@ def test_sync_profile_variant_selects_the_variant_target(root: Path, fake_home: 
     )
     for output in unprofiled_outputs:
         assert (root / output).is_file(), output
+    assert (fake_home / ".claude" / "settings.json").is_file()
 
 
 def test_check_returns_0_when_clean(root: Path) -> None:

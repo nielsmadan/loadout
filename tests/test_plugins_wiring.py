@@ -238,7 +238,8 @@ def test_a_null_overlay_switches_a_plugin_off(tmp_path: Path) -> None:
 
 
 def test_an_empty_plugins_list_renders_an_empty_enablement(tmp_path: Path) -> None:
-    """A content renderer's off switch is an empty fragment list, not `rules = []`."""
+    """A content renderer's off switch is an empty fragment list, as `permissions = []` is
+    for a permission renderer."""
     root = build(
         tmp_path, {"kit": FRAGMENT}, MANIFEST.replace('plugins  = ["kit"]', "plugins = []")
     )

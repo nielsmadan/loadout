@@ -69,20 +69,15 @@ def test_base_and_preserve_default_to_empty(tmp_path: Path) -> None:
     assert target.select_all is True
 
 
-def test_empty_rules_list_selects_nothing(tmp_path: Path) -> None:
+@pytest.mark.parametrize("rules", ["[]", '["shell"]'])
+def test_a_rules_key_is_refused_and_names_the_agent_block_form(tmp_path: Path, rules: str) -> None:
     path = write(
         tmp_path,
-        '[permissions.a]\noutput = "a.json"\nrender = "claude"\nrules = []\n',
+        f'[permissions.a]\noutput = "a.json"\nrender = "claude"\nrules = {rules}\n',
     )
-    assert load_manifest(path).permissions[0].select_all is False
-
-
-def test_non_empty_rules_list_is_rejected(tmp_path: Path) -> None:
-    path = write(
-        tmp_path,
-        '[permissions.a]\noutput = "a.json"\nrender = "claude"\nrules = ["shell"]\n',
-    )
-    with pytest.raises(LoadoutError, match="milestone 4"):
+    with pytest.raises(
+        LoadoutError, match=r"permissions\.a: unknown key 'rules'.*permissions = \[\]"
+    ):
         load_manifest(path)
 
 

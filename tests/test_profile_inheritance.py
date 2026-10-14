@@ -80,16 +80,9 @@ def test_permission_target_inherits_renderer_and_replaces_lists(tmp_path: Path) 
         '[permissions.cli]\noutput = "rules.txt"\nrender = "codex"\n'
         'preserve = ["first", "second"]\n',
     )
-    (root / "variant.toml").write_text(
-        'extends = "default"\n[permissions.cli]\npreserve = []\nrules = []\n'
-    )
+    (root / "variant.toml").write_text('extends = "default"\n[permissions.cli]\npreserve = []\n')
     target = load_profile(root, "variant").permissions[0]
-    assert (str(target.path), target.renderer, target.preserve, target.select_all) == (
-        "rules.txt",
-        "codex",
-        (),
-        False,
-    )
+    assert (str(target.path), target.renderer, target.preserve) == ("rules.txt", "codex", ())
 
 
 def test_removals_apply_before_child_fields_in_a_chain(tmp_path: Path) -> None:

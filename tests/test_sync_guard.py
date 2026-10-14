@@ -271,7 +271,7 @@ def test_editing_a_source_twice_before_committing_does_not_block(root: Path, cap
     assert "Edit A." in written and "Edit B." in written
 
 
-def test_two_sources_feeding_one_destination_do_not_block(root: Path) -> None:
+def test_two_sources_feeding_one_destination_do_not_block(root: Path, fake_home: Path) -> None:
     """The live failure: with two inputs composing into one file you need not edit
     the same source twice. Edit one, sync, edit the other, and the output is a cross
     of committed and working state that neither render produces."""
@@ -280,12 +280,12 @@ def test_two_sources_feeding_one_destination_do_not_block(root: Path) -> None:
     second = root / "settings" / "claude-afk.json"
     first.write_text(json.dumps({"model": "one"}) + "\n", encoding="utf-8")
     assert loadout.main(["sync", "--root", str(root)]) == 0
-    assert "one" in (root / "perm" / "claude-empty.json").read_text()
+    assert "one" in (fake_home / ".claude" / "settings.json").read_text()
 
     second.write_text(json.dumps({"effortLevel": "high"}) + "\n", encoding="utf-8")
 
     assert loadout.main(["sync", "--root", str(root)]) == 0
-    document = json.loads((root / "perm" / "claude-empty.json").read_text())
+    document = json.loads((fake_home / ".claude" / "settings.json").read_text())
     assert document["model"] == "one"
     assert document["effortLevel"] == "high"
 

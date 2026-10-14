@@ -12,7 +12,7 @@ EXPECTED = Path(__file__).parent / "fixtures" / "expected" / "default"
 
 PERMISSION_OUTPUTS = (
     "perm/claude.json",
-    "perm/claude-empty.json",
+    "destinations/settings.json",
     "perm/claude-mcp.json",
     "perm/codex.rules",
     "perm/codex-mcp.toml",
@@ -23,9 +23,12 @@ PERMISSION_OUTPUTS = (
 
 
 def _repo_relative(rendered: dict[Path, str], root: Path) -> dict[str, str]:
-    """render_all also returns destination paths under ~; these tests only care
-    about the in-repo outputs, so drop anything not rooted under root."""
-    return {str(p.relative_to(root)): c for p, c in rendered.items() if root in p.parents}
+    """In-repo outputs by their path, and destinations under ~ by file name, the way the
+    expected tree holds them."""
+    return {
+        str(p.relative_to(root)) if root in p.parents else f"destinations/{p.name}": c
+        for p, c in rendered.items()
+    }
 
 
 def test_every_permission_output_matches_the_expected_output(root: Path) -> None:
@@ -171,9 +174,9 @@ def test_a_missing_settings_fragment_names_the_slice(root: Path) -> None:
 
 
 def test_settings_composes_later_fragments_over_earlier_ones(root: Path) -> None:
-    """permissions.claude-empty names two fragments; the delta merges into a
-    nested map rather than replacing it."""
-    doc = json.loads(_repo_relative(render_all(root), root)["perm/claude-empty.json"])
+    """The [claude] block names two fragments; the delta merges into a nested map
+    rather than replacing it."""
+    doc = json.loads(_repo_relative(render_all(root), root)["destinations/settings.json"])
     assert doc["afkTimeoutMs"] == "2147483647"
     assert doc["afterKey"] == {"nested": True, "addedByTheDelta": True}
 

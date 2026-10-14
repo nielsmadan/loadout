@@ -138,18 +138,14 @@ def test_a_codex_only_global_init_creates_no_empty_files(
 def test_a_profile_selecting_no_rules_retires_the_codex_file_until_switched_back(
     tmp_path: Path, fake_home: Path
 ) -> None:
-    """`rules = []` empties what one target renders; the check must see that, not
+    """`permissions = []` empties what one target renders; the check must see that, not
     the source's rules, or the file is written holding no rule."""
     source = tmp_path / "source"
     source.mkdir()
     (source / "loadout.toml").write_text(
-        '[[source]]\nname = "me"\npath = "."\n\n'
-        '[permissions.codex-strict]\nrender = "codex"\n'
-        'destinations = ["~/.codex/rules/permissions.rules"]\nprofile = "default"\n\n'
-        '[permissions.codex-free]\nrender = "codex"\n'
-        'destinations = ["~/.codex/rules/permissions.rules"]\nprofile = "autonomous"\n'
-        "rules = []\n"
+        '[[source]]\nname = "me"\npath = "."\n\n[codex]\npermissions = true\n'
     )
+    (source / "autonomous.toml").write_text('extends = "default"\n\n[codex]\npermissions = []\n')
     (source / "permissions.toml").write_text('[shell]\ndeny = ["rm"]\n')
     machine = fake_home / ".config" / "loadout"
     machine.mkdir(parents=True)

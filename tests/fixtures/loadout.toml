@@ -39,16 +39,6 @@ render   = "claude"
 # replaced, which is what proves the two are one input.
 settings = "claude"
 
-# rules = [] selects nothing, so all three lists render empty — the autonomous
-# profile's mechanism.
-[permissions.claude-empty]
-output   = "perm/claude-empty.json"
-render   = "claude"
-# Two fragments composing: the delta adds a key and merges into a nested map
-# rather than replacing it — a 208-line copy expressed as one small overlay.
-settings = ["claude", "claude-afk"]
-rules    = []
-
 [permissions.claude-mcp]
 output = "perm/claude-mcp.json"
 render = "claude-mcp-permissions"
@@ -77,3 +67,14 @@ preserve = ["foreign"]
 [permissions.pi]
 output = "perm/pi.json"
 render = "pi"
+
+# `permissions = []` selects no rules, so all three lists render empty while the
+# settings around them still render — the autonomous profile's mechanism.
+[claude]
+permissions = []
+# Two fragments composing: the delta adds a key and merges into a nested map
+# rather than replacing it — a 208-line copy expressed as one small overlay.
+settings    = ["claude", "claude-afk"]
+# Only the settings document stands in for the target this replaced.
+mcp-permissions = false
+mcp         = false

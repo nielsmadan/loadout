@@ -665,7 +665,7 @@ def _permission_notices(manifest: Manifest, profile: str) -> tuple[Notice, ...]:
     rules = merge_rules(*tiers)
     found: list[Notice] = []
     for target in selected:
-        # `rules = []` deselects the whole source, not this key in particular —
+        # `permissions = []` deselects the whole source, not this key in particular —
         # the autonomous profile's mechanism, and reporting it here would fire on
         # every sync that uses it. A legacy target names no agent, so it is
         # labelled by the renderer it declared.

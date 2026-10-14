@@ -362,6 +362,11 @@ renders it. Say `skills = false`, `agents = false` or `module-config = false` to
 be named — it needs an order, and alphabetical is wrong (see Profiles). `settings` must be named
 because it is an input rather than an output.
 
+`permissions = []` keeps the permissions target but selects none of the source's rules, so its
+lists render empty while the settings around them still render: an autonomous profile's
+`settings.json` with no `deny` for the classifier to defer to. `permissions = false` instead
+stops managing the file, and the settings riding on it go too.
+
 `hooks` and `plugins` must be named too, and for the same reason as `instructions`: which hooks
 run and which plugins are on are authoring decisions, so an absent key means *loadout does not
 manage this*, not *none*. Both take fragment names, resolved as `<source>/hooks/<name>.json` and
@@ -573,8 +578,9 @@ preserve = ["mcp"]
   Each output path is read and rendered on its own, so a target writing several files carries
   each one's foreign keys back into that same file — a co-owner that writes only the machine
   destination keeps its key there, and needs no staged copy in the repo to write into.
-- `rules` — optional; the only accepted value today is `[]`, meaning "select nothing" — the
-  target renders with all rule categories empty. Named rule-set selection is not implemented yet.
+- A target always renders the source's rules. To render one holding none, with its settings
+  still around it, declare the harness in an agent block with `permissions = []` (see
+  [Agent blocks](#agent-blocks)); a `rules` key is an error.
 
 **Which file do I edit?** Generated permission files carry no in-file marker of that fact —
 `claude/settings.json` (generated) and `claude/settings.base.json` (hand-maintained, the
