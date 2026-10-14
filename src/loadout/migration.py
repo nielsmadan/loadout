@@ -12,6 +12,7 @@ import tomlkit
 from .agents import GLOBAL_PRESET
 from .composition import HEADER
 from .discovery import PROJECT_ROOTS, credential_material, digest, path_preconditions
+from .emit import PROJECT_SETTINGS_DIR, project_owned_keys
 from .errors import LoadoutError
 from .extract import extract, extract_codex_plugins, extract_codex_servers, extract_value
 from .manifest import load_manifest
@@ -203,8 +204,9 @@ def _portable(content: bytes, renderer: str, format_name: str) -> bytes | None:
         return None
 
 
-def _partial(candidate: Candidate) -> bool:
-    if candidate.format not in {"json", "toml"}:
+def _partial(candidate: Candidate, scope: str | None) -> bool:
+    """A global document a harness also writes runtime state into."""
+    if candidate.format not in {"json", "toml"} or scope != "global":
         return False
     return (
         (candidate.agents[0] == "claude" and candidate.document_name == ".claude.json")
@@ -214,8 +216,8 @@ def _partial(candidate: Candidate) -> bool:
     )
 
 
-def _authored(candidate: Candidate) -> Candidate:
-    if candidate.format not in {"json", "toml"} or not _partial(candidate):
+def _authored(candidate: Candidate, scope: str | None) -> Candidate:
+    if candidate.format not in {"json", "toml"} or not _partial(candidate, scope):
         return candidate
     document = parse_document(candidate.content.decode(), candidate.format)
     authored = (
@@ -242,7 +244,7 @@ def _choose(inventory: Inventory) -> tuple[tuple[Candidate, ...], tuple[Issue, .
         if candidate.disposition != "migrated" or candidate.destination is None:
             continue
         try:
-            grouped[candidate.destination].append(_authored(candidate))
+            grouped[candidate.destination].append(_authored(candidate, inventory.scope))
         except (LoadoutError, UnicodeError, ValueError, TypeError):
             issues.append(
                 Issue(
@@ -330,7 +332,6 @@ class _PlanBuilder:
         self.unadopted: list[Unadopted] = []
         self.unadopted_paths: set[Path] = set()
         self.absorbed: dict[Path, str] = {}
-        self.converted: dict[Path, SourceWrite] = {}
 
     def leave_out(self, kind: str, name: str, candidates: list[Candidate]) -> None:
         """Adopt nothing of an item whose copies disagree, and name every copy."""
@@ -445,24 +446,18 @@ class _PlanBuilder:
 
     def document(self, candidate: Candidate, *, existing: bool = True) -> None:
         if candidate.path.suffix == ".jsonc":
-            self.adopt_jsonc(candidate, existing=existing)
+            self.adopt_jsonc(candidate)
         if self.inventory.scope == "project":
             self.project_document(candidate, existing=existing)
             return
         self.global_document(candidate, existing=existing)
         return
 
-    def adopt_jsonc(self, candidate: Candidate, *, existing: bool) -> None:
+    def adopt_jsonc(self, candidate: Candidate) -> None:
         """OpenCode reads opencode.jsonc beside opencode.json, so the converted document
-        replaces it. At project scope it seeds opencode.json, since loadout writes only
-        its own keys there and the rest would otherwise be lost."""
-        assert candidate.destination is not None
+        replaces it."""
         self.notes.append(f"{candidate.path}: comments in {candidate.path.name} will be lost")
         self.absorbed.update(dict.fromkeys(_original_paths(candidate), JSONC_ABSORBED))
-        if existing and self.inventory.scope == "project":
-            self.converted[candidate.destination] = SourceWrite(
-                candidate.destination, candidate.content, candidate.mode
-            )
 
     def global_document(self, candidate: Candidate, *, existing: bool) -> None:
         assert candidate.destination is not None
@@ -575,11 +570,30 @@ class _PlanBuilder:
                     continue
                 matched = True
         if matched and existing:
+            self.project_settings(candidate, document)
             self.records[candidate.destination] = self.record(
                 candidate.destination, candidate.agents, candidate.format
             )
         elif not matched and existing:
             self.retained.update(_original_paths(candidate))
+
+    def project_settings(self, candidate: Candidate, document: dict[str, Any]) -> None:
+        """A co-owned file's keys that no slice writes go into the project source, so a
+        clone renders them too rather than finding them only on this machine (P-48)."""
+        for agent in candidate.agents:
+            spec = PROJECT_PRESET[agent]["permissions"]
+            if not spec.preserve_foreign or self.inventory.root / str(spec.output) != (
+                candidate.destination
+            ):
+                continue
+            owned = project_owned_keys(self.inventory.agents, str(spec.output))
+            residual = {key: value for key, value in document.items() if key not in owned}
+            if residual:
+                self.write(
+                    Path(PROJECT_SETTINGS_DIR) / f"{agent}.json",
+                    serialize_document(residual, "json"),
+                    private=candidate.private,
+                )
 
     def opaque(self, candidate: Candidate, *, existing: bool = True) -> None:
         if self.inventory.scope == "project":
@@ -1229,7 +1243,9 @@ def plan_migration(inventory: Inventory) -> MigrationPlan:
                 *(
                     path
                     for c in inventory.candidates
-                    if c.private or c.disposition == "runtime-private exclusion" or _partial(c)
+                    if c.private
+                    or c.disposition == "runtime-private exclusion"
+                    or _partial(c, inventory.scope)
                     for path in _original_paths(c)
                 ),
                 *private_namespaces,
@@ -1268,7 +1284,6 @@ def plan_migration(inventory: Inventory) -> MigrationPlan:
         checkpoint_paths=checkpoint,
         preconditions=tuple(states.values()),
         categories=categories,
-        converted=tuple(builder.converted.values()),
         artifact_routes=(
             ()
             if inventory.scope == "project"

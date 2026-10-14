@@ -619,6 +619,7 @@ loadout/agents/              subagents, one Markdown file each
 loadout/mcp.toml             MCP server definitions, when present
 loadout/hooks.json           hook declarations, when supported
 loadout/plugins.json         plugin declarations, when supported
+loadout/settings/<harness>.json  the rest of a shared settings file, when present
 ```
 
 A missing `permissions.toml` means the same as an empty one. The harnesses you declare are what
@@ -655,6 +656,19 @@ Loadout derives every output path from its project preset:
 | `droid` | `.factory/settings.json`, `.factory/hooks.json`, `.factory/mcp.json`, `AGENTS.md`, `.factory/skills/` |
 | `opencode` | `opencode.json`, `AGENTS.md`, `.opencode/skills/` |
 | `pi` | `.pi/extensions/pi-permission-system/config.json`, `AGENTS.md`, `.pi/skills/` |
+
+### Project settings
+
+`.claude/settings.json`, `.factory/settings.json` and `opencode.json` are shared: loadout writes its
+own keys into them (permissions, MCP servers, plugins), and `loadout/settings/claude.json`,
+`droid.json` or `opencode.json` holds everything else, such as Claude's `env` or OpenCode's `theme`.
+`sync` renders the file from both, so a clone gets the same file, and an edit to it outside loadout
+is reported like any other. Without a settings file, the keys loadout does not write are kept from
+the file on disk.
+
+`init` fills these from the files it adopts. A file Git tracks is already shared with the team, so
+its keys go into committed source. An untracked or ignored one may hold something personal, so its
+keys go into a settings file that is itself gitignored and stays on this machine.
 
 ### Project instructions
 

@@ -26,3 +26,31 @@ def ignored_paths(paths: Iterable[Path]) -> frozenset[Path]:
             raise LoadoutError(f"could not verify original source privacy: {parent}")
         ignored.update(parent / os.fsdecode(name) for name in result.stdout.split(b"\0") if name)
     return frozenset(ignored)
+
+
+def tracked_paths(paths: Iterable[Path]) -> frozenset[Path]:
+    groups: dict[Path, set[str]] = {}
+    for path in paths:
+        groups.setdefault(path.parent, set()).add(path.name)
+    tracked: set[Path] = set()
+    for parent, names in groups.items():
+        result = subprocess.run(
+            [
+                "git",
+                "--literal-pathspecs",
+                "-C",
+                str(parent),
+                "ls-files",
+                "-z",
+                "--",
+                *sorted(names),
+            ],
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode:
+            if b"not a git repository" in result.stderr:
+                continue
+            raise LoadoutError(f"could not read which originals Git tracks: {parent}")
+        tracked.update(parent / os.fsdecode(name) for name in result.stdout.split(b"\0") if name)
+    return frozenset(tracked)

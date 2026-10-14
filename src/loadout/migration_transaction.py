@@ -336,6 +336,18 @@ def _append_ignores(content: bytes, patterns: tuple[str, ...]) -> bytes:
     ).encode()
 
 
+def _ignored_outputs(plan: MigrationPlan) -> tuple[Path, ...]:
+    """Project outputs init gitignores: rendered from committed source from now on, so a
+    tracked copy would hand every clone a stale file the first sync refuses over."""
+    if plan.inventory.scope != "project":
+        return ()
+    return tuple(
+        plan.inventory.root / pattern.strip("/")
+        for pattern in plan.ignores
+        if not pattern.endswith("/")
+    )
+
+
 def _staging(
     plan: MigrationPlan, prepared: migration_git.GitPreparation, patterns: tuple[str, ...]
 ) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, bytes]]:
@@ -349,7 +361,12 @@ def _staging(
             and (value := migration_git.relative(root, write.path)) is not None
         )
     )
-    paths = (*plan.obsolete, *(w.path for w in plan.generated_writes), *plan.private_paths)
+    paths = (
+        *plan.obsolete,
+        *(w.path for w in plan.generated_writes),
+        *plan.private_paths,
+        *_ignored_outputs(plan),
+    )
     removals = {
         value
         for path in paths
@@ -399,10 +416,6 @@ def _filesystem_plan(
         path = layout.normalize(write.path)
         builder.parents(path, "source", private=private)
         builder.put(path, Image("file", write.content, write.mode), "source")
-    for write in plan.converted:
-        path = layout.normalize(write.path)
-        builder.parents(path, "convert")
-        builder.put(path, Image("file", write.content, write.mode), "convert")
     deployment = (
         _deployment(builder, plan, frozen)
         if not plan.already_initialized and plan.generated_writes

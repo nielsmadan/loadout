@@ -172,9 +172,8 @@ def test_jsonc_at_a_managed_path_is_adopted_as_opencode_json(tmp_path: Path) -> 
     path = write(tmp_path, "opencode.jsonc", '{ // comment\n "theme": "x",\n}\n')
     plan = plan_migration(discover(tmp_path, scope="project", agents=("opencode",)))
     assert plan.complete
-    assert [(w.path, json.loads(w.content)) for w in plan.converted] == [
-        (tmp_path / "opencode.json", {"theme": "x"})
-    ]
+    written = {w.path: w.content for w in plan.source_writes}
+    assert json.loads(written[tmp_path / "loadout/settings/opencode.json"]) == {"theme": "x"}
     assert path in plan.obsolete
 
 

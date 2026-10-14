@@ -119,13 +119,25 @@ different verdicts takes the stricter one (deny > ask > allow), so a deny from a
 every harness, and so does an allow nothing contradicts. MCP servers combine by name into one
 `mcp.toml`; a name two harnesses define differently is a refusal naming the server.
 
+## Project settings
+
+`.claude/settings.json`, `.factory/settings.json` and `opencode.json` are shared with the slices that
+write into them. Init adopts every top-level key no slice writes into `loadout/settings/claude.json`,
+`droid.json` or `opencode.json`, and sync renders the file from that source plus the slices. Which
+keys a slice writes is read from its renderer, not listed by hand. A file Git tracks is adopted into
+committed source even when it holds an `env` value, since its content is already in the repository's
+history. An untracked or ignored one keeps the private handling: its original stays in place and its
+settings source is written private and gitignored. Every generated project file init lists in
+`.gitignore` is also removed from the index, so a clone renders it rather than checking out a stale
+copy. Droid's and Pi's `settings.json` count as partly runtime state only at global scope.
+
 ## `opencode.jsonc`
 
 Init adopts `opencode.jsonc` as though it were `opencode.json`: comments and trailing commas are
 dropped, and the preview says *"comments in opencode.jsonc will be lost"*. Approving the preview
 writes `opencode.json` and deletes the `.jsonc`, since OpenCode would otherwise read both. At project
-scope the converted document becomes `opencode.json` before the first sync, so its keys loadout does
-not own, such as `theme`, stay in it. OpenCode 1.19.0 loads `opencode.json` and then
+scope its keys loadout does not own, such as `theme`, go into `loadout/settings/opencode.json` like
+any other project settings. OpenCode 1.19.0 loads `opencode.json` and then
 `opencode.jsonc` from the same directory and merges them (`packages/opencode/src/config/config.ts`
 globally, `config/paths.ts` in a project), so init refuses when both exist rather than pick one.
 

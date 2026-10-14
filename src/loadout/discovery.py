@@ -11,12 +11,13 @@ from dataclasses import replace
 from pathlib import Path
 
 from .errors import LoadoutError
-from .git_privacy import ignored_paths
+from .git_privacy import ignored_paths, tracked_paths
 from .harnesses import KNOWN_HARNESSES
 from .migration_models import Candidate, EntryState, Inventory, Issue, RootMapping
 from .migration_paths import DestinationLayout, entry_path
 from .native_documents import jsonc_to_json, parse_document
 from .output import ArtifactScope
+from .project import PROJECT_PRESET
 
 GLOBAL_ROOTS = {
     "claude": ("CLAUDE_CONFIG_DIR", ".claude"),
@@ -630,6 +631,25 @@ class _InventoryBuilder:
         self.issues.append(Issue(code, (path,), message))
 
 
+def _published_settings(
+    builder: _InventoryBuilder, root: Path, agents: tuple[str, ...], scope: str | None
+) -> frozenset[Path]:
+    """Co-owned project settings files Git already tracks: their content is in the team's
+    history, so adopting it into committed source publishes nothing new (P-48)."""
+    if scope == "global":
+        return frozenset()
+    co_owned = {
+        root / str(spec.output)
+        for agent in agents
+        if (spec := PROJECT_PRESET[agent].get("permissions")) is not None and spec.preserve_foreign
+    }
+    return tracked_paths(
+        c.path
+        for c in builder.candidates.values()
+        if c.disposition == "migrated" and c.destination in co_owned
+    )
+
+
 def _project_mappings(root: Path, agents: tuple[str, ...]) -> tuple[RootMapping, ...]:
     mappings = [
         RootMapping(root / relative, root / relative, (agent,))
@@ -800,8 +820,11 @@ def discover(
     ignored = ignored_paths(
         c.canonical or c.path for c in builder.candidates.values() if c.disposition == "migrated"
     )
+    published = _published_settings(builder, root, agents, scope)
     candidates = tuple(
-        replace(
+        replace(c, private=False, personal=False)
+        if c.path in published
+        else replace(
             c,
             private=c.private or (c.canonical or c.path) in ignored,
             personal=c.personal or (c.canonical or c.path) in ignored,

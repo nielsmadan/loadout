@@ -1247,6 +1247,22 @@ def _retired_keys(
     return retired
 
 
+def project_owned_keys(harnesses: tuple[str, ...], output: str) -> frozenset[str]:
+    """Every top-level key some slice of these harnesses writes into one project file."""
+    keys: set[str] = set()
+    for _agent, _slice, spec in project_slices(harnesses):
+        if spec.output != output:
+            continue
+        if spec.owned_key:
+            keys.add(spec.owned_key)
+        renderer = RENDERERS.get(spec.renderer or "")
+        if isinstance(renderer, ValuesSpec):
+            keys.update(renderer.owns)
+        elif isinstance(renderer, JsonSpec):
+            keys.update(renderer.fn(EMPTY_RULES, {}))
+    return frozenset(keys)
+
+
 def _render_project_slices(root: Path, config: ProjectConfig) -> dict[Path, Output]:
     templates = tuple(resolve_template(name, root).path for name in config.templates)
     catalogs = load_catalogs(templates)
@@ -1321,7 +1337,7 @@ def _render_project_slices(root: Path, config: ProjectConfig) -> dict[Path, Outp
             owned_key=spec.owned_key,
             content_slice=spec.source_slice,
         )
-        residual = _load_existing(path) if spec.preserve_foreign else {}
+        residual = _project_residual(root, agent, path) if spec.preserve_foreign else {}
         if drop := retired.get(path):
             residual = {key: value for key, value in residual.items() if key not in drop}
         content = (
@@ -1344,6 +1360,20 @@ def _render_project_slices(root: Path, config: ProjectConfig) -> dict[Path, Outp
         # manifest's sources. No project slice has derived ownership today.
         outputs[path] = compose_permission_document(contributors, rules, path)
     return outputs
+
+
+PROJECT_SETTINGS_DIR = "settings"
+
+
+def project_settings_path(root: Path, agent: str) -> Path:
+    return root / PROJECT_DIR / PROJECT_SETTINGS_DIR / f"{agent}.json"
+
+
+def _project_residual(root: Path, agent: str, path: Path) -> dict[str, Any]:
+    """The keys of a co-owned file no slice writes: the project's settings source when it
+    has one, so a clone renders them too, else whatever the file already holds."""
+    settings = project_settings_path(root, agent)
+    return _load_base(settings) if settings.is_file() else _load_existing(path)
 
 
 def project_slice_document(

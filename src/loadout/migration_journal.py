@@ -458,7 +458,7 @@ def _validate_scope(journal: Journal) -> None:
             allowed = path.is_relative_to(source) or (
                 operation.phase == "deploy" and any(path.is_relative_to(p) for p in destinations)
             )
-        elif operation.phase in {"retire", "convert"}:
+        elif operation.phase == "retire":
             allowed = path.is_relative_to(root) and not path.is_relative_to(source)
         elif operation.phase == "ignore":
             allowed = path == root / ".gitignore"
