@@ -200,12 +200,15 @@ with `AGENTS.md`, does not stop init: that one item is left in place and reporte
 skill to merge, and everything else is adopted; see
 [what init leaves out](docs/reference/migration.md#what-init-leaves-out).
 Unresolved previews exit 2 without mutation. Supported configurations get a read-only preview of
-checkpoint paths, source/output writes, private exclusions and removals before approval. Applying
-checkpoints eligible originals through Git, migrates and syncs, then stages the final source and
-ignore changes. Successful init and conflict-free recovery remove temporary journals and backups;
-interrupted transactions retain them for resume or recovery. Deployment receipts remain for sync.
-The final migration is not automatically committed. Choose a dedicated directory;
-new repositories at HOME or the filesystem root are refused.
+source and output writes, private exclusions and removals before approval. Before its first write,
+init backs up every path it will touch to `$XDG_STATE_HOME/loadout/backups/` (default
+`~/.local/state`): file contents and modes, symlinks, directories, and the Git index when it
+untracks generated files. If init fails it restores that backup itself; if it is killed, the next
+init offers the restore. `loadout init restore --yes` undoes the latest adoption, keeping any path
+changed since. Init commits nothing and stages nothing: in a project it only removes the generated
+files it adds to `.gitignore` from the index, and it never creates a project's repository. A new
+global source gets its own repository, and init suggests the commit. Choose a dedicated directory;
+a new source repository at HOME or the filesystem root is refused.
 
 A missing machine config is **not** an error — it means this machine has no global scope,
 which is correct for someone who only uses project scope. `loadout sync --global` without one

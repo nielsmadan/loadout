@@ -29,7 +29,7 @@ Edit the declared source for each configured consumer. Generated harness files a
 ## Examples
 
 - “Set up Loadout here” previews discovery, resolves the scope and configured agents, and shows
-  checkpoint paths and removals before applying. Success leaves editable source and a staged migration.
+  writes and removals before applying. Success leaves editable, uncommitted source and a backup.
 - “Allow `just test` for me” edits the existing personal permissions producer and syncs. If a
   migrated native route has no personal producer, ask before changing committed ownership.
 - “Change the global Pi model” follows the declared native settings part when present, edits its
@@ -47,5 +47,5 @@ Edit the declared source for each configured consumer. Generated harness files a
   Run `sync --force` only after showing the diff and getting the user's approval.
 - An init that lists `unadopted` items left copies that disagree across harnesses in place. Merge
   them by “Resolving conflicting copies at init” in [onboarding](references/onboarding.md).
-- An interrupted init reports a protected journal. Use the onboarding reference to resume or
-  recover; successful baseline commits remain.
+- An interrupted init reports its backup. Ask before restoring it with `loadout init restore`,
+  as the onboarding reference describes; a failed init has already restored itself.

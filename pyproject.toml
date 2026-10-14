@@ -47,7 +47,7 @@ addopts = "--strict-config --strict-markers"
 filterwarnings = ["error"]
 markers = [
     "integration: exercises multiple components, a CLI/subprocess, packaging, or a transactional workflow",
-    "migration_integration: exercises real Git migration, checkpoint, resume, or recovery flows",
+    "migration_integration: exercises real Git migration, backup, or restore flows",
 ]
 
 [tool.coverage.run]

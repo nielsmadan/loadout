@@ -93,7 +93,7 @@ diff before applying it.
 
 **Only `permissions.rules` is rendered back.** Codex reads every file in its rules folder, so any
 other rules file, `default.rules` included, would go on enforcing its rules beside the source.
-Once its rules are adopted, `init` deletes it, journaled like any other original it retires. Codex
+Once its rules are adopted, `init` deletes it, backed up like any other original it retires. Codex
 writing a new approval there afterwards is reported by `check` as `unmanaged`, for the `/loadout`
 skill to port.
 

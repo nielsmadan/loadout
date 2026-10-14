@@ -4,7 +4,6 @@ import hashlib
 import json
 import os
 import select
-import shlex
 import shutil
 import signal
 import subprocess
@@ -360,7 +359,7 @@ def test_interactive_confirmation_cancellation(tmp_path, evidence, action):
     os.close(slave)
     transcript = b""
     try:
-        prompt = b"Apply this migration, including its Git checkpoint and final staging? [y/N]"
+        prompt = b"Apply this migration? [y/N]"
         transcript = _read_pty(master, process, lambda output: prompt in output)
         assert prompt in transcript
         assert process.poll() is None
@@ -396,111 +395,6 @@ def test_interactive_confirmation_cancellation(tmp_path, evidence, action):
             }
         )
         evidence.save()
-
-
-def test_pending_checkpoint_failure_recovery_and_retry(tmp_path, evidence):
-    root = _repository(tmp_path / "checkpoint failure")
-    (root / "AGENTS.md").write_text("Original instructions.\n")
-    initial = _git(root, "rev-parse", "HEAD")
-    pending, release = tmp_path / "pending", tmp_path / "release"
-    hook = root / ".git/hooks/pre-commit"
-    hook.write_text(
-        "#!/bin/sh\n"
-        f"printf ready > {shlex.quote(str(pending))}\n"
-        "i=0\n"
-        f"while test ! -f {shlex.quote(str(release))} && test $i -lt 400; do\n"
-        "  sleep 0.05\n  i=$((i + 1))\ndone\nexit 1\n"
-    )
-    hook.chmod(0o755)
-    arguments = ["init", "project", "--harness", "codex", "--yes", "--json"]
-    command = [*CLI, *arguments]
-    process = subprocess.Popen(
-        command,
-        cwd=root,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    stdout = stderr = ""
-    pending_observed = False
-    try:
-        deadline = time.monotonic() + 15
-        while not pending.exists() and process.poll() is None and time.monotonic() < deadline:
-            time.sleep(0.02)
-        assert pending.read_text() == "ready"
-        assert process.poll() is None
-        pending_observed = True
-        assert _git(root, "rev-parse", "HEAD") == initial
-        release.write_text("release fixture hook\n")
-        stdout, stderr = process.communicate(timeout=30)
-    finally:
-        release.write_text("release fixture hook\n")
-        if process.poll() is None:
-            process.terminate()
-            stdout, stderr = process.communicate(timeout=30)
-        evidence.data["events"].append(
-            {
-                "command": command,
-                "cwd": str(root),
-                "exit": process.returncode,
-                "stdout": stdout,
-                "stderr": stderr,
-            }
-        )
-        evidence.save(pending_observed=pending_observed)
-    assert process.returncode == 1
-    failed = json.loads(stdout)
-    assert failed["status"] == "interrupted"
-    journal = Path(failed["journal"])
-    assert journal.is_file()
-    assert _git(root, "rev-parse", "HEAD") == initial
-    recovered = json.loads(
-        evidence.cli(root, "init", "recover", str(journal), "--yes", "--json").stdout
-    )
-    assert recovered["status"] == "recovered"
-    assert (root / "AGENTS.md").read_text() == "Original instructions.\n"
-    hook.unlink()
-    retried = json.loads(evidence.cli(root, *arguments).stdout)
-    assert retried["status"] == "complete"
-    assert _git(root, "show", "HEAD:AGENTS.md") == "Original instructions.\n"
-    evidence.cli(root, "check")
-    evidence.save(result="Pass", scenarios=["Q12"], recovered_journal=str(journal))
-
-
-def test_interruption_after_baseline_resumes_without_another_checkpoint(tmp_path, evidence):
-    root = _repository(tmp_path / "after baseline")
-    (root / "AGENTS.md").write_text("Original instructions.\n")
-    initial = _git(root, "rev-parse", "HEAD")
-    hook = root / ".git/hooks/post-commit"
-    hook.write_text(
-        "#!/bin/sh\nmkdir -p loadout\nprintf 'external QA change\\n' > loadout/config.toml\n"
-    )
-    hook.chmod(0o755)
-    failed = json.loads(
-        evidence.cli(
-            root, "init", "project", "--harness", "codex", "--yes", "--json", expected=1
-        ).stdout
-    )
-    assert failed["status"] == "interrupted"
-    baseline = _git(root, "rev-parse", "HEAD")
-    assert baseline != initial
-    assert _git(root, "show", "HEAD:AGENTS.md") == "Original instructions.\n"
-    external = root / "loadout/config.toml"
-    assert external.read_text() == "external QA change\n"
-    journal = Path(failed["journal"])
-    evidence.save(baseline=baseline.strip(), external_change_preserved=True, journal=str(journal))
-    hook.unlink()
-    external.unlink()
-    external.parent.rmdir()
-    resumed = json.loads(
-        evidence.cli(root, "init", "resume", str(journal), "--yes", "--json").stdout
-    )
-    assert resumed["status"] == "complete"
-    assert _git(root, "rev-parse", "HEAD") == baseline
-    assert "loadout/config.toml" in _git(root, "ls-files").splitlines()
-    evidence.cli(root, "check")
-    evidence.save(result="Pass", scenarios=["Q11", "Q13"])
 
 
 def test_prepare_source_managed_host_fixture(tmp_path, fake_home, evidence):

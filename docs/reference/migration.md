@@ -147,8 +147,31 @@ Project init writes `loadout/config.toml` plus the canonical project slice sourc
 Global init writes `loadout/loadout.toml`, canonical global slice sources, and registers that
 directory in the machine config. Neither scope writes `artifacts.toml`.
 
-Migration previews, privacy checks, Git staging, interruption journals, resume and recovery still
-apply. Existing generated destinations are reconstructed in isolation before approval.
+Existing generated destinations are reconstructed in isolation before approval.
+
+## Backup and restore
+
+Before its first write, init records a before-image of every path it will touch in
+`$XDG_STATE_HOME/loadout/backups/<timestamp>/` (`~/.local/state` when unset): the source it writes,
+the originals it retires or de-links, `.gitignore`, the machine registration, the first render's
+outputs, the deployment receipt, the write record, a new source repository, and the Git index when
+it untracks generated files. Each missing ancestor a write could create is recorded as absent. A
+`manifest.json` maps every entry to its path, and an `in-progress` marker is cleared on success.
+
+- A failure restores the backup straight away and exits 1, naming it.
+- A killed init leaves the marker. The next `init` offers the restore, or exits 2 with
+  `"status": "interrupted"` under `--json` or without a terminal.
+- `loadout init restore --yes` restores the interrupted backup, or else the latest completed one.
+  A completed backup records what each path held after init, so a path changed since is kept and
+  listed under `kept`, and a directory init created is removed only once empty; the exit code is
+  then 1.
+- Only the latest completed backup is kept.
+
+Init commits nothing and stages nothing. In a project it never creates a repository, and the only
+index change is removing the files it adds to `.gitignore`. A new global source gets its own
+repository, uncommitted. A before-image keeps content, mode and kind, not modification times,
+extended attributes, ownership or hard links. See
+[0028](../decisions/0028-init-protects-an-adoption-with-a-backup-folder.md).
 
 When reading an existing permission document loses something, such as an entry a trailing `*`
 shadows or a Codex `justification`, the preview names it, file first, before anything is
@@ -156,8 +179,8 @@ written. What each harness can lose is listed in [extraction](extraction.md#what
 
 A Codex rules file other than `permissions.rules`, such as the approvals Codex keeps in
 `default.rules`, is adopted and then deleted, since Codex reads every file in its rules folder.
-The preview lists it as `retire`. This is the one original init deletes outside the project or
-source root, and it stays inside the Codex root init read.
+The preview lists it as `retire`. It and a global `opencode.jsonc` are the originals init deletes
+outside the project or source root, each inside the harness root init read.
 
 ## Symlinked deployments
 

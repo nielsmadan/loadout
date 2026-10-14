@@ -424,7 +424,6 @@ def test_init_sync_check_round_trips_for_a_project_only_repo(tmp_path: Path, cap
         "permissions.toml",
     }
     assert (tmp_path / ".gitignore").read_text().splitlines() == [
-        "/.loadout-state/",
         "/loadout/.loadout-state/",
         "/.claude/settings.json",
         "/opencode.json",

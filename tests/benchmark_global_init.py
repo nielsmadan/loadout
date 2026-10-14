@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import shutil
 import statistics
 import tempfile
 from pathlib import Path
@@ -56,30 +55,22 @@ def run_case(directory: Path, count: int) -> dict:
     )
     result.update(support_files=count, input_files=len(expected), baseline=baseline)
     write_json(directory / "result.json", result)
-    journals = list((root / ".loadout-state/migrations").glob("*/journal.json"))
     if result["timeout"]:
         result["correctness"] = "not completed; censored failure"
-        if journals:
-            preserved = directory / "interrupted-journal"
-            shutil.copytree(journals[0].parent, preserved)
-            result["preserved_journal"] = str(preserved / "journal.json")
-            result["recovery"] = command(
-                ["init", "recover", str(journals[0]), "--yes", "--json"],
-                environment,
-                logs,
-                "recovery",
-            )
+        result["restore"] = command(
+            ["init", "restore", "--yes", "--json"], environment, logs, "restore"
+        )
         write_json(directory / "result.json", result)
         return result
     assert_exit(result)
-    assert journals == []
     for name, content in expected.items():
         assert (home / name).read_bytes() == content
         assert (home / name).stat().st_mode & 0o7777 == 0o644
     indexed = git(root, "ls-files", "-z", env=environment).decode().split("\0")
     assert all(name not in indexed for name in expected)
-    assert "loadout/loadout.toml" in indexed
+    assert "loadout/loadout.toml" not in indexed
     assert git(root, "rev-parse", "HEAD", env=environment).decode().strip() == baseline
+    git(root, "add", "-A", env=environment)
     for label, arguments in (
         ("check", ["check", "--root", str(root / "loadout")]),
         ("staged", ["check", "--staged", "--root", str(root / "loadout")]),
@@ -87,12 +78,10 @@ def run_case(directory: Path, count: int) -> dict:
         result[label] = command(arguments, environment, logs, label)
         assert_exit(result[label])
     result.update(
-        journal_bytes=0,
-        payload_bytes=0,
         retirements=0,
         output_files=len(expected),
         output_bytes=sum(map(len, expected.values())),
-        correctness="exact deployed bytes/modes; live originals read in place; global source staged; baseline retained; check and staged check",
+        correctness="exact deployed bytes/modes; live originals read in place; nothing committed or staged by init; check and staged check after staging",
     )
     write_json(directory / "result.json", result)
     return result

@@ -78,6 +78,7 @@ def test_init_adopts_the_keys_no_slice_owns(tmp_path: Path, capsys) -> None:
 def test_a_fresh_clone_and_sync_gets_the_project_settings(tmp_path: Path, capsys) -> None:
     root = _project(tmp_path / "p", _files())
     assert _init(root) == 0
+    _git(root, "add", "-A")
     _git(root, "commit", "-qm", "loadout")
     clone = tmp_path / "clone"
     subprocess.run(["git", "clone", "-q", str(root), str(clone)], check=True)
@@ -98,6 +99,7 @@ def test_a_converted_opencode_jsonc_reaches_a_fresh_clone(tmp_path: Path, capsys
     root = _project(tmp_path / "p", {"opencode.jsonc": '{\n  // dark\n  "theme": "x",\n}\n'})
     argv = ["init", "project", "--root", str(root), "--harness", "opencode", "--yes"]
     assert loadout.main(argv) == 0
+    _git(root, "add", "-A")
     _git(root, "commit", "-qm", "loadout")
     clone = tmp_path / "clone"
     subprocess.run(["git", "clone", "-q", str(root), str(clone)], check=True)
@@ -144,6 +146,7 @@ def test_an_untracked_settings_value_never_reaches_committed_source(tmp_path: Pa
     (root / ".claude/settings.json").write_text(json.dumps(CLAUDE))
 
     assert _init(root) == 0
+    _git(root, "add", "-A")
     _git(root, "commit", "-qm", "loadout")
 
     private = root / "loadout/settings/claude.json"

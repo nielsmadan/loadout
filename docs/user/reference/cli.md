@@ -74,9 +74,11 @@ loadout init global ~/agent-config
 
 Scope is a subcommand: `init project` for a repository, `init global` for machine-wide
 configuration. `init global [DIR]` takes the directory as an optional argument, like
-`git init [dir]`, and defaults to the current directory, so a bare `init global` adopts the cwd. `--root` exists only on `init project`; `--registration keep|replace` only on `init global`. An
-interrupted migration is resumed or recovered with `loadout init resume <journal> --yes` or
-`loadout init recover <journal> --yes`.
+`git init [dir]`, and defaults to the current directory, so a bare `init global` adopts the cwd. `--root` exists only on `init project`; `--registration keep|replace` only on `init global`.
+`loadout init restore [--yes] [--json]` puts back everything the latest init changed, from the
+backup it took first; a path changed since that init is kept and reported, and the exit code is 1.
+An init that was killed part way is offered for restore by the next `init`, which otherwise exits
+2 with `"status": "interrupted"` under `--json`.
 
 Fresh project initialisation uses explicit `--harness` options, then the machine configuration's
 `harnesses` default, then discovered project configuration. If none establishes membership, it

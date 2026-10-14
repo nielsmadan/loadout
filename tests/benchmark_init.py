@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
-import shutil
 import statistics
 import tempfile
 from pathlib import Path
@@ -52,42 +50,20 @@ def run_case(directory: Path, count: int) -> dict:
     result.update(
         support_files=count, input_files=len(expected), input_bytes=sum(map(len, expected.values()))
     )
-    journals = list((root / ".loadout-state/migrations").glob("*/journal.json"))
-    if journals:
-        journal = json.loads(journals[0].read_bytes())
-        if journal["version"] == 2:
-            journal = json.loads(
-                (journals[0].parent / f"payload-{journal['payload']}.json").read_bytes()
-            )
-        result.update(
-            operations=len(journal["operations"]), journal_bytes=journals[0].stat().st_size
-        )
-        result["payload_bytes"] = sum(
-            path.stat().st_size for path in journals[0].parent.glob("payload-*.json")
-        )
     if result["timeout"]:
         result["correctness"] = "not completed; censored failure"
-        result["journal"] = str(journals[0]) if journals else None
-        if journals:
-            preserved = directory / "interrupted-journal"
-            shutil.copytree(journals[0].parent, preserved)
-            result["preserved_journal"] = str(preserved / "journal.json")
-            result["recovery"] = command(
-                ["init", "recover", str(journals[0]), "--yes", "--json"],
-                environment,
-                logs,
-                "recovery",
-            )
+        result["restore"] = command(
+            ["init", "restore", "--yes", "--json"], environment, logs, "restore"
+        )
         return result
     assert_exit(result)
-    assert journals == []
-    result.update(journal_bytes=0, payload_bytes=0)
     for name, content in expected.items():
         assert (root / name).read_bytes() == content
         assert (root / name).stat().st_mode & 0o777 == 0o644
     indexed = git(root, "ls-files", "-z", env=environment).decode().split("\0")
     assert all(name not in indexed for name in expected)
-    assert "loadout/config.toml" in indexed
+    assert "loadout/config.toml" not in indexed
+    git(root, "add", "-A", env=environment)
     ignored = git(root, "check-ignore", *expected, env=environment).decode().splitlines()
     assert set(expected) <= set(ignored)
     for label, args in (
@@ -97,7 +73,7 @@ def run_case(directory: Path, count: int) -> dict:
         result[label] = command(args, environment, logs, label)
         assert_exit(result[label])
     result.update(
-        correctness="complete bytes, filesystem mode 0644, generated index removals/ignores, source staged, check and staged check",
+        correctness="complete bytes, filesystem mode 0644, generated index removals/ignores, nothing staged by init, check and staged check after staging",
         output_files=len(expected),
         output_bytes=sum(map(len, expected.values())),
         payload_sha256=digest(PAYLOAD),

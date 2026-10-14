@@ -46,15 +46,15 @@ selected directory is not read; if the user keeps one, install it first so the l
 holds what they want adopted. Each refusal names the file to change; fix it on disk and run init
 again. Never edit a harness file just to make a refusal disappear without telling the user.
 
-Before applying, show scope, agents, authored sources, output destinations, exact Git baseline
-paths, retained/private entries, removals and final staging. Explain that credential detection is
-heuristic: review checkpoint paths for private information. Existing Git commit hooks can run.
-Native document formatting may change as described in preview notes; opaque bytes and modes remain.
+Before applying, show scope, agents, authored sources, output destinations, retained/private
+entries, removals, and the generated files init will untrack (`untrack_paths`). Native document
+formatting may change as described in preview notes; opaque bytes and modes remain.
 
-Apply the same resolved arguments with `--yes` after approval, omitting `--dry-run`. The transaction
-creates a Git repository only when outside an existing one, checkpoints eligible originals, writes
-source and outputs, safely retires mapped originals and stages the result. It does not commit the
-final migration. Git identity/signing/hook failures need repair, never bypasses.
+Apply the same resolved arguments with `--yes` after approval, omitting `--dry-run`. Init first
+backs up every path it will touch to `$XDG_STATE_HOME/loadout/backups/`, then writes source and
+outputs and retires mapped originals. It commits nothing and stages nothing: in a project it only
+untracks the generated files it ignores, and it never creates a project repository. A new global
+source gets an uncommitted repository; offer the user the commit, never make it unasked.
 
 Global registration points `source` to the actual manifest directory. A conflicting registration
 requires `--registration replace` or `--registration keep`; neither resolves source-copy
@@ -62,16 +62,17 @@ conflicts. Existing initialized sources are recognized
 and left as source; repeat init reports no migration. Registration can still be explicitly changed.
 Use normal check/sync for subsequent source edits.
 
+If init fails it restores the backup itself (`"status": "restored"`, exit 1); report the error.
+If an earlier init was killed, the next one exits 2 with `"status": "interrupted"` and the backup
+path. Ask the user before restoring it:
+
 ```sh
-loadout init resume /work/project/.loadout-state/migrations/ID/journal.json --yes
-loadout init recover /work/project/.loadout-state/migrations/ID/journal.json --yes --json
+loadout init restore --yes --json
 ```
 
-Resume continues frozen operations after guards. Recover restores only unchanged postimages and
-reports conflicting paths with exit 1; successful baseline commits survive. Successful init, resume
-and conflict-free recovery delete the transaction's recovery data and return `journal: null`.
-The deployment receipt remains for sync. Retain journals from unfinished transactions. Keep recovery data
-private and never paste its content into the conversation. Report the journal path and status.
+The same command undoes the latest completed adoption when the user asks for that. A path changed
+since that init is kept and listed under `kept` (exit 1); report each one. The backup holds copies
+of the user's configuration, so keep it private and never paste its content into the conversation.
 
 ## Resolving conflicting copies at init
 

@@ -281,14 +281,11 @@ def adopt(case: dict, root: Path, preview: dict, env: dict, logs: Path) -> dict:
     result = command([*arguments(case, root), "--yes", "--json"], env, logs, "init")
     assert_exit(result)
     result["comparisons"] = compare(expected)
-    result["baseline"] = git(root, "rev-parse", "HEAD", env=env).decode().strip()
-    changed_baseline = (
-        git(root, "diff", "--name-only", case["revision"], "HEAD", env=env).decode().splitlines()
-    )
-    assert set(changed_baseline) <= set(preview["git"]["baseline_paths"])
-    result["baseline_changed_paths"] = changed_baseline
+    head = git(root, "rev-parse", "HEAD", env=env).decode().strip()
+    revision = git(root, "rev-parse", case["revision"] + "^{commit}", env=env).decode().strip()
+    assert head == revision, "init must not commit"
     staged = git(root, "diff", "--cached", "--name-only", env=env).decode().splitlines()
-    assert set(staged) <= set(preview["stage_paths"] + preview["unstage_paths"] + [".gitignore"])
+    assert set(staged) <= set(preview["untrack_paths"]), "init stages only the untracking"
     result["staged_paths"] = staged
     indexed = set(git(root, "ls-files", "-z", env=env).decode().split("\0"))
     for entry in preview["originals"]:
@@ -304,10 +301,13 @@ def adopt(case: dict, root: Path, preview: dict, env: dict, logs: Path) -> dict:
         ("sync", ["sync", "--root", str(source)]),
         ("check-again", ["check", "--root", str(source)]),
         ("init-again", [*arguments(case, root), "--yes", "--json"]),
-        ("staged", ["check", "--staged", "--root", str(source)]),
     ):
         result[label] = command(args, env, logs, label)
         assert_exit(result[label])
+    # Init stages nothing; the user reviews and stages the migration before a staged check.
+    git(root, "add", "-A", env=env)
+    result["staged"] = command(["check", "--staged", "--root", str(source)], env, logs, "staged")
+    assert_exit(result["staged"])
     result["reconstruction"] = reconstruction(root, home, preview, expected, logs)
     if case["case"] == "sentry":
         allow = expected[str(root / ".claude/settings.json")]["content"]["permissions"]["allow"]

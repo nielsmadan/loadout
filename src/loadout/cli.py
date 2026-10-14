@@ -28,7 +28,7 @@ from .errors import LoadoutError, UsageError
 from .git_hook_commands import run_hook
 from .git_hooks import EVENTS, install_hooks, status_hooks, uninstall_hooks
 from .init_options import InitOptions
-from .init_workflow import run_init, run_recovery
+from .init_workflow import run_init, run_restore
 from .machine import load_machine_config, machine_config_path
 from .project import project_config_path
 from .staged import check_staged
@@ -100,7 +100,7 @@ def build_parser() -> argparse.ArgumentParser:
     init_subparsers = init.add_subparsers(
         dest="init_command",
         required=True,
-        metavar="{project,global,resume,recover}",
+        metavar="{project,global,restore}",
     )
     _add_init_project(init_subparsers.add_parser("project", help="adopt project configuration"))
     _add_init_global(
@@ -108,11 +108,11 @@ def build_parser() -> argparse.ArgumentParser:
             "global", help="adopt global configuration and register its source on this machine"
         )
     )
-    for sub_name, sub_help in (
-        ("resume", "resume a protected migration journal"),
-        ("recover", "restore unchanged transaction postimages; keep successful baseline"),
-    ):
-        _add_init_recovery(init_subparsers.add_parser(sub_name, help=sub_help))
+    _add_init_restore(
+        init_subparsers.add_parser(
+            "restore", help="undo the latest init from its backup, or finish an interrupted one"
+        )
+    )
 
     template = subparsers.add_parser("template", help="manage this project's templates")
     template_subparsers = template.add_subparsers(dest="template_command")
@@ -341,8 +341,7 @@ def _add_init_global(parser: argparse.ArgumentParser) -> None:
     _add_init_choices(parser)
 
 
-def _add_init_recovery(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("journal", type=Path, help="migration journal to resume or recover")
+def _add_init_restore(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--yes", action="store_true", help="approve the operation without confirmation"
     )
@@ -350,10 +349,8 @@ def _add_init_recovery(parser: argparse.ArgumentParser) -> None:
 
 
 def _dispatch_init(args: argparse.Namespace) -> int:
-    if args.init_command in {"resume", "recover"}:
-        return run_recovery(
-            args.journal, recover=args.init_command == "recover", yes=args.yes, as_json=args.json
-        )
+    if args.init_command == "restore":
+        return run_restore(yes=args.yes, as_json=args.json)
     if args.init_command == "global":
         source = (
             args.directory.expanduser().absolute()

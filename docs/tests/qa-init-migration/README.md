@@ -1,6 +1,6 @@
 # Init migration CLI QA
 
-Run this after changing onboarding, checkpoint/recovery behavior, source routing or bundled
+Run this after changing onboarding, backup and restore behavior, source routing or bundled
 skill installation. It exercises the current checkout through `python -m loadout`, using
 disposable repositories and the existing fake-home fixtures in
 [conftest.py](../../../tests/conftest.py). It never installs into real agent destinations.
@@ -26,7 +26,7 @@ printf '%s\n' "$qa_evidence"
 Use a fresh evidence directory for each execution. Read the complete pytest summary and every
 failure, not only successful CLI output. Preserve failed JSON records when rerunning. Copy
 useful synthetic records beside a dated run before temporary fixture directories disappear.
-The records identify protected recovery journals by path but do not copy their private contents.
+The records identify init backups by path but do not copy their private contents.
 
 ## Expected behavior
 
@@ -38,13 +38,10 @@ The records identify protected recovery journals by path but do not copy their p
 | Conflicting global copies | Preview and `--yes` refuse without mutation; explicit source selection determines deployed content |
 | Frontend/backend templates after init | `template add <name> --vendored` vendors a bundled template with provenance and its instructions render on the next sync |
 | PTY decline and SIGINT at confirmation | Actual pending prompt appears; either cancellation leaves source and Git unchanged |
-| Held failing pre-commit hook | CLI is observed pending; failed checkpoint retains HEAD; supported recovery and retry succeed |
-| Post-commit concurrent source change | Successful checkpoint survives interruption; foreign change is preserved; removing the fixture fault allows resume without another checkpoint |
 
-Faults are fixture-owned Git hooks, not changes to product code. The pre-commit hook is bounded
-and explicitly released; the post-commit hook creates a known competing source file. Tests stop
-their own child processes and remove the injected hooks on successful completion. Failed fixture
-state is retained by pytest for inspection; do not reset or clean the development checkout.
+Tests stop their own child processes. Failed fixture state is retained by pytest for inspection;
+do not reset or clean the development checkout. A failed or killed init is restored from its
+backup; `tests/test_init_backup.py` covers that, so this procedure has no fault scenarios.
 
 ## Complementary evidence
 

@@ -28,7 +28,7 @@ init. Explicit `--harness` selections override that default; initialized project
 configured harnesses.
 
 If the scope is absent, use the onboarding reference when setup is requested. An ordinary settings
-change does not itself authorize migration and its Git checkpoint; report the missing setup.
+change does not itself authorize a migration; report the missing setup.
 
 ## Canonical producers
 

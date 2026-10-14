@@ -99,15 +99,13 @@ complete output bytes/modes, original index removals, staged global source, unch
 HEAD, normal check and staged check. The default is a 25-file warmup followed by three runs at
 25/100/1000; `--counts` selects a bounded comparison and `--repetitions` changes its sample count.
 Keep both constant between compared runs. Each CLI command has the same 180-second cap and
-timeout recovery/evidence preservation as the project benchmark.
+timeout restore and evidence preservation as the project benchmark.
 
 Global and project timings are distinct workloads. Do not use the project measurements to infer
 retirement cost, or describe a single diagnostic sample as a controlled speedup.
 
-Both init benchmarks assert successful transactions leave no recovery journal or payloads.
-`tests/benchmark_recovery.py` injects a staging failure into the real init CLI, then measures
-supported recovery against that unfinished transaction. It verifies restoration of bytes, modes
-and the index, retention of the baseline, and removal of the completed recovery's state.
+Both init benchmarks assert that init commits nothing, stages nothing, and leaves the
+generated outputs out of the index; a timed-out run is restored with `loadout init restore`.
 
 ## Publish and retain
 
