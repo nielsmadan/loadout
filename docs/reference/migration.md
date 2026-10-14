@@ -85,6 +85,10 @@ instruction source. A `CLAUDE.md` that is a symlink to `AGENTS.md`, or whose who
 banner, is the same document as `AGENTS.md`; anything more in it is a disagreement. In global
 scope each harness keeps its own, so `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` may differ.
 
+Project permission documents are combined into one `permissions.toml` the same way global ones
+are: every entry any harness states is kept, and an entry two harnesses decide differently takes
+the strictest decision (deny, then ask, then allow).
+
 ## Source shape
 
 Project init writes `loadout/config.toml` plus the canonical project slice sources it found.

@@ -552,3 +552,63 @@ def test_different_global_instruction_documents_stay_per_harness(fake_home: Path
     written = {w.path.relative_to(source).as_posix(): w.content for w in plan.source_writes}
     assert written["loadout/instructions/claude.md"] == b"Claude global.\n"
     assert written["loadout/instructions/codex.md"] == b"Codex global.\n"
+
+
+def permission_source(plan: MigrationPlan) -> dict[str, object]:
+    source = next(w for w in plan.source_writes if w.path.name == "permissions.toml")
+    return tomllib.loads(source.content.decode())
+
+
+def test_project_permissions_spelled_differently_per_harness_merge(tmp_path: Path) -> None:
+    write(
+        tmp_path,
+        ".claude/settings.json",
+        '{"permissions": {"allow": ["Bash(git status:*)", "Bash(ls:*)"]}}\n',
+    )
+    write(
+        tmp_path,
+        ".codex/rules/permissions.rules",
+        'prefix_rule(\n    pattern = [ "ls" ],\n    decision="allow" ,\n)\n'
+        'prefix_rule(pattern=["git","status"],decision="allow")\n',
+    )
+    write(
+        tmp_path,
+        "opencode.json",
+        '{"permission": {"bash": {"ls": "allow", "ls *": "allow",'
+        ' "git status": "allow", "git status *": "allow"}}}\n',
+    )
+    plan = migration(tmp_path, ("claude", "codex", "opencode"))
+    assert permission_source(plan)["shell"] == {
+        "allow": ["git status", "ls"],
+        "ask": [],
+        "deny": [],
+    }
+
+
+def test_project_permissions_one_harness_states_are_kept(tmp_path: Path) -> None:
+    write(tmp_path, ".claude/settings.json", '{"permissions": {"allow": ["Bash(ls:*)"]}}\n')
+    write(tmp_path, "opencode.json", '{"permission": {"bash": {"ls*": "allow"}}}\n')
+    plan = migration(tmp_path, ("claude", "opencode"))
+    assert permission_source(plan)["shell"] == {"allow": ["ls", "ls*"], "ask": [], "deny": []}
+
+
+def test_project_permission_conflict_resolves_as_global_init_does(
+    tmp_path: Path, fake_home: Path
+) -> None:
+    claude = '{"permissions": {"allow": ["Bash(rm:*)", "Bash(ls:*)"]}}\n'
+    codex = 'prefix_rule(pattern=["rm"], decision="forbidden")\n'
+    project = tmp_path / "project"
+    write(project, ".claude/settings.json", claude)
+    write(project, ".codex/rules/permissions.rules", codex)
+    write(fake_home, ".claude/settings.json", claude)
+    write(fake_home, ".codex/rules/permissions.rules", codex)
+    source = fake_home / "agent-config"
+    source.mkdir()
+
+    project_rules = permission_source(migration(project, ("claude", "codex")))
+    global_rules = permission_source(
+        plan_migration(discover(source, scope="global", agents=("claude", "codex")))
+    )
+
+    assert project_rules["shell"] == {"allow": ["ls"], "ask": [], "deny": ["rm"]}
+    assert project_rules == global_rules
