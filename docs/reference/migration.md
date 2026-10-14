@@ -102,6 +102,15 @@ Project scope keeps one instruction source, so a disagreement there is one item,
 document as `AGENTS.md`; anything more in it is a disagreement. In global scope each harness keeps
 its own, so `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` may differ.
 
+## Permissions and MCP servers from several harnesses
+
+Permissions and MCP servers are keys in documents loadout co-owns, so leaving one out would render
+it empty and delete the harness's rules. At both scopes init merges them instead. The harnesses'
+permission entries are unioned into one `permissions.toml`, and an entry two harnesses give
+different verdicts takes the stricter one (deny > ask > allow), so a deny from any harness reaches
+every harness, and so does an allow nothing contradicts. MCP servers combine by name into one
+`mcp.toml`; a name two harnesses define differently is a refusal naming the server.
+
 ## Source shape
 
 Project init writes `loadout/config.toml` plus the canonical project slice sources it found.

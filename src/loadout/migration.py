@@ -157,6 +157,23 @@ def _rules_source(rules: Rules) -> bytes:
     ).encode()
 
 
+def _merged_rules(values: list[tuple[str, object]]) -> Rules:
+    return merge_rules(*(value for _, value in values if isinstance(value, Rules)))
+
+
+def _merged_servers(values: list[tuple[str, object]]) -> dict[str, Any]:
+    servers: dict[str, Any] = {}
+    for _, value in values:
+        assert isinstance(value, dict)
+        for name, server in value.items():
+            if servers.setdefault(name, server) != server:
+                raise LoadoutError(
+                    f"MCP server '{name}' is defined differently across harnesses; "
+                    "make the definitions agree, then run init again"
+                )
+    return servers
+
+
 def _same_document(first: bytes, second: bytes, format_name: str) -> bool:
     a = parse_document(first.decode(), format_name)
     b = parse_document(second.decode(), format_name)
@@ -632,19 +649,17 @@ class _PlanBuilder:
             self.write(Path("instructions/main.md"), candidate.content, mode=candidate.mode)
             instructions = ("main",)
         for category, values in self.project_values.items():
-            unique = {repr(value) for _, value in values}
-            if len(unique) != 1:
+            if category == "permissions":
+                self.write(Path("permissions.toml"), _rules_source(_merged_rules(values)))
+                continue
+            if category == "mcp":
+                self.write(Path("mcp.toml"), serialize_servers(_merged_servers(values)))
+                continue
+            if len({repr(value) for _, value in values}) != 1:
                 raise LoadoutError(f"project {category} documents disagree across harnesses")
             value = values[0][1]
-            if category == "permissions":
-                assert isinstance(value, Rules)
-                self.write(Path("permissions.toml"), _rules_source(value))
-            elif category == "mcp":
-                assert isinstance(value, dict)
-                self.write(Path("mcp.toml"), serialize_servers(value))
-            else:
-                assert isinstance(value, dict)
-                self.write(Path(f"{category}.json"), serialize_document(value, "json"))
+            assert isinstance(value, dict)
+            self.write(Path(f"{category}.json"), serialize_document(value, "json"))
         return instructions
 
     def finish_global_sources(self) -> dict[str, dict[str, object]]:
@@ -654,18 +669,12 @@ class _PlanBuilder:
             blocks[agent]["instructions"] = [agent]
         for category, values in self.global_values.items():
             if category == "permissions":
-                rules = merge_rules(*(value for _, value in values if isinstance(value, Rules)))
-                self.write(Path("permissions.toml"), _rules_source(rules))
+                self.write(Path("permissions.toml"), _rules_source(_merged_rules(values)))
                 for agent, _ in values:
                     blocks[agent]["permissions"] = True
                 continue
             if category == "mcp":
-                servers = {
-                    name: server
-                    for _, value in values
-                    if isinstance(value, dict)
-                    for name, server in value.items()
-                }
+                servers = _merged_servers(values)
                 self.write(Path("mcp.toml"), serialize_servers(servers) or SERVERS_EXAMPLE)
                 for agent, _ in values:
                     blocks[agent]["mcp"] = True
