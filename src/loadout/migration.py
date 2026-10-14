@@ -76,8 +76,6 @@ TREE_CATEGORIES = {
     "plugins": "plugins",
     "plugin": "plugins",
     "scripts": "support",
-    "providers": "support",
-    "profiles": "support",
 }
 
 

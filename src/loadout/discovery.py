@@ -82,7 +82,7 @@ RUNTIME_FILES = frozenset(
 INSTRUCTION_FILES = frozenset(
     {"AGENTS.md", "AGENTS.override.md", "CLAUDE.md", "CLAUDE.local.md", "opencode.md"}
 )
-_MODULE_TREES = ("hooks/", "rules/", "scripts/", "providers/", "profiles/", "plugin/")
+_MODULE_TREES = ("hooks/", "rules/", "scripts/")
 # The only paths discovery reads beneath a harness or shared root, per scope and
 # harness. A trailing slash names a tree. Everything else under a root is left
 # alone unread, which is what lets init adopt a root it does not fully understand.
@@ -122,6 +122,8 @@ MANAGED_PATHS: dict[str, dict[str, tuple[str, ...]]] = {
             "skills/",
             "agents/",
             "plugins/",
+            # OpenCode scans "{plugin,plugins}/*.{ts,js}" in its config directory.
+            "plugin/",
             *_MODULE_TREES,
         ),
         "pi": (
@@ -379,8 +381,6 @@ def _category(relative: Path, agent: str) -> str | None:
         "templates": "templates",
         "plugin": "plugins",
         "scripts": "support",
-        "providers": "support",
-        "profiles": "support",
     }
     names = {
         **dict.fromkeys((".mcp.json", "mcp.json", ".claude.json"), "mcp"),

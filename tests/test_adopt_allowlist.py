@@ -46,6 +46,9 @@ UNMANAGED = {
     "config.toml": 'model = "not-claude"\n',
     "opencode.json": '{"model": "not-claude"}\n',
     "CLAUDE.local.md": "Personal.\n",
+    "providers/local.json": '{"url": "http://localhost"}\n',
+    "profiles/work.json": '{"model": "opus"}\n',
+    "plugin/notify.js": "export default {}\n",
 }
 
 
@@ -149,3 +152,20 @@ def test_a_managed_file_inside_an_unmanaged_directory_is_still_read(
     permissions = next(w for w in plan.source_writes if w.path.name == "permissions.toml")
     assert "git status" in permissions.content.decode()
     assert "rm -rf" in permissions.content.decode()
+
+
+def test_opencode_plugin_directory_is_read_under_either_spelling(
+    tmp_path: Path, fake_home: Path
+) -> None:
+    opencode = fake_home / ".config/opencode"
+    singular = opencode / "plugin/notify.ts"
+    plural = opencode / "plugins/guard.ts"
+    for path in (singular, plural):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("export default {}\n")
+    source = tmp_path / "agent-config"
+    source.mkdir()
+
+    plan = plan_migration(discover(source, scope="global", agents=("opencode",)))
+
+    assert {singular, plural} <= {c.path for c in plan.inventory.candidates}

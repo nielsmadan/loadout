@@ -33,15 +33,23 @@ Global scope:
 
 | root | paths read |
 |---|---|
-| `${CLAUDE_CONFIG_DIR:-~/.claude}` | `CLAUDE.md`, `settings.json`, `mcp-permissions.json`, `skills/`, `agents/`, `hooks/`, `rules/`, `scripts/`, `providers/`, `profiles/`, `plugin/` |
+| `${CLAUDE_CONFIG_DIR:-~/.claude}` | `CLAUDE.md`, `settings.json`, `mcp-permissions.json`, `skills/`, `agents/`, `hooks/`, `rules/`, `scripts/` |
 | `${CLAUDE_CONFIG_DIR:-~}/.claude.json` | the file itself (only `mcpServers` is adopted) |
 | `${CODEX_HOME:-~/.codex}` | `AGENTS.md`, `AGENTS.override.md`, `config.toml`, `hooks.json`, `rules/`, `skills/`, `agents/` |
-| `${FACTORY_HOME_OVERRIDE:-~}/.factory` | `AGENTS.md`, `settings.json`, `hooks.json`, `mcp.json`, `skills/`, `droids/`, `plugins/`, `hooks/`, `rules/`, `scripts/`, `providers/`, `profiles/`, `plugin/` |
-| `${XDG_CONFIG_HOME:-~/.config}/opencode`, or `$OPENCODE_CONFIG_DIR` | `AGENTS.md`, `opencode.json`, `opencode.jsonc`, `skills/`, `agents/`, `plugins/`, `hooks/`, `rules/`, `scripts/`, `providers/`, `profiles/`, `plugin/` |
+| `${FACTORY_HOME_OVERRIDE:-~}/.factory` | `AGENTS.md`, `settings.json`, `hooks.json`, `mcp.json`, `skills/`, `droids/`, `plugins/`, `hooks/`, `rules/`, `scripts/` |
+| `${XDG_CONFIG_HOME:-~/.config}/opencode`, or `$OPENCODE_CONFIG_DIR` | `AGENTS.md`, `opencode.json`, `opencode.jsonc`, `skills/`, `agents/`, `plugins/`, `plugin/`, `hooks/`, `rules/`, `scripts/` |
 | `$OPENCODE_CONFIG` | the file itself |
-| `${PI_CODING_AGENT_DIR:-~/.pi/agent}` | `AGENTS.md`, `settings.json`, `mcp.json`, `extensions/pi-permission-system/config.json`, `skills/`, `agents/`, `plugins/`, `hooks/`, `rules/`, `scripts/`, `providers/`, `profiles/`, `plugin/` |
+| `${PI_CODING_AGENT_DIR:-~/.pi/agent}` | `AGENTS.md`, `settings.json`, `mcp.json`, `extensions/pi-permission-system/config.json`, `skills/`, `agents/`, `plugins/`, `hooks/`, `rules/`, `scripts/` |
 | `${XDG_CONFIG_HOME:-~/.config}/mcp/mcp.json` | the file itself (Pi) |
 | `~/.agents` | `skills/`, `mcp.json`, `mcp/mcp.json` |
+
+OpenCode's `plugin/` is read because OpenCode scans `"{plugin,plugins}/*.{ts,js}"` in every config
+directory (`packages/opencode/src/config/plugin.ts:21`, 1.19.0); its docs name only `plugins/`.
+`providers/` and `profiles/` are read for no harness. Verified negative: neither name, quoted or as a
+path segment, is a config directory in the Claude Code 2.1.299 binary, the Droid 0.240.1 binary, Pi
+1.2.0's `dist` or OpenCode 1.19.0's source (whose config scans are `agent`, `mode`, `plugin`,
+`command` and skills); Droid's one `"profiles"` is `~/.factory-dev/profiles`. Nor is `plugin/` read by
+Claude, Droid or Pi, by the same searches.
 
 Project scope, relative to the repository root:
 
