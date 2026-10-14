@@ -601,14 +601,15 @@ class _PlanBuilder:
             self.write(Path("instructions/main.md"), candidate.content, mode=candidate.mode)
             instructions = ("main",)
         for category, values in self.project_values.items():
+            if category == "permissions":
+                rules = merge_rules(*(value for _, value in values if isinstance(value, Rules)))
+                self.write(Path("permissions.toml"), _rules_source(rules))
+                continue
             unique = {repr(value) for _, value in values}
             if len(unique) != 1:
                 raise LoadoutError(f"project {category} documents disagree across harnesses")
             value = values[0][1]
-            if category == "permissions":
-                assert isinstance(value, Rules)
-                self.write(Path("permissions.toml"), _rules_source(value))
-            elif category == "mcp":
+            if category == "mcp":
                 assert isinstance(value, dict)
                 self.write(Path("mcp.toml"), serialize_servers(value))
             else:

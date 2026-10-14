@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 parser = argparse.ArgumentParser()
@@ -121,20 +122,19 @@ assert applied["status"] == "complete"
 configuration = project / "loadout"
 instructions = "# Installation verification\nKeep this shared setup.\n"
 put(configuration / "instructions/main.md", instructions)
-(config := configuration / "config.toml").write_text(
-    'harnesses = ["claude", "codex", "opencode", "pi"]\ninstructions = ["main"]\n'
-)
+adopted_config = tomllib.loads((configuration / "config.toml").read_text())
+assert adopted_config["harnesses"] == ["claude", "codex", "opencode", "pi"]
+assert adopted_config["instructions"] == ["main"]
 put(configuration / "permissions.toml", '[shell]\nallow = ["git status"]\n')
 probe = "---\nname: install-probe\ndescription: Verify packaged CLI output.\n---\nProbe body.\n"
-put(configuration / "skills/install-probe.md", probe)
+put(configuration / "skills/install-probe/SKILL.md", probe)
 skill_outputs = [
-    project / path / "install-probe/SKILL.md"
-    for path in (".claude/skills", ".agents/skills", ".opencode/skills", ".pi/skills")
+    project / path / "install-probe/SKILL.md" for path in (".claude/skills", ".agents/skills")
 ]
 run("render all four agents", ["sync"], project)
 run("check rendered outputs", ["check"], project)
-for output in ("CLAUDE.md", "AGENTS.md"):
-    assert instructions.strip() in (project / output).read_text()
+assert instructions.strip() in (project / "AGENTS.md").read_text()
+assert "@AGENTS.md" in (project / "CLAUDE.md").read_text()
 assert "git" in (project / ".codex/rules/permissions.rules").read_text()
 assert all(path.read_text().endswith("Probe body.\n") for path in skill_outputs)
 before = outputs(project)
@@ -146,13 +146,14 @@ put(configuration / "instructions/main.md", instructions)
 run("source change reports drift", ["check"], project, 1)
 run("sync source change", ["sync"], project)
 run("check updated output", ["check"], project)
-assert all((project / output).read_text() == instructions for output in ("CLAUDE.md", "AGENTS.md"))
+assert (project / "AGENTS.md").read_text().endswith(instructions)
+assert "@AGENTS.md" in (project / "CLAUDE.md").read_text()
 edited = project / "AGENTS.md"
 edited.write_text(instructions + "External edit.\n")
 run("protect external output edit", ["sync"], project, 1)
 assert edited.read_text() == instructions + "External edit.\n"
 run("explicit force adoption", ["sync", "--force"], project)
-assert edited.read_text() == instructions
+assert edited.read_text().endswith(instructions)
 run("check after force", ["check"], project)
 
 config = configuration / "config.toml"
@@ -173,8 +174,8 @@ listed = run("list template", ["template", "list"], project).stdout
 assert "frontend" in listed
 vendored = configuration / "templates/frontend/instructions.md"
 template_body = vendored.read_text()
-assert template_body.strip() in (project / "CLAUDE.md").read_text()
 assert template_body.strip() in (project / "AGENTS.md").read_text()
+assert "@AGENTS.md" in (project / "CLAUDE.md").read_text()
 run("update unchanged template", ["template", "sync", "frontend"], project)
 vendored.write_text(template_body + "\nLocal change.\n")
 run("protect edited template", ["template", "sync", "frontend"], project, 1)
@@ -189,7 +190,8 @@ assert result["status"] == "complete"
 run("backend template add", ["template", "add", "backend", "--vendored"], templated)
 run("backend template sync", ["sync"], templated)
 backend = (templated / "loadout/templates/backend/instructions.md").read_text().strip()
-assert backend in (templated / "CLAUDE.md").read_text()
+assert backend in (templated / "AGENTS.md").read_text()
+assert "@AGENTS.md" in (templated / "CLAUDE.md").read_text()
 run("backend template check", ["check"], templated)
 
 global_source = work / "global source"

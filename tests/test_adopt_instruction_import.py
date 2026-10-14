@@ -88,7 +88,7 @@ def test_an_import_with_other_content_still_disagrees(tmp_path: Path, capsys) ->
 
 def test_this_repositorys_own_instruction_layout_is_adopted(tmp_path: Path) -> None:
     agents = (REPOSITORY / "AGENTS.md").read_text()
-    root = _project(tmp_path / "p", (REPOSITORY / "CLAUDE.md").read_text(), agents)
+    root = _project(tmp_path / "p", "@AGENTS.md\n", agents)
 
     assert _init(root) == 0
 

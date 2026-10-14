@@ -98,7 +98,10 @@ def test_sync_retires_the_project_pi_file_once_its_last_rule_is_gone(tmp_path: P
 
 
 @pytest.mark.migration_integration
-def test_project_init_adopts_a_trailing_catch_all(tmp_path: Path, capsys) -> None:
+def test_project_init_adopts_a_trailing_catch_all(tmp_path: Path, fake_home: Path, capsys) -> None:
+    (fake_home / ".gitconfig").write_text(
+        "[user]\nname = Fixture\nemail = fixture@example.invalid\n"
+    )
     root = tmp_path / "project"
     (root / CONFIG.parent).mkdir(parents=True)
     (root / CONFIG).write_text(
