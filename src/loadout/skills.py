@@ -256,6 +256,42 @@ def _expand_line(line: str, harness: str) -> str:
     return _CONCEPT.sub(replace, line)
 
 
+DELEGATION = "Delegate this task to the `{agent}` subagent."
+
+
+def skill_agent(skill: Skill) -> str | None:
+    """The agent a skill hands its work to, from its top-level `agent` key."""
+    frontmatter, _ = split_frontmatter(skill.document.read_text(encoding="utf-8"))
+    return _shared_agent(frontmatter or [])
+
+
+def _shared_agent(lines: list[str]) -> str | None:
+    for line in lines:
+        match = _TOP_LEVEL_KEY.match(line)
+        if match and match.group(1) == "agent" and match.group(2).strip():
+            return match.group(2).strip().strip("\"'")
+    return None
+
+
+def check_skill_agents(skills: tuple[Skill, ...], agents: frozenset[str]) -> None:
+    for skill in skills:
+        agent = skill_agent(skill)
+        if agent is not None and agent not in agents:
+            raise LoadoutError(
+                f"skill '{skill.name}' hands its work to agent '{agent}', but no source "
+                f"agent has that name; add agents/{agent}.md or remove the skill's `agent` key"
+            )
+
+
+def _fork(lines: list[str]) -> list[str]:
+    """Claude runs a skill in its named agent only when the skill forks."""
+    keys = [match.group(1) for line in lines if (match := _TOP_LEVEL_KEY.match(line))]
+    if "agent" not in keys or "context" in keys:
+        return lines
+    position = next(i for i, line in enumerate(lines) if line.startswith("agent:"))
+    return [*lines[:position], "context: fork", *lines[position:]]
+
+
 def render_skill(skill: Skill, harness: str) -> str:
     text = skill.document.read_text(encoding="utf-8")
     frontmatter, body = split_frontmatter(text)
@@ -264,6 +300,13 @@ def render_skill(skill: Skill, harness: str) -> str:
     if frontmatter is None:
         # No frontmatter to sit under, so the banner leads.
         return f"{banner}\n{resolved}"
-    merged = apply_frontmatter(frontmatter, harness)
+    agent = _shared_agent(frontmatter)
+    if harness == "claude":
+        merged = _fork(apply_frontmatter(frontmatter, harness))
+    else:
+        merged = apply_frontmatter(frontmatter, harness)
+        if agent is not None:
+            gap = "" if resolved.startswith("\n") else "\n"
+            resolved = f"\n{DELEGATION.format(agent=agent)}\n{gap}{resolved}"
     # Keep the banner below the frontmatter so the harness parses the description.
     return "---\n" + "\n".join(merged) + "\n---\n\n" + banner + "\n" + resolved

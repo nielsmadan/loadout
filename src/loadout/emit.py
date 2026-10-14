@@ -74,8 +74,15 @@ from .project import (
 from .record import read_record, render_record
 from .resolve import INSTRUCTIONS, SETTINGS, json_slice, resolve_item
 from .servers import SERVERS_SOURCE, Server, parse_servers
-from .skill_policy import render_skill_for, selected_skill_agents
-from .skills import SKILL_DOCUMENT, Skill, discover_skills, loose_skill_files, render_skill
+from .skill_policy import SkillPolicy, render_skill_for, selected_skill_agents
+from .skills import (
+    SKILL_DOCUMENT,
+    Skill,
+    check_skill_agents,
+    discover_skills,
+    loose_skill_files,
+    render_skill,
+)
 from .sources import Source, select_overrides
 from .subagents import (
     AGENTS_SUBDIR,
@@ -928,8 +935,7 @@ def render_global(root: Path, profile: str = "default") -> dict[Path, Output]:
                 compose_permission_document(contributors, rules, path), contributors, manifest
             )
 
-    for skills_target in manifest.skills:
-        _expand_skills(skills_target, manifest, outputs, claimed)
+    _expand_every_skill(manifest, outputs, claimed)
     _expand_agents(manifest, outputs, claimed)
     # After skills and agents, so a module-config path that lands on a rendered
     # destination collides with it rather than depending on which ran first.
@@ -963,6 +969,15 @@ def skill_trees(manifest: Manifest) -> tuple[Skill, ...]:
     )
 
 
+def _expand_every_skill(
+    manifest: Manifest, outputs: dict[Path, Output], claimed: dict[Path, str]
+) -> None:
+    if manifest.skills:
+        _check_skill_agents(skill_trees(manifest), manifest.skill_policies, source_agents(manifest))
+    for skills_target in manifest.skills:
+        _expand_skills(skills_target, manifest, outputs, claimed)
+
+
 def _expand_skills(
     target: SkillsTarget,
     manifest: Manifest,
@@ -992,6 +1007,15 @@ def _expand_skills(
                 path = directory / relative
                 _claim(path, f"{target.agent}.skills", claimed)
                 outputs[path] = Copied(source=skill.supporting_root / relative)
+
+
+def _check_skill_agents(
+    trees: tuple[Skill, ...], policies: tuple[SkillPolicy, ...], agents: tuple[Agent, ...]
+) -> None:
+    """A copied skill is the user's document as written, so only a rendered one is held
+    to naming an agent loadout defines."""
+    rendered = tuple(skill for skill in trees if render_skill_for(skill.name, policies))
+    check_skill_agents(rendered, frozenset(agent.name for agent in agents))
 
 
 def source_agents(manifest: Manifest) -> tuple[Agent, ...]:
@@ -1259,6 +1283,7 @@ def _render_project_slices(root: Path, config: ProjectConfig) -> dict[Path, Outp
     # slice writes "permission" into, so both must reach compose_permission_document
     # together rather than each overwriting the other's call.
     groups: dict[Path, list[tuple[PermissionTarget, dict[str, Any], dict[str, Any]]]] = {}
+    _check_skill_agents(trees, config.skill_policies, project_agents(root))
     _expand_project_catalog(root, config, trees, (outputs, claimed))
     for agent, slice_name, spec in project_slices(config.harnesses):
         if spec.output is None:

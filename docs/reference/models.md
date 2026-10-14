@@ -163,3 +163,10 @@ level of a skill's frontmatter are written into Claude's copy and left out of ev
 without a note, since only Claude reads them. A harness's own block can still set any of them for
 that harness. A skill whose `[skills.<name>]` block sets `render = false` is copied verbatim, keys
 and all.
+
+**A skill can hand its work to a source agent.** `agent: <name>` must name an agent the source
+defines; any other name is an error naming the skill and the agent, Claude's built-in agent types
+included. Claude's copy gets `context: fork` beside it, unless the skill sets `context` itself. Every
+other harness's copy gets *"Delegate this task to the `<name>` subagent."* as the first line of its
+body, below the banner, so it is read before the task. Pi needs `pi-subagents` for that line to mean
+anything. A skill copied with `render = false` is not checked.
