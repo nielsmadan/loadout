@@ -23,12 +23,13 @@ class Loadout < Formula
     # repository at HOME itself, so the project needs its own directory.
     project = testpath/"project"
     project.mkpath
-    system bin/"loadout", "init", "--project", "--root", project, "--harness", "claude",
-           "--harness", "codex", "--starter", "backend", "--yes"
+    system bin/"loadout", "init", "project", "--root", project, "--harness", "claude",
+           "--harness", "codex", "--yes"
+    system bin/"loadout", "template", "add", "backend", "--vendored", "--root", project
     system bin/"loadout", "sync", "--root", project
     system bin/"loadout", "check", "--root", project
     instructions = (project/"loadout/templates/backend/instructions.md").read.strip
-    assert_match instructions, (project/"CLAUDE.md").read
     assert_match instructions, (project/"AGENTS.md").read
+    assert_match "@AGENTS.md", (project/"CLAUDE.md").read
   end
 end
