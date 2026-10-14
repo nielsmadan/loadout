@@ -296,6 +296,20 @@ def _order_note(patterns: dict[str, str], order: tuple[str, ...], label: str) ->
     ]
 
 
+def _lone_deny(patterns: dict[str, str], pattern: str, decision: str, bare: str) -> bool:
+    """A deny `x *` with no `x` beside it already blocks `x` on OpenCode 1.1.15+ and Pi's
+    permission system 5.12.0+, so it reads as the prefix `x`: renderable on every harness
+    and never blocking less. An allow or ask stays a glob, since widening one would loosen
+    policy on an older version (P-49)."""
+    return (
+        decision == "deny"
+        and bare != pattern
+        and bool(bare.strip())
+        and bare not in patterns
+        and not is_glob(bare)
+    )
+
+
 def _collapse_shell(
     patterns: dict[str, str], label: str
 ) -> tuple[dict[str, list[str]], list[Note]]:
@@ -307,6 +321,9 @@ def _collapse_shell(
             continue
         bare = pattern.removesuffix(ARGUMENT_SUFFIX)
         if bare != pattern and patterns.get(bare) == decision:
+            continue
+        if _lone_deny(patterns, pattern, decision, bare):
+            buckets[decision].append(bare)
             continue
         # A bare form with no `foo *` companion matches only the whole command,
         # which is what an exact entry renders to.

@@ -21,7 +21,7 @@ DROID = {"model": "custom:fast", "commandBlocklist": ["rm"]}
 OPENCODE = {
     "$schema": "https://opencode.ai/config.json",
     "theme": "tokyonight",
-    "permission": {"bash": {"git status": "allow"}},
+    "permission": {"bash": {"rm *": "deny"}},
 }
 
 
@@ -89,7 +89,9 @@ def test_a_fresh_clone_and_sync_gets_the_project_settings(tmp_path: Path, capsys
     assert claude["env"] == {"NODE_ENV": "test"}
     assert claude["permissions"]["deny"] == ["Bash(rm:*)"]
     assert _read(clone / "opencode.json")["theme"] == "tokyonight"
-    assert _read(clone / ".factory/settings.json")["model"] == "custom:fast"
+    droid = _read(clone / ".factory/settings.json")
+    assert droid["model"] == "custom:fast"
+    assert droid["commandBlocklist"] == ["rm"]
 
 
 def test_a_converted_opencode_jsonc_reaches_a_fresh_clone(tmp_path: Path, capsys) -> None:

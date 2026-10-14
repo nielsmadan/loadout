@@ -57,7 +57,7 @@ def test_every_harness_keeps_every_deny_after_init(tmp_path: Path, capsys) -> No
     assert _init(root) == 0
 
     claude = json.loads((root / ".claude/settings.json").read_text())["permissions"]
-    assert claude["deny"] == ["Bash(rm:*)", "Bash(git push:*)", "Bash(rm *)"]
+    assert claude["deny"] == ["Bash(rm:*)", "Bash(git push:*)"]
     assert claude["ask"] == ["Bash(git status)"]
     codex = (root / ".codex/rules/permissions.rules").read_text()
     assert 'prefix_rule(pattern = ["rm"], decision = "forbidden")' in codex

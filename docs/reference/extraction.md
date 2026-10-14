@@ -133,6 +133,14 @@ Rendering is not injective, and three forms have to be undone:
   of both matchers did not let `foo *` match a bare `foo` (OpenCode before v1.1.15, Pi before
   v5.12.0). Extraction drops the ` *` form when the bare form carries the same decision. Missing
   this doubles the rule on the next render.
+- **A lone `foo *` deny.** An OpenCode or Pi deny `foo *` with no `foo` entry beside it reads as
+  the prefix `foo`. From OpenCode v1.1.15 (upstream `62702fbd11`) and Pi's permission system
+  v5.12.0 (upstream `c25b0b5`) a trailing ` *` also matches the bare command, so the deny already
+  blocks `foo`; read as a prefix it renders on every harness, Droid included, which refuses a deny
+  glob. It never blocks less, and blocks more only on an older OpenCode or Pi. A lone `foo *`
+  allow or ask stays a glob, since widening it could loosen policy on an older version; Droid
+  skips those with a report. A deny whose `foo` itself holds a `*`, or that has a `foo` entry with
+  any decision beside it, also stays a glob.
 - **`Bash(foo:*)`.** Claude's colon form is stripped back to `foo`.
 - **Exact entries.** `Bash(foo)` with neither `:*` nor a `*` reads back as `=foo`, and so does
   an OpenCode or Pi bare form with no `foo *` companion carrying the same decision. Before exact
