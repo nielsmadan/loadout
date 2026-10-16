@@ -310,7 +310,9 @@ def test_preparation_error_keeps_json_parseable(tmp_path, capsys):
         == 3
     )
     captured = capsys.readouterr()
-    assert json.loads(captured.out) == {"status": "error", "complete": False, "exit_code": 3}
+    envelope = json.loads(captured.out)
+    assert (envelope["status"], envelope["exit_code"]) == ("error", 3)
+    assert str(missing) in envelope["error"]
     assert str(missing) in captured.err
 
 

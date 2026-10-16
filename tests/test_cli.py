@@ -759,7 +759,9 @@ def test_check_json_on_a_clean_tree_is_an_empty_result(root: Path, capsys) -> No
 def test_check_json_reports_an_error_as_json(tmp_path: Path, capsys) -> None:
     code, out = _check(tmp_path, capsys, "--json")
     assert code == 3
-    assert json.loads(out) == {"status": "error", "exit_code": 3}
+    envelope = json.loads(out)
+    assert (envelope["status"], envelope["exit_code"]) == ("error", 3)
+    assert envelope["error"]
 
 
 def test_check_json_is_not_offered_with_staged(root: Path, capsys) -> None:

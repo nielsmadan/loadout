@@ -80,6 +80,18 @@ backup it took first; a path changed since that init is kept and reported, and t
 An init that was killed part way is offered for restore by the next `init`, which otherwise exits
 2 with `"status": "interrupted"` under `--json`.
 
+Under `--json`, `init` and `init restore` print one JSON object on stdout, whatever happens. It
+always has `status` and `exit_code`, the code the command exits with:
+
+| `status` | `exit_code` | When |
+| --- | --- | --- |
+| `preview` | 0 | `--dry-run`: the plan, with `outputs` and every planned write |
+| `incomplete` | 2 | the plan needs a choice or a fix; `issues` names each |
+| `complete` | 0 | applied; `backup`, `written`, `untracked`, `delinked` and `unadopted` |
+| `restored` | 1 from init, 0 or 1 from `init restore` | the backup was restored; `kept` and `links` name what stayed, and init adds `error` |
+| `interrupted` | 2 | an earlier init did not finish; `backup` names it |
+| `error` | 2 or 3 | a usage or source error; `error` holds the message |
+
 Fresh project initialisation uses explicit `--harness` options, then the machine configuration's
 `harnesses` default, then discovered project configuration. If none establishes membership, it
 requires a selection. Global initialisation accepts `--harness` and automatically records its

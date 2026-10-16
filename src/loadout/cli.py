@@ -464,11 +464,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return _dispatch(args)
     except UsageError as error:
-        _error_json(args, 2)
+        _error_json(args, 2, error)
         print(f"loadout: {error}", file=sys.stderr)
         return 2
     except LoadoutError as error:
-        _error_json(args, 3)
+        _error_json(args, 3, error)
         print(f"loadout: {error}", file=sys.stderr)
         return 3
     except Exception:  # noqa: BLE001 - top-level handler reports unexpected errors
@@ -476,8 +476,6 @@ def main(argv: list[str] | None = None) -> int:
         return 4
 
 
-def _error_json(args: argparse.Namespace, code: int) -> None:
-    if args.command == "init" and args.json:
-        print(json.dumps({"status": "error", "complete": False, "exit_code": code}))
-    elif args.command == "check" and args.json:
-        print(json.dumps({"status": "error", "exit_code": code}))
+def _error_json(args: argparse.Namespace, code: int, error: Exception) -> None:
+    if args.command in {"init", "check"} and getattr(args, "json", False):
+        print(json.dumps({"status": "error", "exit_code": code, "error": str(error)}))

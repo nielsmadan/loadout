@@ -173,9 +173,11 @@ def _link_above(path: Path, boundary: Path) -> Path | None:
     )
 
 
-def _show(preview: dict[str, Any], *, as_json: bool) -> None:
+def _show(
+    preview: dict[str, Any], *, as_json: bool, status: str = "preview", exit_code: int = 0
+) -> None:
     if as_json:
-        print(json.dumps(preview, indent=2))
+        print(json.dumps({"status": status, "exit_code": exit_code, **preview}, indent=2))
         return
     print(
         f"Scope: {preview['scope'] or 'unresolved'}; agents: {', '.join(preview['agents']) or 'unresolved'}"
@@ -345,6 +347,7 @@ def _result(
 ) -> None:
     data = {
         "status": "complete",
+        "exit_code": 0,
         "backup": str(backup.directory) if backup else None,
         "written": [str(p) for p in result.written],
         "untracked": list(result.untracked),
@@ -382,6 +385,7 @@ def _interrupted(options: InitOptions) -> int | None:
     if options.json or options.dry_run or not sys.stdin.isatty():
         message = {
             "status": "interrupted",
+            "exit_code": 2,
             "backup": str(backup.directory),
             "message": "an earlier init did not finish; restore it with `loadout init restore`",
         }
@@ -408,7 +412,7 @@ def _run_init(options: InitOptions) -> int:
     if issue:
         plan = replace(plan, issues=(*plan.issues, issue))
     if not plan.complete:
-        _show(plan.preview(), as_json=options.json)
+        _show(plan.preview(), as_json=options.json, status="incomplete", exit_code=2)
         return 2
     profile = _render_profile(plan)
     render = () if plan.already_initialized else planned_render(plan, profile)
@@ -547,7 +551,14 @@ def _failed(backup: Backup, reason: str, *, as_json: bool) -> int:
     message = f"init failed ({reason}); what it changed was restored from {backup.directory}"
     if as_json:
         print(
-            json.dumps({"status": "restored", "error": reason, **_restore_report(restored, backup)})
+            json.dumps(
+                {
+                    "status": "restored",
+                    "exit_code": 1,
+                    "error": reason,
+                    **_restore_report(restored, backup),
+                }
+            )
         )
     print(f"loadout: {message}", file=sys.stderr)
     _print_kept(restored, sys.stderr)
@@ -611,7 +622,9 @@ def _commit_hint(plan: MigrationPlan) -> str:
 def _restored(backup: Backup, *, as_json: bool) -> int:
     restored = restore(backup)
     if as_json:
-        print(json.dumps({"status": "restored", **_restore_report(restored, backup)}, indent=2))
+        code = 1 if restored.kept else 0
+        report = {"status": "restored", "exit_code": code, **_restore_report(restored, backup)}
+        print(json.dumps(report, indent=2))
     else:
         print(f"Restored what init changed, from {backup.directory}.")
         _print_kept(restored, sys.stdout)

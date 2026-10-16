@@ -554,3 +554,22 @@ def test_a_marker_without_a_manifest_does_not_block_init(tmp_path: Path, capsys)
     root = _project(tmp_path / "p")
 
     assert _init_project(root, "--yes") == 0
+
+
+def test_every_init_json_answer_carries_status_and_exit_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """Review 2.11: one envelope on every path, including restore with no backup."""
+    root = _project(tmp_path / "p")
+    answers = []
+    for argv, code in (
+        (["init", "project", "--root", str(root), "--harness", "claude", "--dry-run", "--json"], 0),
+        (["init", "project", "--root", str(root), "--harness", "claude", "--yes", "--json"], 0),
+        (["init", "restore", "--yes", "--json"], 0),
+        (["init", "restore", "--yes", "--json"], 3),
+    ):
+        assert loadout.main(argv) == code
+        envelope = json.loads(capsys.readouterr().out)
+        answers.append((envelope["status"], envelope["exit_code"]))
+
+    assert answers == [("preview", 0), ("complete", 0), ("restored", 0), ("error", 3)]
