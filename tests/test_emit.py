@@ -51,11 +51,12 @@ def test_atomic_write_preserves_a_symlink(tmp_path: Path) -> None:
 
 
 def test_write_all_creates_every_target(root: Path) -> None:
-    # 10 in-repo outputs (8 permission targets including Droid's, 2 instruction
-    # documents) plus the 3 external destinations those instructions fan out to.
-    # The autonomous-only instruction target is excluded under the default profile.
+    # 14 in-repo outputs (12 permission targets including Droid's and four server
+    # renderers, 2 instruction documents) plus the 3 external destinations those
+    # instructions fan out to. The autonomous-only instruction target is excluded
+    # under the default profile.
     written = write_all(root)
-    assert len(written) == 13
+    assert len(written) == 17
     for path in written:
         assert path.is_file()
 

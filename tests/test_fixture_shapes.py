@@ -16,6 +16,7 @@ from pathlib import Path
 from fixture_root import PROJECT_INSTRUCTIONS
 from loadout.manifest import MANIFEST_NAME, load_manifest
 from loadout.permissions.rules import UNSTATED_DEFAULT, is_exact, is_glob, mcp_parts, parse_rules
+from loadout.servers import parse_servers
 
 FIXTURE = Path(__file__).parent / "fixtures" / "permissions.toml"
 RULES = parse_rules(FIXTURE)
@@ -123,6 +124,13 @@ PROJECT_FIXTURES = Path(__file__).parent / "fixtures" / "project"
 TEMPLATE_RULES = parse_rules(PROJECT_FIXTURES / "templates" / "web" / "permissions.toml")
 
 
+def test_the_project_fixture_has_a_server_with_a_literal_header_and_an_auth_variable() -> None:
+    """Drives the project server renderers' `headers` (Claude, Droid, OpenCode; Pi reads
+    `.mcp.json`), with the auth variable's Authorization header ahead of the literal one."""
+    servers = parse_servers(PROJECT_FIXTURES / "mcp.toml").values()
+    assert [s for s in servers if s.headers and s.auth_env_var]
+
+
 def test_the_project_tiers_disagree_about_the_catch_all_default() -> None:
     """Project scope must exercise strictest-wins over real tiers, not just units.
 
@@ -210,3 +218,19 @@ def test_the_project_hooks_fragment_declares_an_event_with_a_command() -> None:
         for hook in entry.get("hooks", ())
         if hook.get("command")
     ], "no event carries a command"
+
+
+GLOBAL_SERVER_RENDERERS = {"claude-servers", "codex-servers", "codex-config", "pi-servers"}
+
+
+def test_the_global_fixture_defines_an_http_server_with_a_header_and_a_stdio_server() -> None:
+    """Pins Pi's `headers` and Codex's `http_headers`, which no project destination
+    renders, beside the stdio shape on the same renderers."""
+    servers = parse_servers(FIXTURE.parent / "mcp.toml").values()
+    assert [s for s in servers if s.transport == "http" and s.headers and s.auth_env_var]
+    assert [s for s in servers if s.transport == "stdio" and s.env]
+
+
+def test_the_global_fixture_routes_its_servers_through_each_global_renderer() -> None:
+    manifest = load_manifest(FIXTURE.parent / MANIFEST_NAME)
+    assert {target.renderer for target in manifest.permissions} >= GLOBAL_SERVER_RENDERERS

@@ -202,3 +202,41 @@ def test_opencode_stdio_command_and_args_are_one_array() -> None:
 def test_opencode_http_auth_uses_env_interpolation() -> None:
     doc = render_opencode_servers(HTTP)
     assert doc["jina"]["headers"] == {"Authorization": "Bearer {env:JINA_API_KEY}"}
+
+
+def _parsed(tmp_path: Path, body: str) -> dict[str, Server]:
+    source = tmp_path / "mcp.toml"
+    source.write_text(f'[x]\ntransport = "http"\nurl = "https://x"\n{body}', encoding="utf-8")
+    return parse_servers(source)
+
+
+def test_literal_headers_parse_in_declaration_order(tmp_path: Path) -> None:
+    servers = _parsed(tmp_path, '[x.headers]\nX-Team = "core"\nAuthorization = "Bearer abc"\n')
+
+    assert list(servers["x"].headers.items()) == [
+        ("X-Team", "core"),
+        ("Authorization", "Bearer abc"),
+    ]
+
+
+def test_an_authorization_header_beside_auth_env_var_is_refused(tmp_path: Path) -> None:
+    body = 'auth_env_var = "K"\n[x.headers]\nAuthorization = "Bearer abc"\n'
+
+    with pytest.raises(LoadoutError, match="Authorization"):
+        _parsed(tmp_path, body)
+
+
+@pytest.mark.parametrize("value", ["Bearer ${K}", "{env:K}", "!op read x", "$env:K"])
+def test_a_header_another_harness_would_interpolate_is_refused(tmp_path: Path, value: str) -> None:
+    """Claude and Pi expand `${…}`, OpenCode `{env:…}`, Pi `$env:` and a leading `!`;
+    Codex expands none, so one value would reach the harnesses as different headers."""
+    with pytest.raises(LoadoutError, match="X-Key"):
+        _parsed(tmp_path, f"[x.headers]\nX-Key = {json.dumps(value)}\n")
+
+
+def test_headers_on_a_stdio_server_are_refused(tmp_path: Path) -> None:
+    source = tmp_path / "mcp.toml"
+    source.write_text('[x]\ntransport = "stdio"\ncommand = "c"\nheaders = { A = "b" }\n')
+
+    with pytest.raises(LoadoutError, match="headers"):
+        parse_servers(source)

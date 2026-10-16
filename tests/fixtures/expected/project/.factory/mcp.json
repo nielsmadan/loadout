@@ -7,6 +7,14 @@
         "Authorization": "Bearer ${JINA_API_KEY}"
       }
     },
+    "docs": {
+      "type": "http",
+      "url": "https://docs.example/mcp",
+      "headers": {
+        "Authorization": "Bearer ${DOCS_TOKEN}",
+        "X-Team": "core"
+      }
+    },
     "context7": {
       "type": "stdio",
       "command": "npx",

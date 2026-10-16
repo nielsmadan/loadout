@@ -18,6 +18,8 @@ Two properties, per `docs/reference/extraction.md`:
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from loadout.errors import LoadoutError
@@ -44,6 +46,21 @@ STDIO = {
     "context7": Server(
         name="context7", transport="stdio", command="npx", args=("-y", "@upstash/context7-mcp")
     )
+}
+HEADERS = {
+    "docs": Server(
+        name="docs",
+        transport="http",
+        url="https://docs.test/mcp",
+        auth_env_var="DOCS_KEY",
+        headers={"X-Team": "core"},
+    ),
+    "raw": Server(
+        name="raw",
+        transport="http",
+        url="https://raw.test/mcp",
+        headers={"Authorization": "Bearer abc123", "X-Org": "o-1"},
+    ),
 }
 STDIO_WITH_ENV = {
     "svc": Server(name="svc", transport="stdio", command="c", args=("x",), env={"K": "v"})
@@ -109,17 +126,48 @@ def test_claude_http_server_without_auth_round_trips() -> None:
     assert extraction.value == unauthed
 
 
-def test_a_bad_bearer_header_is_reported_not_guessed() -> None:
-    document = {
-        "mcpServers": {
-            "x": {"type": "http", "url": "https://x", "headers": {"Authorization": "Basic abc"}}
-        }
-    }
+def test_a_header_with_an_untranslatable_reference_is_reported_not_guessed() -> None:
+    headers = {"Authorization": "Basic ${CREDS}", "X-Team": "core"}
+    document = {"mcpServers": {"x": {"type": "http", "url": "https://x", "headers": headers}}}
 
     extraction = extract_value("claude-project-servers", document)
 
-    assert extraction.value == {"x": Server(name="x", transport="http", url="https://x")}
-    assert extraction.notes != ()
+    assert extraction.value == {
+        "x": Server(name="x", transport="http", url="https://x", headers={"X-Team": "core"})
+    }
+    assert [n.kind for n in extraction.notes] == ["cannot"]
+    assert "Authorization" in extraction.notes[0].detail
+
+
+@pytest.mark.parametrize(
+    ("name", "render"),
+    [
+        ("claude-project-servers", render_claude_project_servers),
+        ("claude-servers", render_claude_global_servers),
+        ("droid-servers", render_droid_servers),
+        ("opencode-servers", lambda servers: {"mcp": render_opencode_servers(servers)}),
+        ("pi-servers", render_pi_servers),
+    ],
+)
+def test_literal_headers_round_trip(name: str, render: Any) -> None:
+    document = render(HEADERS)
+
+    extraction = extract_value(name, document)
+
+    assert extraction.notes == ()
+    assert extraction.value == HEADERS
+    assert render(extraction.value) == document
+
+
+def test_codex_literal_headers_round_trip() -> None:
+    text = render_codex_servers(HEADERS)
+
+    extraction = extract_codex_servers(text)
+
+    assert '[mcp_servers.raw.http_headers]\nAuthorization = "Bearer abc123"' in text
+    assert extraction.notes == ()
+    assert extraction.value == HEADERS
+    assert render_codex_servers(extraction.value) == text
 
 
 def test_an_unowned_key_in_the_mcp_json_file_is_reported() -> None:

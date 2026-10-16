@@ -2,31 +2,36 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
-from loadout.emit import render_all
+from loadout.emit import Merged, render_all
 from loadout.errors import LoadoutError
+from loadout.manifest import MANIFEST_NAME, load_manifest
 
-EXPECTED = Path(__file__).parent / "fixtures" / "expected" / "default"
+FIXTURES = Path(__file__).parent / "fixtures"
+EXPECTED = FIXTURES / "expected" / "default"
 
+# Read from the manifest, so a target added to the fixture is compared without being
+# listed here too. The one destination is the [claude] agent block's settings.json.
 PERMISSION_OUTPUTS = (
-    "perm/claude.json",
+    *(
+        str(t.path)
+        for t in load_manifest(FIXTURES / MANIFEST_NAME).permissions
+        if t.path is not None
+    ),
     "destinations/settings.json",
-    "perm/claude-mcp.json",
-    "perm/codex.rules",
-    "perm/codex-mcp.toml",
-    "perm/droid.json",
-    "perm/opencode.json",
-    "perm/pi.json",
 )
 
 
-def _repo_relative(rendered: dict[Path, str], root: Path) -> dict[str, str]:
+def _repo_relative(rendered: dict[Path, Any], root: Path) -> dict[str, Any]:
     """In-repo outputs by their path, and destinations under ~ by file name, the way the
-    expected tree holds them."""
+    expected tree holds them: a merged output as the part loadout owns."""
     return {
-        str(p.relative_to(root)) if root in p.parents else f"destinations/{p.name}": c
+        str(p.relative_to(root)) if root in p.parents else f"destinations/{p.name}": (
+            c.document if isinstance(c, Merged) else c
+        )
         for p, c in rendered.items()
     }
 
@@ -38,7 +43,7 @@ def test_every_permission_output_matches_the_expected_output(root: Path) -> None
         assert rendered[name] == expected, f"{name} differs from its expected output"
 
 
-def test_all_eight_permission_targets_are_rendered(root: Path) -> None:
+def test_every_permission_target_is_rendered(root: Path) -> None:
     rendered = set(_repo_relative(render_all(root), root))
     for name in PERMISSION_OUTPUTS:
         assert name in rendered

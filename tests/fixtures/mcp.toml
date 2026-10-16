@@ -1,0 +1,13 @@
+# Synthetic. `svc` is the server permissions.toml grants, so codex-config merges its
+# definition with that policy; `tools` is defined and not permitted.
+[svc]
+transport = "http"
+url = "https://svc.example/mcp"
+auth_env_var = "SVC_TOKEN"
+headers = { "X-Team" = "core" }
+
+[tools]
+transport = "stdio"
+command = "tools-mcp"
+args = ["--stdio"]
+env = { TOOLS_MODE = "fixture" }

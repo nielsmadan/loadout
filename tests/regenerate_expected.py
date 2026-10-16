@@ -25,7 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from fixture_root import EXPECTED, FIXTURES, build_project_root, build_root
-from loadout.emit import Copied, declared_profiles, render_global, render_project
+from loadout.emit import Copied, Merged, declared_profiles, render_global, render_project
 
 
 def render_everything() -> dict[str, str]:
@@ -33,7 +33,10 @@ def render_everything() -> dict[str, str]:
     with tempfile.TemporaryDirectory() as directory:
         root = build_root(Path(directory))
         for profile in sorted(declared_profiles(root)):
-            for path, content in render_global(root, profile).items():
+            for path, rendered in render_global(root, profile).items():
+                # A merged output shares its file with the harness; the expected tree
+                # holds the part loadout owns.
+                content = rendered.document if isinstance(rendered, Merged) else rendered
                 try:
                     key = f"{profile}/{path.relative_to(root)}"
                 except ValueError:

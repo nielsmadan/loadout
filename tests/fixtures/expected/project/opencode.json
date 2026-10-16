@@ -36,6 +36,14 @@
         "Authorization": "Bearer {env:JINA_API_KEY}"
       }
     },
+    "docs": {
+      "type": "remote",
+      "url": "https://docs.example/mcp",
+      "headers": {
+        "Authorization": "Bearer {env:DOCS_TOKEN}",
+        "X-Team": "core"
+      }
+    },
     "context7": {
       "type": "local",
       "command": [

@@ -68,6 +68,24 @@ preserve = ["foreign"]
 output = "perm/pi.json"
 render = "pi"
 
+# Server definitions from mcp.toml, through each renderer only global scope uses:
+# Claude's flat global entry, Codex's staged text and its merged config.toml, and Pi.
+[permissions.claude-servers]
+output = "perm/claude-servers.json"
+render = "claude-servers"
+
+[permissions.codex-servers]
+output = "perm/codex-servers.toml"
+render = "codex-servers"
+
+[permissions.codex-config]
+output = "perm/codex-config.toml"
+render = "codex-config"
+
+[permissions.pi-servers]
+output = "perm/pi-servers.json"
+render = "pi-servers"
+
 # `permissions = []` selects no rules, so all three lists render empty while the
 # settings around them still render — the autonomous profile's mechanism.
 [claude]

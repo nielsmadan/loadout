@@ -9,6 +9,7 @@ module never touches Rules and that one never reads this file.
 from __future__ import annotations
 
 import json
+import re
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -45,7 +46,7 @@ HEADER_LINES = (
 # security bug: `auth_env_varr` parses fine, yields no auth var, and renders a
 # server that connects unauthenticated with nothing saying so. `plugins.py`
 # rejects stray keys for the same reason.
-SERVER_KEYS = frozenset({"transport", "url", "auth_env_var", "command", "args", "env"})
+SERVER_KEYS = frozenset({"transport", "url", "auth_env_var", "headers", "command", "args", "env"})
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,7 @@ class Server:
     transport: str
     url: str | None = None
     auth_env_var: str | None = None
+    headers: Mapping[str, str] = field(default_factory=dict)
     command: str | None = None
     args: tuple[str, ...] = ()
     env: Mapping[str, str] = field(default_factory=dict)
@@ -61,6 +63,34 @@ class Server:
 
 def is_http(server: Server) -> bool:
     return server.transport == "http"
+
+
+def literal_header(value: object) -> bool:
+    """A header value every harness sends as written. Claude and Pi expand `${…}`,
+    OpenCode `{env:…}`, Pi `$env:` and a leading `!`, and Codex none of them."""
+    return (
+        isinstance(value, str)
+        and "$" not in value
+        and "{" not in value
+        and not value.startswith("!")
+    )
+
+
+def _headers(path: Path, name: str, spec: Mapping[str, Any]) -> dict[str, str]:
+    headers = spec.get("headers", {})
+    if not isinstance(headers, dict):
+        raise LoadoutError(f"{path}: [{name}] headers must be a table")
+    if headers and spec.get("transport") != "http":
+        raise LoadoutError(f"{path}: [{name}] headers needs transport http")
+    if "Authorization" in headers and spec.get("auth_env_var"):
+        raise LoadoutError(f"{path}: [{name}] sets auth_env_var and an Authorization header")
+    for header, value in headers.items():
+        if not literal_header(value):
+            raise LoadoutError(
+                f"{path}: [{name}] header {header} must be a literal string without $, {{ or a "
+                "leading !, which harnesses interpolate differently"
+            )
+    return dict(headers)
 
 
 def parse_servers(path: Path) -> dict[str, Server]:
@@ -104,6 +134,7 @@ def parse_servers(path: Path) -> dict[str, Server]:
             transport=transport,
             url=spec.get("url"),
             auth_env_var=spec.get("auth_env_var"),
+            headers=_headers(path, name, spec),
             command=spec.get("command"),
             args=tuple(spec.get("args", ())),
             env=dict(spec.get("env", {})),
@@ -119,6 +150,8 @@ def serialize_servers(servers: Mapping[str, Server]) -> bytes:
             block["url"] = server.url
         if server.auth_env_var is not None:
             block["auth_env_var"] = server.auth_env_var
+        if server.headers:
+            block["headers"] = dict(server.headers)
         if server.command is not None:
             block["command"] = server.command
         if server.args:
@@ -135,6 +168,17 @@ def _toml_string(value: str) -> str:
 
 def _toml_array(values: tuple[str, ...]) -> str:
     return "[" + ", ".join(_toml_string(v) for v in values) + "]"
+
+
+def _toml_key(key: str) -> str:
+    return key if re.fullmatch(r"[A-Za-z0-9_-]+", key) else _toml_string(key)
+
+
+def _bearer_headers(server: Server, reference: str) -> dict[str, str]:
+    """The auth variable as an Authorization header in the harness's own reference
+    syntax, ahead of the literal headers."""
+    auth = {"Authorization": f"Bearer {reference}"} if server.auth_env_var else {}
+    return {**auth, **server.headers}
 
 
 # --------------------------------------------------------------------------
@@ -161,8 +205,9 @@ def render_claude_servers(servers: dict[str, Server]) -> dict[str, Any]:
         if is_http(server):
             assert server.url is not None
             entry = {"type": "http", "url": server.url}
-            if server.auth_env_var:
-                entry["headers"] = {"Authorization": f"Bearer ${{{server.auth_env_var}}}"}
+            headers = _bearer_headers(server, f"${{{server.auth_env_var}}}")
+            if headers:
+                entry["headers"] = headers
         else:
             assert server.command is not None
             entry = {
@@ -209,6 +254,11 @@ def render_codex_servers(servers: dict[str, Server]) -> str:
             lines.append(f"url = {_toml_string(server.url)}")
             if server.auth_env_var:
                 lines.append(f"bearer_token_env_var = {_toml_string(server.auth_env_var)}")
+            if server.headers:
+                lines.append("")
+                lines.append(f"[mcp_servers.{name}.http_headers]")
+                for key, value in server.headers.items():
+                    lines.append(f"{_toml_key(key)} = {_toml_string(value)}")
         else:
             assert server.command is not None
             lines.append(f"command = {_toml_string(server.command)}")
@@ -237,8 +287,9 @@ def render_opencode_servers(servers: dict[str, Server]) -> dict[str, Any]:
         if is_http(server):
             assert server.url is not None
             entry = {"type": "remote", "url": server.url}
-            if server.auth_env_var:
-                entry["headers"] = {"Authorization": f"Bearer {{env:{server.auth_env_var}}}"}
+            headers = _bearer_headers(server, f"{{env:{server.auth_env_var}}}")
+            if headers:
+                entry["headers"] = headers
         else:
             assert server.command is not None
             entry = {"type": "local", "command": [server.command, *server.args]}
@@ -265,6 +316,8 @@ def render_pi_servers(servers: dict[str, Server]) -> dict[str, Any]:
             entry = {"url": server.url}
             if server.auth_env_var:
                 entry["bearerTokenEnv"] = server.auth_env_var
+            if server.headers:
+                entry["headers"] = dict(server.headers)
         else:
             assert server.command is not None
             entry = {"command": server.command, "args": list(server.args)}

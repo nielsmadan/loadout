@@ -335,6 +335,11 @@ def _codex_definition_block(server: Server, block: Any) -> None:
         block["url"] = server.url
         if server.auth_env_var:
             block["bearer_token_env_var"] = server.auth_env_var
+        if server.headers:
+            headers = tomlkit.table()
+            for key, value in server.headers.items():
+                headers[key] = value
+            block["http_headers"] = headers
         return
     assert server.command is not None
     block["command"] = server.command

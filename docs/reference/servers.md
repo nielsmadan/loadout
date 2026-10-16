@@ -28,11 +28,17 @@ args = ["-y", "@upstash/context7-mcp"]
 five renderers would each fail differently, and four of them only when that harness is enabled.
 
 - **http** needs `url`. `auth_env_var` is optional and names an environment variable, never a
-  value — [0008](../decisions/0008-generated-files-carry-no-machine-state.md) forbids a secret
-  reaching a generated file, so each harness applies its own interpolation at call time instead.
+  value — [0008](../decisions/0008-generated-files-carry-no-machine-state.md) forbids loadout
+  stamping a secret into a generated file, so each harness applies its own interpolation at call
+  time instead. `headers` is an optional table of literal values, rendered as Claude's, Droid's,
+  OpenCode's and Pi's `headers` and Codex's `http_headers`. A value holding `$` or `{`, or starting
+  with `!`, is refused: Claude and Pi expand `${…}`, OpenCode `{env:…}`, Pi `$env:` and a leading
+  `!`, and Codex none of them, so one value would reach the harnesses as different headers. An
+  `Authorization` header beside `auth_env_var` is refused too. A literal token here is the user's
+  own content in the source, reported by init like any other secret.
 - **stdio** needs `command`. `args` and `env` are optional.
 
-Every key outside `transport`, `url`, `auth_env_var`, `command`, `args`, `env` is refused
+Every key outside `transport`, `url`, `auth_env_var`, `headers`, `command`, `args`, `env` is refused
 (`SERVER_KEYS` in `servers.py`) — rejected rather than ignored, because a typo like
 `auth_env_varr` would parse fine, define no auth variable, and render a server that connects
 unauthenticated with nothing saying so. `plugins.py` rejects stray keys for the same reason.
@@ -204,9 +210,11 @@ Every other definition renderer's inverse is registered in `VALUE_EXTRACTORS`:
 | `pi-servers` | every field, including `bearerTokenEnv`; a stray top-level key is reported | — |
 | `codex-servers` | every field, parsed from `[mcp_servers.*]` text with `tomllib` | not registered — see above |
 
-A `headers.Authorization` value that is not a plain `Bearer ${VAR}` (Claude) or
-`Bearer {env:VAR}` (OpenCode) is reported rather than guessed at — extraction never invents an
-environment variable name from an opaque header string.
+An `Authorization` header that is exactly `Bearer ${VAR}` (Claude, Droid) or `Bearer {env:VAR}`
+(OpenCode) becomes `auth_env_var`. Every other header with a literal value is carried into
+`headers`, from Pi's `headers` and Codex's `http_headers` too. A header holding any other reference
+is reported rather than guessed at — extraction never invents an environment variable name from an
+opaque header string.
 
 ## Not built
 

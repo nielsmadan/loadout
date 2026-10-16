@@ -28,7 +28,7 @@ from .permissions.rules import (
     strictest,
 )
 from .plugins import MARKETPLACES, PLUGINS
-from .servers import Server
+from .servers import Server, literal_header
 
 CATEGORIES = ("allow", "ask", "deny")
 
@@ -992,25 +992,31 @@ CLAUDE_BEARER = re.compile(r"^Bearer \$\{(?P<var>[^}]+)\}$")
 OPENCODE_BEARER = re.compile(r"^Bearer \{env:(?P<var>[^}]+)\}$")
 
 
-def _bearer_env_var(
-    headers: Any, pattern: re.Pattern[str], label: str
-) -> tuple[str | None, tuple[Note, ...]]:
-    notes: list[Note] = []
+def _headers(
+    headers: Any, pattern: re.Pattern[str] | None, label: str
+) -> tuple[str | None, dict[str, str], tuple[Note, ...]]:
+    """An Authorization header naming one variable in the harness's reference syntax
+    becomes the auth variable; every other header with a literal value is carried."""
     if not isinstance(headers, Mapping):
-        notes.append(Note("unrecognised", f"{label}: headers is not a table"))
-        return None, tuple(notes)
-    stray = sorted(set(headers) - {"Authorization"})
-    if stray:
-        notes.append(Note("cannot", f"{label}: header(s) {', '.join(stray)} have no source form"))
-    auth = headers.get("Authorization")
-    if not isinstance(auth, str):
-        notes.append(Note("unrecognised", f"{label}: headers carry no Authorization"))
-        return None, tuple(notes)
-    match = pattern.fullmatch(auth)
-    if match is None:
-        notes.append(Note("cannot", f"{label}: Authorization {auth!r} names no plain env var"))
-        return None, tuple(notes)
-    return match["var"], tuple(notes)
+        return None, {}, (Note("unrecognised", f"{label}: headers is not a table"),)
+    auth_env_var = None
+    literal: dict[str, str] = {}
+    notes: list[Note] = []
+    for name, value in headers.items():
+        match = (
+            pattern.fullmatch(value)
+            if pattern is not None and name == "Authorization" and isinstance(value, str)
+            else None
+        )
+        if match is not None:
+            auth_env_var = match["var"]
+        elif literal_header(value):
+            literal[name] = value
+        else:
+            notes.append(
+                Note("cannot", f"{label}: header {name} holds a reference with no source form")
+            )
+    return auth_env_var, literal, tuple(notes)
 
 
 def _extract_claude_server(
@@ -1030,13 +1036,13 @@ def _extract_claude_server(
         if not isinstance(url, str):
             notes.append(Note("unrecognised", f"{label}: {name} http entry has no url"))
             return None, tuple(notes)
-        auth_env_var = None
-        if "headers" in entry:
-            auth_env_var, found = _bearer_env_var(
-                entry["headers"], CLAUDE_BEARER, f"{label}: {name}"
-            )
-            notes.extend(found)
-        return Server(name=name, transport="http", url=url, auth_env_var=auth_env_var), tuple(notes)
+        auth_env_var, headers, found = _headers(
+            entry.get("headers", {}), CLAUDE_BEARER, f"{label}: {name}"
+        )
+        notes.extend(found)
+        return Server(
+            name=name, transport="http", url=url, auth_env_var=auth_env_var, headers=headers
+        ), tuple(notes)
     if kind == "stdio":
         command = entry.get("command")
         if not isinstance(command, str):
@@ -1121,12 +1127,12 @@ def _extract_opencode_server(name: str, entry: Any) -> tuple[Server | None, tupl
         if not isinstance(url, str):
             notes.append(Note("unrecognised", f"opencode-servers: {name} remote entry has no url"))
             return None, tuple(notes)
-        auth_env_var = None
-        if "headers" in entry:
-            label = f"opencode-servers: {name}"
-            auth_env_var, found = _bearer_env_var(entry["headers"], OPENCODE_BEARER, label)
-            notes.extend(found)
-        return Server(name=name, transport="http", url=url, auth_env_var=auth_env_var), tuple(notes)
+        label = f"opencode-servers: {name}"
+        auth_env_var, headers, found = _headers(entry.get("headers", {}), OPENCODE_BEARER, label)
+        notes.extend(found)
+        return Server(
+            name=name, transport="http", url=url, auth_env_var=auth_env_var, headers=headers
+        ), tuple(notes)
     if kind == "local":
         command = entry.get("command")
         if (
@@ -1200,7 +1206,7 @@ def extract_claude_global_servers(document: Any) -> ValueExtraction:
     return ValueExtraction(servers, tuple(notes))
 
 
-PI_SERVER_KEYS = frozenset({"url", "bearerTokenEnv", "command", "args", "env"})
+PI_SERVER_KEYS = frozenset({"url", "bearerTokenEnv", "headers", "command", "args", "env"})
 
 
 def _extract_pi_server(name: str, entry: Any) -> tuple[Server | None, tuple[Note, ...]]:
@@ -1220,7 +1226,11 @@ def _extract_pi_server(name: str, entry: Any) -> tuple[Server | None, tuple[Note
         if auth_env_var is not None and not isinstance(auth_env_var, str):
             notes.append(Note("unrecognised", f"pi-servers: {name} bearerTokenEnv is not a string"))
             auth_env_var = None
-        return Server(name=name, transport="http", url=url, auth_env_var=auth_env_var), tuple(notes)
+        _, headers, found = _headers(entry.get("headers", {}), None, f"pi-servers: {name}")
+        notes.extend(found)
+        return Server(
+            name=name, transport="http", url=url, auth_env_var=auth_env_var, headers=headers
+        ), tuple(notes)
     if "command" in entry:
         command = entry.get("command")
         if not isinstance(command, str):
@@ -1264,16 +1274,16 @@ def extract_pi_servers(document: Any) -> ValueExtraction:
     return ValueExtraction(servers, tuple(notes))
 
 
-CODEX_SERVER_HTTP_KEYS = frozenset({"url", "bearer_token_env_var"})
+CODEX_SERVER_HTTP_KEYS = frozenset({"url", "bearer_token_env_var", "http_headers"})
 CODEX_SERVER_STDIO_KEYS = frozenset({"command", "args", "env"})
 
 
 def _not_adopted(name: str, keys: list[str]) -> str:
     """Keys of a Codex server that loadout's server source cannot hold, so the next sync
-    writes the server without them. An auth header belongs in bearer_token_env_var."""
+    writes the server without them."""
     return (
         f"codex-servers: {name} carries {', '.join(keys)}, which loadout does not adopt; "
-        "the next sync writes the server without them (use bearer_token_env_var for a token)"
+        "the next sync writes the server without them"
     )
 
 
@@ -1296,7 +1306,11 @@ def _extract_codex_server(name: str, block: Any) -> tuple[Server | None, tuple[N
                 Note("unrecognised", f"codex-servers: {name} bearer_token_env_var is not a string")
             )
             auth_env_var = None
-        return Server(name=name, transport="http", url=url, auth_env_var=auth_env_var), tuple(notes)
+        _, headers, found = _headers(block.get("http_headers", {}), None, f"codex-servers: {name}")
+        notes.extend(found)
+        return Server(
+            name=name, transport="http", url=url, auth_env_var=auth_env_var, headers=headers
+        ), tuple(notes)
     if "command" in block:
         stray = sorted(set(block) - CODEX_SERVER_STDIO_KEYS)
         if stray:

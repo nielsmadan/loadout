@@ -185,9 +185,10 @@ flag a value that is not one. A private original is listed as
 `Private (stays on this machine): <path>: <reason>`, with the reason in `--json` as
 `private_reason`: its name, Git ignoring it, or Git not tracking it.
 
-A Codex MCP server's keys that the server source cannot hold, such as a literal `http_headers`
-table, are named in the preview as not adopted: the next sync writes the server without them, so
-put a token in `bearer_token_env_var` instead.
+A Codex MCP server's literal `http_headers` go into `mcp.toml` as `headers` and render back into
+`config.toml`; a token among them is reported like any other secret. Keys the server source cannot
+hold, such as `env_http_headers`, are named in the preview as not adopted: the next sync writes the
+server without them.
 
 ## Backup and restore
 

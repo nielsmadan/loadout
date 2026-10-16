@@ -11,20 +11,30 @@ command deliberately listed in two categories.
 from __future__ import annotations
 
 import json
+import tomllib
 from pathlib import Path
+from typing import Any
 
 import pytest
 
-from loadout.extract import Extraction, ValueExtraction, extract, extract_value
+from loadout.extract import (
+    Extraction,
+    ValueExtraction,
+    extract,
+    extract_codex_servers,
+    extract_value,
+)
 from loadout.permissions.renderers import (
     RENDERERS,
     DocumentJsonSpec,
     JsonSpec,
+    MergedJsonSpec,
     TextSpec,
     ValueSpec,
     ValuesSpec,
 )
 from loadout.project import PROJECT_PRESET
+from loadout.servers import render_codex_servers
 from test_extract_roundtrip import NOT_INVERTED
 
 EXPECTED = Path(__file__).parent / "fixtures" / "expected"
@@ -41,7 +51,12 @@ GLOBAL_RENDERERS = {
     "droid.json": "droid",
     "opencode.json": "opencode",
     "pi.json": "pi",
+    "pi-servers.json": "pi-servers",
 }
+# Shipped, and read back by a test of their own below rather than by the loop: a
+# merged renderer owns one key of its file, and the Codex two have no registered
+# inverse (see NOT_INVERTED).
+COVERED_BELOW = {"claude-servers.json", "codex-servers.toml", "codex-config.toml"}
 
 
 def _artifacts() -> list[tuple[Path, str]]:
@@ -204,4 +219,42 @@ def test_every_shipped_permission_artifact_is_covered() -> None:
         for profile in ("default", "variant")
         for path in (EXPECTED / profile / "perm").glob("*")
     }
-    assert on_disk == set(GLOBAL_RENDERERS)
+    assert on_disk == set(GLOBAL_RENDERERS) | COVERED_BELOW
+
+
+@pytest.mark.parametrize("profile", ["default", "variant"])
+def test_the_shipped_claude_global_servers_round_trip(profile: str) -> None:
+    spec = RENDERERS["claude-servers"]
+    assert isinstance(spec, MergedJsonSpec)
+    document = json.loads((EXPECTED / profile / "perm" / "claude-servers.json").read_text())
+    extraction = extract_value("claude-servers", document)
+    assert extraction.notes == ()
+    assert spec.fn(extraction.value) == document
+
+
+@pytest.mark.parametrize("profile", ["default", "variant"])
+def test_the_shipped_codex_servers_round_trip(profile: str) -> None:
+    text = (EXPECTED / profile / "perm" / "codex-servers.toml").read_text()
+    extraction = extract_codex_servers(text)
+    assert extraction.notes == ()
+    assert render_codex_servers(extraction.value) == text
+
+
+def _merged(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: _merged(left[key], right[key])
+        if isinstance(left.get(key), dict) and isinstance(right.get(key), dict)
+        else right.get(key, left.get(key))
+        for key in {**left, **right}
+    }
+
+
+@pytest.mark.parametrize("profile", ["default", "variant"])
+def test_the_shipped_codex_config_is_its_definitions_and_its_policy(profile: str) -> None:
+    """codex-config has no inverse of its own: it is codex-servers' definitions and
+    codex-mcp-permissions' policy in one table, and each of those round-trips."""
+    perm = EXPECTED / profile / "perm"
+    combined = tomllib.loads((perm / "codex-config.toml").read_text())["mcp_servers"]
+    definitions = tomllib.loads((perm / "codex-servers.toml").read_text())["mcp_servers"]
+    policy = tomllib.loads((perm / "codex-mcp.toml").read_text())["mcp_servers"]
+    assert combined == _merged(definitions, policy)

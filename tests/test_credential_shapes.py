@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import tomllib
 
 import pytest
 
@@ -138,9 +139,9 @@ def test_the_preview_names_the_secret_in_each_source_file(tmp_path, fake_home, c
 
 
 @pytest.mark.migration_integration
-def test_codex_http_headers_are_reported_as_not_adopted(tmp_path, fake_home, capsys) -> None:
-    """A Codex server's literal auth header has nowhere to go in the server source; the
-    preview says so rather than dropping it silently."""
+def test_codex_http_headers_are_adopted_and_named_as_a_secret(tmp_path, fake_home, capsys) -> None:
+    """A Codex server's literal auth header goes into the server source as it is, renders
+    back into config.toml, and is listed like any other secret (D-07)."""
     config = fake_home / ".codex/config.toml"
     config.parent.mkdir(parents=True)
     config.write_text(
@@ -150,10 +151,16 @@ def test_codex_http_headers_are_reported_as_not_adopted(tmp_path, fake_home, cap
     source = tmp_path / "source"
     source.mkdir()
 
-    argv = ["init", "global", str(source), "--harness", "codex", "--dry-run"]
+    argv = ["init", "global", str(source), "--harness", "codex", "--yes"]
     assert loadout.main(argv) == 0
 
-    assert (
-        f"{config}: codex-servers: docs carries http_headers, which loadout does not adopt"
-        in capsys.readouterr().out
-    )
+    mcp = source / "loadout/mcp.toml"
+    assert tomllib.loads(mcp.read_text())["docs"] == {
+        "transport": "http",
+        "url": "https://docs.test/mcp",
+        "headers": {"Authorization": "Bearer abc123"},
+    }
+    assert tomllib.loads(config.read_text())["mcp_servers"]["docs"]["http_headers"] == {
+        "Authorization": "Bearer abc123"
+    }
+    assert f"Contains a secret: {mcp}: a value labelled as a secret" in capsys.readouterr().out
