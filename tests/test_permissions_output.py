@@ -6,9 +6,10 @@ from typing import Any
 
 import pytest
 
-from loadout.emit import Merged, render_all
+from loadout.emit import render_all
 from loadout.errors import LoadoutError
 from loadout.manifest import MANIFEST_NAME, load_manifest
+from loadout.output import Merged
 
 FIXTURES = Path(__file__).parent / "fixtures"
 EXPECTED = FIXTURES / "expected" / "default"

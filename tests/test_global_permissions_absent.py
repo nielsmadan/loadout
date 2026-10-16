@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 
 import loadout
-from loadout.agents import GLOBAL_PRESET
 from loadout.emit import render_global
+from loadout.harnesses import GLOBAL_PRESET
 
 SOURCE = '[[source]]\nname = "test"\npath = "."\n'
 

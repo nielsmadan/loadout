@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from loadout import emit, files
-from loadout.emit import Merged
+from loadout import emit
 from loadout.files import check_all
+from loadout.output import Merged
 from render_helpers import write_all
 
 OWNED = frozenset({"model", "mcp_servers"})
@@ -24,7 +24,6 @@ def destination(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         return {path: Merged(OWNED, DOCUMENT)}
 
     monkeypatch.setattr(emit, "render_all", render)
-    monkeypatch.setattr(files, "render_all", render)
     return path
 
 
@@ -44,7 +43,7 @@ def test_check_is_clean_right_after_write(destination: Path) -> None:
     destination.write_text(FOREIGN, encoding="utf-8")
     write_all(destination.parent)
 
-    assert check_all(destination.parent) == []
+    assert check_all(emit.render_all(destination.parent)) == []
 
 
 def test_the_harness_writing_its_own_table_is_not_drift(destination: Path) -> None:
@@ -59,7 +58,7 @@ def test_the_harness_writing_its_own_table_is_not_drift(destination: Path) -> No
     with destination.open("a", encoding="utf-8") as handle:
         handle.write('\n[projects."/Users/me/other"]\ntrust_level = "trusted"\n')
 
-    assert check_all(destination.parent) == []
+    assert check_all(emit.render_all(destination.parent)) == []
 
 
 def test_editing_an_owned_key_is_drift(destination: Path) -> None:
@@ -71,9 +70,9 @@ def test_editing_an_owned_key_is_drift(destination: Path) -> None:
         encoding="utf-8",
     )
 
-    drift = check_all(destination.parent)
+    drift = check_all(emit.render_all(destination.parent))
 
-    assert [path for path, _, _ in drift] == [destination]
+    assert [item.path for item in drift] == [destination]
 
 
 def test_a_destination_that_does_not_exist_is_created(destination: Path) -> None:

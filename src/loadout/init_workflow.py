@@ -9,11 +9,12 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, Literal, TextIO
 
 import tomlkit
 
-from .commands import diff_lines, report_diff
+from .credentials import findings, redact
+from .diffs import diff_lines, report_diff
 from .discovery import discover, initialized_project_path
 from .emit import render_all
 from .errors import LoadoutError, UsageError
@@ -25,10 +26,14 @@ from .migration_backup import (
     Backup,
     Declared,
     Restored,
+    Untracked,
     complete,
     create_backup,
+    expect,
+    fresh_repository,
     interrupted_backup,
     latest_backup,
+    mark_applied,
     record,
     restore,
 )
@@ -42,7 +47,7 @@ from .migration_transaction import (
     prepare_migration,
 )
 from .output import Merged, Output
-from .project import gitignore_entries
+from .project import PROJECT_DIR, gitignore_entries
 from .sync import RenderedChange, compare_with_disk, deploy
 from .written import written_state_path
 
@@ -202,11 +207,20 @@ class Preview:
         }
 
 
-def _show(preview: Preview, *, as_json: bool, status: str = "preview", exit_code: int = 0) -> None:
+InitStatus = Literal["preview", "incomplete", "complete", "interrupted", "restored"]
+
+
+def _envelope(status: InitStatus, code: int, **fields: object) -> int:
+    """Print init's JSON document and return its exit code."""
+    print(json.dumps({"status": status, "exit_code": code, **fields}, indent=2))
+    return code
+
+
+def _show(
+    preview: Preview, *, as_json: bool, status: InitStatus = "preview", exit_code: int = 0
+) -> None:
     if as_json:
-        print(
-            json.dumps({"status": status, "exit_code": exit_code, **preview.document()}, indent=2)
-        )
+        _envelope(status, exit_code, **preview.document())
         return
     plan, prepared = preview.plan, preview.prepared
     inventory = plan.inventory
@@ -258,13 +272,27 @@ def _show_render(changes: tuple[RenderedChange, ...]) -> None:
     if updates:
         print(f"Render changes {len(updates)} existing file(s); applying overwrites them:")
         for change in updates:
-            lines = diff_lines(str(change.path), change.actual, change.wanted, context=1)
-            report_diff(lines, sys.stdout)
-    else:
+            actual, wanted = _redacted(change)
+            report_diff(diff_lines(str(change.path), actual, wanted, context=1), sys.stdout)
+    elif not any(c.kind == "normalised" for c in changes):
         print("Render: loadout reproduces your setup exactly.")
     for change in changes:
+        if change.kind == "normalised":
+            print(f"Normalise: {change.path} (only loadout's banner or formatting changes)")
         if change.kind == "create":
             print(f"Create: {change.path}")
+
+
+def _redacted(change: RenderedChange) -> tuple[str, str]:
+    """Both sides of a change with every secret either holds replaced: the preview warns
+    about a secret by name, and its diff must not print the value beside the warning."""
+    format_name = change.path.suffix[1:]
+    values = [
+        value
+        for text in (change.actual, change.expected)
+        for _, value in findings(text.encode(), format_name)
+    ]
+    return redact(change.actual, values), redact(change.expected, values)
 
 
 def _render_profile(plan: MigrationPlan) -> str:
@@ -298,7 +326,7 @@ def planned_render(plan: MigrationPlan, profile: str) -> tuple[RenderedChange, .
     real = _render_root(plan).absolute()
     with tempfile.TemporaryDirectory(prefix="loadout-init-render-") as name:
         scratch = Path(name).resolve() / "root"
-        source = scratch / "loadout" if plan.inventory.scope == "project" else scratch
+        source = scratch / PROJECT_DIR if plan.inventory.scope == "project" else scratch
         for write in plan.source_writes:
             path = source / write.path.relative_to(plan.inventory.source_root)
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -321,21 +349,22 @@ def planned_render(plan: MigrationPlan, profile: str) -> tuple[RenderedChange, .
 
 def _first_sync(
     plan: MigrationPlan, profile: str, approved: tuple[RenderedChange, ...], *, as_json: bool
-) -> int:
+) -> list[Path] | None:
+    """The paths the first render wrote, or None when it was not written."""
     root = _render_root(plan).absolute()
     outputs = render_all(root, profile)
-    wanted = {change.path: change.wanted for change in compare_with_disk(outputs)}
-    if wanted != {change.path: change.wanted for change in approved}:
+    wanted = {change.path: change.expected for change in compare_with_disk(outputs)}
+    if wanted != {change.path: change.expected for change in approved}:
         print(
             "loadout: rendered output changed after the preview, so nothing was written; "
             "review it with `loadout check`, then run `loadout sync`",
             file=sys.stderr,
         )
-        return 1
+        return None
     written, _ = deploy(root, outputs)
     if not as_json:
         print(f"Rendered {len(written)} generated file(s).")
-    return 0
+    return written
 
 
 def delinked_notice(delinked: Delinked) -> str:
@@ -367,11 +396,10 @@ def _result(
     *,
     as_json: bool,
 ) -> None:
-    data = {
-        "status": "complete",
-        "exit_code": 0,
+    fields = {
         "backup": str(backup.directory) if backup else None,
         "written": [str(p) for p in result.written],
+        "rendered": [str(p) for p in result.rendered],
         "untracked": list(result.untracked),
         "already_initialized": result.already_initialized,
         "delinked": [d.document() for d in delinked],
@@ -379,7 +407,7 @@ def _result(
         "secrets": secrets_document(plan.secrets),
     }
     if as_json:
-        print(json.dumps(data, indent=2))
+        _envelope("complete", 0, **fields)
     elif result.already_initialized:
         print(
             "Existing source adopted; no migration needed. Use loadout check/sync for managed outputs."
@@ -405,22 +433,24 @@ def run_init(options: InitOptions) -> int:
         return 0
 
 
+def interrupted_document(backup: str) -> dict[str, object]:
+    return {
+        "backup": backup,
+        "error": "an earlier init did not finish; restore it with `loadout init restore`",
+    }
+
+
 def _interrupted(options: InitOptions) -> int | None:
     """An init killed part way leaves its backup marked in progress; offer it first."""
     backup = interrupted_backup()
     if backup is None:
         return None
     if options.json or options.dry_run or not sys.stdin.isatty():
-        message = {
-            "status": "interrupted",
-            "exit_code": 2,
-            "backup": str(backup.directory),
-            "message": "an earlier init did not finish; restore it with `loadout init restore`",
-        }
+        document = interrupted_document(str(backup.directory))
         if options.json:
-            print(json.dumps(message, indent=2))
+            return _envelope("interrupted", 2, **document)
         else:
-            print(f"loadout: {message['message']} (backup {backup.directory})", file=sys.stderr)
+            print(f"loadout: {document['error']} (backup {backup.directory})", file=sys.stderr)
         return 2
     answer = _answer(
         f"An earlier init did not finish. Restore everything it changed from {backup.directory}? "
@@ -504,7 +534,7 @@ def _apply(
     label = {"scope": plan.inventory.scope, "root": str(plan.inventory.root)}
     root = _render_root(plan).absolute()
     untracked = (
-        (
+        Untracked(
             prepared.canonical(index_path(prepared.repository)),
             prepared.repository,
             prepared.untracked,
@@ -520,13 +550,17 @@ def _apply(
     )
     backup = create_backup(_touched(prepared, render), declared, now=datetime.now(UTC), label=label)
     try:
+        if prepared.new_repository is not None:
+            git_dir = prepared.canonical(prepared.new_repository / ".git")
+            expect(backup, fresh_repository(git_dir))
+        mark_applied(backup)
         result = apply_migration(prepared)
         record(backup, (prepared.canonical(path) for path in prepared.touched()))
         if prepared.new_repository is not None:
             created = prepared.canonical(prepared.new_repository / ".git")
             record(backup, (created, *sorted(created.rglob("*"))), created=True)
-        code = (
-            0
+        rendered = (
+            []
             if plan.already_initialized
             else _first_sync(plan, profile, render, as_json=options.json)
         )
@@ -536,10 +570,10 @@ def _apply(
         if not isinstance(error, Exception):
             raise
         return code
-    if code:
+    if rendered is None:
         return _failed(backup, "the first render was not written", as_json=options.json)
     complete(backup)
-    _result(result, delinked, plan, backup, as_json=options.json)
+    _result(replace(result, rendered=tuple(rendered)), delinked, plan, backup, as_json=options.json)
     return _after_migration(plan, already=plan.already_initialized, as_json=options.json)
 
 
@@ -572,16 +606,7 @@ def _failed(backup: Backup, reason: str, *, as_json: bool) -> int:
     restored = restore(backup)
     message = f"init failed ({reason}); what it changed was restored from {backup.directory}"
     if as_json:
-        print(
-            json.dumps(
-                {
-                    "status": "restored",
-                    "exit_code": 1,
-                    "error": reason,
-                    **_restore_report(restored, backup),
-                }
-            )
-        )
+        _envelope("restored", 1, error=reason, **_restore_report(restored, backup))
     print(f"loadout: {message}", file=sys.stderr)
     _print_kept(restored, sys.stderr)
     return 1
@@ -589,15 +614,18 @@ def _failed(backup: Backup, reason: str, *, as_json: bool) -> int:
 
 def _restore_report(restored: Restored, backup: Backup) -> dict[str, object]:
     return {
-        "backup": str(backup.directory),
+        # Gone once spent: naming a deleted directory would send the reader after nothing.
+        "backup": str(backup.directory) if backup.directory.exists() else None,
         "kept": [str(path) for path in restored.kept],
+        "reasons": {str(path): why for path, why in restored.reasons.items()},
         "links": {str(path): target for path, target in restored.links.items()},
     }
 
 
 def _print_kept(restored: Restored, stream: TextIO) -> None:
     for path in restored.kept:
-        print(f"Kept, not init's to undo: {path}", file=stream)
+        if path not in restored.links:
+            print(f"Kept, {restored.reasons.get(path, 'not init to undo')}: {path}", file=stream)
     for path, target in restored.links.items():
         print(f"{path} used to link to {target}; it stays a directory for now.", file=stream)
     if restored.kept:
@@ -637,11 +665,14 @@ def _commit_hint(plan: MigrationPlan) -> str:
 def _restored(backup: Backup, *, as_json: bool) -> int:
     restored = restore(backup)
     if as_json:
-        code = 1 if restored.kept else 0
-        report = {"status": "restored", "exit_code": code, **_restore_report(restored, backup)}
-        print(json.dumps(report, indent=2))
+        return _envelope("restored", 1 if restored.kept else 0, **_restore_report(restored, backup))
     else:
-        print(f"Restored what init changed, from {backup.directory}.")
+        if restored.restored:
+            print(f"Restored what init changed, from {backup.directory}.")
+        elif restored.kept:
+            print("Nothing could be restored.")
+        else:
+            print("Nothing needed restoring; every path was already as before init.")
         _print_kept(restored, sys.stdout)
     return 1 if restored.kept else 0
 

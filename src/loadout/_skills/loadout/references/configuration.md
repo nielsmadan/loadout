@@ -216,8 +216,13 @@ flags these changes; it does not merge them.
 
 1. Run `loadout check --json` with the scope's `--root <repo>` or `--global`, and read each
    drifted path's `kind`. `hand-edited` and `unknown` are outputs that differ from what loadout
-   would write. `unmanaged` is a file or folder loadout did not write, inside a folder its harness
+   would write. `owned-key` is a key loadout writes in a file it shares with the harness, such as
+   `mcpServers` in `~/.claude.json`, edited there; only those keys are compared.
+   `owned-key-removed` is such a key deleted there, as by `codex mcp remove`: ask whether to
+   remove it from the source too, or to write it back. `unmanaged` is a file or folder loadout did not write, inside a folder its harness
    reads whole: a skill folder, or a Codex rules file such as `~/.codex/rules/default.rules`.
+   `unmanaged-link` is a link loadout did not create there; it has no content to port, so show
+   the user where it points and ask before deleting it. Never read through it.
    `source-changed`, `missing` and `orphaned` need only a sync.
 2. Read the change. `loadout check` without `--json` prints each diff: `-` lines exist only on
    disk, `+` lines only in the source. For an `unmanaged` path, read the file or folder itself.

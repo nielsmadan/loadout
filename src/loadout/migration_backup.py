@@ -1,4 +1,4 @@
-"""The before-image of every path an adoption touches, kept so it can be put back (D-06).
+"""The before-image of every path an adoption touches, kept so it can be put back (ADR 0028).
 
 `init` writes it before its first change and clears the in-progress marker once it is done.
 A failure restores it straight away; a run killed part way leaves the marker, and the next
@@ -11,94 +11,30 @@ import contextlib
 import json
 import os
 import shutil
-import stat
 import tempfile
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from .errors import LoadoutError
+from .machine import state_dir
 from .migration_git import git
+from .migration_images import Image, install, snapshot
 from .output import FrozenFile, atomic_install, sha256
-from .output import no_symlinks as _no_symlinks
+from .written import forget_written
 
-BACKUP_VERSION = 3
+BACKUP_VERSION = 4
 MANIFEST = "manifest.json"
 MARKER = "in-progress"
+# Written once init starts changing things: a backup without it never applied anything.
+APPLIED = "applied"
 IMAGES = "images"
 
 
-ImageKind = Literal["absent", "file", "directory", "symlink"]
-Phase = Literal["topology", "source", "retire", "registration", "ignore"]
-
-
-@dataclass(frozen=True)
-class Image:
-    kind: ImageKind = "absent"
-    content: bytes = field(default=b"", repr=False)
-    mode: int = 0
-
-    def digest(self) -> str:
-        return sha256(f"{self.kind}:{self.mode:o}:".encode() + self.content)
-
-    def shape(self) -> str:
-        """What a planned write fixes ahead of time: the kind and the content, not the
-        mode, which a co-owned file keeps from whatever is already there."""
-        return f"{self.kind}:{sha256(self.content)}"
-
-
-@dataclass(frozen=True)
-class Operation:
-    path: Path
-    before: Image
-    after: Image
-    phase: Phase
-
-
-def snapshot(path: Path) -> Image:
-    try:
-        metadata = path.lstat()
-    except FileNotFoundError:
-        return Image()
-    mode = stat.S_IMODE(metadata.st_mode)
-    if stat.S_ISLNK(metadata.st_mode):
-        return Image("symlink", os.fsencode(os.readlink(path)), mode)
-    if stat.S_ISDIR(metadata.st_mode):
-        return Image("directory", mode=mode)
-    if stat.S_ISREG(metadata.st_mode):
-        return Image("file", path.read_bytes(), mode)
-    raise LoadoutError(f"unsupported migration entry: {path}")
-
-
-def install(path: Path, image: Image, boundary: Path | None = None) -> None:
-    """Make `path` hold `image`. A file replaces a file atomically, never by unlinking it
-    first; links are refused between `path` and `boundary` (or `/`)."""
-    _no_symlinks(path.parent, boundary)
-    current = snapshot(path)
-    if current.kind == "directory" and image.kind != "directory":
-        path.rmdir()
-    elif current.kind == "symlink" or (current.kind == "file" and image.kind != "file"):
-        path.unlink()
-    if image.kind == "file":
-        atomic_install(path, FrozenFile(image.content, image.mode), boundary)
-    elif image.kind == "directory":
-        path.mkdir(mode=image.mode, exist_ok=True)
-        path.chmod(image.mode)
-    elif image.kind == "symlink":
-        path.symlink_to(os.fsdecode(image.content))
-
-
-def state_root(env: Mapping[str, str] | None = None) -> Path:
-    environ = os.environ if env is None else env
-    state = environ.get("XDG_STATE_HOME")
-    base = Path(state) if state else Path(environ.get("HOME", "~")).expanduser() / ".local/state"
-    return (base / "loadout").resolve()
-
-
 def backups_root(env: Mapping[str, str] | None = None) -> Path:
-    return state_root(env) / "backups"
+    return state_dir(env) / "backups"
 
 
 @dataclass(frozen=True)
@@ -150,20 +86,14 @@ def _write_manifest(backup: Backup, document: Mapping[str, Any]) -> None:
 EMPTY = sha256(b"")
 
 
-def _entry(path: Path, image: Image) -> dict[str, Any]:
-    return {
-        "path": str(path),
-        "kind": image.kind,
-        "mode": image.mode,
-        "sha256": sha256(image.content),
-    }
+def _entry(path: Path, image: Image, digest: str) -> dict[str, Any]:
+    return {"path": str(path), "kind": image.kind, "mode": image.mode, "sha256": digest}
 
 
-def _store_images(backup: Backup, images: Iterable[Image]) -> None:
+def _store_images(backup: Backup, contents: Mapping[str, bytes]) -> None:
     """One file per distinct content, named by its digest."""
     directory = backup.directory / IMAGES
     directory.mkdir(mode=0o700)
-    contents = {sha256(i.content): i.content for i in images if i.content}
     for digest, content in contents.items():
         atomic_install(directory / digest, FrozenFile(content, 0o600))
 
@@ -182,19 +112,28 @@ def _covering(paths: Iterable[Path]) -> tuple[Path, ...]:
 
 
 @dataclass(frozen=True)
+class Untracked:
+    """The index init will change: the entries it removes from `repository`'s index."""
+
+    index: Path
+    repository: Path
+    names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class Declared:
     """What init declares about its writes before making them.
 
     `planned` is each path's possible shapes. `records` are loadout's write records:
     restore drops the entries it reverts from them rather than putting back their
-    before-image. `untracked` is the index init will change, as (index, repository,
-    names), and `repository` the one it will create; both are declared before Git runs,
-    so a run killed straight after still knows them.
+    before-image. `untracked` is the index init will change, and `repository` the one
+    it will create; both are declared before Git runs, so a run killed straight after
+    still knows them.
     """
 
     planned: Mapping[Path, Iterable[str]]
     records: tuple[Path, ...] = ()
-    untracked: tuple[Path, Path, tuple[str, ...]] | None = None
+    untracked: Untracked | None = None
     repository: Path | None = None
 
 
@@ -209,7 +148,8 @@ def create_backup(
     images = {
         path: Image() if _beneath_link(path, captured) else _readable(path) for path in covered
     }
-    entries = [_entry(path, image) for path, image in images.items()]
+    digests = {path: sha256(image.content) for path, image in images.items()}
+    entries = [_entry(path, image, digests[path]) for path, image in images.items()]
     document = {
         "version": BACKUP_VERSION,
         **label,
@@ -222,9 +162,9 @@ def create_backup(
         "records": sorted(str(path) for path in declared.records if path in captured),
         "untracked": (
             {
-                "index": str(declared.untracked[0]),
-                "repository": str(declared.untracked[1]),
-                "names": list(declared.untracked[2]),
+                "index": str(declared.untracked.index),
+                "repository": str(declared.untracked.repository),
+                "names": list(declared.untracked.names),
             }
             if declared.untracked is not None
             else None
@@ -237,7 +177,10 @@ def create_backup(
     backup = Backup(root / now.strftime("%Y%m%dT%H%M%S%fZ"))
     try:
         backup.directory.mkdir(mode=0o700)
-        _store_images(backup, images.values())
+        _store_images(
+            backup,
+            {digests[path]: image.content for path, image in images.items() if image.content},
+        )
         _write_manifest(backup, document)
         # Last, so a marker always has a complete manifest beside it.
         (backup.directory / MARKER).write_text("")
@@ -263,18 +206,47 @@ def record(backup: Backup, paths: Iterable[Path], *, created: bool = False) -> N
         if str(path) not in known:
             if not created:
                 continue
-            document["entries"].append(_entry(path, Image()))
+            document["entries"].append(_entry(path, Image(), EMPTY))
         document["after"][str(path)] = snapshot_digest(path)
     _write_manifest(backup, document)
 
 
+def expect(backup: Backup, images: Mapping[Path, Image]) -> None:
+    """Record paths init is about to create as absent beforehand and left as `images`,
+    before it creates them, so a kill straight after still knows them as init's."""
+    document = backup.manifest()
+    known = {entry["path"] for entry in document["entries"]}
+    for path, image in images.items():
+        if str(path) not in known:
+            document["entries"].append(_entry(path, Image(), EMPTY))
+        document["after"][str(path)] = image.digest()
+    _write_manifest(backup, document)
+
+
+def fresh_repository(git_dir: Path) -> dict[Path, Image]:
+    """What `git init` writes into `git_dir`, from a run of it in scratch."""
+    with tempfile.TemporaryDirectory(prefix="loadout-git-init-") as scratch:
+        git(Path(scratch), "init", "-q")
+        made = Path(scratch) / ".git"
+        return {
+            git_dir / path.relative_to(made): snapshot(path)
+            for path in (made, *sorted(made.rglob("*")))
+        }
+
+
+def mark_applied(backup: Backup) -> None:
+    """Mark that init is about to change what the backup holds before-images of."""
+    (backup.directory / APPLIED).write_text("")
+
+
 def complete(backup: Backup) -> None:
     """Record what the adoption left at each path, clear the marker and keep only this
-    backup, so a later restore can tell an untouched path from one edited since."""
+    backup, so a later restore can tell an untouched path from one edited since. An
+    interrupted backup survives only if it applied something and can be read."""
     record(backup, (Path(entry["path"]) for entry in backup.manifest()["entries"]))
     (backup.directory / MARKER).unlink(missing_ok=True)
     for other in backups():
-        if other.directory != backup.directory and not other.interrupted:
+        if other.directory != backup.directory and not (other.interrupted and _usable(other)):
             shutil.rmtree(other.directory)
 
 
@@ -286,20 +258,24 @@ def backups() -> tuple[Backup, ...]:
 
 
 def interrupted_backup() -> Backup | None:
-    return next((b for b in reversed(backups()) if b.interrupted and _complete(b)), None)
+    return next((b for b in reversed(backups()) if b.interrupted and _usable(b)), None)
 
 
-def _complete(backup: Backup) -> bool:
+def _usable(backup: Backup) -> bool:
+    """A backup worth restoring: its manifest reads, and its run changed something. A
+    run killed before either leaves a directory that would hide the real backup. One
+    from another version stays, so restoring it is refused by name."""
     try:
-        backup.manifest()
-    except LoadoutError:
+        document = json.loads((backup.directory / MANIFEST).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
         return False
-    return True
+    if not isinstance(document, dict):
+        return False
+    return document.get("version") != BACKUP_VERSION or (backup.directory / APPLIED).exists()
 
 
 def latest_backup() -> Backup | None:
-    found = backups()
-    return found[-1] if found else None
+    return next((b for b in reversed(backups()) if _usable(b)), None)
 
 
 def _beneath_link(path: Path, captured: frozenset[Path]) -> bool:
@@ -314,7 +290,7 @@ class _Plan:
     images: Mapping[Path, Image]
     planned: Mapping[str, list[str]]
     after: Mapping[str, str]
-    untracked: Mapping[str, Any] | None = None
+    untracked: Untracked | None = None
     repository: Path | None = None
 
     def ours(self, path: Path) -> bool:
@@ -333,28 +309,39 @@ class _Plan:
 
     def _untracked_only(self, path: Path) -> bool:
         """The index differs from its before-image by exactly the entries init removed."""
-        if self.untracked is None or str(path) != self.untracked["index"]:
+        if self.untracked is None or path != self.untracked.index:
             return False
-        repository = Path(self.untracked["repository"])
+        repository = self.untracked.repository
         with tempfile.TemporaryDirectory() as directory:
             before = Path(directory) / "index"
             before.write_bytes(self.images[path].content)
             listed = _staged(repository, before)
-        removed = set(self.untracked["names"])
+        removed = set(self.untracked.names)
         expected = [line for line in listed if line.split(b"\t", 1)[-1].decode() not in removed]
         return _staged(repository, path) == expected
 
     def disposable(self) -> frozenset[Path]:
-        """The repository init was creating, while it holds nothing but what `git init`
-        writes: no commit and no index. A run killed straight after `git init` recorded
-        none of it, so this is how its files are known to be init's."""
+        """The repository init created, while it is provably init's: recorded when `git
+        init` wrote it, reached without a link, and every entry under it still as init
+        left it. A hook, a remote or a commit added since makes it the user's."""
+        git_dir = self._new_git_dir()
+        if git_dir is None or not _reachable(git_dir):
+            return frozenset()
+        unborn = _unborn(git_dir)
+        entries = (git_dir, *_subtree(git_dir))
+        if all(
+            (entry in self.images and self.ours(entry)) or (unborn and _runtime(git_dir, entry))
+            for entry in entries
+        ):
+            return frozenset({git_dir})
+        return frozenset()
+
+    def _new_git_dir(self) -> Path | None:
+        """The git dir of the repository init created, while it is still a directory."""
         if self.repository is None:
-            return frozenset()
+            return None
         git_dir = self.repository / ".git"
-        if not git_dir.is_dir() or git_dir.is_symlink() or (git_dir / "index").exists():
-            return frozenset()
-        head = git(self.repository, "rev-parse", "--verify", "-q", "HEAD", check=False)
-        return frozenset({git_dir}) if head.returncode else frozenset()
+        return git_dir if git_dir.is_dir() and not git_dir.is_symlink() else None
 
     def frozen(self) -> dict[Path, tuple[Path, ...]]:
         """Each unit that cannot come back whole, with the entries in the way: a link init
@@ -362,7 +349,8 @@ class _Plan:
         created, which removing its own files from would break. Taking either apart
         around an entry that is not init's leaves neither state, so the subtree stays."""
         result: dict[Path, tuple[Path, ...]] = {}
-        for path, image in sorted(self.images.items(), key=lambda item: len(item[0].parts)):
+        for path in _by_depth(self.images):
+            image = self.images[path]
             unit = image.kind == "symlink" or (image.kind == "absent" and path.name == ".git")
             if not unit or not path.is_dir() or path.is_symlink():
                 continue
@@ -378,6 +366,31 @@ class _Plan:
         return result
 
 
+def _unborn(git_dir: Path) -> bool:
+    """No index, no ref and no packed ref: nothing in the repository is the user's yet."""
+    if (git_dir / "index").exists():
+        return False
+    if any(path.is_file() for path in (git_dir / "refs").rglob("*")):
+        return False
+    packed = git_dir / "packed-refs"
+    if not packed.is_file():
+        return True
+    lines = packed.read_text(encoding="utf-8", errors="replace").splitlines()
+    return all(not line.strip() or line.startswith(("#", "^")) for line in lines)
+
+
+def _runtime(git_dir: Path, entry: Path) -> bool:
+    """What read-only git writes on its own: fsmonitor's daemon state, a fetch, gc's
+    packing and locks. A hook, a remote or a config edit is none of these."""
+    relative = entry.relative_to(git_dir)
+    return (
+        relative.parts[0].startswith("fsmonitor--daemon")
+        or relative.as_posix() in {"FETCH_HEAD", "packed-refs", "info/refs"}
+        or relative.parent.is_relative_to("objects/info")
+        or entry.name.endswith(".lock")
+    )
+
+
 def _staged(repository: Path, index: Path) -> list[bytes]:
     listing = git(repository, "ls-files", "-s", "-z", index=index, check=False)
     return [line for line in listing.stdout.split(b"\0") if line]
@@ -388,6 +401,10 @@ def _current(path: Path) -> Image | None:
         return snapshot(path)
     except LoadoutError:
         return None
+
+
+def _by_depth(paths: Iterable[Path], *, deepest_first: bool = False) -> list[Path]:
+    return sorted(paths, key=lambda p: len(p.parts), reverse=deepest_first)
 
 
 def _subtree(path: Path) -> tuple[Path, ...]:
@@ -412,10 +429,13 @@ def _reachable(path: Path) -> bool:
 
 @dataclass(frozen=True)
 class Restored:
-    """What a restore left as it was, and the links among those it could not put back."""
+    """What a restore put back, what it left as it was and why, and the links among those
+    it could not put back."""
 
     kept: tuple[Path, ...]
     links: Mapping[Path, str]
+    reasons: Mapping[Path, str] = field(default_factory=dict)
+    restored: tuple[Path, ...] = ()
 
 
 def restore(backup: Backup) -> Restored:
@@ -429,14 +449,27 @@ def restore(backup: Backup) -> Restored:
     """
     document = backup.manifest()
     repository = document.get("repository")
+    untracked = document.get("untracked")
     plan = _Plan(
         backup.images(),
         document.get("planned", {}),
         document.get("after", {}),
-        document.get("untracked"),
+        Untracked(
+            Path(untracked["index"]), Path(untracked["repository"]), tuple(untracked["names"])
+        )
+        if untracked
+        else None,
         Path(repository) if repository else None,
     )
     records = {Path(path) for path in document.get("records", ())}
+    missing = sorted(str(path) for path in records if path not in plan.images)
+    if missing:
+        raise LoadoutError(
+            f"backup {backup.directory}: write record {', '.join(missing)} has no before-image, "
+            "so the undo cannot finish; nothing was restored"
+        )
+    # From here restore changes things, so a kill leaves the backup offered again.
+    (backup.directory / MARKER).write_text("")
     disposable = plan.disposable()
     frozen = {
         unit: entries
@@ -444,27 +477,38 @@ def restore(backup: Backup) -> Restored:
         if not any(unit.is_relative_to(gone) for gone in disposable)
     }
     restorable, kept = _restorable(plan, frozen, disposable, records)
-    reverted: list[Path] = []
     for unit in disposable:
         shutil.rmtree(unit)
-        reverted.append(unit)
-    _remove_created(plan, restorable, reverted, kept)
-    _put_back(plan, restorable, reverted, kept)
+    removed, unremoved = _remove_created(plan, restorable)
+    put_back, not_put_back = _put_back(plan, restorable)
+    reverted = [*disposable, *removed, *put_back]
+    kept = {**unremoved, **not_put_back, **kept}
     # Back at its before-image, whether restore put it there or init left it so.
     settled = [*reverted, *(path for path, image in restorable.items() if _current(path) == image)]
     for record_path in records:
-        _forget(record_path, plan.images[record_path], settled)
+        forget_written(record_path, settled, created=plan.images[record_path].kind == "absent")
     kept = _prune_created(restorable, kept)
     result = Restored(
-        tuple(sorted(set(kept))),
+        tuple(sorted(kept)),
         {
             path: os.fsdecode(plan.images[path].content)
             for path in frozen
             if plan.images[path].kind == "symlink"
         },
+        dict(sorted(kept.items())),
+        tuple(sorted(reverted)),
     )
     _spend(backup, document, result.kept)
     return result
+
+
+CHANGED = "changed since init"
+
+
+def _unit_reason(image: Image) -> str:
+    if image.kind == "symlink":
+        return "a link init replaced, kept whole because it now holds entries that are not init's"
+    return "a repository init created, kept whole because it now holds files init did not write"
 
 
 def _restorable(
@@ -472,11 +516,12 @@ def _restorable(
     frozen: Mapping[Path, tuple[Path, ...]],
     disposable: frozenset[Path],
     records: set[Path],
-) -> tuple[dict[Path, Image], list[Path]]:
-    """The paths restore may touch, and those it already knows it must keep."""
+) -> tuple[dict[Path, Image], dict[Path, str]]:
+    """The paths restore may touch, and those it already knows it must keep, with why."""
     captured = frozenset(plan.images)
     held = {entry for unit in frozen for entry in (unit, *_subtree(unit))}
-    kept: list[Path] = [*frozen, *(entry for entries in frozen.values() for entry in entries)]
+    kept: dict[Path, str] = {unit: _unit_reason(plan.images[unit]) for unit in frozen}
+    kept.update((entry, "added since init") for entries in frozen.values() for entry in entries)
     restorable: dict[Path, Image] = {}
     for path, image in plan.images.items():
         skipped = path in held or path in records or _beneath_link(path, captured)
@@ -485,87 +530,77 @@ def _restorable(
         if _reachable(path):
             restorable[path] = image
         elif _current(path) != image:
-            kept.append(path)
+            kept.setdefault(path, "now reached through a link added since init")
     return restorable, kept
 
 
 def _remove_created(
-    plan: _Plan, restorable: Mapping[Path, Image], reverted: list[Path], kept: list[Path]
-) -> None:
-    for path in sorted(restorable, key=lambda p: len(p.parts), reverse=True):
+    plan: _Plan, restorable: Mapping[Path, Image]
+) -> tuple[list[Path], dict[Path, str]]:
+    """Remove what init created, deepest first: what went, and what stays with why."""
+    removed: list[Path] = []
+    kept: dict[Path, str] = {}
+    for path in _by_depth(restorable, deepest_first=True):
         if restorable[path].kind != "absent" or _current(path) == Image():
             continue
         if path.is_dir() and not path.is_symlink():
             try:
                 path.rmdir()
-                reverted.append(path)
+                removed.append(path)
             except OSError:
-                kept.append(path)
+                kept[path] = "a folder init created that now holds files it did not"
         elif plan.ours(path):
             path.unlink()
-            reverted.append(path)
+            removed.append(path)
         else:
-            kept.append(path)
+            kept[path] = CHANGED
+    return removed, kept
 
 
-def _put_back(
-    plan: _Plan, restorable: Mapping[Path, Image], reverted: list[Path], kept: list[Path]
-) -> None:
+def _put_back(plan: _Plan, restorable: Mapping[Path, Image]) -> tuple[list[Path], dict[Path, str]]:
+    """Install each before-image init replaced, shallowest first: what was put back, and
+    what stays with why."""
     captured = frozenset(plan.images)
-    for path in sorted(restorable, key=lambda p: len(p.parts)):
+    put_back: list[Path] = []
+    kept: dict[Path, str] = {}
+    for path in _by_depth(restorable):
         image = restorable[path]
         if image.kind == "absent" or _current(path) == image:
             continue
         replaced_link = image.kind == "symlink" and path.is_dir() and not path.is_symlink()
         if not plan.ours(path) and not replaced_link:
-            kept.append(path)
+            kept[path] = CHANGED
             continue
         try:
             install(path, image, _boundary(path, captured))
-            reverted.append(path)
-        except (OSError, LoadoutError):
-            kept.append(path)
+            put_back.append(path)
+        except (OSError, LoadoutError) as error:
+            kept[path] = f"could not be put back: {error}"
+    return put_back, kept
 
 
-def _prune_created(restorable: Mapping[Path, Image], kept: list[Path]) -> list[Path]:
+def _prune_created(restorable: Mapping[Path, Image], kept: dict[Path, str]) -> dict[Path, str]:
     """Remove a directory init created that the write record held until now, and drop it
     from what was kept once it is gone."""
-    for path in sorted(restorable, key=lambda p: len(p.parts), reverse=True):
+    for path in _by_depth(restorable, deepest_first=True):
         if restorable[path].kind == "absent" and path.is_dir() and not path.is_symlink():
             with contextlib.suppress(OSError):
                 path.rmdir()
-    return [path for path in kept if path.exists() or path.is_symlink()]
-
-
-def _forget(record_path: Path, before: Image, reverted: list[Path]) -> None:
-    """Drop the reverted destinations from a write record, keeping everything else it
-    says, so a file init wrote that stays is still known as loadout's."""
-    if not record_path.is_file():
-        return
-    gone = {entry_path_text(path) for path in reverted}
-    document = json.loads(record_path.read_text(encoding="utf-8"))
-    written = document.get("written", {})
-    document["written"] = {
-        key: value for key, value in written.items() if entry_path_text(Path(key)) not in gone
-    }
-    if not document["written"] and before.kind == "absent":
-        record_path.unlink()
-        return
-    atomic_install(record_path, FrozenFile(json.dumps(document, indent=2).encode() + b"\n", 0o600))
-
-
-def entry_path_text(path: Path) -> str:
-    return str(path.parent.resolve() / path.name)
+    return {path: why for path, why in kept.items() if path.exists() or path.is_symlink()}
 
 
 def _spend(backup: Backup, document: Mapping[str, Any], kept: tuple[Path, ...]) -> None:
     if not kept:
         shutil.rmtree(backup.directory)
         return
+    # What the next restore reads: the kept paths, and the write records it updates,
+    # which sit in a directory that need not be among them.
+    records = {Path(path) for path in document.get("records", ())}
     remaining = [
         entry
         for entry in document["entries"]
-        if any(
+        if Path(entry["path"]) in records
+        or any(
             Path(entry["path"]) == path or Path(entry["path"]).is_relative_to(path) for path in kept
         )
     ]

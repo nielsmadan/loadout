@@ -5,9 +5,10 @@ from typing import Any
 
 import pytest
 
-from loadout.emit import Merged, compose_permission_document
+from loadout.emit import compose_permission_document
 from loadout.errors import LoadoutError
 from loadout.manifest import PermissionTarget
+from loadout.output import Merged
 from loadout.permissions import renderers as registry
 from loadout.permissions.renderers import MergedTomlSpec
 from loadout.permissions.rules import EMPTY_RULES

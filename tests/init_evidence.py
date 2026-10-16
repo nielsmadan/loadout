@@ -12,17 +12,10 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+from isolation import HARNESS_VARIABLES
+
 CHECKOUT = Path(__file__).resolve().parents[1]
 CLI = [sys.executable, "-I", "-m", "loadout"]
-HARNESS_VARIABLES = (
-    "CLAUDE_CONFIG_DIR",
-    "CODEX_HOME",
-    "PI_CODING_AGENT_DIR",
-    "XDG_CONFIG_HOME",
-    "OPENCODE_CONFIG",
-    "OPENCODE_CONFIG_DIR",
-    "LOADOUT_TEST_HARNESS_C",
-)
 
 
 def isolated_environment(home: Path) -> dict[str, str]:

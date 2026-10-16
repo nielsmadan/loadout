@@ -1,5 +1,5 @@
 """init adopts opencode.jsonc into opencode.json, dropping its comments, and refuses when
-both files exist, since OpenCode reads and merges the two (P-41)."""
+both files exist, since OpenCode reads and merges the two (migration.md, `opencode.jsonc`)."""
 
 from __future__ import annotations
 

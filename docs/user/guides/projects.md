@@ -55,11 +55,10 @@ instructions = ["project", "testing"]
 Create the matching files under `loadout/instructions/`. They are composed in the listed order.
 Templates contribute their instructions before the project's fragments.
 
-After adding an instruction order to a project that previously generated only permissions,
-rerun `loadout init` with the same current harness list to add the new documents to `.gitignore`:
+After adding an instruction order to a project that previously generated only permissions, run
+`loadout sync`: it writes the new documents and adds them to `.gitignore`.
 
 ```sh
-loadout init project --harness claude --harness codex
 loadout sync
 ```
 

@@ -23,8 +23,8 @@ from init_evidence import (
     isolated_environment,
     write_json,
 )
-from loadout.agents import GLOBAL_PRESET
 from loadout.destinations import resolve_destination
+from loadout.harnesses import GLOBAL_PRESET
 from loadout.project import PROJECT_PRESET
 
 CASES = Path(__file__).parent / "fixtures/init_corpus.json"
@@ -194,7 +194,7 @@ def reconstruction(root: Path, home: Path, preview: dict, expected: dict, logs: 
         "public reconstruction output inventory differs"
     )
     result["source"] = (
-        "actual Git index blobs; Git 100644/100755 modes; no originals, receipts, registration or private files"
+        "actual Git index blobs; Git 100644/100755 modes; no originals, registration or private files"
     )
     result["private_outputs_omitted"] = len(expected) - len(public)
     result["source_files"] = len(list(filter(None, paths)))

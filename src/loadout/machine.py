@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .errors import LoadoutError
 from .harnesses import KNOWN_HARNESSES
+from .manifest import MANIFEST_NAME
 
 MACHINE_CONFIG_NAME = "config.toml"
 
@@ -21,7 +22,7 @@ class MachineConfig:
     harnesses: tuple[str, ...] = ()
 
 
-def machine_state_dir(env: Mapping[str, str] | None = None) -> Path:
+def config_dir(env: Mapping[str, str] | None = None) -> Path:
     """Where state that belongs to this machine rather than to a source lives.
 
     ADR 0010 named one place for it; ADR 0008 forbids the alternative of hiding it
@@ -34,8 +35,16 @@ def machine_state_dir(env: Mapping[str, str] | None = None) -> Path:
     return base / "loadout"
 
 
+def state_dir(env: Mapping[str, str] | None = None) -> Path:
+    """Where what loadout keeps for itself lives: init's backups, sync's full diff."""
+    environ = os.environ if env is None else env
+    state = environ.get("XDG_STATE_HOME")
+    base = Path(state) if state else Path(environ.get("HOME", "~")).expanduser() / ".local/state"
+    return (base / "loadout").resolve()
+
+
 def machine_config_path(env: Mapping[str, str] | None = None) -> Path:
-    return machine_state_dir(env) / MACHINE_CONFIG_NAME
+    return config_dir(env) / MACHINE_CONFIG_NAME
 
 
 def load_machine_config(path: Path, *, require_source: bool = True) -> MachineConfig | None:
@@ -86,17 +95,29 @@ def load_machine_config(path: Path, *, require_source: bool = True) -> MachineCo
     return MachineConfig(source=source.resolve(), profile=profile, harnesses=harnesses)
 
 
-def resolve_profile(root: Path, explicit: str | None = None) -> str:
+def resolve_profile(root: Path, explicit: str | None = None, *, lenient: bool = False) -> str:
     """The profile a run at `root` renders: an explicit one, else the machine's when
     `root` is the registered global source, else `default`. One rule for sync, check,
-    the git hooks and init, so no two of them retire each other's outputs (ADR 0022)."""
+    the git hooks and init, so no two of them retire each other's outputs (ADR 0022).
+
+    An unreadable machine config is an error at a global source, whose profile it may
+    name; falling back there renders `default` and retires the profile's outputs. A
+    project, or a hook (`lenient`), falls back to `default`, where that is harmless."""
     if explicit:
         return explicit
     try:
         config = load_machine_config(machine_config_path(), require_source=False)
     except LoadoutError:
-        # An unusable global config must not block a project or a hook.
+        if (root / MANIFEST_NAME).is_file() and not lenient:
+            raise
         return "default"
+    return profile_for(root, None, config)
+
+
+def profile_for(root: Path, explicit: str | None, config: MachineConfig | None) -> str:
+    """`resolve_profile`'s rule, given the machine config already loaded."""
+    if explicit:
+        return explicit
     if config is not None and config.source.resolve() == root.resolve():
         return config.profile or "default"
     return "default"

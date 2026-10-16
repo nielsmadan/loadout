@@ -11,8 +11,8 @@ import loadout
 from loadout.emit import render_all
 from loadout.errors import LoadoutError
 from loadout.files import check_all
-from loadout.git_hooks import install_hooks, plan_hooks, uninstall_hooks
-from loadout.machine import machine_config_path
+from loadout.git_hooks import hook_content, install_hooks, plan_hooks, uninstall_hooks
+from loadout.machine import machine_config_path, resolve_profile
 from loadout.staged import check_staged
 from render_helpers import write_all
 from test_codex_defaults import build
@@ -93,7 +93,7 @@ def test_staged_ownership_record_deletion_requires_producer_retirement(repo):
     expected = record.read_text()
     assert check_staged(repo) == 0
     _git(repo, "rm", "defaults/codex.owned")
-    assert [path for path, _, _ in check_all(repo)] == [record]
+    assert [item.path for item in check_all(render_all(repo))] == [record]
     record.write_text(expected)
     with pytest.raises(LoadoutError, match="ownership record"):
         check_staged(repo)
@@ -353,7 +353,7 @@ def test_uninstall_removes_loadout_hooks_and_leaves_a_foreign_one(repo, capsys):
     statuses = {h.event: h.status for h in plan_hooks(repo, regenerate=True).hooks}
     assert statuses == {
         "pre-commit": "managed",
-        "post-checkout": "stale",
+        "post-checkout": "update",
         "post-merge": "occupied",
     }
 
@@ -413,13 +413,33 @@ def test_a_generated_hook_runs_the_hidden_event_command(repo):
     """The command line is what fires at commit time; a hook file existing proves nothing."""
     _project(repo)
     _commit(repo, "loadout")
-    install_hooks(repo, regenerate=True, profile="focused")
+    install_hooks(repo, regenerate=True)
 
     for event in ("pre-commit", "post-checkout", "post-merge"):
         body = (repo / ".git/hooks" / event).read_text()
-        assert f"exec loadout hook-event {event} " in body
-        assert "--profile focused" in body
-        assert "git-hooks run" not in body
+        # No --profile: the hook resolves it when it runs (review 2, 2.1).
+        assert f'exec loadout hook-event {event} --root "$repo"/. -- "$@"\n' in body
+
+
+def test_regenerate_rewrites_a_hook_loadout_wrote(repo, capsys):
+    """A hook from before 2.1 bakes in its profile; `--regenerate` brings it up to date
+    instead of calling loadout's own hook stale and asking for it to be merged by hand."""
+    _project(repo)
+    _commit(repo, "loadout")
+    install_hooks(repo)
+    hook = repo / ".git/hooks/pre-commit"
+    current = hook.read_bytes()
+    hook.write_bytes(current.replace(b' -- "$@"', b' --profile default -- "$@"'))
+    capsys.readouterr()
+
+    assert (
+        loadout.main(["integrate", "git-hooks", "install", "--root", str(repo), "--regenerate"])
+        == 0
+    )
+
+    assert "Git hook pre-commit: update" in capsys.readouterr().out
+    assert hook.read_bytes() == current
+    assert hook.stat().st_mode & 0o777 == 0o755
 
 
 def test_uninstall_leaves_a_hook_belonging_to_another_loadout_source(repo):
@@ -442,10 +462,11 @@ def test_uninstall_leaves_a_hook_belonging_to_another_loadout_source(repo):
     assert not hook.exists()
 
 
-def test_an_unregistered_source_still_installs_hooks_for_the_default_profile(
+def test_an_unregistered_source_installs_hooks_that_run_the_default_profile(
     repo, fake_home, tmp_path_factory
 ):
-    """The machine profile applies to the source it registers, not to every repository."""
+    """The machine profile applies to the source it registers, not to every repository,
+    and a hook resolves it when it runs."""
     _project(repo)
     _commit(repo, "loadout")
     other = tmp_path_factory.mktemp("registered-elsewhere")
@@ -453,7 +474,8 @@ def test_an_unregistered_source_still_installs_hooks_for_the_default_profile(
     machine_config_path().write_text(f'source="{other}"\nprofile="focused"\n')
 
     assert loadout.main(["integrate", "git-hooks", "install", "--root", str(repo)]) == 0
-    assert "--profile default" in (repo / ".git/hooks/pre-commit").read_text()
+    assert (repo / ".git/hooks/pre-commit").read_bytes() == hook_content("pre-commit", Path("."))
+    assert resolve_profile(repo) == "default"
 
 
 def test_an_unusable_machine_config_does_not_block_a_repository_hook(repo, fake_home):
@@ -463,4 +485,72 @@ def test_an_unusable_machine_config_does_not_block_a_repository_hook(repo, fake_
     machine_config_path().write_text('source="/nowhere/loadout"\n')
 
     assert loadout.main(["integrate", "git-hooks", "install", "--root", str(repo)]) == 0
-    assert "--profile default" in (repo / ".git/hooks/pre-commit").read_text()
+    assert (repo / ".git/hooks/pre-commit").read_bytes() == hook_content("pre-commit", Path("."))
+
+
+def test_a_snapshot_of_five_thousand_entries_completes(repo, tmp_path):
+    """Review 2, 1.9: every object id was written to `git cat-file --batch` before any
+    reply was read, so once both pipes filled each side waited on the other. Run in a
+    subprocess, so the deadlock fails the test rather than hanging the suite."""
+    for index in range(5000):
+        (repo / f"f{index:04}.txt").write_text(f"{index}\n" * 6)
+    _git(repo, "add", ".")
+    snapshot = tmp_path / "snapshot"
+    script = (
+        "import sys; from pathlib import Path; from loadout.staged import _entries, _snapshot; "
+        "root = Path(sys.argv[1]); _snapshot(root, Path(sys.argv[2]), _entries(root))"
+    )
+
+    subprocess.run(
+        [sys.executable, "-c", script, str(repo), str(snapshot)], timeout=120, check=True
+    )
+
+    assert len(list(snapshot.iterdir())) == 5000
+    assert (snapshot / "f4999.txt").read_text() == "4999\n" * 6
+
+
+def test_check_staged_finishes_with_thousands_of_generated_files(repo):
+    """Each staged path was compared with every generated output, so a skill of 4,000
+    files cost 16 million comparisons and the pre-commit hook ran for minutes."""
+    _project(repo)
+    skill = repo / "loadout/skills/big"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("---\nname: big\ndescription: d\n---\nBig.\n")
+    for index in range(4000):
+        (skill / f"part-{index:04}.md").write_text(f"part {index}\n")
+    _git(repo, "add", "loadout")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys, loadout; sys.exit(loadout.main(sys.argv[1:]))",
+            "check",
+            "--staged",
+            "--root",
+            str(repo),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+
+    assert (result.returncode, result.stdout) == (
+        0,
+        "staged loadout dependency snapshot is valid\n",
+    )
+
+
+def test_check_staged_refuses_a_file_staged_inside_a_generated_folder(repo):
+    """A skills directory is an output as a folder, so what is staged beneath it counts."""
+    _project(repo)
+    staged = repo / ".agents/skills/hand/SKILL.md"
+    staged.parent.mkdir(parents=True)
+    staged.write_text("---\nname: hand\ndescription: d\n---\nHand.\n")
+    _git(repo, "add", "loadout", str(staged))
+
+    with pytest.raises(
+        LoadoutError, match=r"staged for addition or editing:\n  \.agents/skills/hand"
+    ):
+        check_staged(repo)

@@ -10,7 +10,7 @@ loadout init global /work/dotfiles --harness pi --dry-run --json
 Scope is a subcommand: `init project` or `init global`. Global source selection defaults to cwd.
 Use a dedicated directory, never HOME or the filesystem
 root for a new repository. Project discovery finds the enclosing Loadout/Git root from nested
-directories. Configured roots establish agents; a shared AGENTS.md or installed binary does not.
+directories. Configured roots establish harnesses; a shared AGENTS.md or installed binary does not.
 Repeat `--harness` when membership needs an explicit selection.
 
 Project init creates canonical sources for configuration with known project destinations. An empty
@@ -46,7 +46,7 @@ selected directory is not read; if the user keeps one, install it first so the l
 holds what they want adopted. Each refusal names the file to change; fix it on disk and run init
 again. Never edit a harness file just to make a refusal disappear without telling the user.
 
-Before applying, show scope, agents, authored sources, output destinations, retained/private
+Before applying, show scope, harnesses, authored sources, output destinations, retained/private
 entries, removals, and the generated files init will untrack (`untrack_paths`). Native document
 formatting may change as described in preview notes; opaque bytes and modes remain.
 
@@ -121,4 +121,4 @@ an unset variable leaves the server unauthenticated or the setting empty.
 The same skill handles later configuration using the configuration reference.
 `loadout integrate skill install` vendors this bundled skill into the global source's
 `skills/loadout/` and syncs it to every configured agent. It asks before source changes; `--yes`
-approves them. Status identifies the source and its agents. Reinstall updates unchanged copies; uninstall removes only owned, unchanged content.
+approves them. Status identifies the source and its harnesses. Reinstall updates unchanged copies; uninstall removes only owned, unchanged content.

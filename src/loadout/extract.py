@@ -9,7 +9,7 @@ import shlex
 import tomllib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from .errors import LoadoutError
 from .hooks import foreign_variables
@@ -22,13 +22,10 @@ from .permissions.rules import (
     UNSTATED_DEFAULT,
     Decision,
     Rules,
-    dedupe,
-    is_exact,
     is_glob,
-    strictest,
 )
 from .plugins import MARKETPLACES, PLUGINS
-from .servers import Server, literal_header
+from .servers import Server, auth_conflict, literal_header
 
 CATEGORIES = ("allow", "ask", "deny")
 
@@ -37,7 +34,7 @@ CATEGORIES = ("allow", "ask", "deny")
 class Note:
     """Something the document held that the source cannot represent."""
 
-    kind: str
+    kind: Literal["cannot", "unrecognised"]
     detail: str
 
 
@@ -301,7 +298,7 @@ def _lone_deny(patterns: dict[str, str], pattern: str, decision: str, bare: str)
     """A deny `x *` with no `x` beside it already blocks `x` on OpenCode 1.1.15+ and Pi's
     permission system 5.12.0+, so it reads as the prefix `x`: renderable on every harness
     and never blocking less. An allow or ask stays a glob, since widening one would loosen
-    policy on an older version (P-49)."""
+    policy on an older version (extraction.md, collapsing the lossy pattern forms)."""
     return (
         decision == "deny"
         and bare != pattern
@@ -540,6 +537,17 @@ def _codex_positions(value: Any) -> list[list[str]] | None:
     return positions
 
 
+def _encodable(positions: list[list[str]]) -> bool:
+    """A lone surrogate parses as a string and breaks the source when it is written."""
+    try:
+        for options in positions:
+            for option in options:
+                option.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
 def _codex_rule(label: str, document: str, statement: ast.stmt) -> CodexRule:
     call = statement.value if isinstance(statement, ast.Expr) else None
     if not (
@@ -568,6 +576,10 @@ def _codex_rule(label: str, document: str, statement: ast.stmt) -> CodexRule:
         raise _codex_refusal(
             label, document, call, "pattern must be a non-empty list of strings or string lists"
         )
+    if not _encodable(positions):
+        raise _codex_refusal(
+            label, document, call, "pattern holds a string that is not valid Unicode"
+        )
     if (count := math.prod(len(options) for options in positions)) > CODEX_EXPANSION_LIMIT:
         raise _codex_refusal(
             label,
@@ -589,7 +601,16 @@ def _codex_rules(document: str, label: str) -> list[CodexRule]:
     except SyntaxError as error:
         line = (error.text or "").strip()
         raise LoadoutError(f"{label}: line {error.lineno}: not valid Starlark: {line}") from None
-    return [_codex_rule(label, document, statement) for statement in module.body]
+    except (ValueError, RecursionError, MemoryError) as error:
+        raise LoadoutError(f"{label}: not valid Starlark: {type(error).__name__}") from None
+    rules = [_codex_rule(label, document, statement) for statement in module.body]
+    # Capped for the file as well as per rule: each alternative is rendered and read back.
+    if (total := sum(len(rule.alternatives) for rule in rules)) > CODEX_EXPANSION_LIMIT:
+        raise LoadoutError(
+            f"{label}: its patterns match {total} token lists; at most "
+            f"{CODEX_EXPANSION_LIMIT} can be adopted from one file"
+        )
+    return rules
 
 
 def _carried(name: str, tokens: tuple[str, ...], decision: str) -> str | None:
@@ -992,7 +1013,23 @@ CLAUDE_BEARER = re.compile(r"^Bearer \$\{(?P<var>[^}]+)\}$")
 OPENCODE_BEARER = re.compile(r"^Bearer \{env:(?P<var>[^}]+)\}$")
 
 
-def _headers(
+def _one_auth(
+    auth_env_var: str | None, headers: dict[str, str], label: str, source: str
+) -> tuple[dict[str, str], tuple[Note, ...]]:
+    """A server authenticates one way: an Authorization header beside the auth variable
+    would render as a second one, so the header is not adopted, and said so."""
+    clash = auth_conflict(auth_env_var, headers)
+    if clash is None:
+        return headers, ()
+    kept = {key: value for key, value in headers.items() if key.casefold() != "authorization"}
+    return kept, (
+        Note(
+            "cannot", f"{label}: {clash} beside {source} is not adopted; the server keeps {source}"
+        ),
+    )
+
+
+def _extract_headers(
     headers: Any, pattern: re.Pattern[str] | None, label: str
 ) -> tuple[str | None, dict[str, str], tuple[Note, ...]]:
     """An Authorization header naming one variable in the harness's reference syntax
@@ -1036,9 +1073,11 @@ def _extract_claude_server(
         if not isinstance(url, str):
             notes.append(Note("unrecognised", f"{label}: {name} http entry has no url"))
             return None, tuple(notes)
-        auth_env_var, headers, found = _headers(
+        auth_env_var, headers, found = _extract_headers(
             entry.get("headers", {}), CLAUDE_BEARER, f"{label}: {name}"
         )
+        notes.extend(found)
+        headers, found = _one_auth(auth_env_var, headers, f"{label}: {name}", "Bearer ${VAR}")
         notes.extend(found)
         return Server(
             name=name, transport="http", url=url, auth_env_var=auth_env_var, headers=headers
@@ -1059,6 +1098,33 @@ def _extract_claude_server(
     return None, tuple(notes)
 
 
+ServerExtractor = Callable[[str, Any], tuple[Server | None, tuple[Note, ...]]]
+
+
+def _collect_servers(
+    config: Any, extract: ServerExtractor, not_a_table: str
+) -> tuple[dict[str, Server], tuple[Note, ...]]:
+    """Each server a table of entries holds, and what its entries could not carry."""
+    if not isinstance(config, Mapping):
+        return {}, (Note("unrecognised", not_a_table),)
+    servers: dict[str, Server] = {}
+    notes: list[Note] = []
+    for name, entry in config.items():
+        server, found = extract(name, entry)
+        notes.extend(found)
+        if server is not None:
+            servers[name] = server
+    return servers, tuple(notes)
+
+
+def _unowned(document: Mapping[str, Any], label: str) -> tuple[Note, ...]:
+    """A note for top-level keys beside `mcpServers` in a file nothing else owns."""
+    unowned = sorted(set(document) - {"mcpServers"})
+    if not unowned:
+        return ()
+    return (Note("cannot", f"{label} holds unowned key(s): {', '.join(unowned)}"),)
+
+
 def extract_claude_servers(document: Any) -> ValueExtraction:
     """`.mcp.json` -> the servers fragment.
 
@@ -1070,23 +1136,12 @@ def extract_claude_servers(document: Any) -> ValueExtraction:
         return ValueExtraction(
             {}, (Note("unrecognised", "claude-servers: document is not a table"),)
         )
-    notes: list[Note] = []
-    unowned = sorted(set(document) - {"mcpServers"})
-    if unowned:
-        notes.append(
-            Note("cannot", f"claude-servers: .mcp.json holds unowned key(s): {', '.join(unowned)}")
-        )
-    config = document.get("mcpServers", {})
-    servers: dict[str, Server] = {}
-    if isinstance(config, Mapping):
-        for name, entry in config.items():
-            server, found = _extract_claude_server(name, entry)
-            notes.extend(found)
-            if server is not None:
-                servers[name] = server
-    else:
-        notes.append(Note("unrecognised", "claude-servers: mcpServers is not a table"))
-    return ValueExtraction(servers, tuple(notes))
+    servers, notes = _collect_servers(
+        document.get("mcpServers", {}),
+        _extract_claude_server,
+        "claude-servers: mcpServers is not a table",
+    )
+    return ValueExtraction(servers, (*_unowned(document, "claude-servers: .mcp.json"), *notes))
 
 
 def extract_droid_servers(document: Any) -> ValueExtraction:
@@ -1094,23 +1149,12 @@ def extract_droid_servers(document: Any) -> ValueExtraction:
         return ValueExtraction(
             {}, (Note("unrecognised", "droid-servers: document is not a table"),)
         )
-    notes: list[Note] = []
-    unowned = sorted(set(document) - {"mcpServers"})
-    if unowned:
-        notes.append(
-            Note("cannot", f"droid-servers: mcp.json holds unowned key(s): {', '.join(unowned)}")
-        )
-    config = document.get("mcpServers", {})
-    servers: dict[str, Server] = {}
-    if isinstance(config, Mapping):
-        for name, entry in config.items():
-            server, found = _extract_claude_server(name, entry, "droid-servers")
-            notes.extend(found)
-            if server is not None:
-                servers[name] = server
-    else:
-        notes.append(Note("unrecognised", "droid-servers: mcpServers is not a table"))
-    return ValueExtraction(servers, tuple(notes))
+    servers, notes = _collect_servers(
+        document.get("mcpServers", {}),
+        lambda name, entry: _extract_claude_server(name, entry, "droid-servers"),
+        "droid-servers: mcpServers is not a table",
+    )
+    return ValueExtraction(servers, (*_unowned(document, "droid-servers: mcp.json"), *notes))
 
 
 def _extract_opencode_server(name: str, entry: Any) -> tuple[Server | None, tuple[Note, ...]]:
@@ -1128,7 +1172,11 @@ def _extract_opencode_server(name: str, entry: Any) -> tuple[Server | None, tupl
             notes.append(Note("unrecognised", f"opencode-servers: {name} remote entry has no url"))
             return None, tuple(notes)
         label = f"opencode-servers: {name}"
-        auth_env_var, headers, found = _headers(entry.get("headers", {}), OPENCODE_BEARER, label)
+        auth_env_var, headers, found = _extract_headers(
+            entry.get("headers", {}), OPENCODE_BEARER, label
+        )
+        notes.extend(found)
+        headers, found = _one_auth(auth_env_var, headers, label, "Bearer {env:VAR}")
         notes.extend(found)
         return Server(
             name=name, transport="http", url=url, auth_env_var=auth_env_var, headers=headers
@@ -1164,17 +1212,10 @@ def extract_opencode_servers(document: Any) -> ValueExtraction:
     the rest of settings.json alone.
     """
     mcp = document.get("mcp", {}) if isinstance(document, Mapping) else {}
-    notes: list[Note] = []
-    servers: dict[str, Server] = {}
-    if isinstance(mcp, Mapping):
-        for name, entry in mcp.items():
-            server, found = _extract_opencode_server(name, entry)
-            notes.extend(found)
-            if server is not None:
-                servers[name] = server
-    else:
-        notes.append(Note("unrecognised", "opencode-servers: mcp is not a table"))
-    return ValueExtraction(servers, tuple(notes))
+    servers, notes = _collect_servers(
+        mcp, _extract_opencode_server, "opencode-servers: mcp is not a table"
+    )
+    return ValueExtraction(servers, notes)
 
 
 def extract_claude_global_servers(document: Any) -> ValueExtraction:
@@ -1189,21 +1230,14 @@ def extract_claude_global_servers(document: Any) -> ValueExtraction:
         return ValueExtraction(
             {}, (Note("unrecognised", "claude-servers: document is not a table"),)
         )
-    notes: list[Note] = []
-    servers: dict[str, Server] = {}
     # Unlike `.mcp.json`, unowned keys here are expected rather than reportable:
     # loadout owns `mcpServers` and the harness owns the hundred keys beside it.
-    config = document.get("mcpServers", {})
-    if not isinstance(config, Mapping):
-        return ValueExtraction(
-            {}, (Note("unrecognised", "claude-servers: mcpServers is not a table"),)
-        )
-    for name, entry in config.items():
-        server, found = _extract_claude_server(name, entry)
-        notes.extend(found)
-        if server is not None:
-            servers[name] = server
-    return ValueExtraction(servers, tuple(notes))
+    servers, notes = _collect_servers(
+        document.get("mcpServers", {}),
+        _extract_claude_server,
+        "claude-servers: mcpServers is not a table",
+    )
+    return ValueExtraction(servers, notes)
 
 
 PI_SERVER_KEYS = frozenset({"url", "bearerTokenEnv", "headers", "command", "args", "env"})
@@ -1226,7 +1260,9 @@ def _extract_pi_server(name: str, entry: Any) -> tuple[Server | None, tuple[Note
         if auth_env_var is not None and not isinstance(auth_env_var, str):
             notes.append(Note("unrecognised", f"pi-servers: {name} bearerTokenEnv is not a string"))
             auth_env_var = None
-        _, headers, found = _headers(entry.get("headers", {}), None, f"pi-servers: {name}")
+        _, headers, found = _extract_headers(entry.get("headers", {}), None, f"pi-servers: {name}")
+        notes.extend(found)
+        headers, found = _one_auth(auth_env_var, headers, f"pi-servers: {name}", "bearerTokenEnv")
         notes.extend(found)
         return Server(
             name=name, transport="http", url=url, auth_env_var=auth_env_var, headers=headers
@@ -1255,23 +1291,12 @@ def extract_pi_servers(document: Any) -> ValueExtraction:
     """
     if not isinstance(document, Mapping):
         return ValueExtraction({}, (Note("unrecognised", "pi-servers: document is not a table"),))
-    notes: list[Note] = []
-    unowned = sorted(set(document) - {"mcpServers"})
-    if unowned:
-        notes.append(
-            Note("cannot", f"pi-servers: mcp.json holds unowned key(s): {', '.join(unowned)}")
-        )
-    config = document.get("mcpServers", {})
-    servers: dict[str, Server] = {}
-    if isinstance(config, Mapping):
-        for name, entry in config.items():
-            server, found = _extract_pi_server(name, entry)
-            notes.extend(found)
-            if server is not None:
-                servers[name] = server
-    else:
-        notes.append(Note("unrecognised", "pi-servers: mcpServers is not a table"))
-    return ValueExtraction(servers, tuple(notes))
+    servers, notes = _collect_servers(
+        document.get("mcpServers", {}),
+        _extract_pi_server,
+        "pi-servers: mcpServers is not a table",
+    )
+    return ValueExtraction(servers, (*_unowned(document, "pi-servers: mcp.json"), *notes))
 
 
 CODEX_SERVER_HTTP_KEYS = frozenset({"url", "bearer_token_env_var", "http_headers"})
@@ -1306,7 +1331,10 @@ def _extract_codex_server(name: str, block: Any) -> tuple[Server | None, tuple[N
                 Note("unrecognised", f"codex-servers: {name} bearer_token_env_var is not a string")
             )
             auth_env_var = None
-        _, headers, found = _headers(block.get("http_headers", {}), None, f"codex-servers: {name}")
+        label = f"codex-servers: {name}"
+        _, headers, found = _extract_headers(block.get("http_headers", {}), None, label)
+        notes.extend(found)
+        headers, found = _one_auth(auth_env_var, headers, label, "bearer_token_env_var")
         notes.extend(found)
         return Server(
             name=name, transport="http", url=url, auth_env_var=auth_env_var, headers=headers
@@ -1345,14 +1373,12 @@ def extract_codex_servers(document: Any) -> ValueExtraction:
     tests/test_extract_roundtrip.py.
     """
     data = tomllib.loads(document)
-    notes: list[Note] = []
-    servers: dict[str, Server] = {}
-    for name, block in data.get("mcp_servers", {}).items():
-        server, found = _extract_codex_server(name, block)
-        notes.extend(found)
-        if server is not None:
-            servers[name] = server
-    return ValueExtraction(servers, tuple(notes))
+    servers, notes = _collect_servers(
+        data.get("mcp_servers", {}),
+        _extract_codex_server,
+        "codex-servers: mcp_servers is not a table",
+    )
+    return ValueExtraction(servers, notes)
 
 
 VALUE_EXTRACTORS: dict[str, ValueExtractor] = {
@@ -1398,226 +1424,3 @@ def extract(name: str, document: Any) -> Extraction:
     except KeyError:
         raise LoadoutError(f"no extractor for renderer: {name}") from None
     return extractor(document)
-
-
-# --------------------------------------------------------------------------
-# Reconciling several harnesses into one source.
-#
-# Divergence is reported, never unioned. Two harnesses that disagree about a
-# command have no single source rule that reproduces both, and choosing the
-# permissive reading renders a WIDER permission set than what was on disk — a
-# privilege escalation performed by an onboarding tool. The entry is withheld
-# and named in the report instead.
-#
-# Silence counts as disagreement, but only from a harness that could have
-# spoken. Codex's token matcher cannot express a glob, so Codex is not a voter
-# on glob entries; counting its silence would suppress a rule every harness
-# that can express it agrees on.
-# --------------------------------------------------------------------------
-
-ABSENT = "absent"
-
-SHELL = "shell"
-MCP = "mcp"
-# A `Divergence.kind`, like the two above, but naming one key rather than a
-# namespace of many. Spelled with its section so a report row cannot be mistaken
-# for a shell divergence over a literal `*` entry.
-CATCH_ALL = "shell.default"
-
-
-@dataclass(frozen=True)
-class Capability:
-    """Which kinds of rule a harness's document is able to state at all."""
-
-    shell: bool
-    mcp: bool
-    globs: bool = True
-    # False where the matcher has no whole-command form: an exact allow or ask is
-    # omitted there, and an exact deny is written as its prefix.
-    exact: bool = True
-    # Whether this renderer *authors* the catch-all verdict. Claude's is
-    # `permissions.defaultMode`, which `render_claude` preserves from the base
-    # rather than writing; Codex's is `approval_policy` in a file loadout does
-    # not write at all. Neither is a value this extractor may vote on.
-    default: bool = False
-
-
-CAPABILITIES: dict[str, Capability] = {
-    "claude": Capability(shell=True, mcp=True),
-    "claude-mcp-permissions": Capability(shell=False, mcp=True),
-    "claude-project": Capability(shell=True, mcp=True),
-    # globs=False: render_codex diverts glob entries to an uncategorised comment
-    # block, so the document cannot state a decision for one.
-    "codex": Capability(shell=True, mcp=False, globs=False, exact=False),
-    "codex-mcp-permissions": Capability(shell=False, mcp=True),
-    # render_codex_project does not skip globs; it emits them as prefix_rules.
-    "codex-project": Capability(shell=True, mcp=False, exact=False),
-    "droid": Capability(shell=True, mcp=False, globs=False, exact=False),
-    "opencode": Capability(shell=True, mcp=True, default=True),
-    "pi": Capability(shell=True, mcp=True, default=True),
-    "pi-project": Capability(shell=True, mcp=True, default=True),
-}
-
-
-@dataclass(frozen=True)
-class Divergence:
-    kind: str
-    entry: str
-    verdicts: tuple[tuple[str, str], ...]
-
-
-@dataclass(frozen=True)
-class Merged:
-    rules: Rules
-    divergences: tuple[Divergence, ...] = ()
-    notes: tuple[Note, ...] = ()
-
-
-def _capability(name: str) -> Capability:
-    try:
-        return CAPABILITIES[name]
-    except KeyError:
-        # Never default to "not a voter": a harness silently excluded from the
-        # vote cannot veto, and its denials would vanish into a wider source.
-        raise LoadoutError(f"no extraction capability declared for harness: {name}") from None
-
-
-def _can_state(name: str, kind: str, entry: str) -> bool:
-    capability = _capability(name)
-    if kind == MCP:
-        return capability.mcp
-    if kind == CATCH_ALL:
-        return capability.default
-    return (
-        capability.shell
-        and (capability.globs or not is_glob(entry))
-        and (capability.exact or not is_exact(entry))
-    )
-
-
-def _widened_exact_deny(
-    entry: str, verdicts: tuple[tuple[str, str], ...], extractions: Mapping[str, Extraction]
-) -> bool:
-    """Whether a prefix-only harness's deny is the widened form of an exact deny.
-
-    Codex and Droid write `deny = ["=x"]` as a prefix deny on `x`, so their `x` is
-    accounted for when every harness that can match exactly is silent on `x` and
-    denies `=x`. Re-rendering the merged `=x` writes the same prefix back.
-    """
-    exact = EXACT_MARK + entry
-    prefix_only = [verdict for name, verdict in verdicts if not _capability(name).exact]
-    exact_capable = [(name, verdict) for name, verdict in verdicts if _capability(name).exact]
-    return (
-        bool(prefix_only)
-        and all(verdict == "deny" for verdict in prefix_only)
-        and bool(exact_capable)
-        and all(
-            verdict == ABSENT and exact in extractions[name].rules.deny
-            for name, verdict in exact_capable
-        )
-    )
-
-
-def _reconcile(
-    extractions: Mapping[str, Extraction], kind: str
-) -> tuple[dict[str, list[str]], list[Divergence]]:
-    # A source may list one entry in two categories — tests/fixtures/permissions.toml
-    # does, to show last-match-wins. So a harness's verdict is every category it put
-    # the entry in, `allow+deny`, not whichever came last: collapsing to one would
-    # drop the shadowed entry from the source without saying so.
-    votes: dict[str, dict[str, list[str]]] = {}
-    for name, extraction in extractions.items():
-        for category in CATEGORIES:
-            rules = extraction.rules
-            entries = rules.shell(category) if kind == SHELL else rules.mcp(category)
-            for entry in entries:
-                votes.setdefault(entry, {}).setdefault(name, []).append(category)
-
-    buckets: dict[str, list[str]] = {category: [] for category in CATEGORIES}
-    divergences: list[Divergence] = []
-    for entry, ballot in votes.items():
-        verdicts = tuple(
-            (name, "+".join(ballot[name]) if name in ballot else ABSENT)
-            for name in extractions
-            if _can_state(name, kind, entry)
-        )
-        agreed = {verdict for _, verdict in verdicts}
-        if kind == SHELL and _widened_exact_deny(entry, verdicts, extractions):
-            continue
-        if len(agreed) == 1 and ABSENT not in agreed:
-            for category in next(iter(agreed)).split("+"):
-                buckets[category].append(entry)
-        else:
-            divergences.append(Divergence(kind, entry, verdicts))
-    return buckets, divergences
-
-
-def _reconcile_default(
-    extractions: Mapping[str, Extraction], withheld: bool
-) -> tuple[Decision | None, list[Divergence]]:
-    """The catch-all verdict, from the harnesses whose document authors one.
-
-    Disagreement is reported like any other entry, but **not** withheld the way
-    an entry is. Withholding an entry drops it to the catch-all; withholding the
-    catch-all drops it to `ask`, which is the *middle* verdict — so a `deny` one
-    harness stated would come back as a prompt. It settles on the strictest
-    stated verdict instead, which is the only resolution that cannot widen.
-
-    `withheld` says whether any shell entry was dropped for disagreement. A
-    dropped entry falls through to the catch-all, so while one is outstanding the
-    catch-all may not be looser than the `ask` it used to fall through to.
-    """
-    verdicts = tuple(
-        (name, extraction.rules.catch_all)
-        for name, extraction in extractions.items()
-        if _can_state(name, CATCH_ALL, CATCH_ALL_ENTRY)
-    )
-    if not verdicts:
-        return None, []
-    stated = [verdict for _, verdict in verdicts]
-    divergences = [Divergence(CATCH_ALL, CATCH_ALL_ENTRY, verdicts)] if len(set(stated)) > 1 else []
-    settled = strictest(stated)
-    if withheld and DECISIONS.index(settled) < DECISIONS.index(UNSTATED_DEFAULT):
-        settled = UNSTATED_DEFAULT
-    return (None if settled == UNSTATED_DEFAULT else settled), divergences
-
-
-def merge_extractions(extractions: Mapping[str, Extraction]) -> Merged:
-    """Reconcile one source from several harnesses, withholding what they disagree on.
-
-    Emission order follows the order of `extractions`: an entry takes the
-    position of the first harness that stated it. Order is semantic — OpenCode
-    and Pi resolve last-match-wins — so the caller chooses which harness's
-    ordering the source inherits.
-    """
-    shell, shell_divergences = _reconcile(extractions, SHELL)
-    mcp, mcp_divergences = _reconcile(extractions, MCP)
-    default, default_divergences = _reconcile_default(extractions, bool(shell_divergences))
-
-    extra_allow: list[str] = []
-    extra_deny: list[str] = []
-    opencode_extra: dict[str, str] = {}
-    notes: list[Note] = []
-    for extraction in extractions.values():
-        extra_allow += extraction.rules.claude_extra_allow
-        extra_deny += extraction.rules.claude_extra_deny
-        for key, value in extraction.rules.opencode_extra.items():
-            opencode_extra.setdefault(key, value)
-        notes += extraction.notes
-
-    return Merged(
-        Rules(
-            allow=tuple(shell["allow"]),
-            ask=tuple(shell["ask"]),
-            deny=tuple(shell["deny"]),
-            mcp_allow=tuple(mcp["allow"]),
-            mcp_ask=tuple(mcp["ask"]),
-            mcp_deny=tuple(mcp["deny"]),
-            claude_extra_allow=tuple(dedupe(extra_allow)),
-            claude_extra_deny=tuple(dedupe(extra_deny)),
-            opencode_extra=opencode_extra,
-            default=default,
-        ),
-        tuple(shell_divergences + mcp_divergences + default_divergences),
-        tuple(notes),
-    )

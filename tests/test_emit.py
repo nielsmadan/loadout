@@ -63,25 +63,24 @@ def test_write_all_creates_every_target(root: Path) -> None:
 
 def test_check_all_is_clean_right_after_write(root: Path) -> None:
     write_all(root)
-    assert check_all(root) == []
+    assert check_all(render_all(root)) == []
 
 
 def test_check_all_reports_a_modified_file(root: Path) -> None:
     write_all(root)
     victim = root / "out" / "shared.md"
     victim.write_text("tampered\n")
-    drift = check_all(root)
-    assert [p for p, _, _ in drift] == [victim]
+    drift = check_all(render_all(root))
+    assert [item.path for item in drift] == [victim]
 
 
 def test_check_all_reports_a_missing_file_as_empty_actual(root: Path) -> None:
     write_all(root)
     (root / "out" / "shared.md").unlink()
-    drift = check_all(root)
+    drift = check_all(render_all(root))
     assert len(drift) == 1
-    _, actual, expected = drift[0]
-    assert actual == ""
-    assert expected != ""
+    assert drift[0].actual == ""
+    assert drift[0].expected != ""
 
 
 def test_render_all_keys_are_absolute_paths_under_root(root: Path) -> None:

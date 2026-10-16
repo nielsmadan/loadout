@@ -16,10 +16,11 @@ from pathlib import Path
 import tomlkit
 
 from .bundled_skill import SKILL_NAME
-from .emit import Merged, declared_profiles, render_global
+from .destinations import resolve_destination
+from .emit import declared_profiles, render_global
 from .errors import LoadoutError
-from .manifest import Manifest, load_profile, resolve_destination
-from .output import FrozenFile, atomic_install, read_file
+from .manifest import Manifest, load_profile
+from .output import FrozenFile, Merged, atomic_install, read_file
 from .skills import discover_skills
 from .sources import select_overrides
 from .sync import unaccepted_outputs

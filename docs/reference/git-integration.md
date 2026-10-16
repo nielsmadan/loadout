@@ -3,7 +3,7 @@
 `loadout check --staged --root <source-root> [--profile <name>]` validates the Git index in a
 temporary tree. The root holds `loadout/config.toml`, `loadout.toml`, or both. It can be nested
 inside an enclosing repository. `--global` selects the registered source/profile for a manual
-check; installed hooks record a repository-relative source and explicit profile instead.
+check; installed hooks record a repository-relative source and resolve the profile when they run.
 
 The validator reads the index Git supplied, including `GIT_INDEX_FILE` for alternate/scoped
 commits. Missing, corrupt and unmerged indexes fail without falling back to another index. An
@@ -46,9 +46,10 @@ records a separate controlled fixture and all staged-check timings.
 
 All required source/config/support files for the staged render must be staged. Global `[[source]]`
 entries can point to relative sibling directories within the same repository. Absolute/external sources, escaping
-source symlinks and submodule dependencies fail with a vendoring remedy. Optional private
-bindings may be absent; their working copies are never imported. Required private dependencies
-need an optional binding or a public replacement, not secret files added to Git.
+source symlinks and submodule dependencies fail with a vendoring remedy. A gitignored personal
+file, such as `loadout/permissions.local.toml` or a `.local` skill, may be absent from the index;
+its working copy is never imported. A required input has to be staged in a form that can be
+shared, never as a secret file added to Git.
 
 Every selected template must be vendored and staged, including bundled `frontend` and `backend`.
 A bare name can resolve to a machine override during normal sync, so silently substituting the
@@ -68,11 +69,12 @@ loadout integrate git-hooks uninstall --root . --yes
 
 Hooks are opt-in and `init` does not install them: adopting configuration and wiring a repository
 to run loadout are separate steps, so a fresh `init` writes no hook. Installation selects
-pre-commit alone, or adds post-checkout and post-merge with `--regenerate`. Exact paths, source,
-profile and installation decisions are printed before anything is written; `--dry-run` stops
-there. The profile follows the same precedence as `sync` and `check`: an explicit
-`--profile <name>`, otherwise the machine config's profile when it registers this very
-source, otherwise `default`. An unusable machine config never blocks a repository-local
+pre-commit alone, or adds post-checkout and post-merge with `--regenerate`. Exact paths, source
+and installation decisions are printed before anything is written; `--dry-run` stops there. A
+generated hook names no profile: each run resolves it the way `sync` and `check` do, from the
+machine config's profile when it registers this very source, otherwise `default`. A hook and a
+manual sync therefore follow the machine's profile together when it changes, rather than
+retiring each other's outputs. An unusable machine config never blocks a repository-local
 install.
 
 Installation uses `git rev-parse --git-path hooks`. It creates only absent hooks in a repository-
@@ -83,10 +85,10 @@ Locality is checked against every registered worktree's effective hook directory
 absolute custom paths beneath the main checkout. A missing registered worktree prevents proving
 exclusive ownership, so its hooks are preserved until the worktree registration is reconciled.
 A local worktree-specific hooks path can be installed even when its directory does not yet exist.
-Existing exact managed bytes for the same source/profile are recognized as managed when local.
-For `install`, a hook for another source, event or profile is occupied and stays untouched: a
-hook generated under a different profile is someone's deliberate configuration, and install never
-overwrites it. `uninstall` differs on profile — see below.
+Existing exact managed bytes for the same source are recognized as managed when local. A hook for
+another source is occupied and stays untouched. A hook loadout wrote for this source whose bytes
+differ, such as one from an older version that named its profile, is stale: `install
+--regenerate` rewrites it, checking just before the swap that it is still loadout's.
 
 ## Ownership and removal
 
@@ -97,7 +99,7 @@ does not orphan hooks already installed. `status` and `uninstall` classify on it
 | state | test | `uninstall` |
 | --- | --- | --- |
 | `managed` | marker present, serves this source, bytes match what loadout would write now | removed |
-| `stale` | marker present, serves this source, bytes differ | removed |
+| `stale` | marker present, serves this source, bytes differ; `install --regenerate` rewrites it | removed |
 | `occupied` | no marker, or the marker is loadout's but the hook serves another source | never touched |
 
 The marker answers *did loadout write this*; the `--root` argument in the generated command
@@ -105,11 +107,6 @@ answers *which source does it serve*. One repository can hold several loadout so
 only one hook file per event, so both questions have to be asked. The rename from
 `git-hooks run` to `hook-event` does not disturb `--root`, so a hook generated before it is
 still recognised.
-
-`uninstall` removes this source's hook whichever profile generated it. That differs from
-`install`, which treats a different-profile hook as occupied, and the difference is deliberate:
-asked to remove this source's hook, loadout should not make the user guess which profile wrote
-it, where a wrong guess would silently do nothing.
 
 The effective hooks directory is classified by why it is or is not this checkout's alone:
 
@@ -142,7 +139,7 @@ can be made again.
 ## Regeneration after Git events
 
 Post-checkout (branch changes only) and post-merge call normal guarded sync for the recorded
-source/profile. External edits cause refusal; regeneration never supplies `--force`. After a failure, the diagnostic explicitly
+source and the profile resolved at that moment. External edits cause refusal; regeneration never supplies `--force`. After a failure, the diagnostic explicitly
 states that Git already completed and gives the sync command to retry after reconciling the
 reported conflict. A post-checkout failure can return nonzero after changing HEAD; Git merge can
 return zero despite a post-merge failure. Inspect the diagnostic and resulting Git state rather

@@ -5,11 +5,12 @@ import shlex
 import stat
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from . import migration_git
 from .errors import LoadoutError, UsageError
 from .manifest import manifest_path
+from .output import FrozenFile, atomic_install
 from .project import project_config_path
 
 EVENTS = ("pre-commit", "post-checkout", "post-merge")
@@ -18,12 +19,10 @@ EVENTS = ("pre-commit", "post-checkout", "post-merge")
 SENTINEL = b"# loadout Git hook v"
 
 
-def hook_command(event: str, source: Path, profile: str) -> str:
-    relative = shlex.quote(str(source))
-    return (
-        f'loadout hook-event {event} --root "$repo"/{relative} '
-        f'--profile {shlex.quote(profile)} -- "$@"'
-    )
+def hook_command(event: str, source: Path) -> str:
+    # No --profile: the hook resolves it when it runs, so a hook and a manual sync
+    # follow the machine's profile together after it changes.
+    return f'loadout hook-event {event} --root "$repo"/{shlex.quote(str(source))} -- "$@"'
 
 
 def written_by_loadout(path: Path, source: Path | None = None) -> bool:
@@ -42,7 +41,7 @@ def written_by_loadout(path: Path, source: Path | None = None) -> bool:
     return f'--root "$repo"/{shlex.quote(str(source))} '.encode() in body
 
 
-def hook_content(event: str, source: Path, profile: str) -> bytes:
+def hook_content(event: str, source: Path) -> bytes:
     missing = "loadout is missing from PATH; install the loadout package and retry."
     if event != "pre-commit":
         missing = f"Git {event.removeprefix('post-')} already completed; " + missing
@@ -50,7 +49,7 @@ def hook_content(event: str, source: Path, profile: str) -> bytes:
         "#!/bin/sh\n# loadout Git hook v1\n"
         "repo=$(git rev-parse --show-toplevel) || exit $?\n"
         f"command -v loadout >/dev/null 2>&1 || {{ printf '%s\\n' {shlex.quote(missing)} >&2; exit 127; }}\n"
-        f"exec {hook_command(event, source, profile)}\n"
+        f"exec {hook_command(event, source)}\n"
     ).encode()
 
 
@@ -81,7 +80,11 @@ def _repository_storage(repository: Path) -> list[Path]:
     return paths
 
 
-def placement(repository: Path, directory: Path) -> str:
+Placement = Literal["local", "shared", "external"]
+HookStatus = Literal["install", "managed", "update", "stale", "occupied", "shared", "external"]
+
+
+def placement(repository: Path, directory: Path) -> Placement:
     """Why the directory is or is not ours alone: "local", "shared" or "external".
 
     install refuses the last two alike, because the hook body hard-codes this worktree's
@@ -120,7 +123,7 @@ class Hook:
     event: str
     path: Path
     content: bytes
-    status: str
+    status: HookStatus
     command: str
     owned: bool = False
 
@@ -131,14 +134,12 @@ class HookPlan:
     source: Path
     directory: Path
     hooks: tuple[Hook, ...]
-    profile: str = "default"
 
     def preview(self) -> dict[str, Any]:
         return {
             "repository": str(self.repository),
             "source": str(self.source),
             "directory": str(self.directory),
-            "profile": self.profile,
             "hooks": [
                 {"event": h.event, "path": str(h.path), "status": h.status, "command": h.command}
                 for h in self.hooks
@@ -146,7 +147,7 @@ class HookPlan:
         }
 
 
-def plan_hooks(root: Path, *, regenerate: bool = False, profile: str = "default") -> HookPlan:
+def plan_hooks(root: Path, *, regenerate: bool = False) -> HookPlan:
     root = root.resolve()
     probe = root
     while not probe.is_dir():
@@ -160,8 +161,9 @@ def plan_hooks(root: Path, *, regenerate: bool = False, profile: str = "default"
     hooks = []
     for event in EVENTS if regenerate else EVENTS[:1]:
         path = directory / event
-        content = hook_content(event, source, profile)
+        content = hook_content(event, source)
         owned = written_by_loadout(path, source)
+        status: HookStatus
         if where != "local":
             status = where
         elif path.exists() or path.is_symlink():
@@ -170,19 +172,19 @@ def plan_hooks(root: Path, *, regenerate: bool = False, profile: str = "default"
             elif path.read_bytes() == content and path.stat().st_mode & stat.S_IXUSR:
                 status = "managed"
             else:
-                status = "stale"
+                status = "update" if regenerate else "stale"
         else:
             status = "install"
-        hooks.append(
-            Hook(event, path, content, status, hook_command(event, source, profile), owned)
-        )
-    return HookPlan(repository, source, directory, tuple(hooks), profile)
+        hooks.append(Hook(event, path, content, status, hook_command(event, source), owned))
+    return HookPlan(repository, source, directory, tuple(hooks))
 
 
 def show_hooks(preview: dict[str, Any]) -> None:
     for hook in preview["hooks"]:
         print(f"Git hook {hook['event']}: {hook['status']} ({hook['path']})")
-        if hook["status"] not in {"install", "managed"}:
+        if hook["status"] == "stale":
+            print("Written by loadout and out of date; `--regenerate` rewrites it.")
+        elif hook["status"] not in {"install", "managed", "update"}:
             print(
                 "Preserved. Integrate in your existing hook, after setting "
                 "repo=$(git rev-parse --show-toplevel):\n  " + hook["command"]
@@ -194,21 +196,22 @@ def _require_source(root: Path) -> None:
         raise LoadoutError(f"no loadout source at {root}; select its root with --root")
 
 
-def install_hooks(
-    root: Path, *, regenerate: bool = False, profile: str = "default", dry_run: bool = False
-) -> int:
+def install_hooks(root: Path, *, regenerate: bool = False, dry_run: bool = False) -> int:
     _require_source(root)
-    plan = plan_hooks(root, regenerate=regenerate, profile=profile)
+    plan = plan_hooks(root, regenerate=regenerate)
     show_hooks(plan.preview())
     if dry_run:
         return 0
     for hook in plan.hooks:
-        if hook.status != "install":
+        if hook.status not in {"install", "update"}:
             continue
         if hooks_directory(plan.repository) != plan.directory or not local_directory(
             plan.repository, plan.directory
         ):
             raise LoadoutError("effective hook directory changed; preview installation again")
+        if hook.status == "update":
+            _rewrite(hook, plan.source)
+            continue
         plan.directory.mkdir(parents=True, exist_ok=True)
         try:
             descriptor = os.open(hook.path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o755)
@@ -224,17 +227,25 @@ def install_hooks(
     return 0
 
 
+def _rewrite(hook: Hook, source: Path) -> None:
+    """Replace a hook loadout wrote, checked again just before the swap."""
+    if not written_by_loadout(hook.path, source):
+        raise LoadoutError(f"hook changed during installation; preserved: {hook.path}")
+    atomic_install(hook.path, FrozenFile(hook.content, 0o755), hook.path.parent)
+
+
 _STATE = {
     "install": "not installed",
     "managed": "installed by loadout",
     "stale": "installed by loadout, out of date",
+    "update": "installed by loadout, out of date",
     "occupied": "present, not loadout's",
 }
 
 
-def status_hooks(root: Path, *, profile: str = "default") -> int:
+def status_hooks(root: Path) -> int:
     _require_source(root)
-    plan = plan_hooks(root, regenerate=True, profile=profile)
+    plan = plan_hooks(root, regenerate=True)
     where = plan.hooks[0].status
     print(f"Hooks directory: {plan.directory}")
     if where == "external":
@@ -264,9 +275,9 @@ def _confirm_removal(directory: Path, yes: bool) -> bool:
     return response.strip().lower() in {"y", "yes"}
 
 
-def uninstall_hooks(root: Path, *, profile: str = "default", yes: bool = False) -> int:
+def uninstall_hooks(root: Path, *, yes: bool = False) -> int:
     _require_source(root)
-    plan = plan_hooks(root, regenerate=True, profile=profile)
+    plan = plan_hooks(root, regenerate=True)
     if plan.hooks[0].status == "external":
         raise LoadoutError(
             f"hooks directory is outside this repository: {plan.directory}; "

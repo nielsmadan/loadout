@@ -12,6 +12,7 @@ from loadout.emit import render_all
 from loadout.errors import LoadoutError
 from loadout.migration import plan_migration
 from loadout.migration_models import MigrationPlan
+from loadout.migration_paths import inventory_layout
 from loadout.migration_transaction import prepare_migration
 
 pytestmark = pytest.mark.integration
@@ -74,6 +75,18 @@ def test_nested_instructions_and_program_dependency_layout(tmp_path: Path) -> No
     written = {w.path.relative_to(source).as_posix() for w in plan.source_writes}
     assert {"skills/a/SKILL.md", "skills/a/scripts/check.sh"} <= written
     assert not any(path.count("/") == 1 and path.startswith("skills/") for path in written)
+
+
+def test_a_file_inside_an_adopted_skill_tree_stays_a_generated_destination(
+    tmp_path: Path,
+) -> None:
+    document = write(tmp_path, ".claude/skills/a/SKILL.md", "---\nname: a\n---\nA.\n")
+    support = write(tmp_path, ".claude/skills/a/scripts/run.sh", "true\n", 0o755)
+    plan = migration(tmp_path, ("claude",))
+    entries = {o.path: (o.action, o.reason) for o in plan.originals}
+    kept = ("generated", "This entry remains a required generated destination.")
+    assert entries[document] == entries[support] == kept
+    assert plan.obsolete == ()
 
 
 def test_project_init_leaves_commands_in_place(tmp_path: Path) -> None:
@@ -616,3 +629,38 @@ def test_a_harness_root_moved_after_planning_is_refused(
 
     with pytest.raises(LoadoutError, match=f"destination environment changed.*{name}"):
         prepare_migration(plan)
+
+
+def test_discovery_records_the_home_it_fell_back_to(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review 2, 4.8: with no HOME given, the live roots used the real home and the
+    layout none, so later stages rebuilt a layout that knew no home."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    project = tmp_path / "project"
+    project.mkdir()
+
+    inventory = discover(project, scope="project", harnesses=("claude",), environ={})
+
+    assert dict(inventory.destination_environment)["HOME"] == str(home)
+    assert inventory_layout(inventory).home == home
+
+
+def test_a_shared_document_is_planned_with_the_keys_loadout_owns(
+    tmp_path: Path, fake_home: Path
+) -> None:
+    """Review 2, batch 5 8: the isolated render's owned keys were unpinned, though the
+    transaction applies them to decide what the first render leaves."""
+    config = fake_home / ".codex/config.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text('model = "gpt-5"\n\n[mcp_servers.x]\ncommand = "npx"\n')
+    source = tmp_path / "source"
+    source.mkdir()
+
+    plan = plan_migration(discover(source, scope="global", harnesses=("codex",)))
+
+    assert [(write.path, write.owned) for write in plan.generated_writes] == [
+        (config, ("marketplaces", "mcp_servers", "plugins"))
+    ]

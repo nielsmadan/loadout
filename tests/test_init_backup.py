@@ -1,4 +1,4 @@
-"""init protects an adoption with a before-image backup, not a journalled transaction (D-06).
+"""init protects an adoption with a before-image backup, not a journalled transaction (ADR 0028).
 
 A failure restores every path init touched, a killed init is offered for restore on the
 next run, a completed one can be undone, and init commits nothing and stages nothing but
@@ -18,10 +18,11 @@ import pytest
 
 import loadout
 import loadout.init_workflow as workflow
-from loadout import migration_git
+from loadout import migration_backup, migration_git
 from loadout.errors import LoadoutError
 from loadout.migration_backup import backups, backups_root
-from loadout.written import written_state_path
+from loadout.migration_images import Image
+from loadout.written import record_written, text_entry, written_state_path
 
 pytestmark = pytest.mark.migration_integration
 
@@ -435,7 +436,28 @@ def test_a_project_moved_behind_a_link_is_kept_whole(tmp_path: Path, capsys) -> 
 
     assert loadout.main(["init", "restore", "--yes", "--json"]) == 1
 
-    assert json.loads(capsys.readouterr().out)["kept"]
+    reasons = json.loads(capsys.readouterr().out)["reasons"]
+    behind = {path: why for path, why in reasons.items() if Path(path).is_relative_to(root)}
+    assert sorted(behind) == [
+        str(root / name)
+        for name in (
+            ".claude/settings.json",
+            ".git/index",
+            ".gitignore",
+            "CLAUDE.md",
+            "loadout",
+            "loadout/config.toml",
+            "loadout/instructions",
+            "loadout/instructions/main.md",
+            "loadout/permissions.toml",
+            "loadout/settings",
+            "loadout/settings/claude.json",
+            "loadout/skills",
+            "loadout/skills/review",
+            "loadout/skills/review/SKILL.md",
+        )
+    ]
+    assert set(behind.values()) == {"now reached through a link added since init"}
     assert _snapshot(tmp_path / "moved/p") == moved
     assert len(backups()) == 1
 
@@ -481,6 +503,8 @@ def test_a_run_killed_after_untracking_restores_the_index(tmp_path: Path, capsys
 def test_a_run_killed_after_git_init_removes_the_new_repository(
     tmp_path: Path, fake_home: Path, capsys
 ) -> None:
+    """What `git init` writes is recorded before it runs, so a kill straight after it
+    still knows the files as init's (review 2, G7)."""
     _write(fake_home / ".claude/CLAUDE.md", "# Me\n")
     source = tmp_path / "source"
     source.mkdir()
@@ -695,7 +719,7 @@ def test_a_first_render_that_is_not_written_restores_every_path(
     """Review 5.1: the render refusing is a failure like any other, so init undoes itself."""
     root = _project(tmp_path / "p")
     before = _snapshot(root)
-    monkeypatch.setattr(workflow, "_first_sync", lambda *args, **kwargs: 1)
+    monkeypatch.setattr(workflow, "_first_sync", lambda *args, **kwargs: None)
 
     assert _init_project(root, "--yes") == 1
 
@@ -846,3 +870,442 @@ def test_init_restore_at_a_terminal_restores_on_yes(
 
     assert "Restored what init changed" in capsys.readouterr().out
     assert _snapshot(root) == before
+
+
+def _global_source(source: Path, fake_home: Path) -> Path:
+    _write(fake_home / ".claude/CLAUDE.md", "# Me\n")
+    source.mkdir(parents=True)
+    assert loadout.main(["init", "global", str(source), "--harness", "claude", "--yes"]) == 0
+    return source
+
+
+def test_undoing_removes_a_new_source_repository_left_as_init_made_it(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    source = _global_source(tmp_path / "source", fake_home)
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 0
+
+    assert json.loads(capsys.readouterr().out)["kept"] == []
+    assert not (source / ".git").exists()
+
+
+def test_undoing_keeps_a_new_source_repository_given_a_hook(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    """Review 2, 1.6: no commit and no index was the whole test, so a hook went too."""
+    source = _global_source(tmp_path / "source", fake_home)
+    hook = _write(source / ".git/hooks/pre-commit", "#!/bin/sh\nexit 0\n")
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 1
+
+    assert {str(source / ".git"), str(hook)} <= set(json.loads(capsys.readouterr().out)["kept"])
+    assert hook.read_text() == "#!/bin/sh\nexit 0\n"
+
+
+def test_undoing_keeps_a_new_source_repository_given_a_remote(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    source = _global_source(tmp_path / "source", fake_home)
+    _git(source, "remote", "add", "origin", "https://example.invalid/me/agents.git")
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 1
+
+    assert str(source / ".git") in json.loads(capsys.readouterr().out)["kept"]
+    assert _git(source, "remote").stdout == "origin\n"
+
+
+def test_undoing_keeps_a_new_source_repository_moved_behind_a_link(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    source = _global_source(tmp_path / "real/source", fake_home)
+    (tmp_path / "real").rename(tmp_path / "moved")
+    (tmp_path / "real").symlink_to(tmp_path / "moved", target_is_directory=True)
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 1
+
+    assert str(source / ".git") in json.loads(capsys.readouterr().out)["kept"]
+    assert (tmp_path / "moved/source/.git/HEAD").is_file()
+
+
+def _another_synced_project(root: Path) -> None:
+    """Its write record means the record directory exists before init, so undoing init
+    keeps none of that directory, and only the record's own image can carry it."""
+    _write(root / "loadout/config.toml", 'harnesses = ["claude"]\n')
+    _write(root / "loadout/permissions.toml", '[shell]\ndeny = ["rm"]\n')
+    assert loadout.main(["sync", "--root", str(root)]) == 0
+
+
+def _undo_kept_back_an_edit(root: Path, capsys: pytest.CaptureFixture[str]) -> tuple[Path, str]:
+    """Init, edit an adopted output, undo: the edit is kept and the backup reduced."""
+    _another_synced_project(root.parent / "other")
+    assert _init_project(root, "--yes") == 0
+    settings = root / ".claude/settings.json"
+    left = settings.read_text()
+    settings.write_text('{"mine": true}\n')
+    capsys.readouterr()
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 1
+    assert str(settings) in json.loads(capsys.readouterr().out)["kept"]
+    return settings, left
+
+
+def test_a_reduced_backup_finishes_the_undo_once_the_edit_is_resolved(
+    tmp_path: Path, capsys
+) -> None:
+    """Review 2, 1.7: the reduced backup dropped the write record's image, so the second
+    restore raised KeyError after it had already put files back."""
+    root = _project(tmp_path / "p")
+    settings, left = _undo_kept_back_an_edit(root, capsys)
+    settings.write_text(left)
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 0
+
+    assert json.loads(capsys.readouterr().out)["kept"] == []
+    assert settings.read_text() == CLAUDE_SETTINGS
+    assert backups() == ()
+
+
+def test_a_restore_killed_while_reducing_the_backup_can_still_finish(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Killed after the reduced manifest is written and before the spare images go."""
+    root = _project(tmp_path / "p")
+    _another_synced_project(tmp_path / "other")
+    assert _init_project(root, "--yes") == 0
+    settings = root / ".claude/settings.json"
+    left = settings.read_text()
+    settings.write_text('{"mine": true}\n')
+    write = migration_backup._write_manifest
+    calls: list[object] = []
+
+    def write_then_die(*args: object) -> None:
+        write(*args)  # type: ignore[arg-type]
+        calls.append(args)
+        if len(calls) == 1:
+            raise KeyboardInterrupt
+
+    with monkeypatch.context() as patch:
+        patch.setattr(migration_backup, "_write_manifest", write_then_die)
+        with pytest.raises(KeyboardInterrupt):
+            workflow.run_restore(yes=True, as_json=True)
+    settings.write_text(left)
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 0
+
+    assert settings.read_text() == CLAUDE_SETTINGS
+
+
+def test_a_backup_missing_a_record_image_is_refused_before_anything_changes(
+    tmp_path: Path, capsys
+) -> None:
+    """A backup reduced before review 2, 1.7 dropped the record's image."""
+    root = _project(tmp_path / "p")
+    settings, left = _undo_kept_back_an_edit(root, capsys)
+    (backup,) = backups()
+    manifest = backup.directory / "manifest.json"
+    document = json.loads(manifest.read_text())
+    records = set(document["records"])
+    document["entries"] = [e for e in document["entries"] if e["path"] not in records]
+    manifest.write_text(json.dumps(document))
+    settings.write_text(left)
+
+    with pytest.raises(LoadoutError, match=r"write record .* has no before-image"):
+        workflow.run_restore(yes=True, as_json=True)
+
+    assert settings.read_text() == left
+
+
+def test_a_shared_document_linked_file_by_file_is_adopted(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    """Review 2, 2.3: a Stow-style link to one co-owned file started absent, so the
+    first render dropped the keys loadout does not own and init failed its own check."""
+    dotfiles = tmp_path / "dotfiles"
+    config = _write(dotfiles / "config.toml", 'model = "gpt-5"\n')
+    (fake_home / ".codex").mkdir()
+    (fake_home / ".codex/config.toml").symlink_to(config)
+    source = tmp_path / "source"
+    source.mkdir()
+
+    argv = ["init", "global", str(source), "--harness", "codex", "--yes"]
+    assert loadout.main(argv) == 0
+
+    written = fake_home / ".codex/config.toml"
+    assert not written.is_symlink()
+    assert 'model = "gpt-5"' in written.read_text()
+    assert config.read_text() == 'model = "gpt-5"\n'
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 0
+
+    assert written.readlink() == config
+    assert config.read_text() == 'model = "gpt-5"\n'
+
+
+def test_a_torn_write_record_does_not_stop_a_restore(tmp_path: Path, capsys) -> None:
+    """Review 2, 2.5: the record was parsed strictly, so every restore exited 4."""
+    root = _project(tmp_path / "p")
+    assert _init_project(root, "--yes") == 0
+    record = written_state_path(root)
+    record.write_text('{"version": 1, "written": {')
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 1
+
+    # Not provably init's any more, so the record and the folder holding it stay.
+    assert str(record.parent) in json.loads(capsys.readouterr().out)["kept"]
+    assert record.read_text() == '{"version": 1, "written": {'
+    assert (root / ".claude/settings.json").read_text() == CLAUDE_SETTINGS
+
+
+def test_restore_skips_a_newer_backup_directory_without_a_manifest(tmp_path: Path, capsys) -> None:
+    """A run killed before its manifest was written left a directory that hid the real
+    backup behind it."""
+    root = _project(tmp_path / "p")
+    assert _init_project(root, "--yes") == 0
+    (backup,) = backups()
+    (backup.directory.parent / "99991231T000000000000Z").mkdir()
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 0
+
+    assert (root / ".claude/settings.json").read_text() == CLAUDE_SETTINGS
+
+
+def test_a_backup_killed_before_it_applied_anything_is_passed_over(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Killed between its manifest and its marker, a backup of a run that never applied
+    looked complete, so restoring it did nothing and hid the real one."""
+    root = _project(tmp_path / "p")
+    assert _init_project(root, "--yes") == 0
+    other = _project(tmp_path / "o")
+    create = migration_backup.create_backup
+
+    def create_then_die(*args: object, **kwargs: object) -> object:
+        backup = create(*args, **kwargs)  # type: ignore[arg-type]
+        (backup.directory / migration_backup.MARKER).unlink()
+        raise KeyboardInterrupt
+
+    with monkeypatch.context() as patch:
+        patch.setattr(workflow, "create_backup", create_then_die)
+        with pytest.raises(KeyboardInterrupt):
+            _init_project(other, "--yes")
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 0
+
+    assert (root / ".claude/settings.json").read_text() == CLAUDE_SETTINGS
+
+
+def test_a_killed_restore_is_offered_again(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A restore of a completed backup set no in-progress marker, so the next init's
+    `complete()` deleted the half-spent backup."""
+    root = _project(tmp_path / "p")
+    assert _init_project(root, "--yes") == 0
+
+    def die(*args: object) -> None:
+        raise KeyboardInterrupt
+
+    with monkeypatch.context() as patch:
+        patch.setattr(migration_backup, "_put_back", die)
+        with pytest.raises(KeyboardInterrupt):
+            workflow.run_restore(yes=True, as_json=True)
+    capsys.readouterr()
+
+    assert loadout.main(["init", "project", "--root", str(root), "--json", "--dry-run"]) == 2
+    assert json.loads(capsys.readouterr().out)["status"] == "interrupted"
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 0
+    assert (root / ".claude/settings.json").read_text() == CLAUDE_SETTINGS
+
+
+def _git_runtime_files(git_dir: Path) -> None:
+    """What read-only git leaves in a repository with no commit: fsmonitor's daemon
+    state, a fetch, gc's packing and a lock."""
+    (git_dir / "fsmonitor--daemon/cookies").mkdir(parents=True)
+    _write(git_dir / "fsmonitor--daemon.ipc", "")
+    _write(git_dir / "FETCH_HEAD", "")
+    _write(git_dir / "packed-refs", "# pack-refs with: peeled fully-peeled sorted\n")
+    _write(git_dir / "info/refs", "")
+    _write(git_dir / "objects/info/packs", "\n")
+    _write(git_dir / "config.lock", "")
+
+
+def test_undoing_removes_a_new_repository_git_only_read_from(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    """Review 2, G6: a `git status` with fsmonitor, a fetch or gc made a clean undo
+    impossible."""
+    source = _global_source(tmp_path / "source", fake_home)
+    _git_runtime_files(source / ".git")
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 0
+
+    assert json.loads(capsys.readouterr().out)["kept"] == []
+    assert not (source / ".git").exists()
+
+
+def test_undoing_keeps_a_new_repository_whose_packed_refs_name_a_ref(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    """Git's own files count as runtime only while the repository has no ref."""
+    source = _global_source(tmp_path / "source", fake_home)
+    _git_runtime_files(source / ".git")
+    _write(source / ".git/packed-refs", f"{'1' * 40} refs/heads/main\n")
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 1
+
+    assert str(source / ".git") in json.loads(capsys.readouterr().out)["kept"]
+
+
+def test_the_preview_names_a_file_that_only_gains_loadout_s_banner(tmp_path: Path, capsys) -> None:
+    """Review 2, 2.13: the preview said it reproduced the setup exactly while the first
+    render added a banner to the file."""
+    root = _project(tmp_path / "p")
+
+    assert _init_project(root, "--dry-run", "--json") == 0
+    changes = {o["path"]: o["change"] for o in json.loads(capsys.readouterr().out)["outputs"]}
+    assert _init_project(root, "--dry-run") == 0
+
+    assert changes[str(root / "CLAUDE.md")] == "normalised"
+    assert f"Normalise: {root / 'CLAUDE.md'}" in capsys.readouterr().out
+
+
+def test_init_json_lists_the_files_its_first_render_wrote(tmp_path: Path, capsys) -> None:
+    root = _project(tmp_path / "p")
+
+    assert _init_project(root, "--yes", "--json") == 0
+
+    result = json.loads(capsys.readouterr().out)
+    assert str(root / "CLAUDE.md") in result["rendered"]
+    assert str(root / ".claude/settings.json") in result["rendered"]
+
+
+def test_restore_gives_each_kept_path_its_reason(tmp_path: Path, capsys) -> None:
+    """Review 2, 2.13: one label covered every kept path, whatever kept it."""
+    root = _project(tmp_path / "p")
+    assert _init_project(root, "--yes") == 0
+    settings = root / ".claude/settings.json"
+    settings.write_text('{"mine": true}\n')
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 1
+
+    assert json.loads(capsys.readouterr().out)["reasons"][str(settings)] == "changed since init"
+
+
+def test_restore_names_a_replaced_link_once(tmp_path: Path, fake_home: Path, capsys) -> None:
+    dotfiles = tmp_path / "dotfiles"
+    _write(dotfiles / "CLAUDE.md", "# Me\n")
+    claude = fake_home / ".claude"
+    claude.symlink_to(dotfiles, target_is_directory=True)
+    source = tmp_path / "source"
+    source.mkdir()
+    assert loadout.main(["init", "global", str(source), "--harness", "claude", "--yes"]) == 0
+    _write(claude / "history.jsonl", "{}\n")
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes"]) == 1
+
+    lines = capsys.readouterr().out.splitlines()
+    named = [line for line in lines if line.startswith(f"{claude} ") or line.endswith(str(claude))]
+    assert named == [f"{claude} used to link to {dotfiles}; it stays a directory for now."]
+
+
+def test_a_restore_that_puts_nothing_back_says_so(tmp_path: Path, capsys) -> None:
+    root = _project(tmp_path / "p")
+    _undo_kept_back_an_edit(root, capsys)
+
+    assert loadout.main(["init", "restore", "--yes"]) == 1
+
+    out = capsys.readouterr().out
+    assert out.startswith("Nothing could be restored.")
+
+
+def test_a_spent_backup_is_reported_as_gone(tmp_path: Path, capsys) -> None:
+    root = _project(tmp_path / "p")
+    assert _init_project(root, "--yes") == 0
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 0
+
+    assert json.loads(capsys.readouterr().out)["backup"] is None
+
+
+def test_a_write_record_that_predates_init_survives_its_undo(tmp_path: Path, capsys) -> None:
+    """Review 2, batch 5 1.2: restore deleted a record emptied of init's entries even when
+    it existed before init, as if init had created it."""
+    root = _project(tmp_path / "p")
+    record_written(root, {root / "CLAUDE.md": text_entry(root / "CLAUDE.md", "earlier\n")})
+    assert _init_project(root, "--yes") == 0
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 0
+
+    assert json.loads(written_state_path(root).read_text())["written"] == {}
+
+
+def test_a_restore_that_keeps_something_leaves_its_backup_finished(tmp_path: Path, capsys) -> None:
+    """Review 2, batch 5 1.3: restore marks the backup in progress before it starts, so a
+    reduced backup that kept that marker blocked every later init as interrupted."""
+    root = _project(tmp_path / "p")
+    assert _init_project(root, "--yes") == 0
+    (root / "CLAUDE.md").write_text("edited after init\n")
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 1
+
+    (backup,) = backups()
+    assert backup.interrupted is False
+    assert str(root / "CLAUDE.md") in json.loads(capsys.readouterr().out)["kept"]
+
+
+def test_a_run_killed_after_git_init_keeps_work_staged_since(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    """Review 2, batch 5 1.4: a repository the killed run created is the user's once they
+    stage into it."""
+    _write(fake_home / ".claude/CLAUDE.md", "# Me\n")
+    source = tmp_path / "source"
+    source.mkdir()
+    git = migration_git.git
+
+    def git_then_die(root: Path, *args: str, **kwargs: object) -> object:
+        result = git(root, *args, **kwargs)  # type: ignore[arg-type]
+        if args[:1] == ("init",):
+            raise RuntimeError("killed after git init")
+        return result
+
+    with pytest.MonkeyPatch.context() as patch:
+        _killed(patch)
+        patch.setattr(migration_git, "git", git_then_die)
+        argv = ["init", "global", str(source), "--harness", "claude", "--yes"]
+        assert loadout.main(argv) == 1
+    _write(source / "notes.md", "mine\n")
+    _git(source, "add", "notes.md")
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 1
+
+    assert str(source / ".git") in json.loads(capsys.readouterr().out)["kept"]
+    assert _git(source, "diff", "--cached", "--name-only").stdout == "notes.md\n"
+
+
+def test_a_folder_init_created_is_its_own_before_the_run_records_it(tmp_path: Path) -> None:
+    """Review 2, batch 5 1.5: a folder absent before init and not yet recorded, such as
+    an ancestor a write created before a kill, is init's: it is only ever removed once
+    empty."""
+    folder = tmp_path / "made"
+    folder.mkdir()
+    plan = migration_backup._Plan({folder: Image()}, {}, {})
+
+    assert plan.ours(folder) is True

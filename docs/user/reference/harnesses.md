@@ -9,7 +9,7 @@ Loadout targets Claude Code, Codex, Factory Droid, OpenCode, and Pi. These table
 renders**, not the complete capability of each agent.
 
 They are checked against this project's
-[global preset](https://github.com/nielsmadan/loadout/blob/main/src/loadout/agents.py) and
+[global preset](https://github.com/nielsmadan/loadout/blob/main/src/loadout/harnesses.py) and
 [project preset](https://github.com/nielsmadan/loadout/blob/main/src/loadout/project.py).
 An absent output is an implementation limit of Loadout.
 

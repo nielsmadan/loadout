@@ -3,17 +3,19 @@ from __future__ import annotations
 import os
 import stat
 from dataclasses import dataclass, field
+from functools import cached_property
 from pathlib import Path
 from typing import Any
 
 from . import migration_git
 from .discovery import DESTINATION_ENVIRONMENT, entry_state
 from .errors import LoadoutError
-from .gitignore import escape, with_lines
-from .migration_backup import Image, Operation, Phase, install, snapshot
+from .gitignore import escape, require_plain_gitignore, with_lines
+from .migration_images import Image, Operation, Phase, install, snapshot
 from .migration_models import EntryState, MigrationPlan, SourceWrite
-from .migration_paths import DestinationLayout, entry_path, inventory_layout
+from .migration_paths import DestinationLayout, inventory_layout
 from .migration_validation import validate_plan
+from .output import entry_path
 from .surgery import apply_json, apply_toml
 
 
@@ -46,6 +48,10 @@ class MigrationPreparation:
     untracked: tuple[str, ...] = ()
     new_repository: Path | None = None
 
+    @cached_property
+    def layout(self) -> DestinationLayout:
+        return _layout(self.plan)
+
     def preview(self) -> dict[str, Any]:
         return {
             **self.plan.preview(),
@@ -72,7 +78,7 @@ class MigrationPreparation:
         """The one spelling of `path` a backup records. Beneath a link init replaces it
         stays at the harness path; anywhere else its parent is resolved, so a link above
         a harness root (written through, ADR 0023) is never an ancestor of a backup path."""
-        normalized = _layout(self.plan).normalize(path)
+        normalized = self.layout.normalize(path)
         replaced = {
             o.path for o in self.operations if o.phase == "topology" and o.before.kind == "symlink"
         }
@@ -82,8 +88,7 @@ class MigrationPreparation:
 
     def delinked(self) -> tuple[Delinked, ...]:
         """Read before applying: afterwards the links are gone."""
-        layout = _layout(self.plan)
-        outputs = tuple(layout.normalize(w.path) for w in self.plan.generated_writes)
+        outputs = tuple(self.layout.normalize(w.path) for w in self.plan.generated_writes)
         result = []
         for operation in self.operations:
             if operation.phase != "topology" or operation.before.kind != "symlink":
@@ -105,6 +110,8 @@ class MigrationResult:
     written: tuple[Path, ...]
     untracked: tuple[str, ...]
     already_initialized: bool = False
+    # The generated files the first render wrote, filled in once it has run.
+    rendered: tuple[Path, ...] = ()
 
 
 class _Builder:
@@ -214,6 +221,10 @@ def _topology(builder: _Builder, plan: MigrationPlan, outputs: tuple[Path, ...])
         if directory:
             builder.put(link, Image("directory", mode=0o755), "topology")
             _mirror(builder, link, outputs, plan)
+        elif link in outputs:
+            # A linked output file starts as the file it was, as `_mirror` does for a
+            # linked directory's children, so its keys loadout does not own survive.
+            builder.put(link, _as_found(link), "topology")
 
 
 def _rendered_paths(plan: MigrationPlan) -> tuple[Path, ...]:
@@ -314,10 +325,9 @@ def prepare_migration(
     untracked: tuple[str, ...] = ()
     new_repository: Path | None = None
     if not plan.already_initialized:
+        require_plain_gitignore(plan.inventory.root.resolve())
         ignore_path = plan.inventory.root.resolve() / ".gitignore"
         current = builder.image(ignore_path)
-        if current.kind not in {"file", "absent"}:
-            raise LoadoutError(f".gitignore must be a regular file: {ignore_path}")
         builder.put(
             ignore_path,
             Image(

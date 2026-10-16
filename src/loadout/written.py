@@ -23,14 +23,18 @@ lost — losing state fails closed.
 from __future__ import annotations
 
 import json
+import os
 import re
+import tempfile
+import tomllib
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from .machine import machine_state_dir
-from .output import sha256
+from .machine import config_dir
+from .output import entry_path, file_sha256, sha256
+from .toml_paths import key_path
 
 VERSION = 1
 
@@ -82,16 +86,18 @@ class WrittenEntry:
     file it shares with loadout is not a hand edit. `sha256` is the raw bytes, which is
     what a copied file is compared by.
 
-    A merged destination carries **no hash**: the applied document embeds bytes the
-    harness owns and may rewrite a second later, so a hash of it would go stale without
-    anything having gone wrong. `owned` is recorded instead — the key names retirement
-    strips rather than deleting a file loadout does not own.
+    A merged destination carries no hash of the file: the applied document embeds bytes
+    the harness owns and may rewrite a second later, so a hash of it would go stale
+    without anything having gone wrong. `owned_sha256` hashes each key loadout wrote
+    there instead, one by one, `ABSENT` for a key it left out, and `owned` names the
+    keys, which retirement strips rather than deleting a file loadout does not own.
     """
 
     kind: Literal["text", "copied", "merged"]
     sha256: str | None = None
     norm_sha256: str | None = None
     owned: tuple[str, ...] = ()
+    owned_sha256: tuple[tuple[str, str], ...] = ()
 
 
 def written_state_path(root: Path, env: Mapping[str, str] | None = None) -> Path:
@@ -101,7 +107,7 @@ def written_state_path(root: Path, env: Mapping[str, str] | None = None) -> Path
     path is stored inside the file so it stays inspectable by hand.
     """
     key = sha256(str(root.resolve()).encode())[:16]
-    return machine_state_dir(env) / "written" / f"{key}.json"
+    return config_dir(env) / "written" / f"{key}.json"
 
 
 def read_written(root: Path, env: Mapping[str, str] | None = None) -> dict[Path, WrittenEntry]:
@@ -135,15 +141,22 @@ def _entries(document: object) -> dict[Path, WrittenEntry]:
             sha256=raw.get("sha256"),
             norm_sha256=raw.get("norm_sha256"),
             owned=tuple(raw.get("owned", ())),
+            owned_sha256=_pairs(raw.get("owned_sha256")),
         )
     return out
 
 
-def every_recorded_path(env: Mapping[str, str] | None = None) -> frozenset[Path]:
-    """Every destination any root's record names, so one root never mistakes another's
-    output for a file loadout did not write."""
+def every_recorded_path(
+    within: Iterable[Path], env: Mapping[str, str] | None = None
+) -> frozenset[Path]:
+    """Every destination inside `within` that any root's record names, so one root never
+    mistakes another's output there for a file loadout did not write. Only those names
+    become paths: the rest of a record is never scanned."""
+    prefixes = tuple(f"{folder}{os.sep}" for folder in within)
+    if not prefixes:
+        return frozenset()
     try:
-        records = sorted((machine_state_dir(env) / "written").glob("*.json"))
+        records = sorted((config_dir(env) / "written").glob("*.json"))
     except OSError:
         return frozenset()
     paths: set[Path] = set()
@@ -151,8 +164,22 @@ def every_recorded_path(env: Mapping[str, str] | None = None) -> frozenset[Path]
         document = _document(record)
         root = _root(document)
         if root is not None and written_state_path(root, env) == record:
-            paths.update(_entries(document))
+            paths.update(Path(name) for name in _names(document) if name.startswith(prefixes))
     return frozenset(paths)
+
+
+def _names(document: object) -> list[str]:
+    """The destinations a record names, by the rule `_entries` reads it with."""
+    if not isinstance(document, dict) or document.get("version") != VERSION:
+        return []
+    entries = document.get("written")
+    if not isinstance(entries, dict):
+        return []
+    return [
+        name
+        for name, raw in entries.items()
+        if isinstance(raw, dict) and isinstance(raw.get("kind"), str)
+    ]
 
 
 def prune_vanished(env: Mapping[str, str] | None = None) -> None:
@@ -163,7 +190,7 @@ def prune_vanished(env: Mapping[str, str] | None = None) -> None:
     than being absent, such as a sandbox denying it, keeps its record.
     """
     try:
-        records = sorted((machine_state_dir(env) / "written").glob("*.json"))
+        records = sorted((config_dir(env) / "written").glob("*.json"))
     except OSError:
         return
     for record in records:
@@ -221,6 +248,7 @@ def record_written(
                     "sha256": entry.sha256,
                     "norm_sha256": entry.norm_sha256,
                     "owned": list(entry.owned) or None,
+                    "owned_sha256": dict(entry.owned_sha256) or None,
                 }.items()
                 if v is not None
             }
@@ -228,8 +256,7 @@ def record_written(
         },
     }
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+        _write_record(path, document)
     except OSError:
         # A record that cannot be written degrades to no record, which is the
         # behaviour that existed before it — never a failed sync. The files are
@@ -241,12 +268,53 @@ def record_written(
     return path
 
 
+def _write_record(path: Path, document: Mapping[str, Any]) -> None:
+    """Written beside the record and renamed over it, so a kill never leaves it torn."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix=".loadout-")
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(document, indent=2) + "\n")
+        os.replace(temporary, path)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
+
+
+def forget_written(record: Path, reverted: Iterable[Path], *, created: bool) -> None:
+    """Drop the reverted destinations from a write record, keeping everything else it
+    says, so a file init wrote that stays is still known as loadout's. A record that
+    does not parse is left alone: without one the guard accepts less, never more. One
+    `created` with the run and emptied by this is removed."""
+    document = _document(record)
+    if (
+        not isinstance(document, dict)
+        or document.get("version") != VERSION
+        or not isinstance(document.get("written"), dict)
+    ):
+        return
+    gone = {entry_path(path) for path in reverted}
+    remaining = {
+        key: value
+        for key, value in document["written"].items()
+        if entry_path(Path(key)) not in gone
+    }
+    if not remaining and created:
+        record.unlink()
+        return
+    _write_record(record, {**document, "written": remaining})
+
+
 def accepts_text(entry: WrittenEntry | None, path: Path, actual: str) -> bool:
     return entry is not None and entry.norm_sha256 == sha256(normalise(path, actual).encode())
 
 
 def accepts_bytes(entry: WrittenEntry | None, actual: bytes) -> bool:
-    return entry is not None and entry.sha256 == sha256(actual)
+    return accepts_digest(entry, sha256(actual))
+
+
+def accepts_digest(entry: WrittenEntry | None, digest: str) -> bool:
+    return entry is not None and entry.sha256 == digest
 
 
 def text_entry(path: Path, content: str) -> WrittenEntry:
@@ -261,9 +329,64 @@ def frozen_entry(content: bytes) -> WrittenEntry:
     return WrittenEntry(kind="copied", sha256=sha256(content))
 
 
-def copied_entry(source: Path, prefix: bytes = b"") -> WrittenEntry:
-    return frozen_entry(prefix + source.read_bytes())
+def copied_entry(source: Path) -> WrittenEntry:
+    return WrittenEntry(kind="copied", sha256=file_sha256(source))
 
 
-def merged_entry(owned: Iterable[str]) -> WrittenEntry:
-    return WrittenEntry(kind="merged", owned=tuple(sorted(owned)))
+def merged_entry(owned: Iterable[str], document: str, format_name: str) -> WrittenEntry:
+    hashes = owned_hashes(document, owned, format_name) or {}
+    return WrittenEntry(
+        kind="merged", owned=tuple(sorted(owned)), owned_sha256=tuple(sorted(hashes.items()))
+    )
+
+
+# The recorded hash of an owned key the document does not hold.
+ABSENT = ""
+
+
+def canonical(value: object) -> str:
+    """One spelling per value, so `true` and `1`, or `1` and `1.0`, never compare equal
+    the way they do in Python."""
+    return json.dumps(value, sort_keys=True, ensure_ascii=False, default=str)
+
+
+def owned_hashes(text: str, owned: Iterable[str], format_name: str) -> dict[str, str] | None:
+    """Each owned key's hash in a shared document, `ABSENT` for one it does not hold, so
+    only those are compared: the harness may change the rest freely. None when the
+    document does not parse."""
+    values = owned_values(text, owned, format_name)
+    if values is None:
+        return None
+    return {
+        name: sha256(canonical(values[name]).encode()) if name in values else ABSENT
+        for name in sorted(owned)
+    }
+
+
+def _pairs(raw: object) -> tuple[tuple[str, str], ...]:
+    if not isinstance(raw, dict):
+        return ()
+    return tuple(sorted((str(k), v) for k, v in raw.items() if isinstance(v, str)))
+
+
+def owned_values(text: str, owned: Iterable[str], format_name: str) -> dict[str, Any] | None:
+    """Each owned key the document holds, by name, or None when it does not parse."""
+    try:
+        document = (
+            (json.loads(text) if format_name == "json" else tomllib.loads(text))
+            if text.strip()
+            else {}
+        )
+    except (ValueError, tomllib.TOMLDecodeError):
+        return None
+    found: dict[str, Any] = {}
+    for name in sorted(owned):
+        value: Any = document
+        for part in (name,) if format_name == "json" else key_path(name):
+            value = value.get(part, _ABSENT) if isinstance(value, dict) else _ABSENT
+        if value is not _ABSENT:
+            found[name] = value
+    return found
+
+
+_ABSENT = object()

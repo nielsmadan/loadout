@@ -1,4 +1,4 @@
-"""A lone `x *` deny on OpenCode or Pi reads as the prefix `x` (P-49).
+"""A lone `x *` deny on OpenCode or Pi reads as the prefix `x` (extraction.md).
 
 Since OpenCode v1.1.15 and Pi's permission system v5.12.0 a trailing ` *` also matches the
 bare command, so the deny already blocks `x`. Read as a prefix it renders on every harness,

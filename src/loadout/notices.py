@@ -14,8 +14,8 @@ changes an exit code. Drift means generated output disagrees with its source;
 these are cases where the source itself asks for something the harness cannot
 carry.
 
-The functions take documents rather than reading them, so the whole module is
-pure and the caller supplies machine state (ADR 0001).
+Most functions take documents and return notices. `collect_notices` reads the
+source and the environment the way the render does, and hands each check its part.
 """
 
 from __future__ import annotations
@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from .adapters import OPENCODE_MAPPINGS, PI_MAPPINGS
+from .destinations import resolve_destination
 from .emit import (
     PROJECT_DOCUMENTS,
     SKILLS_SUBDIR,
@@ -46,7 +47,7 @@ from .emit import (
 )
 from .errors import LoadoutError
 from .hooks import CLAUDE_EVENTS, CODEX_EVENTS, DROID_EVENTS, unrecognised_events
-from .manifest import Manifest, load_profile, manifest_path, resolve_destination
+from .manifest import Manifest, load_profile, manifest_path
 from .permissions.renderers import CATCH_ALL_RENDERERS
 from .permissions.rules import Rules, exact_command, is_exact, is_glob
 from .plugins import ADDRESSED_BY, marketplaces, unaddressable, unregistered_marketplaces
@@ -61,13 +62,16 @@ from .servers import Server
 from .skill_policy import SkillPolicy, render_skill_for, selected_skill_agents
 from .skills import Skill, loose_skill_files, render_skill
 from .subagents import AGENTS_SUBDIR, Agent, agent_notes, discover_agents
+from .templates import template_divergence, unverifiable_templates
 
 __all__ = [
     "Notice",
+    "collect_notices",
     "inexact_shell_entries",
     "known_events",
     "notices_for",
     "opencode_skills_race",
+    "template_notices",
     "unpermitted_servers",
     "unreached_catch_all",
     "unsupported_shell_globs",
@@ -120,14 +124,15 @@ def opencode_external_skills_race(environ: Mapping[str, str]) -> bool:
 
 @dataclass(frozen=True)
 class Notice:
-    """One thing a user would want to know, and where it came from."""
+    """One thing a user would want to know, and where it came from: a harness, a source,
+    `mcp`, `project` or `all`."""
 
-    agent: str
+    owner: str
     slice: str
     message: str
 
     def render(self) -> str:
-        return f"{self.agent}.{self.slice}: {self.message}"
+        return f"{self.owner}.{self.slice}: {self.message}"
 
 
 # For Claude and Codex an event outside this set may still be honoured — both
@@ -163,7 +168,7 @@ def unreached_catch_all(agent: str, renderer: str, verdict: str) -> tuple[Notice
         return ()
     return (
         Notice(
-            agent=agent,
+            owner=agent,
             slice="permissions",
             message=(
                 f'[shell] default = "{verdict}" is not rendered here — '
@@ -179,7 +184,7 @@ def unsupported_shell_globs(agent: str, renderer: str, rules: Rules) -> tuple[No
         return ()
     return tuple(
         Notice(
-            agent=agent,
+            owner=agent,
             slice="permissions",
             message=(
                 f"{category} glob {entry!r} is not rendered because Droid treats "
@@ -208,7 +213,7 @@ def inexact_shell_entries(agent: str, renderer: str, rules: Rules) -> tuple[Noti
         return ()
     omitted = tuple(
         Notice(
-            agent=agent,
+            owner=agent,
             slice="permissions",
             message=(
                 f"{category} {entry!r} is not rendered because {harness} cannot match a "
@@ -221,7 +226,7 @@ def inexact_shell_entries(agent: str, renderer: str, rules: Rules) -> tuple[Noti
     )
     widened = tuple(
         Notice(
-            agent=agent,
+            owner=agent,
             slice="permissions",
             message=(
                 f"deny {entry!r} is rendered as {exact_command(entry)!r} because {harness} "
@@ -258,7 +263,7 @@ def notices_for(
     found: list[Notice] = []
 
     def add(message: str) -> None:
-        found.append(Notice(agent=agent, slice=slice_name, message=message))
+        found.append(Notice(owner=agent, slice=slice_name, message=message))
 
     if slice_name == "hooks":
         adapted = agent in _ADAPTED
@@ -337,7 +342,7 @@ def _claude_skill_race(
         return ()
     return (
         Notice(
-            agent="opencode",
+            owner="opencode",
             slice="skills",
             message=(
                 f"none of {' or '.join(OPENCODE_SKILL_FLAGS)} is set, so OpenCode also "
@@ -394,7 +399,7 @@ def _unpermitted_servers(manifest: Manifest) -> tuple[Notice, ...]:
     rules = global_rules(manifest)
     return tuple(
         Notice(
-            agent="mcp",
+            owner="mcp",
             slice="servers",
             message=(
                 f"{name} is defined but no [mcp] policy allow/ask/deny entry names it "
@@ -408,7 +413,7 @@ def _unpermitted_servers(manifest: Manifest) -> tuple[Notice, ...]:
 def _loose_skill_notices(skill_roots: Iterable[Path]) -> tuple[Notice, ...]:
     return tuple(
         Notice(
-            agent="all",
+            owner="all",
             slice="skills",
             message=f"{path} is not a skill and was skipped; a skill is skills/<name>/SKILL.md",
         )
@@ -417,9 +422,46 @@ def _loose_skill_notices(skill_roots: Iterable[Path]) -> tuple[Notice, ...]:
     )
 
 
-def collect_notices(root: Path, profile: str = "default") -> tuple[Notice, ...]:
+def template_notices(root: Path) -> tuple[Notice, ...]:
+    """Vendored templates whose copy no longer matches what was vendored, or that have
+    nothing to compare against. Reported, never failed: a vendored copy is source, so
+    it falls outside drift by definition (ADR 0014), but saying nothing would let a
+    project drift from its template indefinitely."""
+    return (
+        *(
+            Notice(
+                "project",
+                "templates",
+                f"the vendored template {name!r} was modified after it was vendored — "
+                f"`loadout template sync {name}` will refuse until those edits go upstream",
+            )
+            for name in template_divergence(root)
+        ),
+        *(
+            Notice(
+                "project",
+                "templates",
+                f"the vendored template {name!r} has no recorded provenance, so nothing can "
+                f"tell your edits from its source — `loadout template add {name} --vendored` "
+                "takes the source wholesale and records one",
+            )
+            for name in unverifiable_templates(root)
+        ),
+    )
+
+
+def collect_notices(
+    root: Path,
+    profile: str = "default",
+    environ: Mapping[str, str] | None = None,
+    context: RenderContext | None = None,
+) -> tuple[Notice, ...]:
     """Advisory findings about project setup and global slice fragments."""
-    found: list[Notice] = list(project_notices(root, os.environ))
+    environ = os.environ if environ is None else environ
+    found: list[Notice] = [
+        *project_notices(root, environ, context or RenderContext()),
+        *template_notices(root),
+    ]
     if not manifest_path(root).is_file():
         return tuple(found)
     manifest = load_profile(root, profile)
@@ -430,11 +472,11 @@ def collect_notices(root: Path, profile: str = "default") -> tuple[Notice, ...]:
             if SKILLS_SUBDIR in source.use
         )
     )
-    found.extend(_global_skill_race(manifest, os.environ))
+    found.extend(_global_skill_race(manifest, environ))
     found.extend(_agent_notices(source_agents(manifest), tuple(t.harness for t in manifest.agents)))
     found.extend(
         Notice(
-            agent=source.name,
+            owner=source.name,
             slice=AGENTS_SUBDIR,
             message=(
                 f"{source.path / AGENTS_SUBDIR} holds agents, but source {source.name!r} does "
@@ -454,20 +496,14 @@ def collect_notices(root: Path, profile: str = "default") -> tuple[Notice, ...]:
         if not selected_target(target, profile):
             continue
         document = slice_document(target.content, target.content_slice, manifest)
-        # Only a plugins fragment has marketplaces, and reading them parses the
-        # document as one. Evaluated for every slice it rejects any other shape:
-        # a `defaults` fragment's keys, or a hooks fragment's event names, read as
-        # stray sections of a plugins document and the whole render fails.
-        known = (
-            _known_marketplaces(target.harness, document, os.environ)
-            if target.content_slice == "plugins"
-            else frozenset()
-        )
+        known = _marketplaces(target.harness, target.content_slice, document, environ)
         found.extend(notices_for(target.harness, target.content_slice, document, known))
     return tuple(found)
 
 
-def project_notices(root: Path, environ: Mapping[str, str]) -> tuple[Notice, ...]:
+def project_notices(
+    root: Path, environ: Mapping[str, str], context: RenderContext
+) -> tuple[Notice, ...]:
     """What project scope rendered while doing less than its source says.
 
     Three kinds: a permission rule the selected renderer cannot carry, a slice
@@ -497,57 +533,75 @@ def project_notices(root: Path, environ: Mapping[str, str]) -> tuple[Notice, ...
             tuple(h for h in config.harnesses if AGENTS_SUBDIR in PROJECT_PRESET[h]),
         )
     )
-    templates = project_templates(root, config, RenderContext())
+    templates = project_templates(root, config, context)
     rules = project_rules(root, templates)
+    permissions: list[Notice] = []
+    documents: list[Notice] = []
     for agent, slice_name, spec in project_slices(config.harnesses):
-        if slice_name != "permissions" or not spec.renderer:
-            continue
-        found.extend(_renderer_notices(agent, spec.renderer, rules))
-    for agent, slice_name, _ in project_slices(config.harnesses):
-        if slice_name not in PROJECT_DOCUMENTS:
-            continue
-        document, contributed = project_slice_document(root, slice_name, templates)
-        if not contributed:
-            continue
-        known = (
-            _known_marketplaces(agent, document, environ)
-            if slice_name == "plugins"
-            else frozenset()
-        )
-        found.extend(notices_for(agent, slice_name, document, known))
+        if slice_name == "permissions" and spec.renderer:
+            permissions.extend(_renderer_notices(agent, spec.renderer, rules))
+        elif slice_name in PROJECT_DOCUMENTS:
+            document, contributed = project_slice_document(root, slice_name, templates)
+            if contributed:
+                known = _marketplaces(agent, slice_name, document, environ)
+                documents.extend(notices_for(agent, slice_name, document, known))
     trees = project_skill_trees(root, templates)
-    found.extend(
-        _claude_skill_race(
+    return (
+        *found,
+        *permissions,
+        *documents,
+        *_claude_skill_race(
             trees, config.harnesses, config.skill_policies, environ, ".claude/skills"
-        )
+        ),
+        *_codex_skill_race(trees, config.harnesses, config.skill_policies, environ),
     )
-    if "opencode" in config.harnesses and opencode_external_skills_race(environ):
-        differing = any(
-            {"codex", "opencode"}.issubset(
-                selected_skill_agents(skill.name, config.harnesses, config.skill_policies)
-            )
-            and render_skill_for(skill.name, config.skill_policies)
-            and render_skill(skill, "codex") != render_skill(skill, "opencode")
-            for skill in trees
-        )
-        if differing:
-            found.append(
-                Notice(
-                    agent="opencode",
-                    slice="skills",
-                    message=(
-                        f"{OPENCODE_EXTERNAL_SKILL_FLAG} is not set, so OpenCode also scans "
-                        ".agents/skills and picks between its variant and Codex's at random; "
-                        "export it or restrict the skill's agents; see docs/reference/opencode.md"
-                    ),
-                )
-            )
-    return tuple(found)
+
+
+def _marketplaces(
+    harness: str, slice_name: str, document: Any, environ: Mapping[str, str]
+) -> frozenset[str]:
+    """The marketplaces a plugins document can name. Only a plugins fragment has
+    them, and reading them parses the document as one: evaluated for any other
+    slice, a `defaults` fragment's keys or a hooks fragment's event names read as
+    stray sections of a plugins document and the whole render fails."""
+    if slice_name != "plugins":
+        return frozenset()
+    return _known_marketplaces(harness, document, environ)
+
+
+def _codex_skill_race(
+    trees: tuple[Skill, ...],
+    harnesses: tuple[str, ...],
+    policies: tuple[SkillPolicy, ...],
+    environ: Mapping[str, str],
+) -> tuple[Notice, ...]:
+    """OpenCode also scans `.agents/skills`, where Codex's variant of a skill lands."""
+    if "opencode" not in harnesses or not opencode_external_skills_race(environ):
+        return ()
+    differing = any(
+        {"codex", "opencode"}.issubset(selected_skill_agents(skill.name, harnesses, policies))
+        and render_skill_for(skill.name, policies)
+        and render_skill(skill, "codex") != render_skill(skill, "opencode")
+        for skill in trees
+    )
+    if not differing:
+        return ()
+    return (
+        Notice(
+            owner="opencode",
+            slice="skills",
+            message=(
+                f"{OPENCODE_EXTERNAL_SKILL_FLAG} is not set, so OpenCode also scans "
+                ".agents/skills and picks between its variant and Codex's at random; "
+                "export it or restrict the skill's agents; see docs/reference/opencode.md"
+            ),
+        ),
+    )
 
 
 def _agent_notices(agents: tuple[Agent, ...], harnesses: tuple[str, ...]) -> tuple[Notice, ...]:
     return tuple(
-        Notice(agent=harness, slice=AGENTS_SUBDIR, message=note)
+        Notice(owner=harness, slice=AGENTS_SUBDIR, message=note)
         for agent in agents
         for harness, note in agent_notes(agent, harnesses)
     )

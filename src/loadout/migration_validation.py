@@ -17,6 +17,7 @@ from .errors import LoadoutError
 from .migration_models import GeneratedWrite, Issue, MigrationPlan
 from .native_documents import key_fingerprints, parse_document
 from .output import Copied, FrozenFile, Merged, sha256
+from .project import PROJECT_DIR
 
 
 def validate_plan(plan: MigrationPlan) -> MigrationPlan:
@@ -50,7 +51,7 @@ def _reconstruct(plan: MigrationPlan) -> tuple[GeneratedWrite, ...]:
     with tempfile.TemporaryDirectory(prefix="loadout-migration-check-") as scratch_name:
         scratch = Path(scratch_name).resolve()
         root = scratch / "project" if plan.inventory.scope == "project" else scratch / "source"
-        source_root = root / "loadout" if plan.inventory.scope == "project" else root
+        source_root = root / PROJECT_DIR if plan.inventory.scope == "project" else root
         source_root.mkdir(parents=True)
         for write in plan.source_writes:
             relative = write.path.relative_to(plan.inventory.source_root)

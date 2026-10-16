@@ -4,9 +4,8 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from .agents import DIRECTORY_SLICES
 from .errors import LoadoutError
-from .harnesses import KNOWN_HARNESSES
+from .harnesses import DIRECTORY_SLICES, KNOWN_HARNESSES
 
 # The seven kinds of agent configuration — see docs/reference/config.md — plus
 # templates, which is a bundle of them rather than an eighth kind.
@@ -61,7 +60,7 @@ def _parse_overrides(
                 "\x00" in item
                 or path.is_absolute()
                 or path == PurePosixPath(".")
-                or any(p in {"..", ".git", ".loadout-state"} for p in path.parts)
+                or any(p in {"..", ".git"} for p in path.parts)
                 or (category in DIRECTORY_SLICES and len(path.parts) != 1)
                 or (
                     category == "module-config"

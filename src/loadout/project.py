@@ -1,14 +1,14 @@
 from __future__ import annotations
 
+import os
 import tomllib
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from .agents import DROID_AGENTS_DIRECTORY, SliceOutput
 from .errors import LoadoutError
 from .gitignore import escape
-from .harnesses import KNOWN_HARNESSES
+from .harnesses import DROID_AGENTS_DIRECTORY, KNOWN_HARNESSES, SliceOutput
 from .skill_policy import SkillPolicy, parse_skill_policies
 
 PROJECT_DIR = "loadout"
@@ -73,7 +73,7 @@ def _validate_skill_policies(policies: tuple[SkillPolicy, ...], harnesses: tuple
         extra = set(policy.agents) - set(harnesses)
         if extra:
             raise LoadoutError(
-                f"skills.{policy.name} names unconfigured agent(s) {', '.join(sorted(extra))}"
+                f"skills.{policy.name} names unconfigured harness(es) {', '.join(sorted(extra))}"
             )
 
 
@@ -259,48 +259,115 @@ def project_slices(harnesses: Iterable[str]) -> tuple[tuple[str, str, SliceOutpu
     )
 
 
-def refuse_escaping(root: Path, paths: Iterable[Path]) -> None:
-    """Project scope writes only inside the project. A link committed to the repository
-    can point anywhere, so every path is checked where it really lands."""
+def refuse_escaping(root: Path, paths: Iterable[Path], outputs: Iterable[Path] = ()) -> None:
+    """Project scope writes only to real paths inside the project, never under the git
+    dir or the source. A link committed to the repository can point anywhere, even
+    inside it, so no link may sit between the root and a path. The one exception is a
+    leaf link whose target is itself one of this render's `outputs` (CLAUDE.md ->
+    AGENTS.md)."""
     boundary = root.resolve()
-    escaping = [
-        (path, path.resolve()) for path in paths if not path.resolve().is_relative_to(boundary)
-    ]
-    if escaping:
-        listed = "; ".join(f"{path} resolves to {resolved}" for path, resolved in escaping)
+    written = frozenset(
+        relative for path in outputs if (relative := _within(path, root, boundary)) is not None
+    )
+    problems = [problem for path in paths if (problem := _unsafe(path, root, boundary, written))]
+    if problems:
         raise LoadoutError(
-            f"refusing to write outside the project: {listed}. Remove the symlink that "
-            "leads out of the repository, or point it inside it"
+            f"refusing to write {'; '.join(problems)}. Replace the link with a real file or "
+            "folder, or remove it"
         )
+
+
+# Never written, whatever a link says: git runs what is under its directory, and the
+# outputs are rendered from the source.
+PROTECTED = frozenset({".git", PROJECT_DIR})
+
+
+def _within(path: Path, root: Path, boundary: Path) -> PurePosixPath | None:
+    for base in (root, boundary):
+        if path.is_relative_to(base):
+            return PurePosixPath(path.relative_to(base).as_posix())
+    return None
+
+
+def _outside(target: Path, boundary: Path) -> str:
+    return "" if target.is_relative_to(boundary) else ", outside the project"
+
+
+def _unsafe(
+    path: Path, root: Path, boundary: Path, written: frozenset[PurePosixPath]
+) -> str | None:
+    relative = _within(path, root, boundary)
+    if relative is None:
+        return f"{path}: outside the project"
+    # Case-folded: macOS and Windows file systems treat .GIT as .git.
+    if relative.parts and relative.parts[0].casefold() in PROTECTED:
+        return f"{path}: under {relative.parts[0]}/, which loadout never writes"
+    for depth in range(1, len(relative.parts)):
+        link = root / Path(*relative.parts[:depth])
+        if link.is_symlink():
+            target = link.resolve()
+            return f"{path}: through the link {link} -> {target}{_outside(target, boundary)}"
+    leaf = root / Path(relative)
+    if not leaf.is_symlink():
+        return None
+    target = leaf.resolve()
+    if target.is_relative_to(boundary) and _within(target, root, boundary) in written:
+        return None
+    return f"{leaf} -> {target}, a link to a file this sync does not write" + _outside(
+        target, boundary
+    )
 
 
 def refuse_external_links(root: Path, excluded: frozenset[str] = frozenset()) -> None:
     """Project inputs are the repository's own: anything in `loadout/` that a link leads
-    out of the project would be read into committed output. Links are followed, so a
-    linked folder that lands inside the project is checked for what it holds; folders
-    in `excluded` are never read, so they are not entered."""
+    out of the project, or into its git dir, would be read into committed output. Links
+    are followed, so a linked folder that lands elsewhere inside the project is checked
+    for what it holds; a folder in `excluded` inside a skill's own tree is never read,
+    so it is not entered."""
     boundary = root.resolve()
     escaping: list[tuple[Path, Path]] = []
     visited: set[Path] = set()
-    pending = [root / PROJECT_DIR]
+    source = root / PROJECT_DIR
+    # Each path with where it lands and whether it is a folder. Only a link is resolved:
+    # anything else lands beside its folder's own landing place.
+    pending = [(source, source.resolve(), source.is_dir())]
     while pending:
-        current = pending.pop()
-        resolved = current.resolve()
-        if not resolved.is_relative_to(boundary):
+        current, resolved, directory = pending.pop()
+        if not resolved.is_relative_to(boundary) or _in_git_dir(resolved, boundary):
             escaping.append((current, resolved))
             continue
-        if not current.is_dir() or resolved in visited:
+        if not directory or resolved in visited:
             continue
         visited.add(resolved)
-        pending.extend(
-            entry for entry in sorted(current.iterdir(), reverse=True) if entry.name not in excluded
-        )
+        with os.scandir(current) as listing:
+            entries = sorted(listing, key=lambda entry: entry.name, reverse=True)
+        for entry in entries:
+            path = current / entry.name
+            if entry.name in excluded and _in_a_skill(path.relative_to(source).parts):
+                continue
+            if entry.is_symlink():
+                target = path.resolve()
+                pending.append((path, target, target.is_dir()))
+            else:
+                pending.append((path, resolved / entry.name, entry.is_dir(follow_symlinks=False)))
     if escaping:
         listed = "; ".join(f"{link} -> {target}" for link, target in escaping)
         raise LoadoutError(
-            f"refusing to read through a link out of the project: {listed}. Copy the file "
-            "into the repository, or point the link inside it"
+            f"refusing to read through a link out of the project or into .git: {listed}. Copy "
+            "the file into the repository, or point the link inside it"
         )
+
+
+def _in_git_dir(path: Path, boundary: Path) -> bool:
+    """Under the repository's git dir, which holds credentials and runs hooks."""
+    parts = path.relative_to(boundary).parts
+    return bool(parts) and parts[0].casefold() == ".git"
+
+
+def _in_a_skill(parts: tuple[str, ...]) -> bool:
+    """Below `skills/<name>/`, a project's own or a template's: the skill's name itself
+    is not inside its tree, so a skill named like an excluded folder is still read."""
+    return any(part == "skills" and len(parts) > index + 2 for index, part in enumerate(parts))
 
 
 def gitignore_entries(root: Path, written: Iterable[Path]) -> tuple[str, ...]:
@@ -330,17 +397,16 @@ def gitignore_entries(root: Path, written: Iterable[Path]) -> tuple[str, ...]:
 def project_outputs(
     config: ProjectConfig, harnesses: Iterable[str] | None = None
 ) -> tuple[str, ...]:
-    """Every in-repo path this project generates — what `.gitignore` needs.
+    """Every in-repo path this project's presets can generate, folders included: what
+    `check --staged` treats as generated, and what the early link check allows as a
+    link's target.
 
-    The instruction documents are included only when something could produce
-    them, because ignoring a file loadout does not generate is worse than not
-    ignoring one it does: an untracked hand-written `CLAUDE.md` would become
-    impossible to commit, and silently — `init`'s tracked-file note does not
-    fire on a file git is not tracking. A declared template counts without being
-    resolved, since resolution needs the machine config and can fail for reasons
-    a `.gitignore` should not care about.
+    The instruction documents count only when something could produce them, so a
+    hand-written `CLAUDE.md` in a project with no instructions stays the user's. A
+    declared template counts without being resolved, since resolution needs the
+    machine config and can fail for reasons neither caller should care about.
 
-    Deduplicated because three harnesses share one `AGENTS.md`, and
+    Deduplicated because four harnesses share one `AGENTS.md`, and
     order-preserving for the reason `dedupe()` is: never a set().
     """
     selected = tuple(config.harnesses if harnesses is None else harnesses)

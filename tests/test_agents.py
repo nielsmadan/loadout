@@ -4,8 +4,8 @@ from pathlib import PurePosixPath
 
 import pytest
 
-from loadout.agents import GLOBAL_PRESET, agent_slices
-from loadout.manifest import resolve_destination
+from loadout.destinations import resolve_destination
+from loadout.harnesses import GLOBAL_PRESET
 from loadout.permissions.renderers import RENDERERS
 from loadout.project import PROJECT_PRESET
 
@@ -25,7 +25,7 @@ def test_the_preset_covers_exactly_the_supported_agents() -> None:
 
 @pytest.mark.parametrize("agent", sorted(GLOBAL_PRESET))
 def test_every_renderer_named_by_the_preset_exists(agent: str) -> None:
-    for name, output in agent_slices(agent).items():
+    for name, output in GLOBAL_PRESET[agent].items():
         if output.renderer is not None:
             assert output.renderer in RENDERERS, f"{agent}.{name}"
 
@@ -33,7 +33,7 @@ def test_every_renderer_named_by_the_preset_exists(agent: str) -> None:
 @pytest.mark.parametrize("agent", sorted(GLOBAL_PRESET))
 def test_a_slice_is_written_somewhere_exactly_one_way(agent: str) -> None:
     """Either a destination or a staged output, never both and never neither."""
-    for name, output in agent_slices(agent).items():
+    for name, output in GLOBAL_PRESET[agent].items():
         assert (output.destination is None) != (output.output is None), f"{agent}.{name}"
 
 
@@ -41,7 +41,7 @@ def test_a_slice_is_written_somewhere_exactly_one_way(agent: str) -> None:
 def test_destinations_follow_the_harness_config_variable(agent: str) -> None:
     """ADR 0011's table lives here so a manifest never spells a variable out."""
     variable = RELOCATION_VARIABLE[agent]
-    for name, output in agent_slices(agent).items():
+    for name, output in GLOBAL_PRESET[agent].items():
         if output.destination is not None:
             assert output.destination.startswith(f"${{{variable}:-"), f"{agent}.{name}"
 
@@ -67,7 +67,7 @@ def test_every_destination_resolves_to_the_documented_default(
     exceptions = {("claude", "mcp"): "/.claude.json"}
 
     monkeypatch.delenv(RELOCATION_VARIABLE[agent], raising=False)
-    for name, output in agent_slices(agent).items():
+    for name, output in GLOBAL_PRESET[agent].items():
         if output.destination is None:
             continue
         resolved = str(resolve_destination(output.destination, f"{agent}.{name}"))
@@ -85,7 +85,7 @@ def test_a_set_variable_relocates_every_slice_of_that_agent(
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/moved")
     resolved = [
         str(resolve_destination(o.destination, "claude"))
-        for o in agent_slices("claude").values()
+        for o in GLOBAL_PRESET["claude"].values()
         if o.destination is not None
     ]
     # Trailing slash for the same reason as above: a root destination resolves to
@@ -147,9 +147,9 @@ def test_a_contributor_names_where_its_content_comes_from() -> None:
 def test_a_named_source_slice_is_one_the_agent_could_declare(agent: str) -> None:
     """`source_slice` names a slice, not an arbitrary key — otherwise a target
     would read fragments from a block key that means something else."""
-    for name, output in agent_slices(agent).items():
+    for name, output in GLOBAL_PRESET[agent].items():
         if output.source_slice is not None:
-            assert output.source_slice in ("settings", *agent_slices(agent)), f"{agent}.{name}"
+            assert output.source_slice in ("settings", *GLOBAL_PRESET[agent]), f"{agent}.{name}"
 
 
 @pytest.mark.parametrize("agent", sorted(PROJECT_PRESET))

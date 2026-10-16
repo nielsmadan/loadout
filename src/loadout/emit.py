@@ -6,10 +6,11 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from .agents import DIRECTORY_SLICES
 from .composition import HEADER, load_fragment, render
+from .destinations import resolve_destination
 from .documents import merge_documents
 from .errors import LoadoutError
+from .harnesses import DIRECTORY_SLICES, SHARED_SKILL_READERS
 from .manifest import (
     MANIFEST_NAME,
     InstructionTarget,
@@ -21,10 +22,9 @@ from .manifest import (
     load_manifest,
     load_profile,
     manifest_path,
-    resolve_destination,
 )
 from .module_config import MODULE_CONFIG_SUBDIR, discover_module_config
-from .output import Copied, Merged, Output
+from .output import Copied, Merged, Output, output_record_paths
 from .permissions.merge import merge_rules
 from .permissions.renderers import (
     RENDERERS,
@@ -36,6 +36,7 @@ from .permissions.renderers import (
     TextSpec,
     ValueSpec,
     ValuesSpec,
+    evicted_keys,
     render_pi_project,
 )
 from .permissions.rules import EMPTY_RULES, Rules, parse_rules
@@ -46,6 +47,7 @@ from .project import (
     ProjectConfig,
     load_project_config,
     project_config_path,
+    project_outputs,
     project_slices,
     refuse_escaping,
     refuse_external_links,
@@ -79,7 +81,6 @@ from .toml_paths import overlapping_keys
 PERMISSIONS_SOURCE = "permissions.toml"
 PROJECT_LOCAL_SOURCE = "permissions.local.toml"
 PROJECT_DOCUMENTS = {"hooks": "hooks.json", "plugins": "plugins.json"}
-__all__ = ["Copied", "Merged", "Output"]
 
 
 @dataclass(frozen=True)
@@ -88,7 +89,7 @@ class RenderContext:
     template that is not vendored comes from, and how a manifest's sources are found."""
 
     destination: Callable[[str, str], Path] = resolve_destination
-    upstream: Callable[[str, Path | None], ResolvedItem] = resolve_upstream_template
+    upstream: Callable[[str], ResolvedItem] = resolve_upstream_template
     sources: SourceParser = parse_sources
 
 
@@ -395,6 +396,7 @@ def _attach_records(
         return document
 
     owned = document.owned
+    evicted = document.evicted
     records: list[tuple[Path, str]] = []
     for target, _, content in contributors:
         spec = _resolve_renderer(target.renderer, f"permissions.{target.name}")
@@ -413,10 +415,11 @@ def _attach_records(
         if clash:
             raise LoadoutError(f"{path}: {sorted(clash)} is already owned by another slice")
         owned |= owned_now(recorded, present)
+        evicted |= evicted_keys(content)
         records.append((path, render_record(present)))
     if not records:
         return document
-    return Merged(owned, document.document, tuple(records), document.format)
+    return Merged(owned, document.document, tuple(records), document.format, evicted)
 
 
 def compose_permission_document(
@@ -520,6 +523,15 @@ def selected_target(target: InstructionTarget | PermissionTarget, profile: str) 
     return target.profile is None or target.profile == profile
 
 
+@dataclass(frozen=True)
+class _Expansion:
+    """What a render has produced so far, and which source claimed each path: one
+    expansion step adds to both."""
+
+    outputs: dict[Path, Output]
+    claimed: dict[Path, str]
+
+
 def _claim(path: Path, owner: str, claimed: dict[Path, str]) -> None:
     previous = claimed.get(path)
     if previous is not None:
@@ -580,10 +592,10 @@ def _expand(
     target: InstructionTarget | PermissionTarget,
     render_for: Callable[[Path], str],
     root: Path,
-    state: tuple[dict[Path, Output], dict[Path, str]],
+    state: _Expansion,
     context: RenderContext,
 ) -> None:
-    outputs, claimed = state
+    outputs, claimed = state.outputs, state.claimed
     owner = _owner_label(target)
     # own_output is claimed too, not just tracked in outputs, so a later target's
     # destination that happens to name this exact path collides like any other.
@@ -610,7 +622,7 @@ def _owns_its_file(target: PermissionTarget) -> bool:
 
 
 def _rule_less(renderer: str, rules: Rules) -> bool:
-    """Whether a whole permission file would hold no rule, and so is not written (P-35).
+    """Whether a whole permission file would hold no rule, and so is not written.
 
     Global Pi's file is not among these: its empty render still makes `bash` ask.
     """
@@ -638,9 +650,10 @@ def render_global(
 
     outputs: dict[Path, Output] = {}
     claimed: dict[Path, str] = {}
+    expansion = _Expansion(outputs, claimed)
     for t in manifest.targets:
         if selected_target(t, profile):
-            _expand(t, _fixed(render(t, manifest)), root, (outputs, claimed), context)
+            _expand(t, _fixed(render(t, manifest)), root, expansion, context)
 
     selected_permissions = [t for t in manifest.permissions if selected_target(t, profile)]
     if selected_permissions:
@@ -677,12 +690,12 @@ def render_global(
                 compose_permission_document(contributors, rules, path), contributors, manifest
             )
 
-    _expand_every_skill(manifest, (outputs, claimed), context)
-    _expand_agents(manifest, (outputs, claimed), context)
+    _expand_every_skill(manifest, expansion, context)
+    _expand_agents(manifest, expansion, context)
     # After skills and agents, so a module-config path that lands on a rendered
     # destination collides with it rather than depending on which ran first.
     for module_config_target in manifest.module_config:
-        _expand_module_config(module_config_target, manifest, (outputs, claimed), context)
+        _expand_module_config(module_config_target, manifest, expansion, context)
     return outputs
 
 
@@ -713,7 +726,7 @@ def skill_trees(manifest: Manifest) -> tuple[Skill, ...]:
 
 def _expand_every_skill(
     manifest: Manifest,
-    state: tuple[dict[Path, Output], dict[Path, str]],
+    state: _Expansion,
     context: RenderContext,
 ) -> None:
     if not manifest.skills:
@@ -728,7 +741,7 @@ def _expand_skills(
     target: SkillsTarget,
     manifest: Manifest,
     trees: tuple[Skill, ...],
-    state: tuple[dict[Path, Output], dict[Path, str]],
+    state: _Expansion,
     context: RenderContext,
 ) -> None:
     available = tuple(item.harness for item in manifest.skills)
@@ -777,7 +790,7 @@ def source_agents(manifest: Manifest) -> tuple[Agent, ...]:
 
 def _expand_agents(
     manifest: Manifest,
-    state: tuple[dict[Path, Output], dict[Path, str]],
+    state: _Expansion,
     context: RenderContext,
 ) -> None:
     agents = source_agents(manifest) if manifest.agents else ()
@@ -792,18 +805,16 @@ def _write_agents(
     agents: tuple[Agent, ...],
     harness: str,
     base: Path,
-    state: tuple[dict[Path, Output], dict[Path, str]],
+    state: _Expansion,
 ) -> None:
-    outputs, claimed = state
+    outputs, claimed = state.outputs, state.claimed
     for agent in agents:
         path = base / agent_file_name(agent.name, harness)
         _claim(path, f"{harness}.{AGENTS_SUBDIR}", claimed)
         outputs[path] = render_agent(agent, harness)
 
 
-def _expand_project_agents(
-    root: Path, config: ProjectConfig, state: tuple[dict[Path, Output], dict[Path, str]]
-) -> None:
+def _expand_project_agents(root: Path, config: ProjectConfig, state: _Expansion) -> None:
     agents = project_agents(root)
     for harness, slice_name, spec in project_slices(config.harnesses):
         if slice_name == AGENTS_SUBDIR and spec.output is not None:
@@ -851,10 +862,10 @@ def module_config_files(manifest: Manifest, agent: str) -> tuple[tuple[PurePosix
 def _expand_module_config(
     target: ModuleConfigTarget,
     manifest: Manifest,
-    state: tuple[dict[Path, Output], dict[Path, str]],
+    state: _Expansion,
     context: RenderContext,
 ) -> None:
-    outputs, claimed = state
+    outputs, claimed = state.outputs, state.claimed
     files = module_config_files(manifest, target.harness)
     if not files:
         return
@@ -897,12 +908,19 @@ def render_all(
 def render_project(root: Path, context: RenderContext | None = None) -> dict[Path, Output]:
     refuse_external_links(root, EXCLUDED_DIRECTORIES)
     config = load_project_config(project_config_path(root))
+    # Before any output is read: a shared document's keys loadout does not own are read
+    # from disk, and parsing a linked one would tell what its target holds.
+    shared = [
+        root / spec.output
+        for _, _, spec in project_slices(config.harnesses)
+        if spec.preserve_foreign and spec.output is not None
+    ]
+    refuse_escaping(root, shared, [root / output for output in project_outputs(config)])
     templates = project_templates(root, config, context or RenderContext())
     outputs = _render_project_slices(root, config, templates)
     # Before anything compares or shows these: a diff of a file outside the project
     # would print it.
-    records = (r for c in outputs.values() if isinstance(c, Merged) for r, _ in c.records)
-    refuse_escaping(root, (*outputs, *records))
+    refuse_escaping(root, (*outputs, *output_record_paths(outputs)), outputs)
     return outputs
 
 
@@ -998,13 +1016,14 @@ def _render_project_slices(
     # prose does not stop anyone — without this the second agent silently
     # overwrote the first and the render succeeded.
     claimed: dict[Path, str] = {}
+    expansion = _Expansion(outputs, claimed)
     # Grouped by path, the way render_global groups its contributors: OpenCode's
     # mcp slice writes the "mcp" key into the same opencode.json the permissions
     # slice writes "permission" into, so both must reach compose_permission_document
     # together rather than each overwriting the other's call.
     groups: dict[Path, list[tuple[PermissionTarget, dict[str, Any], dict[str, Any]]]] = {}
     _check_skill_agents(trees, config.skill_policies, project_agents(root))
-    _expand_project_catalog(root, config, trees, (outputs, claimed))
+    _expand_project_catalog(root, config, trees, expansion)
     for agent, slice_name, spec in project_slices(config.harnesses):
         if spec.output is None:
             continue
@@ -1057,7 +1076,7 @@ def _render_project_slices(
         else:
             _claim(path, owner, claimed)
         group.append((contributor, residual, content))
-    _expand_project_agents(root, config, (outputs, claimed))
+    _expand_project_agents(root, config, expansion)
     for path, contributors in groups.items():
         # No records here: a record is tied to a source-slice fragment, and project
         # scope renders from the project's own config rather than the global
@@ -1126,11 +1145,11 @@ def _write_skill(
     skill: Skill,
     agent: str,
     base: Path,
-    state: tuple[dict[Path, Output], dict[Path, str]],
+    state: _Expansion,
     *,
     render: bool = True,
 ) -> None:
-    outputs, claimed = state
+    outputs, claimed = state.outputs, state.claimed
     directory = base / skill.name
     document = directory / SKILL_DOCUMENT
     _claim(document, f"{agent}.skills", claimed)
@@ -1145,14 +1164,14 @@ def _expand_project_catalog(
     root: Path,
     config: ProjectConfig,
     trees: tuple[Skill, ...],
-    state: tuple[dict[Path, Output], dict[Path, str]],
+    state: _Expansion,
 ) -> None:
     available = tuple(agent for agent in config.harnesses if "skills" in PROJECT_PRESET[agent])
     for skill in trees:
         selected = selected_skill_agents(skill.name, available, config.skill_policies)
         should_render = render_skill_for(skill.name, config.skill_policies)
         remaining = list(selected)
-        convention = frozenset({"codex", "opencode", "pi"})
+        convention = frozenset(SHARED_SKILL_READERS)
         if "codex" in selected:
             shared = convention.intersection(selected)
             variants = {

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from loadout.emit import module_config_files, skill_trees
+from loadout.emit import module_config_files, render_all, skill_trees
 from loadout.errors import LoadoutError
 from loadout.files import check_all
 from loadout.manifest import Manifest
@@ -85,7 +85,7 @@ def test_declared_overrides_reach_sync_and_check(tmp_path: Path, fake_home: Path
     assert (output / "module.json").read_bytes() == b"personal\n"
     assert (output / "module.json").stat().st_mode & 0o777 == 0o751
     assert (output / "retained.json").read_text() == "retained"
-    assert check_all(tmp_path) == []
+    assert check_all(render_all(tmp_path)) == []
 
 
 @pytest.mark.parametrize("category", ["skills", "module-config"])

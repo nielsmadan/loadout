@@ -5,9 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from loadout.agents import SliceOutput
-from loadout.emit import CLAUDE_IMPORT, Copied, render_all, render_project
+from loadout.emit import CLAUDE_IMPORT, render_all, render_project
 from loadout.errors import LoadoutError
+from loadout.harnesses import SliceOutput
+from loadout.output import Copied
 from loadout.project import PROJECT_PRESET
 
 EXPECTED = Path(__file__).parent / "fixtures" / "expected" / "project"

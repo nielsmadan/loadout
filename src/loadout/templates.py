@@ -22,12 +22,13 @@ import tomlkit
 
 from .bundled_templates import BUNDLED, STARTERS, bundled_template
 from .errors import LoadoutError
+from .gitignore import replace_text
 from .machine import load_machine_config, machine_config_path
 from .manifest import load_manifest, manifest_path
 from .output import no_symlinks as _no_symlinks
-from .project import PROJECT_DIR, load_project_config, project_config_path
+from .project import PROJECT_DIR, load_project_config, project_config_path, refuse_external_links
 from .resolve import ResolvedItem, Slice
-from .skills import excluded
+from .skills import EXCLUDED_DIRECTORIES, excluded
 from .sources import Source
 from .template_catalog import load_catalog, template_name
 from .toml_paths import apply_paths, key_name
@@ -97,6 +98,16 @@ def vendored_path(root: Path, name: str) -> Path:
     return manifest if manifest.exists() else directory
 
 
+def contained(root: Path, name: str | None = None) -> None:
+    """What every template command checks before it reads or writes `loadout/`: sync's
+    input containment, and no link at all on the way to the config or the copy, since
+    both are written and a copy is replaced wholesale."""
+    refuse_external_links(root, EXCLUDED_DIRECTORIES)
+    _no_symlinks(project_config_path(root), root)
+    if name is not None:
+        _no_symlinks(vendored_path(root, name), root)
+
+
 class TemplateNotFound(LoadoutError):
     """No vendored copy, source or bundled template answers to the name."""
 
@@ -105,7 +116,7 @@ class NoGlobalSource(LoadoutError):
     """No machine config, so no declared source can offer a template."""
 
 
-def declared_sources(config_path: Path | None = None) -> tuple[Source, ...]:
+def declared_sources() -> tuple[Source, ...]:
     """Every source the machine's global manifest declares that offers templates.
 
     Project scope carries no `[[source]]` list of its own, and must not: a path in
@@ -113,7 +124,7 @@ def declared_sources(config_path: Path | None = None) -> tuple[Source, ...]:
     name resolves through the machine config, which is where this machine's paths
     already live (ADR 0010).
     """
-    path = machine_config_path() if config_path is None else config_path
+    path = machine_config_path()
     machine = load_machine_config(path)
     if machine is None:
         raise NoGlobalSource(
@@ -126,11 +137,7 @@ def declared_sources(config_path: Path | None = None) -> tuple[Source, ...]:
 
 
 def resolve_template(
-    name: str,
-    root: Path,
-    config_path: Path | None = None,
-    *,
-    upstream: Callable[[str, Path | None], ResolvedItem] | None = None,
+    name: str, root: Path, *, upstream: Callable[[str], ResolvedItem] | None = None
 ) -> ResolvedItem:
     """A template name, resolved the way a fragment name is — one level up.
 
@@ -144,7 +151,7 @@ def resolve_template(
         return ResolvedItem(name=name, source=VENDORED, path=local)
 
     try:
-        return (upstream or resolve_upstream_template)(name, config_path)
+        return (upstream or resolve_upstream_template)(name)
     except (TemplateNotFound, NoGlobalSource) as error:
         configured = not isinstance(error, NoGlobalSource)
         raise LoadoutError(_not_found(name, root, configured=configured)) from error
@@ -191,13 +198,12 @@ def _not_found(name: str, root: Path, *, configured: bool) -> str:
     return " ".join(sentences)
 
 
-def resolve_upstream_template(name: str, config_path: Path | None = None) -> ResolvedItem:
+def resolve_upstream_template(name: str) -> ResolvedItem:
     template_name(name)
-    path = machine_config_path() if config_path is None else config_path
     bundled = bundled_template(name)
-    if bundled is not None and not path.exists():
+    if bundled is not None and not machine_config_path().exists():
         return _bundled_template(name, bundled)
-    sources = declared_sources(config_path)
+    sources = declared_sources()
     bare = name
     if "/" in name:
         qualifier, bare = name.split("/")
@@ -243,23 +249,25 @@ def _bundled_template(name: str, path: Path) -> ResolvedItem:
 def declare(root: Path, name: str) -> bool:
     """Add a name to the project config, preserving its TOML syntax tree."""
     path = project_config_path(root)
+    _no_symlinks(path, root)
     config = load_project_config(path)
     if name in config.templates:
         return False
     template_name(name)
     document = tomlkit.parse(path.read_text(encoding="utf-8"))
     document["templates"] = [*config.templates, name]
-    path.write_text(tomlkit.dumps(document), encoding="utf-8")
+    replace_text(path, tomlkit.dumps(document), root)
     return True
 
 
 def record_hash(root: Path, name: str, digest: str) -> None:
     """Record the content hash of a vendored copy, replacing any earlier one."""
     path = project_config_path(root)
+    _no_symlinks(path, root)
     key = key_name(("template", name, "vendored"))
     document = f"[{key_name(('template', name))}]\nvendored = {json.dumps(digest)}\n"
-    path.write_text(
-        apply_paths(path.read_text(encoding="utf-8"), frozenset({key}), document), encoding="utf-8"
+    replace_text(
+        path, apply_paths(path.read_text(encoding="utf-8"), frozenset({key}), document), root
     )
 
 
@@ -280,10 +288,9 @@ def remove_vendored(root: Path, name: str) -> None:
 def unrecord_hash(root: Path, name: str) -> None:
     """Drop the `[template.<name>]` block so the template resolves from a source."""
     path = project_config_path(root)
+    _no_symlinks(path, root)
     key = key_name(("template", name))
-    path.write_text(
-        apply_paths(path.read_text(encoding="utf-8"), frozenset({key}), ""), encoding="utf-8"
-    )
+    replace_text(path, apply_paths(path.read_text(encoding="utf-8"), frozenset({key}), ""), root)
 
 
 def copy_tree(source: Path, destination: Path) -> None:

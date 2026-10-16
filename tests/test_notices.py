@@ -89,7 +89,7 @@ def test_a_harness_addressing_by_source_skips_the_marketplace_check() -> None:
 def test_a_notice_names_its_agent_and_slice() -> None:
     found = notices_for("codex", "hooks", {"Nope": []})
 
-    assert found[0].agent == "codex"
+    assert found[0].owner == "codex"
     assert found[0].slice == "hooks"
     assert found[0].render() == "codex.hooks: Nope is not in this harness's known event list"
 
@@ -106,7 +106,7 @@ def test_a_notice_is_not_drift() -> None:
     disagrees with its source and `check` exits 1. A notice means the source
     itself asked for something the harness cannot carry — the output is correct
     and the exit code must not move."""
-    assert Notice(agent="claude", slice="hooks", message="x").render().startswith("claude.hooks:")
+    assert Notice(owner="claude", slice="hooks", message="x").render().startswith("claude.hooks:")
 
 
 @pytest.mark.parametrize("flag", OPENCODE_SKILL_FLAGS)

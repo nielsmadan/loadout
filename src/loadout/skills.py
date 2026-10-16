@@ -135,6 +135,11 @@ def discover_skills(skills_root: Path) -> tuple[Skill, ...]:
     local: dict[str, Skill] = {}
 
     for entry in sorted(skills_root.iterdir()):
+        if entry.name in EXCLUDED_DIRECTORIES:
+            raise LoadoutError(
+                f"{entry}: a skill may not be named {entry.name!r}, a folder loadout never "
+                "copies; rename it"
+            )
         if not entry.is_dir():
             continue
         document = entry / SKILL_DOCUMENT

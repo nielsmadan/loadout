@@ -109,6 +109,12 @@ declared template changes it to vendored, copying the tree and recording its has
 Bare `template add` lists every template this machine can resolve and prompts for a name and
 a mode; without a terminal it requires both.
 
+Every `template` command holds to sync's containment before it reads anything: a link in
+`loadout/` that leads out of the project is refused, and so is any link on the way to
+`loadout/config.toml` or `loadout/templates/<name>`, even one that stays inside the project,
+since those are the paths the commands write and replace. A template may not be named like a
+folder loadout never reads, such as `node_modules`.
+
 Vendored template content stays under `loadout/templates/` and is **never merged into the
 project's own fragments**. If a template's content were mixed into yours, nothing could later distinguish
 template-owned content from content you wrote, and sync would be impossible — which is the
@@ -177,7 +183,7 @@ rules retain deny-wins and project-tier precedence.
 
 Project module configuration has no destination table. A Droid project hook that names a support
 script therefore cannot carry that script through Loadout yet; keep the script at its harness path.
-This is the known project module-config limitation tracked with P-32.
+This is a known limitation of project module configuration.
 
 Catalog manifests remain selected lists rather than inherited manifests:
 `template_catalog.py:_load_catalog` accepts only the four category lists and rejects `extends`.
@@ -276,11 +282,11 @@ The cost is honest and worth stating: a template fix that must reach twelve modi
 twelve manual merges. If that becomes the common case rather than the rare one, that is the
 signal to build three-way.
 
-## `check` reports divergence; it does not fail on it
+## `check` and `sync` report divergence; they do not fail on it
 
-A vendored copy is source, so a user editing it is not drift. `loadout check` notes a copy that
-no longer matches its recorded hash — or has none recorded — on stdout and leaves its exit code
-alone; real drift still exits 1. The two are separate reports because the second is the *absence*
+A vendored copy is source, so a user editing it is not drift. `loadout check` and `loadout sync`
+note a copy that no longer matches its recorded hash — or has none recorded — on stdout, as
+`note: project.templates: …`, and leave their exit code alone; real drift still exits 1. The two are separate reports because the second is the *absence*
 of the evidence the first is measured against: `template_divergence` can only speak about copies
 it has a base for, so a missing hash read there as "no divergence" rather than "cannot say". See [0014](../decisions/0014-a-vendored-template-is-source-not-output.md), which argues
 that a vendored template falls outside `check`'s jurisdiction by definition rather than by

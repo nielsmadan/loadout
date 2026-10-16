@@ -164,3 +164,58 @@ def test_loadouts_own_spelling_still_round_trips(name: str) -> None:
 
     assert extraction.rules == rules
     assert SCOPES[name](extraction.rules) == document
+
+
+def test_a_null_byte_is_refused_rather_than_crashing() -> None:
+    """Review 2, 2.12: `ast.parse` raises ValueError for one, which escaped as exit 4."""
+    with pytest.raises(LoadoutError, match="not valid Starlark"):
+        extract("codex", 'prefix_rule(pattern=["ls"])\n\0\n')
+
+
+@pytest.mark.parametrize(
+    "document",
+    ["x = " + "1 + " * 200000 + "1\n", "x = " + "not " * 100000 + "1\n"],
+    ids=["RecursionError", "MemoryError"],
+)
+def test_a_parser_exhausted_by_the_file_is_refused(document: str) -> None:
+    with pytest.raises(LoadoutError, match="not valid Starlark"):
+        extract("codex", document)
+
+
+def test_a_pattern_that_is_not_valid_unicode_is_refused() -> None:
+    """A lone surrogate parsed fine and crashed adoption when the source was encoded."""
+    with pytest.raises(LoadoutError, match="not valid Unicode"):
+        extract("codex", 'prefix_rule(pattern=["ls\\udc80"])\n')
+
+
+def test_the_alternatives_are_capped_for_the_whole_file() -> None:
+    """300 rules of 1024 alternatives each passed the per-rule cap and ran for minutes."""
+    document = 'prefix_rule(pattern=[["a", "b"], ["c", "d"]])\n' * 300
+
+    with pytest.raises(LoadoutError, match="1200 token lists"):
+        extract("codex", document)
+
+
+def _union(count: int, stem: str) -> str:
+    return "[" + ", ".join(f'"{stem}{index}"' for index in range(count)) + "]"
+
+
+def test_a_rule_of_exactly_the_cap_adopts() -> None:
+    """Review 2, batch 5 7: the cap's value was unpinned on both sides."""
+    extraction = extract("codex", f"prefix_rule(pattern=[{_union(32, 'a')}, {_union(32, 'b')}])\n")
+
+    assert len(extraction.rules.allow) == 1024
+
+
+def test_a_rule_one_past_the_cap_is_refused() -> None:
+    document = f"prefix_rule(pattern=[{_union(25, 'a')}, {_union(41, 'b')}])\n"
+
+    with pytest.raises(LoadoutError, match="1025 token lists"):
+        extract("codex", document)
+
+
+def test_a_file_one_past_the_cap_is_refused() -> None:
+    document = f"prefix_rule(pattern=[{_union(1024, 'a')}])\nprefix_rule(pattern=['b'])\n"
+
+    with pytest.raises(LoadoutError, match="1025 token lists"):
+        extract("codex", document)

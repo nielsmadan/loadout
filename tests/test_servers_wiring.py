@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from loadout.agents import GLOBAL_PRESET
-from loadout.emit import Merged, render_global, render_project
+from loadout.emit import render_global, render_project
+from loadout.harnesses import GLOBAL_PRESET
+from loadout.output import Merged
 from loadout.templates import vendored_path
 
 

@@ -87,8 +87,8 @@ def test_pi_seeds_bash_with_the_stated_default_and_leaves_mcp_alone() -> None:
 
 
 def test_only_the_declared_renderers_seed_a_catch_all() -> None:
-    """`CATCH_ALL_RENDERERS` is read by extraction and by the notice, so it has to
-    match what the renderers actually do. Derived by rendering, not restated."""
+    """`CATCH_ALL_RENDERERS` is read by the notice, so it has to match what the
+    renderers actually do. Derived by rendering, not restated."""
     seeds = set()
     for name, spec in RENDERERS.items():
         if not isinstance(spec, JsonSpec):

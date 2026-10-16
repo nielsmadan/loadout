@@ -158,30 +158,35 @@ track is private too, since it may hold something personal, while one Git tracks
 team's history and goes into committed source. Everything else goes into the source it would go to
 anyway, in either scope.
 
-What a file contains does not change where it goes (D-07): a secret stays in the source, adopted
+What a file contains does not change where it goes ([0030](../decisions/0030-adoption-rulings-recorded.md)): a secret stays in the source, adopted
 as it is, and init warns about it. The preview lists each committable source file that
 looks like it holds one, as `Contains a secret: <path>: <reason>`, `--json` lists the same under
 `secrets` (`path`, `reason`), and the closing message says the source's remote should stay private
 and that the `/loadout` skill can move a secret into an environment variable. The reason names what
-was found, never the value. A file looks like it holds a secret when it has:
+was found, never the value, and the preview's render diff shows each such value as
+`<redacted>`. One vocabulary names a secret wherever it sits (`SECRET_NAMES` in
+`credentials.py`): a key, a flag or a `name = value` label whose last words are token, API key,
+secret, password, passphrase, pass, credential(s), authorization, auth, access key, private key or
+PAT, so `apiKey`, `X-API-KEY`, `--api-key` and `api_key =` all count, and `--api-key-file`,
+`max_tokens` or `auth_env_var` do not. A file looks like it holds a secret when it has:
 
-- a key named like a token, password, secret, API key or authorization holding a literal value;
+- such a key, or such a label in text, holding a literal value;
 - a literal value under `env`, `environment`, `headers` or `http_headers`, other than a number, a
   switch such as `true` or `on`, a path, or a name that never holds a secret (`PATH`, `*_ENV`,
   `DISABLE_*`, `Content-Type` and the like);
-- the value after, or given inline to, a flag naming a secret, whole word: `--token`,
-  `--api-key`, `--secret`, `--password`, `--access-key`, `--private-key` and the like, in an
-  argument list or a command line. `--api-key-file`, `--max-tokens` or `--keymap` name something
-  else, and a value starting with `-` is the next flag;
+- the value after, or given inline to, such a flag (`--token`, `--api-key`, `--auth`), in an
+  argument list or a command line; a value starting with `-` is the next flag;
 - a value shaped like a secret anywhere in the file: a PEM private key; a GitHub (`ghp_`,
   `github_pat_` and kin), GitLab, npm, OpenAI/Anthropic `sk-`, AWS `AKIA`/`ASIA`, Google `AIza`,
   Slack or JWT token; credentials or a long token in a URL; a key in a URL query; an
   `Authorization: Basic` credential; a user:password given to an HTTP client with `-u`; or an
   `aws_secret_access_key`.
 
-A reference such as `$API_KEY` or `${API_KEY}`, and a documentation placeholder ending in
-`EXAMPLE` or made of x's, is not a secret. The check is a heuristic: it can miss a secret and can
-flag a value that is not one. A private original is listed as
+A reference such as `$API_KEY`, `${API_KEY}`, `{env:API_KEY}` or `$env:API_KEY`, a number, a
+switch, a path, and a documentation placeholder ending in `EXAMPLE` or made of x's after its prefix
+(`AKIAXXXXXXXXXXXXXXXX`), is not a secret. A binary file (a NUL in its first 8 KiB) is not
+scanned, and only the first MiB of any other file is. The check is a heuristic: it can miss a
+secret and can flag a value that is not one. A private original is listed as
 `Private (stays on this machine): <path>: <reason>`, with the reason in `--json` as
 `private_reason`: its name, Git ignoring it, or Git not tracking it.
 
@@ -212,21 +217,33 @@ a directory comes back only if everything in that directory is init's; otherwise
 directory stays as it is and is reported, with the target the link used to have, rather than being
 emptied around a file the harness wrote since. A source repository init created is treated the
 same way, so a commit made in it since keeps it whole. The Git index counts as init's while it
-differs from its before-image only by the generated files init untracked, and a repository init
-created counts as init's while it has no commit and no index; both are declared before Git runs,
-so a run killed straight after still restores them. Every path is checked before anything is
+differs from its before-image only by the generated files init untracked; it is declared before Git
+runs, so a run killed straight after still restores it. A repository init created counts as init's
+only while every entry under its `.git` is one init recorded and still as init left it, so a hook, a
+remote or a commit added since keeps the whole repository. What `git init` writes is recorded
+before it runs, from a run of it in scratch, so a kill straight after still removes it. While the
+repository has no index and no ref, what read-only git writes on its own (fsmonitor's
+`fsmonitor--daemon*`, `FETCH_HEAD`, `packed-refs`, `info/refs`, `objects/info/*` and lock files)
+does not count against it, so a `git status` or a fetch never makes a clean undo impossible. Every path is checked before anything is
 removed: one now reached through a link that was added since, such as a project moved behind a
 symlink, is kept rather than written through. The write record loses only the entries for paths
-restore put back, so a file synced since init is still known as loadout's.
+restore put back, so a file synced since init is still known as loadout's; a record that no longer
+parses is left as it is, and kept. Every write of the record is a rename over it, so a killed sync
+never leaves it torn.
 
 - A failure restores the backup straight away and exits 1, naming it and what it kept.
 - A killed init leaves the marker. The next `init` offers the restore, or exits 2 with
-  `"status": "interrupted"` under `--json` or without a terminal.
+  `"status": "interrupted"` under `--json` or without a terminal. A restore sets the marker again
+  before its first change, so a killed restore is offered the same way.
 - `loadout init restore --yes` restores the interrupted backup, or else the latest completed one.
+  A backup counts only once its run began applying, which init marks with an `applied` file, and
+  only with a readable manifest: a run killed before either changed nothing, and its directory is
+  passed over rather than hiding the backup before it.
 - A backup is spent once restored. With nothing kept it is deleted, and restoring again reports
-  there is nothing to restore. With something kept it shrinks to the kept paths, so the undo can
-  be finished once they are dealt with and can never replay over them. Only the latest completed
-  backup is kept. A backup written by another version of loadout is refused, naming the directory
+  there is nothing to restore. With something kept it shrinks to the kept paths and the write
+  records it updates, so the undo can be finished once they are dealt with and can never replay
+  over them. A backup missing a write record's image is refused before anything changes. Only the
+  latest completed backup is kept. A backup written by another version of loadout is refused, naming the directory
   to delete.
 
 Init commits nothing and stages nothing. In a project it never creates a repository, and the only
@@ -247,7 +264,8 @@ outside the project or source root, each inside the harness root init read.
 ## Symlinked deployments
 
 A global harness root that is a symlink, such as `~/.claude` pointing into a dotfiles repo, is
-adopted, and so are stow-style per-file links inside it. Adoption **de-links**
+adopted, and so are stow-style per-file links, inside it or inside a real harness root such as a
+`~/.codex/config.toml` linking into dotfiles. Adoption **de-links**
 them; see [0023](../decisions/0023-adoption-de-links-a-symlinked-deployment.md):
 
 - loadout's outputs become real files at the harness path, each starting as the file it was and

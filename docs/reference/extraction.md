@@ -82,8 +82,9 @@ parsed, not matched line by line, and every statement ends one of three ways:
   one before it writes anything.
 - **refused:** anything else stops `init` with the file, the line and the statement quoted. That
   covers an unknown parameter or decision, a positional argument, a value that is not a literal, a
-  statement other than `prefix_rule` (`network_rule`, a variable), invalid syntax, a union whose
-  alternatives multiply to more than 1,024 entries, and a rule the renderer would write back
+  statement other than `prefix_rule` (`network_rule`, a variable), invalid syntax or a file too
+  deeply nested to parse, a string that is not valid Unicode, a union whose alternatives multiply
+  to more than 1,024 entries or a file whose rules add up to more, and a rule the renderer would write back
   differently: at global scope a token holding whitespace, a `*` or a
   leading `=`. A rule that silently vanished could be a `forbidden` one, which would loosen the
   policy.
@@ -189,43 +190,3 @@ back identically, so the document property holds and the source differs only in 
 - A stated `default = "ask"` renders exactly what an unstated key renders, so it reads back
   unstated. Only the spelling is lost; across tiers it also loses a vote, which is why
   `parse_rules` keeps the two apart even though one document holds both.
-
-## Divergence is reported, never unioned
-
-`merge_extractions` reconciles several harnesses into one source. Where they disagree about an
-entry, no single source rule reproduces all of them, and taking the permissive reading would
-render a **wider** permission set than what was on disk — a privilege escalation performed by an
-onboarding tool. The entry is withheld and named in the report for a person to resolve.
-
-Silence counts as disagreement, but only from a harness that could have spoken. `CAPABILITIES`
-declares, per renderer, whether its document can state a shell rule, an MCP rule, a glob, and a
-catch-all default; Codex and Droid are not voters on globs or exact entries, and the MCP-only
-renderers are not voters on shell entries. Counting their silence would suppress rules every harness that can express them
-agrees on.
-
-Only OpenCode and Pi vote on the default, because only they *author* one: Claude's
-`permissions.defaultMode` is preserved from the base rather than written, and Codex's
-`approval_policy` is in a file loadout does not write at all. Disagreement is reported but
-**not** withheld the way an entry is — withholding an entry drops it to the catch-all, while
-withholding the catch-all drops it to `ask`, the middle verdict, so a stated `deny` would come
-back a prompt. It settles on the strictest stated verdict instead.
-
-A dropped entry falls through to the catch-all, so while any shell entry is withheld the
-catch-all is not stated looser than the `ask` it used to fall through to. Without that, adopting
-a pair of files that disagree about one deny renders that command executable.
-
-Codex and Droid write an exact deny `=x` as a deny on `x`, so their `x` is not drift when every
-harness that can match exactly is silent on `x` and denies `=x`: the merged `=x` renders the
-same prefix back. If any of those also states `x` itself, the disagreement is real and reported.
-
-A name with no declared capability is an error rather than a non-voter. A harness silently
-excluded from the vote cannot veto, so adding a renderer would quietly widen the source.
-
-A harness's verdict is every category it put the entry in — `allow+deny`, not whichever came
-last — because a source may legitimately list an entry twice; `tests/fixtures/permissions.toml`
-does, to demonstrate last-match-wins.
-
-**Reachability.** As with the order loss above, nothing loadout renders can exercise that last
-case — `merge_rules` leaves no entry in two categories — and as above, that is a fact about
-loadout's output rather than about extraction's input. It is pinned against constructed
-`Extraction(...)` values for exactly that reason.

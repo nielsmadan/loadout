@@ -25,7 +25,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from fixture_root import EXPECTED, FIXTURES, build_project_root, build_root
-from loadout.emit import Copied, Merged, declared_profiles, render_global, render_project
+from loadout.emit import declared_profiles, render_global, render_project
+from loadout.output import Copied, Merged
 
 
 def render_everything() -> dict[str, str]:

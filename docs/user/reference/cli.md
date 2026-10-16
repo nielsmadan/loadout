@@ -68,7 +68,7 @@ loadout init global ~/agent-config
 
 | Option | Commands | Meaning |
 | --- | --- | --- |
-| `--harness NAME` | `init project`, `init global` | Select a harness; repeat for several |
+| `--harness NAME` | `init project`, `init global` | Select a harness: `claude`, `codex`, `droid`, `opencode` or `pi`; repeat for several |
 | `--root PATH` | `init project` | Project directory to initialise |
 | `DIR` (positional) | `init global` | Existing global source, or directory in which to scaffold a new one |
 
@@ -85,12 +85,12 @@ always has `status` and `exit_code`, the code the command exits with:
 
 | `status` | `exit_code` | When |
 | --- | --- | --- |
-| `preview` | 0 | `--dry-run`: the plan, with `outputs` and every planned write |
+| `preview` | 0 | `--dry-run`: the plan, with every planned write, `secrets`, and `outputs`, each with its `change`: `identical`, `normalised` (only loadout's banner or formatting differs), `update` or `create` |
 | `incomplete` | 2 | the plan needs a choice or a fix; `issues` names each |
-| `complete` | 0 | applied; `backup`, `written`, `untracked`, `delinked` and `unadopted` |
-| `restored` | 1 from init, 0 or 1 from `init restore` | the backup was restored; `kept` and `links` name what stayed, and init adds `error` |
-| `interrupted` | 2 | an earlier init did not finish; `backup` names it |
-| `error` | 2 or 3 | a usage or source error; `error` holds the message |
+| `complete` | 0 | applied; `backup`, `written` (the source), `rendered` (the generated files), `untracked`, `already_initialized`, `delinked`, `unadopted` and `secrets` |
+| `restored` | 1 from init, 0 or 1 from `init restore` | the backup was restored; `kept` and `links` name what stayed, `reasons` says why for each kept path, `backup` is `null` once the backup is spent, and init adds `error` |
+| `interrupted` | 2 | an earlier init did not finish; `backup` names it and `error` says what to do |
+| `error` | 2, 3 or 4 | a usage error (an unknown option or `--harness` name included), a source error, or an unexpected one; `error` holds the message |
 
 Fresh project initialisation uses explicit `--harness` options, then the machine configuration's
 `harnesses` default, then discovered project configuration. If none establishes membership, it
@@ -128,7 +128,7 @@ applied to projects and authored as `templates/<name>/` in your global source.
 | --- | --- |
 | `add NAME --tracked` | Declare the template; it resolves from a source on every render |
 | `add NAME --vendored` | Copy the source into the project and record its content hash |
-| `add` (bare) | List every resolvable template and prompt for a name and a mode; refused without a terminal |
+| `add` (bare) | List every resolvable template and prompt for a name and a mode; without a terminal, a missing name or mode is a usage error (exit 2) |
 | `sync NAME` | Update an unchanged vendored copy from the available upstream source |
 | `list` | Show declared templates, each one's mode, and where it resolves |
 

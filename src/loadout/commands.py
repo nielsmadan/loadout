@@ -1,18 +1,19 @@
 from __future__ import annotations
 
-import difflib
 import json
 import sys
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Literal, TextIO
+from typing import Literal
 
 from .bundled_skill import bundled_skill_path
-from .emit import Merged, Output, render_all
+from .diffs import diff_lines, report_diff
+from .emit import render_all
 from .errors import LoadoutError, UsageError
-from .migration_backup import state_root
+from .files import DriftKind
+from .machine import state_dir
 from .notices import collect_notices
-from .output import FrozenFile, atomic_install
+from .output import FrozenFile, Output, atomic_install, output_record_paths
 from .project import (
     PROJECT_CONFIG_NAME,
     PROJECT_DIR,
@@ -27,22 +28,21 @@ from .skill_installation import (
     install_skill_source,
     uninstall_skill_source,
 )
-from .sync import classified_drift, deploy, retire_orphans, unaccepted_outputs
+from .sync import classified_drift, deploy, newly_managed, retire_orphans, unaccepted_outputs
 from .template_discover import available_templates
 from .template_vendor import vendor_catalog
 from .templates import (
     VENDORED,
+    contained,
     copy_tree,
     declare,
     record_hash,
     remove_vendored,
     resolve_template,
     resolve_upstream_template,
-    template_divergence,
     template_files,
     tree_hash,
     unrecord_hash,
-    unverifiable_templates,
     vendored_path,
 )
 from .unmanaged import unmanaged_entries
@@ -50,7 +50,6 @@ from .written import (
     prune_vanished,
 )
 
-DIFF_LIMIT = 40
 TemplateMode = Literal["tracked", "vendored"]
 
 
@@ -153,26 +152,18 @@ def _display(path: Path, root: Path) -> str:
         return str(path)
 
 
-def _write_full_diff(lines: list[str]) -> Path:
-    """The untruncated diff, so an abort the terminal shortened stays reviewable."""
-    path = state_root() / "sync-abort.diff"
-    atomic_install(path, FrozenFile("".join(lines).encode("utf-8"), 0o600), path.parent)
+def _write_full_diff(lines: list[str]) -> Path | None:
+    """The untruncated diff, so an abort the terminal shortened stays reviewable; None
+    when the state directory cannot hold it, which must not turn the abort into a crash."""
+    path = state_dir() / "sync-abort.diff"
+    try:
+        atomic_install(path, FrozenFile("".join(lines).encode("utf-8"), 0o600), path.parent)
+    except OSError:
+        return None
     return path
 
 
-def diff_lines(rel: str, actual: str, expected: str, context: int) -> list[str]:
-    return list(
-        difflib.unified_diff(
-            actual.splitlines(keepends=True),
-            expected.splitlines(keepends=True),
-            fromfile=f"{rel} (on disk)",
-            tofile=f"{rel} (expected)",
-            n=context,
-        )
-    )
-
-
-def cmd_sync(root: Path, profile: str = "default", force: bool = False) -> int:
+def cmd_sync(root: Path, profile: str, force: bool = False) -> int:
     root = root.absolute()
     prune_vanished()
     # Rendered once and reused for the guard, the write and the record, so what is
@@ -201,14 +192,17 @@ def cmd_sync(root: Path, profile: str = "default", force: bool = False) -> int:
             # skip, and skipping this one means reaching for --force, which is the
             # thing it exists to prevent. Whatever the terminal truncates, the file
             # holds in full — the decision stays reviewable.
-            if truncated:
-                print(f"\nThe complete diff is at {_write_full_diff(full)}", file=sys.stderr)
+            if truncated and (kept := _write_full_diff(full)) is not None:
+                print(f"\nThe complete diff is at {kept}", file=sys.stderr)
             return 1
 
+    # Read before writing: once deployed, the value a key held is gone.
+    managed = newly_managed(root, outputs)
     written, ignored = deploy(root, outputs)
     for path in written:
-        action = "wrote" if path.exists() else "retired"
-        print(f"{action} {_display(path, root)}")
+        print(f"wrote {_display(path, root)}")
+    for path, key, was in managed:
+        print(f"now managed: {key} in {_display(path, root)} (was {was})")
     retired, unignored = retire_orphans(root, outputs)
     for path in retired:
         print(f"retired {_display(path, root)}")
@@ -221,21 +215,16 @@ def cmd_sync(root: Path, profile: str = "default", force: bool = False) -> int:
     # Reported, never stopped on: sync overwrites nothing there, so stopping would
     # only block the outputs it does own.
     for path in unmanaged_entries(root, outputs, profile):
-        print(f"WARNING: {_display(path, root)} is {UNMANAGED_ADVICE}", file=sys.stderr)
+        advice = UNMANAGED_LINK_ADVICE if path.is_symlink() else UNMANAGED_ADVICE
+        print(f"WARNING: {_display(path, root)} is {advice}", file=sys.stderr)
     return 0
 
 
 def _sync_summary(outputs: Mapping[Path, Output], written: list[Path], retired: list[Path]) -> str:
-    paths = set(outputs) | {
-        record
-        for content in outputs.values()
-        if isinstance(content, Merged)
-        for record, _ in content.records
-    }
-    changed = sum(1 for path in written if path in paths)
-    if not changed and not retired:
+    paths = {*outputs, *output_record_paths(outputs)}
+    if not written and not retired:
         return "Up to date."
-    summary = f"{changed} written, {len(paths) - changed} unchanged"
+    summary = f"{len(written)} written, {len(paths) - len(written)} unchanged"
     return f"{summary}, {len(retired)} retired" if retired else summary
 
 
@@ -255,31 +244,18 @@ def _report_notices(root: Path, profile: str) -> None:
 
 
 def _check_notes(root: Path, profile: str) -> list[str]:
-    notes = [notice.render() for notice in collect_notices(root, profile)]
-    # Reported, never failed: check's contract is that generated output matches
-    # its source, and a vendored template *is* source — so it falls outside that
-    # jurisdiction by definition rather than by exemption (ADR 0014). Saying
-    # nothing at all would let a project drift from its template indefinitely,
-    # which is the failure vendoring exists to avoid.
-    notes += [
-        f"the vendored template {name!r} was modified after it was vendored — "
-        f"`loadout template sync {name}` will refuse until those edits go upstream"
-        for name in template_divergence(root)
-    ]
-    notes += [
-        f"the vendored template {name!r} has no recorded provenance, so nothing "
-        f"can tell your edits from its source — `loadout template add {name} --vendored` takes "
-        f"the source wholesale and records one"
-        for name in unverifiable_templates(root)
-    ]
-    return notes
+    return [notice.render() for notice in collect_notices(root, profile)]
 
 
 UNMANAGED_ADVICE = (
     "not written by loadout, in a folder the harness reads whole; port it into the source "
     "with /loadout, then delete it"
 )
-DRIFT_ADVICE = {
+UNMANAGED_LINK_ADVICE = (
+    "a link loadout did not create, in a folder the harness reads whole; check where it "
+    "points, then delete it"
+)
+DRIFT_ADVICE: dict[DriftKind, str] = {
     "source-changed": "the source changed since the last sync; run `loadout sync`",
     "missing": "not on disk; run `loadout sync`",
     "hand-edited": "edited outside loadout; port the edit into the source with /loadout, or run "
@@ -287,8 +263,13 @@ DRIFT_ADVICE = {
     "unknown": "no record of what loadout wrote here and no committed baseline, so a source "
     "change cannot be told from a hand edit; review the diff, then port what to keep into the "
     "source with /loadout, or run `loadout sync --force` to discard it",
+    "owned-key": "a key loadout writes in a file it shares was edited outside loadout; port "
+    "the edit into the source with /loadout first, or run `loadout sync --force` to discard it",
+    "owned-key-removed": "a key loadout writes in a file it shares was removed outside loadout; "
+    "remove it from the source with /loadout too, or run `loadout sync --force` to write it back",
     "orphaned": "written by loadout but no longer rendered; run `loadout sync` to retire it",
     "unmanaged": UNMANAGED_ADVICE,
+    "unmanaged-link": UNMANAGED_LINK_ADVICE,
 }
 
 
@@ -306,7 +287,7 @@ def _check_json(root: Path, profile: str) -> int:
     return code
 
 
-def cmd_check(root: Path, profile: str = "default", *, as_json: bool = False) -> int:
+def cmd_check(root: Path, profile: str, *, as_json: bool = False) -> int:
     if as_json:
         return _check_json(root, profile)
     # `check` used to end every drift with "run `loadout sync`" even where sync was
@@ -340,6 +321,7 @@ def _vendored_state(root: Path, name: str, recorded: str | None) -> str:
 
 
 def cmd_template_list(root: Path) -> int:
+    contained(root)
     config = load_project_config(project_config_path(root))
     if not config.templates:
         print(
@@ -374,13 +356,21 @@ def cmd_template_add(
     Adding an already-declared template changes its mode — the one path a config
     file edit cannot express, because vendoring copies a tree and records a hash.
     """
-    if mode is None and not sys.stdin.isatty():
-        raise LoadoutError(
-            "`template add` needs a mode when not attached to a terminal: "
-            f"`loadout template add {name or '<name>'} --tracked` or `--vendored`"
-        )
+    if not sys.stdin.isatty():
+        if name is None:
+            raise UsageError(
+                "`template add` needs a name when not attached to a terminal: "
+                "`loadout template add <name> --tracked` or `--vendored`"
+            )
+        if mode is None:
+            raise UsageError(
+                "`template add` needs a mode when not attached to a terminal: "
+                f"`loadout template add {name} --tracked` or `--vendored`"
+            )
+    contained(root)
     if name is None:
         name = _choose_template(root)
+    contained(root, name)
     if mode is None:
         mode = _choose_mode(name)
 
@@ -503,17 +493,6 @@ def _tree_diff(local: Path, upstream: Path, label: str) -> list[str]:
     return lines
 
 
-def report_diff(lines: list[str], stream: TextIO | None = None) -> bool:
-    """Show at most DIFF_LIMIT lines of a diff, on stderr unless told otherwise; True
-    when some were left out."""
-    stream = stream or sys.stderr
-    stream.writelines(lines[:DIFF_LIMIT])
-    if len(lines) <= DIFF_LIMIT:
-        return False
-    print(f"    ... {len(lines) - DIFF_LIMIT} more diff line(s)", file=stream)
-    return True
-
-
 def cmd_template_sync(root: Path, name: str, *, yes: bool = False) -> int:
     """Update a vendored copy from its source, refusing rather than merging.
 
@@ -522,6 +501,7 @@ def cmd_template_sync(root: Path, name: str, *, yes: bool = False) -> int:
     largest single piece of work in this design, and the recorded hash is exactly
     the base it would need, so deferring it costs no state migration.
     """
+    contained(root, name)
     config = load_project_config(project_config_path(root))
     local = vendored_path(root, name)
     if local.is_file():

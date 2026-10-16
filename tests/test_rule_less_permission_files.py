@@ -1,4 +1,4 @@
-"""A whole permission file with no rule in it is not written (P-44, following P-35).
+"""A whole permission file with no rule in it is not written.
 
 Keys inside shared files are still claimed and written empty, and Pi's global
 `config.json` is still written: its empty render carries a policy (`bash` asks).

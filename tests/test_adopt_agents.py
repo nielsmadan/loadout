@@ -2,7 +2,7 @@
 
 Copies of one agent in several harnesses become one source agent whose model and effort
 maps record what differed; copies whose description or instructions differ are left in
-place and reported, for the /loadout skill to merge (D-05).
+place and reported, for the /loadout skill to merge (ADR 0030).
 """
 
 from __future__ import annotations

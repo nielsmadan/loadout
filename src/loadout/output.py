@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import functools
 import hashlib
 import os
 import stat
 import tempfile
 import unicodedata
+from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any, Literal
 
 import tomlkit
@@ -35,14 +37,12 @@ CATEGORIES = frozenset(
 @dataclass(frozen=True)
 class Copied:
     source: Path
-    prefix: bytes = b""
-    mode: int | None = None
 
     def read_bytes(self) -> bytes:
-        return self.prefix + self.source.read_bytes()
+        return self.source.read_bytes()
 
     def file_mode(self) -> int:
-        return self.mode if self.mode is not None else stat.S_IMODE(self.source.stat().st_mode)
+        return stat.S_IMODE(self.source.stat().st_mode)
 
 
 @dataclass(frozen=True)
@@ -50,7 +50,9 @@ class Merged:
     owned: frozenset[str]
     document: str
     records: tuple[tuple[Path, str], ...] = ()
-    format: str = "toml"
+    format: Literal["toml", "json"] = "toml"
+    # Owned only to be stripped (`$remove`): the harness writing one back is no edit.
+    evicted: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -62,13 +64,19 @@ class FrozenFile:
 Output = str | Copied | Merged | FrozenFile
 
 
-def relative_path(value: object, label: str) -> PurePosixPath:
-    if not isinstance(value, str):
-        raise LoadoutError(f"{label} must be a string")
-    path = PurePosixPath(value)
-    if path.is_absolute() or not value or ".." in path.parts or path == PurePosixPath("."):
-        raise LoadoutError(f"{label} must be a relative path inside its root: {value!r}")
-    return path
+def output_record_paths(outputs: Mapping[Path, Output]) -> tuple[Path, ...]:
+    """The ownership records the merged outputs write beside themselves."""
+    return tuple(
+        record
+        for content in outputs.values()
+        if isinstance(content, Merged)
+        for record, _ in content.records
+    )
+
+
+def entry_path(path: Path) -> Path:
+    """The one spelling of an entry: its parent resolved, the entry itself not followed."""
+    return path.parent.resolve() / path.name
 
 
 def no_symlinks(path: Path, root: Path | None = None) -> None:
@@ -85,12 +93,12 @@ def read_file(path: Path) -> FrozenFile | None:
     no_symlinks(path)
     for parent in path.parents:
         if parent.exists() and not parent.is_dir():
-            raise LoadoutError(f"deployment parent must be a directory: {parent}")
+            raise LoadoutError(f"parent must be a directory: {parent}")
     if not path.exists():
         return None
     metadata = path.stat()
     if not stat.S_ISREG(metadata.st_mode):
-        raise LoadoutError(f"deployment path must be a regular file: {path}")
+        raise LoadoutError(f"path must be a regular file: {path}")
     return FrozenFile(path.read_bytes(), stat.S_IMODE(metadata.st_mode))
 
 
@@ -116,11 +124,37 @@ def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def file_sha256(path: Path) -> str:
+    """The digest of a file's bytes, read a chunk at a time. A source copied to several
+    harnesses is hashed once while it stays the same file with the same stamp."""
+    metadata = path.stat()
+    return _file_sha256(
+        path.resolve(),
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        metadata.st_ctime_ns,
+    )
+
+
+@functools.lru_cache(maxsize=4096)
+def _file_sha256(path: Path, *stamp: int) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(1 << 20):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def item_name(name: str, path: Path) -> str:
     """A skill or agent name becomes a path segment and a `.gitignore` line, so it may
     hold no control character and no separator, and may not be `.` or `..`."""
     if any(unicodedata.category(c) == "Cc" for c in name):
         raise LoadoutError(f"{path!r}: a name may not contain a control character")
+    # Python splits lines on these too, so one would break the name across two lines.
+    if any(unicodedata.category(c) in {"Zl", "Zp"} for c in name):
+        raise LoadoutError(f"{path!r}: a name may not contain a line or paragraph separator")
     if "/" in name or name in {"", ".", ".."}:
         raise LoadoutError(f"{path}: {name!r} is not a usable name")
     return name

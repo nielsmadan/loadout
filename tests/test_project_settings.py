@@ -1,5 +1,5 @@
 """A project's own keys in a co-owned settings file live in the project source and reach a
-teammate's clone (P-48): init adopts them into loadout/settings/<harness>.json, sync renders
+teammate's clone (ADR 0030): init adopts them into loadout/settings/<harness>.json, sync renders
 them back, and an edit made outside loadout is flagged."""
 
 from __future__ import annotations

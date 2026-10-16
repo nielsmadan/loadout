@@ -1,16 +1,20 @@
 """Secret shapes the credential check recognises, so init names each source file holding
-one (review 1.8, D-07), and the ordinary values it must leave alone (re-review of 798a4f2)."""
+one (review 1.8, ADR 0030), and the ordinary values it must leave alone (re-review of 798a4f2)."""
 
 from __future__ import annotations
 
 import json
 import subprocess
+import time
 import tomllib
+from pathlib import Path
 
 import pytest
 
 import loadout
-from loadout.discovery import credential_material
+import loadout.init_workflow as workflow
+from loadout.credentials import MAX_SCANNED, credential_material, findings
+from loadout.sync import RenderedChange
 
 SECRETS = {
     "flag before a key in args": ("json", {"args": ["--api-key", "sk-live-0123456789abcdef"]}),
@@ -41,6 +45,22 @@ SECRETS = {
     "Anthropic key": ("copy", "export KEY=sk-ant-api03-abcdefghijklmnop\n"),
     "Slack bot token": ("copy", "xoxb-123456789012-abcdefghij\n"),
     "OpenCode environment value": ("json", {"mcp": {"x": {"environment": {"API": "s3cr3t"}}}}),
+    # One rule decides each case below (review 2, batch 5 item 5).
+    "Slack user token": ("copy", "xoxp-123456789012-abcdefghij\n"),
+    "Slack legacy app token": ("copy", "xoxa-2-abcdefghijklmnop\n"),
+    "a pat flag": ("json", {"args": ["--pat", "FAKEVALUE1"]}),
+    "an auth flag": ("json", {"args": ["--auth", "FAKEVALUE1"]}),
+    "a pass flag": ("json", {"args": ["--pass", "FAKEVALUE1"]}),
+    "a passwd key": ("json", {"passwd": "FAKEVALUE1"}),
+    "a passphrase key": ("json", {"passphrase": "FAKEVALUE1"}),
+    "a credential key": ("json", {"credential": "FAKEVALUE1"}),
+    "a credentials key": ("json", {"credentials": "FAKEVALUE1"}),
+    "an authorization key": ("json", {"authorization": "FAKEVALUE1"}),
+    "an access key key": ("json", {"accessKey": "FAKEVALUE1"}),
+    "a private key key": ("json", {"private_key": "FAKEVALUE1"}),
+    "a header value": ("json", {"headers": {"X-Custom": "FAKEVALUE1"}}),
+    "a Codex header value": ("toml", '[mcp_servers.x.http_headers]\nX-Custom = "FAKEVALUE1"\n'),
+    "a bearer value in prose": ("copy", "Send it as Bearer abcdef1234567890 on each call.\n"),
 }
 
 NOT_SECRETS = {
@@ -72,6 +92,15 @@ NOT_SECRETS = {
     "a numeric switch in env": ("json", {"env": {"DISABLE_TELEMETRY": "1"}}),
     "a path in env": ("json", {"env": {"PATH_EXTRA": "/usr/local/bin"}}),
     "a content type header": ("json", {"headers": {"Content-Type": "application/json"}}),
+    # One rule decides each case below (review 2, batch 5 item 5).
+    "a variable that never holds a secret": ("json", {"env": {"LOG_LEVEL": "verbose"}}),
+    "a switch value": ("json", {"env": {"CUSTOM_SETTING": "true"}}),
+    "a number value": ("json", {"env": {"CUSTOM_SETTING": "8080"}}),
+    "a key naming where a secret lives": ("json", {"auth_env_var": "MY_TOKEN"}),
+    "an OpenCode env reference": ("json", {"env": {"API_TOKEN": "{env:API_TOKEN}"}}),
+    "a PowerShell env reference": ("json", {"env": {"API_TOKEN": "$env:API_TOKEN"}}),
+    "a braced env reference": ("json", {"env": {"API_TOKEN": "${API_TOKEN}"}}),
+    "a bearer reference": ("json", {"headers": {"Authorization": "Bearer ${API_TOKEN}"}}),
 }
 
 
@@ -141,7 +170,7 @@ def test_the_preview_names_the_secret_in_each_source_file(tmp_path, fake_home, c
 @pytest.mark.migration_integration
 def test_codex_http_headers_are_adopted_and_named_as_a_secret(tmp_path, fake_home, capsys) -> None:
     """A Codex server's literal auth header goes into the server source as it is, renders
-    back into config.toml, and is listed like any other secret (D-07)."""
+    back into config.toml, and is listed like any other secret (ADR 0030)."""
     config = fake_home / ".codex/config.toml"
     config.parent.mkdir(parents=True)
     config.write_text(
@@ -164,3 +193,91 @@ def test_codex_http_headers_are_adopted_and_named_as_a_secret(tmp_path, fake_hom
         "Authorization": "Bearer abc123"
     }
     assert f"Contains a secret: {mcp}: a value labelled as a secret" in capsys.readouterr().out
+
+
+@pytest.mark.migration_integration
+def test_a_codex_server_with_two_auth_sources_is_adopted_with_a_note(
+    tmp_path, fake_home, capsys
+) -> None:
+    """Review 2, 2.6: init failed with an opaque reconstruction error and no note."""
+    config = fake_home / ".codex/config.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text(
+        '[mcp_servers.docs]\nurl = "https://docs.test/mcp"\nbearer_token_env_var = "DOCS"\n'
+        '[mcp_servers.docs.http_headers]\nAuthorization = "Bearer abc123"\n'
+    )
+    source = tmp_path / "source"
+    source.mkdir()
+
+    argv = ["init", "global", str(source), "--harness", "codex", "--dry-run"]
+    assert loadout.main(argv) == 0
+
+    assert "docs: Authorization beside bearer_token_env_var" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("content", "format_name"),
+    [
+        (b'{"auth": "s3cr3tvalue"}', "json"),
+        (b"credential = s3cr3tvalue\n", "copy"),
+        (b'{"args": ["--auth", "s3cr3tvalue"]}', "json"),
+        (b'{"x-api-key": "s3cr3tvalue"}', "json"),
+    ],
+)
+def test_every_place_a_secret_sits_uses_one_vocabulary(content: bytes, format_name: str) -> None:
+    """Review 2, 2.14: `--auth x` was a secret and `{"auth": x}` was not, and the reverse
+    for `credential`."""
+    assert credential_material(content, format_name)
+
+
+@pytest.mark.parametrize(
+    "placeholder", ["AKIAXXXXXXXXXXXXXXXX", "ASIAXXXXXXXXXXXXXXXX", "AIza" + "x" * 35]
+)
+def test_a_documentation_placeholder_is_not_a_secret(placeholder: str) -> None:
+    assert credential_material(f"key: {placeholder}\n".encode()) is None
+
+
+def test_the_preview_diff_never_repeats_a_secret_it_names(capsys) -> None:
+    """The warning named the secret while the render diff above it printed its value."""
+    change = RenderedChange(
+        path=Path("/p/settings.json"),
+        kind="update",
+        actual='{\n  "env": {"DEPLOY_KEY": "abc123secret"},\n  "model": "a"\n}\n',
+        expected='{\n  "env": {"DEPLOY_KEY": "abc123secret"},\n  "model": "b"\n}\n',
+    )
+
+    workflow._show_render((change,))
+
+    out = capsys.readouterr().out
+    assert '"DEPLOY_KEY": "<redacted>"' in out
+    assert "abc123secret" not in out
+
+
+TOKEN = b"ghp_" + b"a1B2" * 9
+
+
+def test_a_binary_file_is_not_scanned() -> None:
+    """Performance, should-fix 2: one 40 MB asset took init from 2.3 s to 10 s."""
+    assert findings(b"\x89PNG\r\n\x00\x00" + TOKEN) == []
+
+
+def test_a_token_in_text_is_found_however_large_the_file() -> None:
+    assert credential_material(TOKEN + b"\n" + b"x" * (MAX_SCANNED * 2)) == (
+        "a token in a provider's format"
+    )
+
+
+def test_only_the_scanned_prefix_of_a_large_file_is_read() -> None:
+    late = b"x" * MAX_SCANNED + b"\n" + TOKEN
+
+    assert findings(late) == []
+
+
+def test_one_long_word_is_scanned_in_linear_time() -> None:
+    """A label could start anywhere inside a run of name characters, and each start
+    rescanned the rest of the run: 20k characters took 4.4 s, a 1 MB one hours."""
+    started = time.perf_counter()
+
+    assert findings(b"x" * 50_000) == []
+
+    assert time.perf_counter() - started < 2

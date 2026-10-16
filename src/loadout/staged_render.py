@@ -6,7 +6,7 @@ import shlex
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, assert_never
 
 from . import emit, templates
 from .destinations import resolve_destination
@@ -19,7 +19,7 @@ from .manifest import (
     load_profile,
     manifest_path,
 )
-from .output import Copied, Merged
+from .output import Copied, FrozenFile, Merged
 from .project import load_project_config, project_config_path, project_outputs
 from .resolve import ResolvedItem
 from .sources import Source, parse_sources
@@ -94,7 +94,7 @@ class Snapshot:
             else self.destinations / actual.relative_to(actual.anchor)
         )
 
-    def upstream(self, name: str, config_path: Path | None = None) -> ResolvedItem:
+    def upstream(self, name: str) -> ResolvedItem:
         command = shlex.join(
             [
                 "loadout",
@@ -167,16 +167,24 @@ class Snapshot:
             context = emit.RenderContext(self.destination, self.upstream, self.sources)
             for path, output in emit.render_all(self.root, profile, context).items():
                 owned.add(path)
-                if isinstance(output, Copied):
-                    output.read_bytes()
-                    output.source.stat()
-                elif isinstance(output, Merged):
-                    for record, expected in output.records:
-                        self.inside(record)
-                        if not record.is_file() or record.read_text(encoding="utf-8") != expected:
-                            raise LoadoutError(
-                                f"staged ownership record differs from its producer: {record}; regenerate and stage the record with its source"
-                            )
+                match output:
+                    case Copied():
+                        output.read_bytes()
+                        output.source.stat()
+                    case Merged():
+                        for record, expected in output.records:
+                            self.inside(record)
+                            if (
+                                not record.is_file()
+                                or record.read_text(encoding="utf-8") != expected
+                            ):
+                                raise LoadoutError(
+                                    f"staged ownership record differs from its producer: {record}; regenerate and stage the record with its source"
+                                )
+                    case FrozenFile() | str():
+                        pass
+                    case _:
+                        assert_never(output)
         return tuple(
             sorted(
                 str(path.relative_to(self.tree)) for path in owned if path.is_relative_to(self.tree)

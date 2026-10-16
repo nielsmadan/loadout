@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from loadout import staged
 from loadout.staged import _entries, _render_inputs
 
 pytestmark = pytest.mark.integration
@@ -57,3 +58,37 @@ def test_a_global_source_reads_its_folder_and_named_sources_outside_it(tmp_path:
         "config/skills/a/SKILL.md",
         "shared/permissions.toml",
     ]
+
+
+def test_the_head_snapshot_holds_only_what_ownership_reads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Performance, should-fix 1: a global source at a repository's root wrote the whole
+    of HEAD to temp, though the HEAD pass reads only the manifests and project config."""
+    root = _repository(
+        tmp_path,
+        {
+            "loadout.toml": '[[source]]\nname = "own"\npath = "."\nuse = ["skills"]\n\n[claude]\n',
+            "claude.toml": "",
+            "work.toml": 'extends = "default"\n',
+            "skills/a/SKILL.md": "---\nname: a\ndescription: A.\n---\nBody.\n",
+            "assets/big.bin": "payload\n",
+        },
+    )
+    subprocess.run(
+        ["git", "-C", str(root), "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "x"],
+        check=True,
+    )
+    written: dict[str, list[str]] = {}
+    snapshot = staged._snapshot
+
+    def recording(repository: Path, destination: Path, entries: dict[str, staged.Entry]) -> None:
+        written[destination.name] = sorted(entries)
+        snapshot(repository, destination, entries)
+
+    monkeypatch.setattr(staged, "_snapshot", recording)
+
+    assert staged.check_staged(root, "work") == 0
+
+    assert written["head"] == ["claude.toml", "loadout.toml", "work.toml"]
+    assert "assets/big.bin" in written["index"]

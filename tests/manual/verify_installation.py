@@ -20,6 +20,7 @@ cli = tool_root / "bin" / "loadout"
 env = os.environ.copy()
 env.update(
     XDG_CONFIG_HOME=str(work / "config"),
+    XDG_STATE_HOME=str(work / "state"),
     GIT_AUTHOR_NAME="Loadout verification",
     GIT_AUTHOR_EMAIL="verification@example.invalid",
     GIT_COMMITTER_NAME="Loadout verification",
@@ -63,8 +64,7 @@ def outputs(project):
     return {
         str(path.relative_to(project)): hashlib.sha256(path.read_bytes()).hexdigest()
         for path in project.rglob("*")
-        if path.is_file()
-        and path.relative_to(project).parts[0] not in {".git", "loadout", ".loadout-state"}
+        if path.is_file() and path.relative_to(project).parts[0] not in {".git", "loadout"}
     }
 
 
@@ -93,8 +93,6 @@ run("missing global config", ["check", "--global"], work, 3)
 
 project = work / "project with spaces ü"
 project.mkdir()
-# Project init routes only configuration that already exists, so adopt a setup rather
-# than an empty directory: an empty one yields `artifact = []` and nothing to render.
 for relative, body in {
     "CLAUDE.md": "# Project\n",
     "AGENTS.md": "# Project\n",
@@ -122,19 +120,22 @@ assert applied["status"] == "complete"
 configuration = project / "loadout"
 instructions = "# Installation verification\nKeep this shared setup.\n"
 put(configuration / "instructions/main.md", instructions)
+# Init already declared these four harnesses and `instructions = ["main"]`; rewriting
+# the config would drop the skill policy it recorded for the adopted skill.
 adopted_config = tomllib.loads((configuration / "config.toml").read_text())
 assert adopted_config["harnesses"] == ["claude", "codex", "opencode", "pi"]
 assert adopted_config["instructions"] == ["main"]
 put(configuration / "permissions.toml", '[shell]\nallow = ["git status"]\n')
 probe = "---\nname: install-probe\ndescription: Verify packaged CLI output.\n---\nProbe body.\n"
 put(configuration / "skills/install-probe/SKILL.md", probe)
+# Codex, OpenCode and Pi all read .agents/skills, so one identical copy serves them.
 skill_outputs = [
     project / path / "install-probe/SKILL.md" for path in (".claude/skills", ".agents/skills")
 ]
 run("render all four agents", ["sync"], project)
 run("check rendered outputs", ["check"], project)
 assert instructions.strip() in (project / "AGENTS.md").read_text()
-assert "@AGENTS.md" in (project / "CLAUDE.md").read_text()
+assert (project / "CLAUDE.md").read_text().rstrip().endswith("@AGENTS.md")
 assert "git" in (project / ".codex/rules/permissions.rules").read_text()
 assert all(path.read_text().endswith("Probe body.\n") for path in skill_outputs)
 before = outputs(project)
@@ -147,13 +148,14 @@ run("source change reports drift", ["check"], project, 1)
 run("sync source change", ["sync"], project)
 run("check updated output", ["check"], project)
 assert (project / "AGENTS.md").read_text().endswith(instructions)
-assert "@AGENTS.md" in (project / "CLAUDE.md").read_text()
+assert (project / "CLAUDE.md").read_text().rstrip().endswith("@AGENTS.md")
 edited = project / "AGENTS.md"
-edited.write_text(instructions + "External edit.\n")
+rendered = edited.read_text()
+edited.write_text(rendered + "External edit.\n")
 run("protect external output edit", ["sync"], project, 1)
-assert edited.read_text() == instructions + "External edit.\n"
+assert edited.read_text() == rendered + "External edit.\n"
 run("explicit force adoption", ["sync", "--force"], project)
-assert edited.read_text().endswith(instructions)
+assert edited.read_text() == rendered
 run("check after force", ["check"], project)
 
 config = configuration / "config.toml"
@@ -238,6 +240,7 @@ sentinel.write_text("Keep this unrelated file.\n")
 run("uninstall packaged skill", ["integrate", "skill", "uninstall", "--yes"], work)
 assert sentinel.read_text() == "Keep this unrelated file.\n"
 assert all(not (destination / "loadout/SKILL.md").exists() for destination in destinations)
+# Kept by uninstall, and reported by check as a file loadout did not write.
 unmanaged = run("global check reports the kept file", ["check", "--global"], work, 1)
 assert f"DRIFT (unmanaged): {sentinel}" in unmanaged.stderr
 sentinel.unlink()

@@ -7,20 +7,25 @@ import stat
 import subprocess
 from collections.abc import Mapping
 from dataclasses import replace
-from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
-from .agents import DROID_AGENTS_DIRECTORY
 from .errors import LoadoutError
 from .git_privacy import ignored_paths, tracked_paths
-from .harnesses import KNOWN_HARNESSES
+from .harnesses import DROID_AGENTS_DIRECTORY, KNOWN_HARNESSES, SHARED_SKILL_READERS
 from .manifest import manifest_path
 from .migration_models import Candidate, EntryState, Inventory, Issue, IssueCode, RootMapping
-from .migration_paths import DestinationLayout, entry_path
+from .migration_paths import DestinationLayout
 from .native_documents import jsonc_to_json, parse_document
-from .output import Scope, sha256
-from .project import PROJECT_PRESET, project_config_path
+from .output import Scope, entry_path, sha256
+from .project import PROJECT_DIR, PROJECT_PRESET, project_config_path
+
+# The harnesses whose project instructions are AGENTS.md, from the preset.
+AGENTS_MD_READERS = tuple(
+    harness
+    for harness, slices in PROJECT_PRESET.items()
+    if (spec := slices.get("instructions")) is not None and spec.output == "AGENTS.md"
+)
 
 GLOBAL_ROOTS = {
     "claude": ("CLAUDE_CONFIG_DIR", ".claude"),
@@ -190,7 +195,7 @@ PROJECT_WALK_EXCLUSIONS = frozenset(
         "vendor",
         "dist",
         "build",
-        "loadout",
+        PROJECT_DIR,
     }
 )
 
@@ -264,7 +269,7 @@ def live_roots(home: Path, environ: Mapping[str, str]) -> tuple[RootMapping, ...
         RootMapping(
             home / ".agents",
             home / ".agents",
-            ("codex", "opencode", "pi"),
+            SHARED_SKILL_READERS,
             "shared",
             destination_template="~/.agents",
         )
@@ -336,149 +341,6 @@ def _excluded(path: Path) -> bool:
 
 def _private(path: Path) -> bool:
     return ".local." in path.name or path.name.endswith(".local")
-
-
-# What a secret's value looks like, wherever it sits. Each group names what it found,
-# so the preview can say why a file is reported as holding a secret.
-SECRET_SHAPES = re.compile(
-    r"(?P<pem>-----BEGIN [A-Z ]*PRIVATE KEY-----)"
-    r"|(?P<token>\b(?:"
-    r"(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]{20,}"
-    r"|glpat-[A-Za-z0-9_-]{20,}"
-    r"|npm_[A-Za-z0-9]{30,}"
-    r"|sk-(?:ant-)?[A-Za-z0-9_-]{16,}"
-    r"|(?:AKIA|ASIA)[0-9A-Z]{16}"
-    r"|AIza[0-9A-Za-z_-]{30,}"
-    r"|xox[abpe]-[A-Za-z0-9-]{10,}"
-    r"|xapp-[A-Za-z0-9-]{10,}"
-    r"|eyJ[\w-]{8,}\.eyJ[\w-]{8,}\.[\w-]{8,}"
-    r")\b)"
-    r"|(?P<userinfo>\b[a-z][a-z0-9+.-]*://(?:[^/\s:@]+:[^/\s@]+|[^/\s:@]{20,})@)"
-    r"|(?P<basic>(?i:\bauthorization)\s*[:=]\s*[\"']?Basic\s+[A-Za-z0-9+/]{8,}=*)"
-    r"|(?P<userpass>\b(?:curl|wget|http)\b[^\n]*?\s(?:-u|--user)[ =][^\s:]+:\S+)"
-    r"|(?P<aws>(?i:\baws_secret_access_key)\s*[:=]\s*\S+)"
-    r"|(?P<query>[?&](?:key|api_key|apikey|access_token|token)=[^&\s\"']{8,})"
-)
-SHAPE_REASONS = {
-    "pem": "a private key",
-    "token": "a token in a provider's format",
-    "userinfo": "credentials in a URL",
-    "basic": "an HTTP Basic credential",
-    "userpass": "a user:password on an HTTP client's command line",
-    "aws": "an aws_secret_access_key",
-    "query": "a key in a URL query",
-}
-LABELLED_SECRET = re.compile(
-    r"(?i)(?:bearer\s+(?!\$|\{)[\w.+/=-]+|(?:api[_-]?key|password|secret|token)\s*[:=]\s*[\"']?(?!\$|\{)[\w.+/=-]+)"
-)
-# A flag whose whole last word names a secret; `--api-key-file`, `--max-tokens` and
-# `--token-limit` name something else.
-SECRET_FLAG = re.compile(
-    r"(?i)^--?(?:[a-z0-9]+-)*"
-    r"(?:token|api-?key|secret|password|pass|auth-token|access-key|private-key|pat|auth)$"
-)
-VALUE_MAPS = frozenset({"env", "headers", "http_headers", "environment"})
-PLAIN_HEADERS = frozenset(
-    {"accept", "accept-encoding", "accept-language", "cache-control", "content-type", "user-agent"}
-)
-PLAIN_VARIABLE = re.compile(
-    r"(?i)^(?:PATH|PATH_\w*|\w*_PATH|HOME|LANG|LC_\w+|TERM|TZ|SHELL|\w*_ENV|DEBUG|\w*LOG_LEVEL"
-    r"|DISABLE_\w*|ENABLE_\w*|NO_COLOR|FORCE_COLOR|CI)$"
-)
-PLAIN_VALUE = re.compile(r"(?i)^(?:-?\d+(?:\.\d+)?|true|false|yes|no|on|off|[~.]?/.*)$")
-
-
-def _placeholder(found: str) -> bool:
-    """A documentation stand-in: AWS's `…EXAMPLE` keys, or a run of x's."""
-    core = re.sub(
-        r"^(?:sk-(?:ant-)?|gh[pousr]_|github_pat_|glpat-|npm_|xox[abpe]-|xapp-)", "", found
-    )
-    return found.endswith("EXAMPLE") or set(core.replace("-", "").replace("_", "")) <= {"x", "X"}
-
-
-def credential_material(content: bytes, format_name: str = "copy") -> str | None:
-    """Why `content` looks like it holds a secret, or None when it does not."""
-    text = content.decode("utf-8", errors="replace")
-    for match in SECRET_SHAPES.finditer(text):
-        if not _placeholder(match.group(0)):
-            return SHAPE_REASONS[match.lastgroup or "token"]
-    if LABELLED_SECRET.search(text):
-        return "a value labelled as a secret"
-    if format_name not in {"json", "toml"}:
-        return None
-    try:
-        document = parse_document(text, format_name)
-    except LoadoutError:
-        return None
-    return _credential_value(document)
-
-
-def _credential_value(value: object, key: str = "") -> str | None:
-    if isinstance(value, dict):
-        found = (_map_entry(key, str(name), item) for name, item in value.items())
-        return next((reason for reason in found if reason is not None), None)
-    if isinstance(value, list):
-        found = (_credential_value(item, key) for item in value)
-        first = next((reason for reason in found if reason is not None), None)
-        return first or _flagged_secret([item for item in value if isinstance(item, str)])
-    return _string_secret(key, value)
-
-
-def _map_entry(key: str, name: str, item: object) -> str | None:
-    if key.lower() in VALUE_MAPS:
-        if _plain_entry(name, item):
-            return None
-        if isinstance(item, str):
-            return f"{key}.{name}"
-    return _credential_value(item, name)
-
-
-def _string_secret(key: str, value: object) -> str | None:
-    if not isinstance(value, str) or not value:
-        return None
-    sensitive = re.search(
-        r"(?i)(?:authorization|credential|password|secret|token|api[_-]?key)", key
-    )
-    if sensitive and not _environment_reference(value) and not key.endswith("_env_var"):
-        return f"{key} holds a literal value"
-    return _flagged_secret(value.split())
-
-
-def _plain_entry(name: str, value: object) -> bool:
-    """An environment or header entry that cannot be a secret: a number, a switch, a
-    path, an environment reference, or a name that never holds one."""
-    if not isinstance(value, str):
-        return True
-    return bool(
-        not value
-        or PLAIN_VALUE.match(value)
-        or _environment_reference(value)
-        or name.lower() in PLAIN_HEADERS
-        or PLAIN_VARIABLE.match(name)
-    )
-
-
-def _flagged_secret(words: list[str]) -> str | None:
-    """The value after a `--token`, `--api-key` and the like, or given as `--token=…`,
-    in an argument list or a command line."""
-    for word in words:
-        flag, _, inline = word.partition("=")
-        if inline and SECRET_FLAG.match(flag) and _literal(inline):
-            return f"the value of {flag}"
-    for flag, value in pairwise(words):
-        if SECRET_FLAG.match(flag) and _literal(value):
-            return f"the value after {flag}"
-    return None
-
-
-def _literal(value: str) -> bool:
-    return bool(value) and not value.startswith("-") and not _environment_reference(value)
-
-
-def _environment_reference(value: str) -> bool:
-    return bool(
-        re.fullmatch(r"(?:Bearer )?(?:\$\{[^}]+\}|\{env:[^}]+\}|\$[A-Z_][A-Z_0-9]*)", value)
-    )
 
 
 def _category(relative: Path, agent: str) -> str | None:
@@ -556,7 +418,7 @@ def _agents_for(relative: Path, mapping: RootMapping) -> tuple[str, ...]:
     if mapping.kind != "shared":
         return mapping.harnesses
     supported = {
-        "skills": {"codex", "opencode", "pi"},
+        "skills": set(SHARED_SKILL_READERS),
         "plugins": {"codex"},
         "mcp.json": {"pi"},
         "mcp": {"pi"},
@@ -773,7 +635,7 @@ def _co_owned_settings(
 ) -> frozenset[Path]:
     """Project settings files loadout shares with the harness. One Git tracks is in the
     team's history, so adopting it into committed source publishes nothing new; one it does
-    not track stays on this machine (P-48)."""
+    not track stays on this machine (ADR 0030)."""
     if scope == "global":
         return frozenset()
     co_owned = {
@@ -831,7 +693,7 @@ def _instruction_mappings(
             for name in result.stdout.split(b"\0")
             if name
             and Path(os.fsdecode(name)).name in INSTRUCTION_FILES
-            and "loadout" not in Path(os.fsdecode(name)).parts
+            and PROJECT_DIR not in Path(os.fsdecode(name)).parts
         )
     mappings = []
     for path in sorted(paths):
@@ -841,7 +703,7 @@ def _instruction_mappings(
             if name.startswith("CLAUDE")
             else ("opencode",)
             if name == "opencode.md"
-            else ("codex", "droid", "opencode", "pi")
+            else AGENTS_MD_READERS
         )
         active = tuple(a for a in consumers if a in agents)
         mappings.append(RootMapping(path, path, active, "file", "instructions"))
@@ -856,18 +718,15 @@ def discover(
     environ: Mapping[str, str] | None = None,
 ) -> Inventory:
     environment = dict(os.environ if environ is None else environ)
+    # One home for the live roots, the layout and the recorded environment, which the
+    # later stages rebuild the layout from.
+    environment["HOME"] = environment.get("HOME") or str(Path.home())
     if scope not in {None, "project", "global"}:
         raise LoadoutError("scope must be project or global")
     if set(harnesses) - KNOWN_HARNESSES or len(harnesses) != len(set(harnesses)):
         raise LoadoutError("harnesses must be distinct supported harness names")
     root = root.absolute() if scope == "global" else project_root(root)
-    project = initialized_project_path(root) if scope != "global" else None
-    existing = [
-        *((("project", project),) if project is not None else ()),
-        ("global", manifest_path(root)),
-        ("global", root / "loadout/loadout.toml"),
-    ]
-    selected = [(s, p) for s, p in existing if p.is_file() and (scope is None or scope == s)]
+    selected = _initialized_configs(root, scope)
     if len(selected) == 1:
         inferred, config = selected[0]
         return Inventory(
@@ -880,36 +739,10 @@ def discover(
             path_preconditions(config),
             initialized=config,
         )
-    issues = []
-    if len(selected) > 1:
-        issues.append(
-            Issue(
-                "initialized-conflict",
-                tuple(p for _, p in selected),
-                "Multiple initialized scopes or global manifests need an explicit selection.",
-            )
-        )
-    if scope is None:
-        issues.append(
-            Issue(
-                "scope-required",
-                (root,),
-                "Select project or global scope; this uninitialized directory does not establish deployment ownership.",
-            )
-        )
-    source_root = root / "loadout"
-    live = (
-        live_roots(Path(environment.get("HOME") or Path.home()), environment)
-        if scope == "global"
-        else ()
-    )
-    if not harnesses:
-        evidence = (
-            live if scope == "global" else _project_mappings(root, tuple(sorted(KNOWN_HARNESSES)))
-        )
-        harnesses = tuple(
-            dict.fromkeys(a for m in evidence if _configuration_evidence(m) for a in m.harnesses)
-        )
+    issues = _selection_issues(root, scope, selected)
+    home = Path(environment["HOME"])
+    live = live_roots(home, environment) if scope == "global" else ()
+    harnesses = harnesses or _evident_harnesses(root, scope, live)
     if not harnesses:
         issues.append(
             Issue(
@@ -924,29 +757,7 @@ def discover(
         else _project_mappings(root, harnesses)
     )
     selected_mappings = tuple(m for m in automatic if m.harnesses)
-    allowed = tuple(
-        dict.fromkeys(
-            (
-                root.resolve(),
-                *(m.source.absolute() for m in selected_mappings),
-                *(entry_path(m.source) for m in selected_mappings),
-            )
-        )
-    )
-    home = environment.get("HOME")
-    builder = _InventoryBuilder(
-        DestinationLayout(root, selected_mappings, Path(home) if home else None),
-        allowed,
-        tuple(
-            dict.fromkeys(
-                path
-                for m in selected_mappings
-                if m.kind == "harness"
-                for path in (m.source, m.source.resolve())
-            )
-        ),
-        scope="global" if scope == "global" else "project",
-    )
+    builder = _builder(root, selected_mappings, home, scope)
     for mapping in selected_mappings:
         builder.walk(mapping)
     if scope != "global":
@@ -966,7 +777,7 @@ def discover(
     )
     return Inventory(
         root,
-        source_root,
+        root / PROJECT_DIR,
         scope,
         harnesses,
         selected_mappings,
@@ -976,6 +787,79 @@ def discover(
         destination_environment=tuple(
             (name, environment[name]) for name in DESTINATION_ENVIRONMENT if environment.get(name)
         ),
+    )
+
+
+def _initialized_configs(root: Path, scope: Scope | None) -> list[tuple[str, Path]]:
+    """The configs at `root` that mark it initialized, for the scope asked for."""
+    project = initialized_project_path(root) if scope != "global" else None
+    existing = [
+        *((("project", project),) if project is not None else ()),
+        ("global", manifest_path(root)),
+        ("global", manifest_path(root / PROJECT_DIR)),
+    ]
+    return [(s, p) for s, p in existing if p.is_file() and (scope is None or scope == s)]
+
+
+def _selection_issues(
+    root: Path, scope: Scope | None, selected: list[tuple[str, Path]]
+) -> list[Issue]:
+    issues = []
+    if len(selected) > 1:
+        issues.append(
+            Issue(
+                "initialized-conflict",
+                tuple(p for _, p in selected),
+                "Multiple initialized scopes or global manifests need an explicit selection.",
+            )
+        )
+    if scope is None:
+        issues.append(
+            Issue(
+                "scope-required",
+                (root,),
+                "Select project or global scope; this uninitialized directory does not establish deployment ownership.",
+            )
+        )
+    return issues
+
+
+def _evident_harnesses(
+    root: Path, scope: Scope | None, live: tuple[RootMapping, ...]
+) -> tuple[str, ...]:
+    """The harnesses whose own configuration is present, when none were named."""
+    evidence = (
+        live if scope == "global" else _project_mappings(root, tuple(sorted(KNOWN_HARNESSES)))
+    )
+    return tuple(
+        dict.fromkeys(a for m in evidence if _configuration_evidence(m) for a in m.harnesses)
+    )
+
+
+def _builder(
+    root: Path, mappings: tuple[RootMapping, ...], home: Path, scope: Scope | None
+) -> _InventoryBuilder:
+    allowed = tuple(
+        dict.fromkeys(
+            (
+                root.resolve(),
+                *(m.source.absolute() for m in mappings),
+                *(entry_path(m.source) for m in mappings),
+            )
+        )
+    )
+    return _InventoryBuilder(
+        DestinationLayout(root, mappings, home),
+        allowed,
+        tuple(
+            dict.fromkeys(
+                path
+                for m in mappings
+                if m.kind == "harness"
+                for path in (m.source, m.source.resolve())
+            )
+        ),
+        scope="global" if scope == "global" else "project",
     )
 
 

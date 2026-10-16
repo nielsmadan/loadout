@@ -3,10 +3,11 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from loadout.agents import GLOBAL_PRESET
 from loadout.commands import DRIFT_ADVICE
-from loadout.emit import Merged, render_global
+from loadout.emit import render_global
+from loadout.harnesses import GLOBAL_PRESET
 from loadout.migration_models import Inventory, MigrationPlan
+from loadout.output import Merged
 from loadout.project import PROJECT_PRESET
 from loadout.skills import discover_skills, render_skill, split_frontmatter
 
@@ -208,7 +209,7 @@ def test_porting_covers_every_kind_the_cli_sends_to_the_skill() -> None:
     porting = _section(SKILL / "references" / "configuration.md", PORTING)
     sent = {kind for kind, advice in DRIFT_ADVICE.items() if "/loadout" in advice}
 
-    assert sent == {"hand-edited", "unknown", "unmanaged"}
+    assert sent == {"hand-edited", "owned-key", "owned-key-removed", "unknown", "unmanaged"}
     assert {kind for kind in sent if f"`{kind}`" in porting} == sent
 
 

@@ -8,10 +8,17 @@ byte-comparing its content would not reveal.
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
-from loadout.emit import Copied
-from loadout.files import _copy_drifted, _executable, describe_file, write_outputs
+import pytest
+
+import loadout
+from loadout import sync
+from loadout.emit import render_all
+from loadout.files import copy_matches, describe_file, write_outputs
+from loadout.output import Copied, FrozenFile, Merged, file_sha256
+from loadout.sync import compare_with_disk
 
 
 def _make(path: Path, content: bytes, executable: bool = False) -> Path:
@@ -38,7 +45,7 @@ def test_copy_preserves_the_exec_bit(tmp_path: Path) -> None:
 
     write_outputs({target: Copied(source)})
 
-    assert _executable(target)
+    assert target.stat().st_mode & 0o111
 
 
 def test_copy_leaves_a_plain_file_unexecutable(tmp_path: Path) -> None:
@@ -48,7 +55,7 @@ def test_copy_leaves_a_plain_file_unexecutable(tmp_path: Path) -> None:
 
     write_outputs({target: Copied(source)})
 
-    assert not _executable(target)
+    assert not target.stat().st_mode & 0o111
 
 
 def test_copy_writes_through_a_symlink(tmp_path: Path) -> None:
@@ -72,7 +79,7 @@ def test_drift_when_bytes_differ(tmp_path: Path) -> None:
     source = _make(tmp_path / "src" / "a.txt", b"one\n")
     target = _make(tmp_path / "out" / "a.txt", b"two\n")
 
-    assert _copy_drifted(target, source)
+    assert not copy_matches(target, Copied(source))
 
 
 def test_drift_when_only_the_mode_differs(tmp_path: Path) -> None:
@@ -81,30 +88,112 @@ def test_drift_when_only_the_mode_differs(tmp_path: Path) -> None:
     source = _make(tmp_path / "src" / "run.py", b"echo hi\n", executable=True)
     target = _make(tmp_path / "out" / "run.py", b"echo hi\n", executable=False)
 
-    assert _copy_drifted(target, source)
+    assert not copy_matches(target, Copied(source))
 
 
 def test_no_drift_when_bytes_and_mode_match(tmp_path: Path) -> None:
     source = _make(tmp_path / "src" / "run.py", b"echo hi\n", executable=True)
     target = _make(tmp_path / "out" / "run.py", b"echo hi\n", executable=True)
 
-    assert not _copy_drifted(target, source)
+    assert copy_matches(target, Copied(source))
 
 
 def test_drift_when_the_target_is_absent(tmp_path: Path) -> None:
     source = _make(tmp_path / "src" / "a.txt", b"one\n")
 
-    assert _copy_drifted(tmp_path / "out" / "a.txt", source)
+    assert not copy_matches(tmp_path / "out" / "a.txt", Copied(source))
 
 
 def test_describe_reports_size_and_mode(tmp_path: Path) -> None:
     plain = _make(tmp_path / "plain.txt", b"12345")
     runnable = _make(tmp_path / "run.sh", b"12345", executable=True)
 
-    assert describe_file(plain) == "5 bytes\n"
-    assert describe_file(runnable) == "5 bytes (executable)\n"
+    digest = hashlib.sha256(b"12345").hexdigest()
+    assert (
+        describe_file(plain) == f"5 bytes, mode {plain.stat().st_mode & 0o777:o}, sha256 {digest}\n"
+    )
+    assert describe_file(runnable) == f"5 bytes, mode 755, sha256 {digest}\n"
     assert describe_file(tmp_path / "missing.txt") == "(absent)\n"
 
 
 def test_copied_carries_its_source(tmp_path: Path) -> None:
     assert Copied(source=tmp_path / "a").source == tmp_path / "a"
+
+
+def test_check_the_preview_and_sync_agree_on_a_copy_s_mode(tmp_path: Path, capsys) -> None:
+    """Review 2, 2.7: after `chmod 600`, check saw no drift, the preview an update and
+    sync a rewrite, because each judged a copy its own way."""
+    root = tmp_path / "p"
+    skill = root / "loadout/skills/s"
+    skill.mkdir(parents=True)
+    (root / "loadout/config.toml").write_text('harnesses = ["claude"]\n')
+    (skill / "SKILL.md").write_text("---\nname: s\ndescription: d\n---\nS.\n")
+    (skill / "notes.txt").write_text("notes\n")
+    (skill / "notes.txt").chmod(0o644)
+    assert loadout.main(["sync", "--root", str(root)]) == 0
+    copy = root / ".claude/skills/s/notes.txt"
+    copy.chmod(0o600)
+    capsys.readouterr()
+
+    assert loadout.main(["check", "--root", str(root)]) == 1
+    assert "DRIFT (source-changed): .claude/skills/s/notes.txt" in capsys.readouterr().err
+    assert [c.kind for c in compare_with_disk(render_all(root)) if c.path == copy] == ["update"]
+    assert loadout.main(["sync", "--root", str(root)]) == 0
+    assert copy.stat().st_mode & 0o777 == 0o644
+    assert loadout.main(["check", "--root", str(root)]) == 0
+
+
+def test_a_rewritten_source_is_hashed_again(tmp_path: Path) -> None:
+    """The digest is cached per file stamp, so a change of content must change it."""
+    source = tmp_path / "asset.bin"
+    source.write_bytes(b"first")
+    first = file_sha256(source)
+    source.write_bytes(b"other")
+
+    assert first == hashlib.sha256(b"first").hexdigest()
+    assert file_sha256(source) == hashlib.sha256(b"other").hexdigest()
+
+
+def test_sync_never_holds_a_copied_file_whole(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Performance: one 40 MB asset took a no-op sync from 35 MB to 119 MB."""
+    source = tmp_path / "asset.bin"
+    source.write_bytes(b"payload")
+    outputs = {
+        tmp_path / "a" / "asset.bin": Copied(source),
+        tmp_path / "b" / "asset.bin": Copied(source),
+    }
+    write_outputs(outputs)
+
+    def whole(self: Path) -> bytes:
+        raise AssertionError(f"read whole: {self}")
+
+    monkeypatch.setattr(Path, "read_bytes", whole)
+
+    assert [change.kind for change in compare_with_disk(outputs)] == ["identical", "identical"]
+    assert sync.unaccepted_outputs(tmp_path, outputs) == []
+    digest = hashlib.sha256(b"payload").hexdigest()
+    assert {entry.sha256 for entry in sync._entries_for(outputs).values()} == {digest}
+
+
+def test_a_merged_outputs_ownership_record_is_compared_too(tmp_path: Path) -> None:
+    """Review 2, batch 5 8: the preview has to show the record a shared document brings."""
+    record = tmp_path / "config.owned"
+    outputs = {
+        tmp_path / "config.toml": Merged(
+            frozenset({"model"}), 'model = "x"\n', records=((record, "model\n"),)
+        )
+    }
+
+    changes = {change.path: change.kind for change in compare_with_disk(outputs)}
+
+    assert changes == {tmp_path / "config.toml": "create", record: "create"}
+
+
+def test_a_frozen_outputs_record_hashes_its_bytes(tmp_path: Path) -> None:
+    path = tmp_path / "hook"
+
+    entries = sync._entries_for({path: FrozenFile(b"#!/bin/sh\n", 0o755)})
+
+    assert entries[path].sha256 == hashlib.sha256(b"#!/bin/sh\n").hexdigest()

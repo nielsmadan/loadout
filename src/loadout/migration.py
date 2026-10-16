@@ -9,18 +9,18 @@ from typing import Any, Literal
 
 import tomlkit
 
-from .agents import DIRECTORY_SLICES, GLOBAL_PRESET
 from .composition import HEADER
+from .credentials import credential_material
 from .discovery import (
     PROJECT_ROOTS,
     RUNTIME_DOCUMENTS,
     authored_part,
-    credential_material,
     path_preconditions,
 )
 from .emit import PROJECT_SETTINGS_DIR, project_owned_keys
 from .errors import LoadoutError
 from .extract import extract, extract_codex_plugins, extract_codex_servers, extract_value
+from .harnesses import DIRECTORY_SLICES, GLOBAL_PRESET
 from .manifest import MANIFEST_NAME, load_manifest
 from .migration_models import (
     Candidate,
@@ -35,10 +35,10 @@ from .migration_models import (
     Unadopted,
     UnadoptedKind,
 )
-from .migration_paths import entry_path, inventory_layout
+from .migration_paths import inventory_layout
 from .migration_validation import validate_plan
 from .native_documents import key_fingerprints, parse_document
-from .output import CATEGORIES, sha256
+from .output import CATEGORIES, entry_path, sha256
 from .output import toml_item as _toml_item
 from .permissions.merge import merge_rules
 from .permissions.rules import Rules
@@ -77,6 +77,7 @@ TREE_CATEGORIES = {
 }
 
 
+PROJECT_INSTRUCTION = "instructions/main.md"
 SERVERS_EXAMPLE = b"""\
 # MCP server definitions, rendered for every agent that reads MCP config.
 # Uncomment a block, edit it, then run `loadout sync --global`.
@@ -508,7 +509,7 @@ class _PlanBuilder:
 
     def project_settings(self, candidate: Candidate, document: dict[str, Any]) -> None:
         """A co-owned file's keys that no slice writes go into the project source, so a
-        clone renders them too rather than finding them only on this machine (P-48)."""
+        clone renders them too rather than finding them only on this machine (ADR 0030)."""
         for agent in candidate.harnesses:
             spec = PROJECT_PRESET[agent]["permissions"]
             if not spec.preserve_foreign or self.inventory.root / str(spec.output) != (
@@ -580,7 +581,7 @@ class _PlanBuilder:
     def adopt_rules_file(self, candidate: Candidate) -> None:
         """Codex reads its whole rules folder, so a rules file loadout does not render,
         such as the approvals Codex writes to default.rules, is deleted once its rules
-        are in the source rather than left enforcing beside it (D-04)."""
+        are in the source rather than left enforcing beside it (ADR 0030)."""
         assert candidate.destination is not None
         if candidate.harnesses[0] == "codex" and candidate.destination.name != CODEX_RULES_OUTPUT:
             self.absorbed.update(dict.fromkeys(_original_paths(candidate), CODEX_RULES_ABSORBED))
@@ -600,46 +601,58 @@ class _PlanBuilder:
             self.notes.extend(f"{candidate.destination}: {note.detail}" for note in extracted.notes)
         return extracted.rules
 
-    def finish_project_sources(self) -> tuple[str, ...]:
-        instructions: tuple[str, ...] = ()
+    def write_project_sources(self) -> None:
         documents = [c for c in self.project_instructions if not _imports_agents_md(c)]
         documents = documents or self.project_instructions
         if documents and len({candidate.content for candidate in documents}) != 1:
             self.leave_out("instructions", "main", self.project_instructions)
         elif documents:
             candidate = documents[0]
-            self.write(Path("instructions/main.md"), candidate.content, mode=candidate.mode)
-            instructions = ("main",)
+            self.write(Path(PROJECT_INSTRUCTION), candidate.content, mode=candidate.mode)
         for category, values in self.project_values.items():
-            if category == "permissions":
-                self.write(Path("permissions.toml"), _rules_source(_merged_rules(values)))
-                continue
-            if category == "mcp":
-                self.write(Path("mcp.toml"), serialize_servers(_merged_servers(values)))
-                continue
-            if len({repr(value) for _, value in values}) != 1:
-                raise LoadoutError(f"project {category} documents disagree across harnesses")
-            value = values[0][1]
-            assert isinstance(value, dict)
-            self.write(Path(f"{category}.json"), serialize_document(value, "json"))
-        return instructions
+            match category:
+                case "permissions":
+                    self._write_permissions(values)
+                case "mcp":
+                    self._write_servers(values)
+                case _:
+                    if len({repr(value) for _, value in values}) != 1:
+                        raise LoadoutError(
+                            f"project {category} documents disagree across harnesses"
+                        )
+                    value = values[0][1]
+                    assert isinstance(value, dict)
+                    self.write(Path(f"{category}.json"), serialize_document(value, "json"))
+
+    def project_instruction_order(self) -> tuple[str, ...]:
+        """The instruction order the project config names: `main`, once it is written."""
+        written = self.inventory.source_root / PROJECT_INSTRUCTION in self.writes
+        return ("main",) if written else ()
 
     def write_global_sources(self) -> None:
         for agent, candidate in self.global_instructions.items():
             self.write(Path(f"instructions/{agent}.md"), candidate.content, mode=candidate.mode)
         for category, values in self.global_values.items():
-            if category == "permissions":
-                self.write(Path("permissions.toml"), _rules_source(_merged_rules(values)))
-            elif category == "mcp":
-                servers = _merged_servers(values)
-                self.write(Path("mcp.toml"), serialize_servers(servers) or SERVERS_EXAMPLE)
-            else:
-                for agent, value in values:
-                    assert isinstance(value, dict)
-                    self.write(Path(f"{category}/{agent}.json"), serialize_document(value, "json"))
+            match category:
+                case "permissions":
+                    self._write_permissions(values)
+                case "mcp":
+                    self._write_servers(values, fallback=SERVERS_EXAMPLE)
+                case _:
+                    for agent, value in values:
+                        assert isinstance(value, dict)
+                        self.write(
+                            Path(f"{category}/{agent}.json"), serialize_document(value, "json")
+                        )
         if self.inventory.source_root / "mcp.toml" not in self.writes:
             self.write(Path("mcp.toml"), SERVERS_EXAMPLE)
         self.write(Path("README.md"), SOURCE_README)
+
+    def _write_permissions(self, values: list[tuple[str, object]]) -> None:
+        self.write(Path("permissions.toml"), _rules_source(_merged_rules(values)))
+
+    def _write_servers(self, values: list[tuple[str, object]], fallback: bytes = b"") -> None:
+        self.write(Path("mcp.toml"), serialize_servers(_merged_servers(values)) or fallback)
 
     def global_blocks(self) -> dict[str, dict[str, object]]:
         """Each agent's manifest block: the slices `write_global_sources` wrote for it."""
@@ -965,18 +978,15 @@ class _PlanBuilder:
 
 
 def _permission_renderer(candidate: Candidate, project: bool) -> str | None:
+    """The renderer of the slice this permissions document belongs to, from the preset,
+    so a harness the preset gains is never silently skipped. Codex's permissions are its
+    rules files; its config.toml belongs to other slices."""
     agent = candidate.harnesses[0]
-    if candidate.category == "mcp-permissions" and agent == "claude":
-        return "claude-mcp-permissions"
-    if agent == "claude":
-        return "claude-project" if project else "claude"
-    if agent == "codex" and candidate.path.suffix == ".rules":
-        return "codex-project" if project else "codex"
-    if agent == "droid":
-        return "droid"
-    if agent == "pi":
-        return "pi-project" if project else "pi"
-    return "opencode" if agent == "opencode" else None
+    if agent == "codex" and candidate.path.suffix != ".rules":
+        return None
+    category = "mcp-permissions" if candidate.category == "mcp-permissions" else "permissions"
+    spec = (PROJECT_PRESET if project else GLOBAL_PRESET)[agent].get(category)
+    return spec.renderer if spec is not None else None
 
 
 def _initialized(inventory: Inventory) -> MigrationPlan:
@@ -1031,7 +1041,8 @@ def _initialized(inventory: Inventory) -> MigrationPlan:
 
 def _project_config(inventory: Inventory, builder: _PlanBuilder) -> dict[str, Any]:
     config: dict[str, Any] = {"harnesses": list(inventory.harnesses)}
-    if instructions := builder.finish_project_sources():
+    builder.write_project_sources()
+    if instructions := builder.project_instruction_order():
         config["instructions"] = list(instructions)
     return config
 
@@ -1204,7 +1215,7 @@ def plan_migration(inventory: Inventory) -> MigrationPlan:
 
 
 def _secrets(writes: Iterable[SourceWrite]) -> tuple[tuple[Path, str], ...]:
-    """Each committable source file that looks like it holds a secret, and why (D-07)."""
+    """Each committable source file that looks like it holds a secret, and why (ADR 0030)."""
     return tuple(
         (write.path, reason)
         for write in writes
@@ -1338,6 +1349,11 @@ def _original_entries(
     layout = inventory_layout(inventory)
     private = tuple(entry_path(path) for path in private_paths)
     destinations = tuple(layout.normalize(path) for path in builder.records)
+    trees = tuple(
+        layout.normalize(destination)
+        for destination, record in builder.records.items()
+        if record["format"] == "tree"
+    )
     retained = tuple(
         entry_path(path)
         for candidate in inventory.candidates
@@ -1365,8 +1381,7 @@ def _original_entries(
             elif path in builder.retained or any(entry.is_relative_to(p) for p in retained):
                 action, reason = "retain", candidate.reason
             elif any(planned == p or p.is_relative_to(planned) for p in destinations) or any(
-                record["format"] == "tree" and planned.is_relative_to(layout.normalize(destination))
-                for destination, record in builder.records.items()
+                planned.is_relative_to(tree) for tree in trees
             ):
                 action, reason = "generated", "This entry remains a required generated destination."
             elif not entry.is_relative_to(inventory.root.resolve()):

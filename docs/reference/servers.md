@@ -34,7 +34,7 @@ five renderers would each fail differently, and four of them only when that harn
   OpenCode's and Pi's `headers` and Codex's `http_headers`. A value holding `$` or `{`, or starting
   with `!`, is refused: Claude and Pi expand `${…}`, OpenCode `{env:…}`, Pi `$env:` and a leading
   `!`, and Codex none of them, so one value would reach the harnesses as different headers. An
-  `Authorization` header beside `auth_env_var` is refused too. A literal token here is the user's
+  `Authorization` header beside `auth_env_var`, in any case, is refused too. A literal token here is the user's
   own content in the source, reported by init like any other secret.
 - **stdio** needs `command`. `args` and `env` are optional.
 
@@ -214,7 +214,9 @@ An `Authorization` header that is exactly `Bearer ${VAR}` (Claude, Droid) or `Be
 (OpenCode) becomes `auth_env_var`. Every other header with a literal value is carried into
 `headers`, from Pi's `headers` and Codex's `http_headers` too. A header holding any other reference
 is reported rather than guessed at — extraction never invents an environment variable name from an
-opaque header string.
+opaque header string. An `Authorization` header beside an auth variable (Pi's `bearerTokenEnv`,
+Codex's `bearer_token_env_var`, or a second one beside a Bearer reference) is not adopted, with a
+note: the server keeps the variable.
 
 ## Not built
 

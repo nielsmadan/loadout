@@ -142,7 +142,7 @@ def test_a_project_only_repo_reports_nothing_rather_than_failing(
     """
     monkeypatch.setenv("OPENCODE_DISABLE_CLAUDE_CODE_SKILLS", "1")
     monkeypatch.setenv("OPENCODE_DISABLE_EXTERNAL_SKILLS", "1")
-    messages = [f"{n.agent}.{n.slice}: {n.message}" for n in collect_notices(project)]
+    messages = [f"{n.owner}.{n.slice}: {n.message}" for n in collect_notices(project)]
 
     # OpenCode and Pi author their own catch-all at project scope, so they stay
     # silent about it — the losers that prove the rest were asked.
@@ -318,3 +318,13 @@ def test_a_loose_file_in_skills_gets_one_notice_and_a_readme_none(
     assert f"{skills / 'old-style.md'} is not a skill" in out
     assert not (project / ".claude" / "skills" / "README").exists()
     assert not (project / ".claude" / "skills" / "old-style").exists()
+
+
+def test_a_project_hooks_document_is_checked_against_its_harness(bare_project: Path) -> None:
+    """Review 2, 4.8: removing the project document notices passed every test."""
+    (bare_project / "loadout" / "hooks.json").write_text('{"NoSuchEvent": []}\n', encoding="utf-8")
+    quiet = {"OPENCODE_DISABLE_CLAUDE_CODE_SKILLS": "1", "OPENCODE_DISABLE_EXTERNAL_SKILLS": "1"}
+
+    messages = [notice.render() for notice in collect_notices(bare_project, environ=quiet)]
+
+    assert "droid.hooks: NoSuchEvent is not in this harness's known event list" in messages

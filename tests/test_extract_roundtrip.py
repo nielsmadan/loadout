@@ -187,7 +187,7 @@ def _unknown_kind(name: str, spec: object) -> AssertionError:
     """
     return AssertionError(
         f"{name}: {type(spec).__name__} has no inverse. Give it an extractor in "
-        "EXTRACTORS, a capability in CAPABILITIES, a projection in PROJECTIONS, "
+        "EXTRACTORS, a projection in PROJECTIONS "
         "and a branch here — do not widen the else-branch to swallow it."
     )
 
@@ -531,7 +531,7 @@ def test_no_renderer_lacks_an_inverse_without_being_named() -> None:
     unnamed = set(RENDERERS) - set(EXTRACTORS) - set(VALUE_EXTRACTORS) - NOT_INVERTED
     assert not unnamed, (
         f"renderer(s) with no inverse and no entry in NOT_INVERTED: {sorted(unnamed)}. "
-        "Give each an extractor in EXTRACTORS, a capability in CAPABILITIES and a "
+        "Give each an extractor in EXTRACTORS and a "
         "projection in PROJECTIONS — or name it here with the reason it is deferred."
     )
     assert set(EXTRACTORS) <= set(RENDERERS)

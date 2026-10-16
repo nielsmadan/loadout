@@ -172,7 +172,7 @@ class OriginalEntry:
 @dataclass(frozen=True)
 class Unadopted:
     """An item whose copies disagree across harnesses: left in place, every copy
-    named with the harnesses it serves, for the /loadout skill to merge (D-05)."""
+    named with the harnesses it serves, for the /loadout skill to merge (ADR 0030)."""
 
     kind: UnadoptedKind
     name: str

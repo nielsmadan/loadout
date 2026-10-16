@@ -7,12 +7,32 @@ import shutil
 import stat
 import tempfile
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
-from typing import BinaryIO, assert_never
+from typing import BinaryIO, Literal, assert_never
 
-from .emit import render_all
-from .output import Copied, FrozenFile, Merged, Output
+from .output import Copied, FrozenFile, Merged, Output, file_sha256, sha256
 from .surgery import apply_json, apply_toml
+
+DriftKind = Literal[
+    "hand-edited",
+    "owned-key",
+    "owned-key-removed",
+    "unknown",
+    "source-changed",
+    "missing",
+    "orphaned",
+    "unmanaged",
+    "unmanaged-link",
+]
+
+
+@dataclass(frozen=True, kw_only=True)
+class Drift:
+    path: Path
+    actual: str
+    expected: str
+    kind: DriftKind
 
 
 def _write_through(path: Path, fill: Callable[[BinaryIO], object], mode: int | None) -> None:
@@ -60,87 +80,105 @@ def write_outputs(outputs: Mapping[Path, Output]) -> list[Path]:
 
 
 def _frozen(path: Path, content: Output) -> dict[Path, str | FrozenFile | Copied]:
-    if isinstance(content, FrozenFile | Copied):
-        # A copy stays a reference and is streamed when written, never held whole.
-        return {path: content}
-    if isinstance(content, Merged):
-        applied = created_document(path, content)
-        return {**({path: applied} if applied is not None else {}), **dict(content.records)}
-    return {path: content}
+    match content:
+        case FrozenFile() | Copied() | str():
+            # A copy stays a reference and is streamed when written, never held whole.
+            return {path: content}
+        case Merged():
+            applied = created_document(path, content)
+            return {**({path: applied} if applied is not None else {}), **dict(content.records)}
+        case _:
+            assert_never(content)
 
 
 def _unchanged(path: Path, content: str | FrozenFile | Copied) -> bool:
     """Same bytes already there, so rewriting would only move the mtime."""
-    if not path.is_file():
-        return False
-    if isinstance(content, Copied):
-        return _same_copy(path, content)
-    if isinstance(content, FrozenFile):
-        return (
-            path.read_bytes() == content.content
-            and path.stat().st_mode & 0o7777 == content.mode & 0o7777
-        )
-    return path.read_bytes() == content.encode("utf-8")
+    match content:
+        case Copied() | FrozenFile():
+            return copy_matches(path, content)
+        case str():
+            return path.is_file() and path.read_bytes() == content.encode("utf-8")
+        case _:
+            assert_never(content)
 
 
-def check_all(
-    root: Path, profile: str = "default", outputs: Mapping[Path, Output] | None = None
-) -> list[tuple[Path, str, str]]:
-    """Every output on disk that differs from `outputs`, rendered here when not given."""
-    root = root.absolute()
-    outputs = render_all(root, profile) if outputs is None else outputs
-    drift: list[tuple[Path, str, str]] = []
-    for path, expected in outputs.items():
-        if isinstance(expected, FrozenFile):
-            if (
-                not path.is_file()
-                or path.read_bytes() != expected.content
-                or path.stat().st_mode & 0o7777 != expected.mode
-            ):
-                drift.append(
-                    (
-                        path,
-                        describe_file(path),
-                        f"{len(expected.content)} bytes, mode {expected.mode:o}\n",
-                    )
-                )
-            continue
-        if isinstance(expected, Copied):
-            if _copy_drifted(path, expected.source, expected.prefix):
-                drift.append(
-                    (path, describe_file(path), describe_file(expected.source, expected.prefix))
-                )
-            continue
-        actual = path.read_text(encoding="utf-8", newline="") if path.is_file() else ""
-        # Applying is identity on everything loadout does not own, so this compares
-        # owned keys alone: the harness writing its own project table cannot read
-        # as drift.
-        wanted = applied_document(path, expected) if isinstance(expected, Merged) else expected
+def check_all(outputs: Mapping[Path, Output]) -> list[Drift]:
+    """Every output on disk that differs from `outputs`, byte for byte, as a source
+    change until the guard says otherwise."""
+    drift: list[Drift] = []
+
+    def differs(path: Path, actual: str, expected: str) -> None:
+        drift.append(Drift(path=path, actual=actual, expected=expected, kind="source-changed"))
+
+    def text_differs(path: Path, wanted: str, newline: str | None = "") -> None:
+        actual = path.read_text(encoding="utf-8", newline=newline) if path.is_file() else ""
         if actual != wanted:
-            drift.append((path, actual, wanted))
-        if isinstance(expected, Merged):
-            for record_path, text in expected.records:
-                on_disk = record_path.read_text(encoding="utf-8") if record_path.is_file() else ""
-                if on_disk != text:
-                    drift.append((record_path, on_disk, text))
+            differs(path, actual, wanted)
+
+    for path, expected in outputs.items():
+        match expected:
+            case FrozenFile() | Copied():
+                if not copy_matches(path, expected):
+                    differs(path, describe_file(path), describe_copy(expected))
+            case Merged():
+                # Applying is identity on everything loadout does not own, so this
+                # compares owned keys alone: the harness writing its own project table
+                # cannot read as drift.
+                text_differs(path, applied_document(path, expected))
+                for record_path, text in expected.records:
+                    text_differs(record_path, text, newline=None)
+            case str():
+                text_differs(path, expected)
+            case _:
+                assert_never(expected)
     return drift
 
 
 CHUNK = 1 << 20
 
 
-def _same_copy(path: Path, copied: Copied) -> bool:
-    """Whether `path` already holds the copy, compared a chunk at a time."""
-    have = path.stat()
-    if stat.S_IMODE(have.st_mode) != copied.file_mode() & 0o7777:
+def copy_matches(path: Path, wanted: Copied | FrozenFile) -> bool:
+    """Whether `path` already holds `wanted`: its bytes and every mode bit. The one rule
+    check, the preview and the writer share, so none of them disagrees about a copy."""
+    if not path.is_file():
         return False
-    if have.st_size != len(copied.prefix) + copied.source.stat().st_size:
+    if stat.S_IMODE(path.stat().st_mode) != _mode(wanted):
         return False
-    with path.open("rb") as existing, copied.source.open("rb") as source:
-        if existing.read(len(copied.prefix)) != copied.prefix:
-            return False
+    if isinstance(wanted, FrozenFile):
+        return path.read_bytes() == wanted.content
+    return _same_bytes(path, wanted.source)
+
+
+def _mode(wanted: Copied | FrozenFile) -> int:
+    return stat.S_IMODE(wanted.mode if isinstance(wanted, FrozenFile) else wanted.file_mode())
+
+
+def describe_copy(wanted: Copied | FrozenFile) -> str:
+    if isinstance(wanted, FrozenFile):
+        return _summary(len(wanted.content), _mode(wanted), sha256(wanted.content))
+    return _summary(wanted.source.stat().st_size, _mode(wanted), file_sha256(wanted.source))
+
+
+def describe_file(path: Path) -> str:
+    # Drift on a copied file reports a summary, not the content: a tree carries
+    # binaries, and a byte diff of one is noise rather than a review.
+    if not path.is_file():
+        return "(absent)\n"
+    metadata = path.stat()
+    return _summary(metadata.st_size, metadata.st_mode, file_sha256(path))
+
+
+def _summary(size: int, mode: int, digest: str) -> str:
+    return f"{size} bytes, mode {stat.S_IMODE(mode):o}, sha256 {digest}\n"
+
+
+def _same_bytes(path: Path, source: Path) -> bool:
+    """Compared a chunk at a time, so a large copy is never held whole."""
+    if path.stat().st_size != source.stat().st_size:
+        return False
+    with path.open("rb") as existing, source.open("rb") as source_file:
         while True:
-            chunk = source.read(CHUNK)
+            chunk = source_file.read(CHUNK)
             if existing.read(CHUNK) != chunk:
                 return False
             if not chunk:
@@ -149,7 +187,6 @@ def _same_copy(path: Path, copied: Copied) -> bool:
 
 def _atomic_stream_copy(path: Path, copied: Copied) -> None:
     def fill(handle: BinaryIO) -> None:
-        handle.write(copied.prefix)
         with copied.source.open("rb") as source:
             shutil.copyfileobj(source, handle, CHUNK)
 
@@ -172,24 +209,3 @@ def applied_document(path: Path, merged: Merged) -> str:
     existing = path.read_text(encoding="utf-8", newline="") if path.is_file() else ""
     apply = apply_json if merged.format == "json" else apply_toml
     return apply(existing, merged.owned, merged.document)
-
-
-def _copy_drifted(path: Path, source: Path, prefix: bytes = b"") -> bool:
-    if not path.is_file():
-        return True
-    if path.read_bytes() != prefix + source.read_bytes():
-        return True
-    return _executable(path) != _executable(source)
-
-
-def _executable(path: Path) -> bool:
-    return bool(path.stat().st_mode & 0o111)
-
-
-def describe_file(path: Path, prefix: bytes = b"") -> str:
-    # Drift on a copied file reports a summary, not the content: a tree carries
-    # binaries, and a byte diff of one is noise rather than a review.
-    if not path.is_file():
-        return "(absent)\n"
-    suffix = " (executable)" if _executable(path) else ""
-    return f"{len(prefix) + path.stat().st_size} bytes{suffix}\n"

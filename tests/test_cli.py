@@ -289,17 +289,13 @@ def test_loadout_error_still_returns_3(root: Path, monkeypatch, capsys) -> None:
 
 def test_explain_is_not_a_command(root: Path, capsys) -> None:
     """Removed for 1.0: it resolved one slice of nine and nothing after `init global`."""
-    with pytest.raises(SystemExit) as exit_info:
-        loadout.main(["explain", "shared", "--root", str(root)])
-    assert exit_info.value.code == 2
+    assert loadout.main(["explain", "shared", "--root", str(root)]) == 2
     assert "invalid choice: 'explain'" in capsys.readouterr().err
 
 
 def test_harness_is_not_a_command(root: Path, capsys) -> None:
     """Removed for 1.0: adding a harness is a `harnesses` list edit plus `sync`."""
-    with pytest.raises(SystemExit) as exit_info:
-        loadout.main(["harness", "add", "pi", "--root", str(root)])
-    assert exit_info.value.code == 2
+    assert loadout.main(["harness", "add", "pi", "--root", str(root)]) == 2
     assert "invalid choice: 'harness'" in capsys.readouterr().err
 
 
@@ -498,9 +494,7 @@ def test_global_without_a_machine_config_names_init(tmp_path, monkeypatch, capsy
 
 
 def test_global_and_root_are_mutually_exclusive(capsys) -> None:
-    with pytest.raises(SystemExit) as caught:
-        loadout.main(["sync", "--global", "--root", "."])
-    assert caught.value.code == 2
+    assert loadout.main(["sync", "--global", "--root", "."]) == 2
 
 
 def test_global_uses_the_configured_source(root: Path, tmp_path, monkeypatch) -> None:
@@ -627,43 +621,35 @@ def test_init_global_without_source_defaults_to_cwd_and_requires_agents(
 
 def test_bare_init_prints_usage_naming_the_two_scopes(tmp_path: Path, monkeypatch, capsys) -> None:
     monkeypatch.chdir(tmp_path)
-    with pytest.raises(SystemExit) as exit_info:
-        loadout.main(["init"])
-    assert exit_info.value.code == 2
+    assert loadout.main(["init"]) == 2
     err = capsys.readouterr().err
     assert "project" in err
     assert "global" in err
 
 
 def test_init_project_rejects_global_only_flags(tmp_path: Path) -> None:
-    with pytest.raises(SystemExit) as exit_info:
-        loadout.main(["init", "project", "--registration", "replace", "--root", str(tmp_path)])
-    assert exit_info.value.code == 2
+    assert (
+        loadout.main(["init", "project", "--registration", "replace", "--root", str(tmp_path)]) == 2
+    )
 
 
 def test_init_global_rejects_project_only_flags(tmp_path: Path, capsys) -> None:
-    with pytest.raises(SystemExit) as exit_info:
-        loadout.main(["init", "global", "--root", str(tmp_path)])
-    assert exit_info.value.code == 2
+    assert loadout.main(["init", "global", "--root", str(tmp_path)]) == 2
     assert "unrecognized arguments: --root" in capsys.readouterr().err
 
 
 def test_init_global_takes_no_force_flag(tmp_path: Path, capsys) -> None:
-    with pytest.raises(SystemExit) as exit_info:
-        loadout.main(["init", "global", "--force"])
-    assert exit_info.value.code == 2
+    assert loadout.main(["init", "global", "--force"]) == 2
     assert "unrecognized arguments: --force" in capsys.readouterr().err
 
 
 def test_init_global_takes_its_directory_as_an_argument_not_source(tmp_path: Path, capsys) -> None:
-    with pytest.raises(SystemExit) as exit_info:
-        loadout.main(["init", "global", "--source", str(tmp_path)])
-    assert exit_info.value.code == 2
+    assert loadout.main(["init", "global", "--source", str(tmp_path)]) == 2
     assert "unrecognized arguments: --source" in capsys.readouterr().err
 
 
 def test_init_project_no_longer_takes_a_starter(tmp_path: Path, capsys) -> None:
-    with pytest.raises(SystemExit) as exit_info:
+    assert (
         loadout.main(
             [
                 "init",
@@ -676,7 +662,8 @@ def test_init_project_no_longer_takes_a_starter(tmp_path: Path, capsys) -> None:
                 "backend",
             ]
         )
-    assert exit_info.value.code == 2
+        == 2
+    )
     assert "unrecognized arguments: --starter backend" in capsys.readouterr().err
     assert list(tmp_path.iterdir()) == []
 

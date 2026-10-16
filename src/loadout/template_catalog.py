@@ -11,7 +11,7 @@ from .output import no_symlinks as _no_symlinks
 from .output import regular_file as _regular_file
 from .permissions.rules import parse_rules
 from .servers import parse_servers
-from .skills import SKILL_DOCUMENT, Skill, excluded
+from .skills import EXCLUDED_DIRECTORIES, SKILL_DOCUMENT, Skill, excluded
 
 CATEGORIES = {"instructions": ".md", "permissions": ".toml", "mcp": ".toml", "skills": ""}
 _NAME = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9_.-]*")
@@ -21,6 +21,10 @@ def template_name(name: str) -> None:
     parts = name.split("/")
     if name.count("/") > 1 or any(not _NAME.fullmatch(part) for part in parts):
         raise LoadoutError(f"invalid template name: {name!r}; use a name or source/name")
+    if any(part in EXCLUDED_DIRECTORIES for part in parts):
+        raise LoadoutError(
+            f"invalid template name: {name!r} names a folder loadout never reads; rename it"
+        )
 
 
 @dataclass(frozen=True)
@@ -136,6 +140,8 @@ def contribution_paths(
             else (template / legacy[category],)
         )
         for path in contributed:
+            if template not in loaded:
+                _no_symlinks(path, template)
             if path.exists():
                 paths.append(path)
     return tuple(dict.fromkeys(paths)) if category == "instructions" else tuple(paths)

@@ -82,11 +82,19 @@ else, so `sync` names it, changes nothing, and exits 1. It prints a diff alongsi
 the `-` lines are the ones that exist only on disk, so a permission a harness granted itself at
 runtime is reported verbatim rather than silently discarded. When the terminal shortens that
 diff, the whole of it goes to `$XDG_STATE_HOME/loadout/sync-abort.diff` (mode 0600), which the
-next such abort replaces. Port the edit into the source with the bundled `/loadout` skill, or
+next such abort replaces; when that directory cannot be written, the abort says so by leaving the
+line out and still exits 1. Port the edit into the source with the bundled `/loadout` skill, or
 pass `--force` to discard it.
 
 Comparison is by parsed document for JSON targets, not by bytes, so a harness re-serialising
-its own config in a different key order does not read as an edit.
+its own config in a different key order does not read as an edit. In a file loadout shares with
+its harness, such as `~/.claude.json` or `~/.codex/config.toml`, only the keys loadout writes are
+compared, each on its own: the harness may change the rest, while an edit to one of loadout's keys,
+such as a server added to `mcpServers` with `claude mcp add`, stops sync and is reported by `check`
+as `owned-key`, and deleting one, such as `codex mcp remove` of the last server, as
+`owned-key-removed`. A key the source manages for the first time is a source change: sync
+overwrites it and says so, as `now managed: model in ~/.codex/config.toml (was "gpt-5")`. A key
+listed under `$remove` is never an edit, since the harness may write it back.
 
 There is a third comparison beside those two renders: **what `sync` recorded writing there
 last**, kept per destination under `$XDG_CONFIG_HOME/loadout/written/`. Without it, editing a
@@ -129,8 +137,12 @@ every folder in its skills directory. A file there that loadout did not write ta
 the source — Codex writing a new approval to `~/.codex/rules/default.rules` is the common case.
 `check` reports it as `unmanaged` and exits 1; `sync` names it in a warning and carries on, since
 it overwrites nothing there. Port it into the source with the bundled `/loadout` skill, then delete
-it. A folder of files is reported once, as the folder. A file another loadout source wrote is not
-reported, nor is a dot entry such as `.DS_Store` or Codex's own `.system` skills.
+it. A folder of files is reported once, as the folder. A link there is reported as
+`unmanaged-link` with where it points, and never read: check the target, then delete the link. A
+project folder reached through a link, such as `.claude/agents -> ../.git`, is reported the same
+way and never scanned. A file another loadout
+source wrote is not reported, nor is a dot entry such as `.DS_Store` or Codex's own `.system`
+skills.
 
 ## Shell completions
 
@@ -171,7 +183,7 @@ time, per [0011](docs/decisions/0011-a-destination-follows-a-relocated-harness.m
     loadout init global --dry-run --json
     loadout init global /work/dotfiles --harness claude --harness pi --yes
 
-`init` finishes with the first render. It compares what loadout would write with what is on disk, writes it and says so when the two match, and shows the diff before applying when they do not. A `sync` straight after `init` changes nothing. It records what it wrote, so the first `sync` has a baseline.
+`init` finishes with the first render. It compares what loadout would write with what is on disk, writes it and says so when the two match, names a file that only gains loadout's banner or formatting as `Normalise:`, and shows the diff before applying when they differ otherwise. A `sync` straight after `init` changes nothing. It records what it wrote, so the first `sync` has a baseline.
 
 Global init discovers existing configuration in live harness roots and the selected directory,
 which defaults to cwd. Under a harness root it reads only the paths loadout manages and leaves
@@ -217,7 +229,9 @@ For `sync` and `check`, `--global` and `--root` are mutually exclusive; `--globa
 config. Every run picks its profile by one rule: `--profile` when given; otherwise the machine
 config's `profile` when the root is the registered global source, whether named by `--global`,
 by `--root`, by a git hook or by init; otherwise `default`. So a manual sync and a hook-run sync of
-the global source render the same profile, and neither retires the other's outputs.
+the global source render the same profile, and neither retires the other's outputs. A machine
+config that cannot be read stops a run at a global source rather than fall back to `default`,
+which would retire the profile's outputs; a project and a git hook still fall back.
 
 ## `loadout.toml`
 
@@ -599,7 +613,7 @@ in once:
     loadout init project --harness claude --harness opencode --dry-run
     loadout init project --harness claude --harness opencode --yes
 
-`init` finishes with the first render. It compares what loadout would write with what is on disk, writes it and says so when the two match, and shows the diff before applying when they do not. A `sync` straight after `init` changes nothing.
+`init` finishes with the first render. It compares what loadout would write with what is on disk, writes it and says so when the two match, names a file that only gains loadout's banner or formatting as `Normalise:`, and shows the diff before applying when they differ otherwise. A `sync` straight after `init` changes nothing.
 
 To start from a small instruction seed, apply a bundled template after init with
 `loadout template add frontend --vendored` (or `backend`), then `loadout sync`. Bundled templates
@@ -609,7 +623,8 @@ credentials.
 Git hooks are not part of adopting configuration: install them with
 `loadout integrate git-hooks install --root . [--regenerate]`, which reports exact integration
 commands and preserves existing or shared hooks. `--regenerate` also runs guarded sync after
-checkout and merge. A new clone needs that command explicitly. Manual validation is
+checkout and merge, and rewrites an out-of-date hook loadout wrote. A hook resolves its profile
+each time it runs, the way `sync` does. A new clone needs that command explicitly. Manual validation is
 `loadout check --staged`.
 See [Git integration](docs/reference/git-integration.md) for dependencies, alternate indexes,
 worktrees, profiles and post-hook failure behavior.
@@ -649,15 +664,22 @@ since even empty it makes `bash` ask; its project file is written only with a ru
 written, empty when there are no rules. Nor does sync create `~/.codex/config.toml` just to leave
 it empty.
 
-Project-scope sync writes only inside the project, and edits `.gitignore` only when it is a
-regular file rather than a symlink. A symlink committed to the repository, such as
-`.claude -> ../../.claude`, would otherwise route its outputs into a home directory, so sync refuses
-before writing anything and names each path and where it resolves. The same holds for what it
+Project-scope sync writes only to real paths inside the project, never under `.git` or
+`loadout/`, and edits `.gitignore` only when it is a regular file rather than a symlink. A symlink
+committed to the repository can route outputs anywhere: `.claude -> ../../.claude` into a home
+directory, or `.claude/skills/x -> ../../.git/hooks` into a hook the next checkout runs. So no link
+may sit between the project root and an output, and an output may itself be a link only when it
+points at another file the same sync writes, such as `CLAUDE.md -> AGENTS.md`. Sync refuses before
+writing anything and names each link and where it resolves. The same holds for what it
 reads: a link anywhere in `loadout/` that leads out of the project, such as a skill's supporting
-file pointing at a key in `~/.ssh`, is refused rather than copied into the repository's outputs.
+file pointing at a key in `~/.ssh`, or into its `.git`, which holds credentials such as a token in
+`.git/config`, is refused rather than copied into the repository's outputs. A template's own
+files are read only as real files, never through a link.
 Linked folders are followed, so a folder linked to somewhere else in the project is checked for
-what it holds; folders never read, such as a skill's `.venv` or `node_modules`, are skipped.
-Both checks run before sync or check compares anything, so no diff of an outside file is shown.
+what it holds; folders never read, such as a skill's `.venv` or `node_modules`, are skipped, so a
+skill or template may not itself be named like one.
+Both checks run before sync or check compares anything, a file sync wrote and no longer renders
+included, so no diff of an outside file is shown.
 
 Generated project files are ignored and removed from the final index while remaining available to
 the harness. `.gitignore` lists exactly what sync wrote: with no `mcp.toml` there is no `.mcp.json`

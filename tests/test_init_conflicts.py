@@ -1,4 +1,4 @@
-"""init leaves a conflicting item out, and the /loadout skill lands a merged one (D-05).
+"""init leaves a conflicting item out, and the /loadout skill lands a merged one (ADR 0030).
 
 Two harnesses holding different copies of one skill, or a project whose CLAUDE.md and
 AGENTS.md disagree, used to refuse the whole adoption. init now adopts everything else,

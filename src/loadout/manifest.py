@@ -5,16 +5,13 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from .agents import DIRECTORY_SLICES, GLOBAL_PRESET, SliceOutput
-from .destinations import resolve_destination
 from .errors import LoadoutError
-from .harnesses import KNOWN_HARNESSES
+from .harnesses import DIRECTORY_SLICES, GLOBAL_PRESET, KNOWN_HARNESSES, SliceOutput
 from .skill_policy import SkillPolicy, parse_skill_policies
 from .sources import Source, SourceParser, parse_sources
 from .toml_paths import contains, key_path
 
 MANIFEST_NAME = "loadout.toml"
-__all__ = ["resolve_destination"]
 
 DEFAULT_PROFILE = "default"
 
@@ -479,7 +476,7 @@ def _settings_must_reach_a_slice(
     if declared.get("settings") is None or any(spec.takes_settings for spec in offered.values()):
         return
     raise LoadoutError(
-        f"{agent}: `settings` names a fragment, but no slice this agent offers reads one "
+        f"{agent}: `settings` names a fragment, but no slice this harness offers reads one "
         f"(slices that do: "
         f"{', '.join(sorted(n for n, s in offered.items() if s.takes_settings)) or 'none'})"
     )
@@ -537,7 +534,7 @@ def _parse_agents(
         if stray:
             raise LoadoutError(
                 f"{agent}: unknown slice(s) {', '.join(stray)} "
-                f"(this agent offers: {', '.join(sorted(offered))})"
+                f"(this harness offers: {', '.join(sorted(offered))})"
             )
         block = {k: v for k, v in block.items() if k in offered or k in extras}
         _settings_must_reach_a_slice(agent, declared, offered)
@@ -650,7 +647,7 @@ def _build_manifest(
 
     if not targets and not permissions and not agent_skills and not agent_module_config:
         raise LoadoutError(
-            f"{path}: no [<agent>], [instructions.<agent>] or [permissions.<name>] targets declared"
+            f"{path}: no [<harness>], [instructions.<harness>] or [permissions.<name>] targets declared"
         )
     skill_policies = parse_skill_policies(data.get("skills"))
     configured_skill_agents = {target.harness for target in agent_skills}
@@ -658,7 +655,7 @@ def _build_manifest(
         extra = set(policy.agents) - configured_skill_agents
         if extra:
             raise LoadoutError(
-                f"skills.{policy.name} names agent(s) without an active skills slice: "
+                f"skills.{policy.name} names harness(es) without an active skills slice: "
                 f"{', '.join(sorted(extra))}"
             )
 

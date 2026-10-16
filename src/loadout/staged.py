@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import posixpath
@@ -49,21 +50,26 @@ def _entries(root: Path, revision: str | None = None) -> dict[str, Entry]:
     for entry in raw.split(b"\0"):
         if not entry:
             continue
-        metadata, name = entry.split(b"\t", 1)
+        metadata, raw_name = entry.split(b"\t", 1)
         mode, middle, last = metadata.decode().split()
-        path = Path(os.fsdecode(name))
-        if path.is_absolute() or ".." in path.parts or ".git" in path.parts:
-            raise LoadoutError(f"invalid staged path: {path}")
+        name = os.fsdecode(raw_name)
+        # Split as text: a Path per entry was most of the check on a large repository.
+        parts = name.split("/")
+        if name.startswith("/") or ".." in parts or ".git" in parts or "" in parts:
+            raise LoadoutError(f"invalid staged path: {name}")
         if not revision and last != "0":
             raise LoadoutError(
-                f"unmerged index entry: {path}; resolve and stage the conflict first"
+                f"unmerged index entry: {name}; resolve and stage the conflict first"
             )
-        result[str(path)] = Entry(mode, last if revision else middle)
+        result[name] = Entry(mode, last if revision else middle)
     return result
 
 
 def _snapshot(root: Path, destination: Path, entries: dict[str, Entry]) -> None:
-    """Write `entries` out as files, streaming their blobs from one `cat-file` run."""
+    """Write `entries` out as files, streaming their blobs from one `cat-file` run.
+
+    One request at a time, each reply read before the next is sent: writing every
+    request first deadlocks once git's output pipe and its input pipe are both full."""
     destination.mkdir()
     files = {name: entry for name, entry in entries.items() if entry.mode != "160000"}
     process = subprocess.Popen(
@@ -73,12 +79,12 @@ def _snapshot(root: Path, destination: Path, entries: dict[str, Entry]) -> None:
         env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
     )
     assert process.stdin is not None and process.stdout is not None
-    process.stdin.write("".join(entry.oid + "\n" for entry in files.values()).encode())
-    process.stdin.close()
     links = []
     try:
         for name, entry in files.items():
             target = destination / name
+            process.stdin.write(entry.oid.encode() + b"\n")
+            process.stdin.flush()
             match process.stdout.readline().split():
                 case [oid, b"blob", size] if oid.decode() == entry.oid:
                     content = process.stdout.read(int(size))
@@ -96,6 +102,8 @@ def _snapshot(root: Path, destination: Path, entries: dict[str, Entry]) -> None:
             else:
                 raise LoadoutError(f"unsupported staged mode {entry.mode}: {name}")
     finally:
+        with contextlib.suppress(BrokenPipeError):
+            process.stdin.close()
         process.stdout.close()
         process.wait()
     for path, content in links:
@@ -112,13 +120,28 @@ def _render_inputs(root: Path, relative: Path, entries: dict[str, Entry]) -> dic
     source it names outside it. Nothing else of the repository is written out."""
     base = PurePosixPath(relative.as_posix())
     project = str(base / PROJECT_DIR / PROJECT_CONFIG_NAME) in entries
-    prefixes = [base / PROJECT_DIR] if project else [base, *_external_sources(root, base, entries)]
+    folders = [base / PROJECT_DIR] if project else [base, *_external_sources(root, base, entries)]
+    prefixes = tuple("" if str(folder) == "." else f"{folder}/" for folder in folders)
+    exact = {str(folder) for folder in folders}
+
+    def wanted(name: str) -> bool:
+        if project and (name.rpartition("/")[0] or ".") == str(base):
+            return True
+        return name.startswith(prefixes) or name in exact
+
+    return {name: entry for name, entry in entries.items() if wanted(name)}
+
+
+def _ownership_inputs(relative: Path, entries: dict[str, Entry]) -> dict[str, Entry]:
+    """The entries the HEAD pass reads: the manifest and the profiles beside it, which
+    `extends` cannot leave, and the project config. It renders nothing, so nothing
+    else is written out."""
+    base = PurePosixPath(relative.as_posix())
+    config = str(base / PROJECT_DIR / PROJECT_CONFIG_NAME)
 
     def wanted(name: str) -> bool:
         path = PurePosixPath(name)
-        if project and path.parent == base:
-            return True
-        return any(path.is_relative_to(prefix) for prefix in prefixes)
+        return name == config or (path.parent == base and path.suffix == ".toml")
 
     return {name: entry for name, entry in entries.items() if wanted(name)}
 
@@ -167,8 +190,8 @@ def _inspect(
         raise LoadoutError(
             f"{'staged' if render else 'HEAD'} dependency snapshot is incomplete or invalid: {detail}\n"
             "Stage every required source/config/support file and its deletions; vendor external "
-            "dependencies inside this repository and use relative source paths. Required private "
-            "inputs need an optional binding or an explicit public replacement; never stage secrets."
+            "dependencies inside this repository and use relative source paths. A gitignored "
+            "personal file may be absent, but a required input must be staged; never stage secrets."
         )
     return tuple(json.loads(result.stdout))
 
@@ -198,14 +221,16 @@ def check_staged(root: Path, profile: str = "default") -> int:
         scratch = Path(directory).resolve()
         index_tree, head_tree = scratch / "index", scratch / "head"
         _snapshot(repository, index_tree, _render_inputs(repository, relative, staged))
-        _snapshot(repository, head_tree, _render_inputs(repository, relative, head))
+        _snapshot(repository, head_tree, _ownership_inputs(relative, head))
         owned = set(_inspect(head_tree, repository, relative, profile, head))
         owned.update(_inspect(index_tree, repository, relative, profile, staged))
+        # A staged path is generated when it, or a folder above it, is an output.
+        generated = {Path(output) for output in owned}
         changed = [
             path
             for path, entry in staged.items()
             if head.get(path) != entry
-            and any(Path(path).is_relative_to(Path(output)) for output in owned)
+            and not generated.isdisjoint((Path(path), *Path(path).parents))
         ]
         if changed:
             commands = "\n".join(f"  {path}" for path in sorted(changed))

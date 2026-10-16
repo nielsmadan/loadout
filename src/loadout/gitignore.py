@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import stat
 from collections.abc import Iterable
 from pathlib import Path
 
 from .errors import LoadoutError
+from .output import FrozenFile, atomic_install
 
 SPECIAL = "\\*?[] "
 
@@ -15,13 +17,26 @@ def escape(line: str) -> str:
     return "".join("\\" + c if c in SPECIAL else c for c in line)
 
 
-def gitignore_path(root: Path) -> Path:
-    """The project's `.gitignore`, refused when it is not a plain file of the project:
-    a link would have the lines appended to whatever it names."""
+def require_plain_gitignore(root: Path) -> None:
+    """Refuse a `.gitignore` that is not a plain file of the project: a link would have
+    the lines appended to whatever it names."""
     path = root / ".gitignore"
     if path.is_symlink() or (path.exists() and not path.is_file()):
         raise LoadoutError(f"{path} must be a regular file, not a symlink, for loadout to edit it")
-    return path
+
+
+def gitignore_path(root: Path) -> Path:
+    require_plain_gitignore(root)
+    return root / ".gitignore"
+
+
+def _lines(text: str) -> list[str]:
+    """Split as git does, on newlines alone: `splitlines` also breaks on U+2028 and
+    U+2029, which git keeps inside a line."""
+    lines = text.split("\n")
+    if lines[-1] == "":
+        lines.pop()
+    return [line.removesuffix("\r") for line in lines]
 
 
 def with_lines(text: str, lines: Iterable[str]) -> str:
@@ -29,7 +44,7 @@ def with_lines(text: str, lines: Iterable[str]) -> str:
     lines = tuple(lines)
     if any("\n" in line or "\r" in line for line in lines):
         raise LoadoutError("a .gitignore entry may not contain a line break")
-    present = set(text.splitlines())
+    present = set(_lines(text))
     missing = [line for line in dict.fromkeys(lines) if line not in present]
     if not missing:
         return text
@@ -43,8 +58,8 @@ def append_lines(root: Path, lines: Iterable[str]) -> int:
     updated = with_lines(text, lines)
     if updated == text:
         return 0
-    path.write_text(updated, encoding="utf-8")
-    return len(updated.splitlines()) - len(text.splitlines())
+    replace_text(path, updated, root)
+    return len(_lines(updated)) - len(_lines(text))
 
 
 def remove_lines(root: Path, lines: Iterable[str]) -> int:
@@ -53,9 +68,16 @@ def remove_lines(root: Path, lines: Iterable[str]) -> int:
     if not path.is_file():
         return 0
     unwanted = set(lines)
-    existing = path.read_text(encoding="utf-8").splitlines()
+    existing = _lines(path.read_text(encoding="utf-8"))
     kept = [line for line in existing if line not in unwanted]
     if len(kept) == len(existing):
         return 0
-    path.write_text("".join(f"{line}\n" for line in kept), encoding="utf-8")
+    replace_text(path, "".join(f"{line}\n" for line in kept), root)
     return len(existing) - len(kept)
+
+
+def replace_text(path: Path, text: str, boundary: Path) -> None:
+    """Rename a new file over `path`, keeping its mode: writing in place would reach
+    every other name of a hard-linked file."""
+    mode = stat.S_IMODE(path.stat().st_mode) if path.is_file() else 0o644
+    atomic_install(path, FrozenFile(text.encode("utf-8"), mode), boundary)

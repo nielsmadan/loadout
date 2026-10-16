@@ -78,9 +78,7 @@ def test_add_vendored_refuses_when_a_copy_is_already_there(
 
 
 def test_vendor_is_not_a_command(bare_project: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    with pytest.raises(SystemExit) as exit_info:
-        main(["template", "vendor", "web", "--root", str(bare_project)])
-    assert exit_info.value.code == 2
+    assert main(["template", "vendor", "web", "--root", str(bare_project)]) == 2
     assert "invalid choice: 'vendor'" in capsys.readouterr().err
 
 
@@ -88,8 +86,8 @@ def test_bare_add_refuses_without_a_tty(
     bare_project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
-    assert main(["template", "add", "--root", str(bare_project)]) == 3
-    assert "mode" in capsys.readouterr().err
+    assert main(["template", "add", "--root", str(bare_project)]) == 2
+    assert "needs a name" in capsys.readouterr().err
 
 
 def test_named_add_without_mode_refuses_without_a_tty(
@@ -97,7 +95,7 @@ def test_named_add_without_mode_refuses_without_a_tty(
 ) -> None:
     monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
     _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
-    assert main(["template", "add", "web", "--root", str(bare_project)]) == 3
+    assert main(["template", "add", "web", "--root", str(bare_project)]) == 2
     assert load_project_config(_config(bare_project)).templates == ()
 
 
@@ -523,3 +521,53 @@ def test_without_a_global_source_the_message_says_so(
         "No global source is configured, so only vendored and bundled templates resolve." in message
     )
     assert "Available: backend, frontend." in message
+
+
+def test_sync_reports_a_vendored_copy_modified_since_it_was_vendored(
+    bare_project: Path,
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Review 2, 2.11: the template notes printed only in check, so a project syncing
+    from a diverged copy never heard of it."""
+    _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
+    main(["template", "add", "web", "--vendored", "--root", str(bare_project)])
+    main(["sync", "--root", str(bare_project), "--force"])
+    vendored = bare_project / "loadout/templates/web/permissions.toml"
+    vendored.write_text('[shell]\nallow = ["vite", "npm"]\n')
+    capsys.readouterr()
+
+    assert main(["sync", "--root", str(bare_project)]) == 0
+
+    assert (
+        "note: project.templates: the vendored template 'web' was modified after it was vendored"
+        in capsys.readouterr().out
+    )
+
+
+def test_template_add_without_a_name_or_a_terminal_is_refused(
+    bare_project: Path,
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Review 2, 2.13: the prompt read end of input and declared the first template."""
+    _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    before = _config(bare_project).read_text()
+
+    assert main(["template", "add", "--tracked", "--root", str(bare_project)]) == 2
+
+    assert "needs a name" in capsys.readouterr().err
+    assert _config(bare_project).read_text() == before
+
+
+def test_template_add_without_a_mode_or_a_terminal_is_a_usage_error(
+    bare_project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+
+    assert main(["template", "add", "frontend", "--root", str(bare_project)]) == 2
+
+    assert "needs a mode" in capsys.readouterr().err

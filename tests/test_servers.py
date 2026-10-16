@@ -240,3 +240,24 @@ def test_headers_on_a_stdio_server_are_refused(tmp_path: Path) -> None:
 
     with pytest.raises(LoadoutError, match="headers"):
         parse_servers(source)
+
+
+def test_a_lowercase_authorization_beside_auth_env_var_is_refused(tmp_path: Path) -> None:
+    """Review 2, 2.6: the name check was case-sensitive, so two auth headers rendered."""
+    body = 'auth_env_var = "K"\n[x.headers]\nauthorization = "Bearer abc"\n'
+
+    with pytest.raises(LoadoutError, match="authorization"):
+        _parsed(tmp_path, body)
+
+
+def test_a_header_value_that_is_not_a_table_is_refused(tmp_path: Path) -> None:
+    """Review 2, batch 5 6.4."""
+    with pytest.raises(LoadoutError, match="headers must be a table"):
+        _parsed(tmp_path, 'headers = "x"\n')
+
+
+def test_a_codex_header_name_with_a_dot_is_quoted(tmp_path: Path) -> None:
+    """Review 2, batch 5 6.2: a bare `X.Team` is a dotted key, a nested table."""
+    servers = _parsed(tmp_path, '[x.headers]\n"X.Team" = "core"\n')
+
+    assert '\n"X.Team" = "core"\n' in render_codex_servers(servers)

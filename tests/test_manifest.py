@@ -4,8 +4,9 @@ from pathlib import Path, PurePosixPath
 
 import pytest
 
+from loadout.destinations import resolve_destination
 from loadout.errors import LoadoutError
-from loadout.manifest import load_manifest, resolve_destination
+from loadout.manifest import load_manifest
 
 MINIMAL = """
 [[source]]

@@ -8,10 +8,8 @@ rules describe different operations.
 |---|---|---|---|
 | profile `extends`, agent fields, legacy targets and `[all]` defaults | inherit | replace the complete field; `[]` is empty | profile `remove` deletes inherited TOML key paths before child fields apply |
 | instruction fragment order | select no unnamed content | concatenate selected prose in order | `substitute` replaces a fragment by name |
-| settings/hooks/plugins/defaults fragments; native `sources` with `merge = "deep"` | keep previous value | maps merge recursively; arrays append, including duplicates | JSON `null` deletes; later scalar/type wins |
+| settings/hooks/plugins/defaults fragments | keep previous value | maps merge recursively; arrays append, including duplicates | JSON `null` deletes; later scalar/type wins |
 | portable permission sources | no vote | union in tier order | identical rules use deny > ask > allow; catch-all uses strictest stated value |
-| native part with singular `source` | no undeclared field | values remain literal, including null and empty arrays | different parts claiming a key fail |
-| native instruction `sources` with `merge = "concat"` | optional missing input contributes nothing | UTF-8 prose joins with blank lines | invalid UTF-8 fails with its input path |
 | global named fragments | search participating sources | source qualification selects exactly one item | duplicate unqualified names fail |
 | global skills/module files | collect offered items | whole item replacement through `source.overrides` | undeclared duplicate names/paths fail |
 | skill catalog variants | public skill targets configured consumers | `<name>.local/` replaces the whole skill; `agents` narrows consumers | a loose file in `skills/` is not a skill and is reported |
@@ -54,10 +52,10 @@ content exists once.
 
 ## Ownership and lifecycle
 
-Layers inside one native part share ownership. Across parts, ownership remains exclusive. A
-layer deleting a key does not surrender that part's claim: every input key remains reserved.
-Explicit `keys` constrain each input individually. This rule also governs partial runtime
-documents, so removal reaches the deployed document without touching foreign fields.
+Fragments composed into one slice share its ownership of the keys it writes into a shared
+document. A fragment dropping a key does not end that claim at once: the record of owned keys
+beside the fragment (`<name>.owned`, see [codex.md](codex.md)) keeps it owned for the sync that
+strips it, so the removal reaches the deployed document without touching the harness's own keys.
 
 Skill and module selection changes the generated item set. The override operator does not
 introduce orphan removal of its own: `sync` retires what it no longer renders from the written

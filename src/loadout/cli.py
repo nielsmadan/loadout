@@ -5,6 +5,7 @@ import json
 import sys
 import traceback
 from pathlib import Path
+from typing import NoReturn
 
 from . import __version__
 from .commands import (
@@ -27,15 +28,29 @@ from .completions import (
 from .errors import LoadoutError, UsageError
 from .git_hook_commands import run_hook
 from .git_hooks import EVENTS, install_hooks, status_hooks, uninstall_hooks
+from .harnesses import KNOWN_HARNESSES
 from .init_options import InitOptions
 from .init_workflow import run_init, run_restore
-from .machine import load_machine_config, machine_config_path, resolve_profile
+from .machine import load_machine_config, machine_config_path, profile_for, resolve_profile
 from .project import project_config_path
 from .staged import check_staged
 
 
+class _ArgumentError(Exception):
+    def __init__(self, usage: str, message: str) -> None:
+        super().__init__(message)
+        self.usage = usage
+
+
+class _Parser(argparse.ArgumentParser):
+    """Raises rather than exiting, so `--json` can still answer with its one object."""
+
+    def error(self, message: str) -> NoReturn:
+        raise _ArgumentError(self.format_usage(), message)
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = _Parser(
         prog="loadout",
         description="Render one source of truth into configuration for your AI coding "
         "harnesses, and keep the generated files in sync.",
@@ -181,7 +196,11 @@ def build_parser() -> argparse.ArgumentParser:
     hook_event.add_argument(
         "--root", type=Path, default=Path.cwd(), help="loadout source root the hook runs against"
     )
-    hook_event.add_argument("--profile", default="default", help="active profile to render")
+    hook_event.add_argument(
+        "--profile",
+        default=None,
+        help="active profile to render (default: resolved when the hook runs, as for sync)",
+    )
     subparsers.metavar = "{" + ",".join(n for n in subparsers.choices if n != "hook-event") + "}"
 
     return parser
@@ -226,7 +245,8 @@ def _add_git_hooks(parser: argparse.ArgumentParser) -> None:
     install.add_argument(
         "--regenerate",
         action="store_true",
-        help="also install the post-checkout and post-merge sync hooks",
+        help="also install the post-checkout and post-merge sync hooks, and rewrite "
+        "out-of-date hooks loadout wrote",
     )
     install.add_argument("--dry-run", action="store_true", help="preview without writing any hook")
     status = commands.add_parser("status", help="show which hooks are installed and whose they are")
@@ -240,12 +260,6 @@ def _add_git_hooks(parser: argparse.ArgumentParser) -> None:
             type=Path,
             default=Path.cwd(),
             help="repository root holding loadout.toml (default: cwd)",
-        )
-        command.add_argument(
-            "--profile",
-            default=None,
-            help="active profile to render (default: the machine config's profile when it "
-            "registers this source, otherwise 'default')",
         )
 
 
@@ -278,7 +292,7 @@ def _resolve_global(profile: str | None) -> tuple[Path, str]:
     config = load_machine_config(config_path)
     if config is None:
         raise LoadoutError(f"no machine config at {config_path}; run `loadout init global` first")
-    return config.source, resolve_profile(config.source, profile)
+    return config.source, profile_for(config.source, profile, config)
 
 
 TEMPLATE_OUTSIDE_PROJECT = (
@@ -303,6 +317,7 @@ def _add_init_choices(init: argparse.ArgumentParser) -> None:
         "--harness",
         dest="harnesses",
         action="append",
+        choices=sorted(KNOWN_HARNESSES),
         default=None,
         help="configured harness (repeatable); otherwise use machine defaults, then detection",
     )
@@ -395,7 +410,9 @@ def _dispatch_skill(args: argparse.Namespace) -> int:
 
 def _dispatch(args: argparse.Namespace) -> int:
     if args.command == "hook-event":
-        return run_hook(args.event, args.root.resolve(), args.profile, args.git_arguments)
+        root = args.root.resolve()
+        profile = resolve_profile(root, args.profile, lenient=True)
+        return run_hook(args.event, root, profile, args.git_arguments)
     if args.command == "integrate":
         if args.integrate_command == "completions":
             return _dispatch_completions(args)
@@ -413,17 +430,11 @@ def _dispatch(args: argparse.Namespace) -> int:
 
 def _dispatch_git_hooks(args: argparse.Namespace) -> int:
     root = args.root.resolve()
-    profile = resolve_profile(root, args.profile)
     if args.git_hook_command == "install":
-        return install_hooks(
-            root,
-            regenerate=args.regenerate,
-            profile=profile,
-            dry_run=args.dry_run,
-        )
+        return install_hooks(root, regenerate=args.regenerate, dry_run=args.dry_run)
     if args.git_hook_command == "status":
-        return status_hooks(root, profile=profile)
-    return uninstall_hooks(root, profile=profile, yes=args.yes)
+        return status_hooks(root)
+    return uninstall_hooks(root, yes=args.yes)
 
 
 def _dispatch_outputs(args: argparse.Namespace) -> int:
@@ -439,12 +450,17 @@ def _dispatch_outputs(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
-    if args.command is None:
-        parser.print_usage(file=sys.stderr)
+    try:
+        args = parser.parse_args(argv)
+    except _ArgumentError as error:
+        if _json_requested(sys.argv[1:] if argv is None else argv):
+            _print_error_json(2, error)
+        sys.stderr.write(error.usage)
+        print(f"loadout: error: {error}", file=sys.stderr)
         return 2
     if (
-        (args.command == "template" and args.template_command is None)
+        args.command is None
+        or (args.command == "template" and args.template_command is None)
         or (args.command == "integrate" and args.integrate_command is None)
         or (
             args.command == "integrate"
@@ -470,11 +486,20 @@ def main(argv: list[str] | None = None) -> int:
         _error_json(args, 3, error)
         print(f"loadout: {error}", file=sys.stderr)
         return 3
-    except Exception:  # noqa: BLE001 - top-level handler reports unexpected errors
+    except Exception as error:  # noqa: BLE001 - top-level handler reports unexpected errors
         traceback.print_exc()
+        _error_json(args, 4, error)
         return 4
+
+
+def _json_requested(argv: list[str]) -> bool:
+    return bool(argv) and argv[0] in {"init", "check"} and "--json" in argv
 
 
 def _error_json(args: argparse.Namespace, code: int, error: Exception) -> None:
     if args.command in {"init", "check"} and getattr(args, "json", False):
-        print(json.dumps({"status": "error", "exit_code": code, "error": str(error)}))
+        _print_error_json(code, error)
+
+
+def _print_error_json(code: int, error: Exception) -> None:
+    print(json.dumps({"status": "error", "exit_code": code, "error": str(error)}, indent=2))

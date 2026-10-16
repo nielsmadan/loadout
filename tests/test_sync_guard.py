@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 import loadout
-from loadout.commands import DIFF_LIMIT
+from loadout.diffs import DIFF_LIMIT
 from loadout.emit import render_all
 from loadout.written import normalise as _normalise
 from loadout.written import written_state_path
@@ -595,3 +595,22 @@ def test_an_output_matching_the_committed_source_is_accepted_without_a_record(
     assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
 
     assert "Version two." in (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
+
+
+def test_a_truncated_abort_with_nowhere_to_keep_the_diff_still_exits_1(
+    root: Path, capsys, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review 2, 2.15: an unwritable state directory turned the abort into exit 4."""
+    blocked = tmp_path / "state-is-a-file"
+    blocked.write_text("")
+    monkeypatch.setenv("XDG_STATE_HOME", str(blocked))
+    _adopt(root)
+    bulk = {f"key-{index}": index for index in range(60)}
+    (root / "perm" / "opencode.json").write_text(json.dumps(bulk, indent=2) + "\n")
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--root", str(root)]) == 1
+
+    err = capsys.readouterr().err
+    assert "more diff line(s)" in err
+    assert "Sync aborted" in err

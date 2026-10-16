@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
+
+import pytest
 
 from loadout import sync
 from loadout.output import Copied
@@ -18,6 +21,7 @@ from loadout.written import (
     accepts_bytes,
     accepts_text,
     every_recorded_path,
+    forget_written,
     normalise,
     read_written,
     record_written,
@@ -85,7 +89,7 @@ def test_every_recorded_path_names_each_roots_outputs(tmp_path: Path) -> None:
     garbage = written_state_path(a).with_name("garbage.json")
     garbage.write_bytes(b"\xff")
 
-    assert every_recorded_path() == {Path("/dest/a.md"), Path("/dest/b.md")}
+    assert every_recorded_path([Path("/dest")]) == {Path("/dest/a.md"), Path("/dest/b.md")}
 
 
 def test_a_future_version_reads_as_empty(tmp_path: Path) -> None:
@@ -130,11 +134,56 @@ def test_a_record_that_cannot_be_written_is_not_an_error(tmp_path: Path, monkeyp
     assert read_written(tmp_path) == {}
 
 
-def test_copied_output_record_matches_the_emitted_prefix(tmp_path: Path) -> None:
+def test_copied_output_record_hashes_the_source_bytes(tmp_path: Path) -> None:
     source = tmp_path / "source.md"
     source.write_bytes(b"instructions\n")
-    source.chmod(0o644)
     output = tmp_path / "output.md"
-    copied = Copied(source, prefix=b"generated\n", mode=0o755)
-    entries = sync._entries_for({output: copied})
-    assert entries[output].sha256 == hashlib.sha256(b"generated\ninstructions\n").hexdigest()
+    entries = sync._entries_for({output: Copied(source)})
+    assert entries[output].sha256 == hashlib.sha256(b"instructions\n").hexdigest()
+
+
+def test_a_record_write_that_fails_leaves_the_last_record_whole(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review 2, 2.5: a torn record broke every later restore; the write is a rename."""
+    record_written(tmp_path, {tmp_path / "a": WrittenEntry(kind="text", sha256="1")})
+    before = written_state_path(tmp_path).read_text()
+
+    def fail(*args: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(os, "replace", fail)
+    assert record_written(tmp_path, {tmp_path / "b": WrittenEntry(kind="text", sha256="2")}) is None
+
+    assert written_state_path(tmp_path).read_text() == before
+    assert sorted(p.name for p in written_state_path(tmp_path).parent.iterdir()) == [
+        written_state_path(tmp_path).name
+    ]
+
+
+def test_forgetting_leaves_a_record_from_another_version_alone(tmp_path: Path) -> None:
+    """Review 2, 4.1: the record has one reader's rules, the version check included."""
+    record = tmp_path / "record.json"
+    document = {"version": 99, "written": {str(tmp_path / "a"): {"kind": "text"}}}
+    record.write_text(json.dumps(document))
+
+    forget_written(record, [tmp_path / "a"], created=True)
+
+    assert json.loads(record.read_text()) == document
+
+
+def test_only_the_recorded_paths_inside_the_folders_asked_about_are_read(tmp_path: Path) -> None:
+    """Performance: thirty foreign roots took a no-op sync from 0.22 s to 1.68 s, every
+    entry of every record built though only managed folders are scanned."""
+    record_written(
+        tmp_path,
+        {
+            Path("/home/.claude/skills/a/SKILL.md"): entry(),
+            Path("/home/.claude/skills-extra/b.md"): entry(),
+            Path("/home/.codex/AGENTS.md"): entry(),
+        },
+    )
+
+    assert every_recorded_path([Path("/home/.claude/skills")]) == {
+        Path("/home/.claude/skills/a/SKILL.md")
+    }

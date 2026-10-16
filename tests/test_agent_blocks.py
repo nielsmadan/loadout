@@ -7,9 +7,10 @@ from pathlib import Path
 import pytest
 
 from fixture_root import build_root
-from loadout.agents import GLOBAL_PRESET, SliceOutput
-from loadout.emit import Merged, render_global
+from loadout.emit import render_global
 from loadout.errors import LoadoutError
+from loadout.harnesses import GLOBAL_PRESET, SliceOutput
+from loadout.output import Merged
 from loadout.permissions.renderers import RENDERERS, JsonSpec, ValueSpec
 from render_helpers import write_all
 
@@ -131,7 +132,7 @@ def test_an_unknown_agent_is_rejected_with_the_known_ones(tmp_path: Path) -> Non
 def test_an_unknown_slice_names_what_the_agent_offers(tmp_path: Path) -> None:
     # `plugins`, not `hooks` or `mcp` — OpenCode gained a hooks slice with the
     # adapters and a global `mcp` slice with server definitions; it still has
-    # no plugins slice (see the comment beneath GLOBAL_PRESET in agents.py).
+    # no plugins slice (see the comment beneath GLOBAL_PRESET in harnesses.py).
     root = build(tmp_path, "\n[opencode]\nplugins = []\n")
     with pytest.raises(LoadoutError, match="unknown slice"):
         render_global(root)
@@ -153,7 +154,9 @@ render       = "codex"
     assert any(p.endswith("rules/permissions.rules") for p in paths)
 
 
-def test_two_slices_of_one_agent_compose_into_one_file(tmp_path: Path) -> None:
+def test_two_slices_of_one_agent_compose_into_one_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The case §3 exists for: two slices writing one file, threading rather
     than colliding. Uses opencode because `render_opencode` writes into the
     document it is handed; `render_pi` builds from scratch and so owns its file
@@ -165,16 +168,15 @@ def test_two_slices_of_one_agent_compose_into_one_file(tmp_path: Path) -> None:
         return out
 
     dest = GLOBAL_PRESET["opencode"]["permissions"].destination
-    GLOBAL_PRESET["opencode"]["marker"] = SliceOutput(renderer="marker-test", destination=dest)
-    RENDERERS["marker-test"] = JsonSpec(render_marker)
-    try:
-        root = build(tmp_path, "\n[opencode]\nmarker = []\n")
-        doc = next(text for p, text in rendered(root).items() if p.endswith("opencode.json"))
-        assert "written by the second slice" in doc
-        assert "alpha" in doc, "the first slice's output must survive the second"
-    finally:
-        del GLOBAL_PRESET["opencode"]["marker"]
-        del RENDERERS["marker-test"]
+    monkeypatch.setitem(
+        GLOBAL_PRESET["opencode"], "marker", SliceOutput(renderer="marker-test", destination=dest)
+    )
+    monkeypatch.setitem(RENDERERS, "marker-test", JsonSpec(render_marker))
+
+    root = build(tmp_path, "\n[opencode]\nmarker = []\n")
+    doc = next(text for p, text in rendered(root).items() if p.endswith("opencode.json"))
+    assert "written by the second slice" in doc
+    assert "alpha" in doc, "the first slice's output must survive the second"
 
 
 def test_an_owned_key_beats_a_stale_one_in_the_residual(tmp_path: Path) -> None:
@@ -191,34 +193,37 @@ def test_an_owned_key_beats_a_stale_one_in_the_residual(tmp_path: Path) -> None:
     assert '"keep"' in doc, "the residual's own keys must survive"
 
 
-def test_two_different_agents_naming_one_file_is_still_a_collision(tmp_path: Path) -> None:
-
+def test_two_different_agents_naming_one_file_is_still_a_collision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     clash = GLOBAL_PRESET["pi"]["permissions"].destination
-    GLOBAL_PRESET["codex"]["permissions"] = SliceOutput(renderer="codex", destination=clash)
-    try:
-        root = build(tmp_path, "\n[pi]\n\n[codex]\n")
-        with pytest.raises(LoadoutError, match="claimed by both"):
-            render_global(root)
-    finally:
-        GLOBAL_PRESET["codex"]["permissions"] = SliceOutput(
-            renderer="codex", destination="${CODEX_HOME:-~/.codex}/rules/permissions.rules"
-        )
+    monkeypatch.setitem(
+        GLOBAL_PRESET["codex"], "permissions", SliceOutput(renderer="codex", destination=clash)
+    )
+
+    root = build(tmp_path, "\n[pi]\n\n[codex]\n")
+    with pytest.raises(LoadoutError, match="claimed by both"):
+        render_global(root)
 
 
-def test_a_whole_file_renderer_refuses_to_compose(tmp_path: Path) -> None:
+def test_a_whole_file_renderer_refuses_to_compose(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """`render_pi` builds its document from scratch, so threading through it
     would silently discard whatever the earlier slice rendered. Say so instead."""
     dest = GLOBAL_PRESET["pi"]["permissions"].destination
-    GLOBAL_PRESET["pi"]["marker"] = SliceOutput(renderer="claude", destination=dest)
-    try:
-        root = build(tmp_path, "\n[pi]\nmarker = []\n")
-        with pytest.raises(LoadoutError, match="from scratch"):
-            render_global(root)
-    finally:
-        del GLOBAL_PRESET["pi"]["marker"]
+    monkeypatch.setitem(
+        GLOBAL_PRESET["pi"], "marker", SliceOutput(renderer="claude", destination=dest)
+    )
+
+    root = build(tmp_path, "\n[pi]\nmarker = []\n")
+    with pytest.raises(LoadoutError, match="from scratch"):
+        render_global(root)
 
 
-def test_a_contributor_writes_one_key_and_the_residual_survives(tmp_path: Path) -> None:
+def test_a_contributor_writes_one_key_and_the_residual_survives(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The shape Claude's hooks needs: settings supplies the whole file, a
     contributor supplies one key's value, and neither loses to the other.
 
@@ -226,55 +231,54 @@ def test_a_contributor_writes_one_key_and_the_residual_survives(tmp_path: Path) 
     contributor running first put its content at top level and the settings
     fragment vanished entirely.
     """
-    real = GLOBAL_PRESET["opencode"]["hooks"]
-    GLOBAL_PRESET["opencode"]["hooks"] = SliceOutput(
-        renderer="hooks-test",
-        destination=GLOBAL_PRESET["opencode"]["permissions"].destination,
-        # Declared, the way the real settings-sharing slices declare it: this
-        # stands in for `claude.hooks`, which contributes one key to the same
-        # document the settings residual supplies.
-        takes_settings=True,
-        source_slice="hooks",
-        owned_key="hooks",
+    monkeypatch.setitem(
+        GLOBAL_PRESET["opencode"],
+        "hooks",
+        SliceOutput(
+            renderer="hooks-test",
+            destination=GLOBAL_PRESET["opencode"]["permissions"].destination,
+            # Declared, the way the real settings-sharing slices declare it: this
+            # stands in for `claude.hooks`, which contributes one key to the same
+            # document the settings residual supplies.
+            takes_settings=True,
+            source_slice="hooks",
+            owned_key="hooks",
+        ),
     )
-    RENDERERS["hooks-test"] = ValueSpec(lambda content: content)
-    try:
-        root = build(tmp_path, '\n[opencode]\nsettings = "opencode"\nhooks = ["a"]\n')
-        (root / "settings").mkdir(exist_ok=True)
-        (root / "settings" / "opencode.json").write_text('{"model": "kept"}\n', encoding="utf-8")
-        (root / "hooks").mkdir(exist_ok=True)
-        (root / "hooks" / "a.json").write_text('{"hello": "world"}\n', encoding="utf-8")
+    monkeypatch.setitem(RENDERERS, "hooks-test", ValueSpec(lambda content: content))
 
-        doc = json.loads(next(t for p, t in rendered(root).items() if p.endswith("opencode.json")))
-        assert doc["hooks"] == {"hello": "world"}, "contributor value under its owned key"
-        assert doc["model"] == "kept", "the settings residual must reach the file"
-        assert "alpha" in json.dumps(doc["permission"]), "permissions still rendered"
-        assert "hello" not in doc, "contributor content must not leak to top level"
-    finally:
-        # Restore, never delete. OpenCode has a real hooks slice now, and a
-        # `del` here removed it for every test that ran afterwards — passing
-        # alone and failing in the suite.
-        GLOBAL_PRESET["opencode"]["hooks"] = real
-        del RENDERERS["hooks-test"]
+    root = build(tmp_path, '\n[opencode]\nsettings = "opencode"\nhooks = ["a"]\n')
+    (root / "settings").mkdir(exist_ok=True)
+    (root / "settings" / "opencode.json").write_text('{"model": "kept"}\n', encoding="utf-8")
+    (root / "hooks").mkdir(exist_ok=True)
+    (root / "hooks" / "a.json").write_text('{"hello": "world"}\n', encoding="utf-8")
+
+    doc = json.loads(next(t for p, t in rendered(root).items() if p.endswith("opencode.json")))
+    assert doc["hooks"] == {"hello": "world"}, "contributor value under its owned key"
+    assert doc["model"] == "kept", "the settings residual must reach the file"
+    assert "alpha" in json.dumps(doc["permission"]), "permissions still rendered"
+    assert "hello" not in doc, "contributor content must not leak to top level"
 
 
-def test_a_value_renderer_without_an_owned_key_is_rejected(tmp_path: Path) -> None:
+def test_a_value_renderer_without_an_owned_key_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The two renderer kinds are distinguishable at registration, so a mismatch
     fails rather than quietly writing the wrong shape."""
-    real = GLOBAL_PRESET["opencode"]["hooks"]
-    GLOBAL_PRESET["opencode"]["hooks"] = SliceOutput(
-        renderer="hooks-test",
-        destination=GLOBAL_PRESET["opencode"]["permissions"].destination,
-        source_slice="hooks",
+    monkeypatch.setitem(
+        GLOBAL_PRESET["opencode"],
+        "hooks",
+        SliceOutput(
+            renderer="hooks-test",
+            destination=GLOBAL_PRESET["opencode"]["permissions"].destination,
+            source_slice="hooks",
+        ),
     )
-    RENDERERS["hooks-test"] = ValueSpec(lambda content: content)
-    try:
-        root = build(tmp_path, "\n[opencode]\nhooks = []\n")
-        with pytest.raises(LoadoutError, match="names no owned_key"):
-            render_global(root)
-    finally:
-        GLOBAL_PRESET["opencode"]["hooks"] = real
-        del RENDERERS["hooks-test"]
+    monkeypatch.setitem(RENDERERS, "hooks-test", ValueSpec(lambda content: content))
+
+    root = build(tmp_path, "\n[opencode]\nhooks = []\n")
+    with pytest.raises(LoadoutError, match="names no owned_key"):
+        render_global(root)
 
 
 def test_false_switches_an_automatic_slice_off(tmp_path: Path) -> None:

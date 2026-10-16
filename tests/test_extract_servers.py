@@ -374,3 +374,94 @@ def test_an_unrecognised_codex_server_entry_is_reported_and_dropped() -> None:
 
     assert extraction.value == {}
     assert extraction.notes[0].kind == "unrecognised"
+
+
+@pytest.mark.parametrize(
+    ("name", "document"),
+    [
+        (
+            "pi-servers",
+            {
+                "mcpServers": {
+                    "x": {
+                        "url": "https://x",
+                        "bearerTokenEnv": "K",
+                        "headers": {"Authorization": "Bearer abc", "X-Team": "core"},
+                    }
+                }
+            },
+        ),
+        (
+            "claude-project-servers",
+            {
+                "mcpServers": {
+                    "x": {
+                        "type": "http",
+                        "url": "https://x",
+                        "headers": {
+                            "Authorization": "Bearer ${K}",
+                            "authorization": "Bearer abc",
+                            "X-Team": "core",
+                        },
+                    }
+                }
+            },
+        ),
+    ],
+)
+def test_an_auth_header_beside_an_auth_variable_is_dropped_with_a_note(
+    name: str, document: dict[str, Any]
+) -> None:
+    """Review 2, 2.6: both were extracted, and init failed with no note."""
+    extraction = extract_value(name, document)
+
+    assert extraction.value == {
+        "x": Server(
+            name="x",
+            transport="http",
+            url="https://x",
+            auth_env_var="K",
+            headers={"X-Team": "core"},
+        )
+    }
+    assert [n.kind for n in extraction.notes] == ["cannot"]
+    assert "uthorization" in extraction.notes[0].detail
+
+
+def test_a_codex_auth_header_beside_bearer_token_env_var_is_dropped_with_a_note() -> None:
+    text = (
+        '[mcp_servers.x]\nurl = "https://x"\nbearer_token_env_var = "K"\n'
+        '[mcp_servers.x.http_headers]\nAuthorization = "Bearer abc"\n'
+    )
+
+    extraction = extract_codex_servers(text)
+
+    assert extraction.value == {
+        "x": Server(name="x", transport="http", url="https://x", auth_env_var="K")
+    }
+    assert [n.kind for n in extraction.notes] == ["cannot"]
+
+
+def test_a_codex_mcp_servers_value_that_is_not_a_table_is_noted() -> None:
+    """Review 2, 4.8: the Codex extractor walked `mcp_servers` unchecked and crashed."""
+    extraction = extract_codex_servers("mcp_servers = 1\n")
+
+    assert extraction.value == {}
+    assert [note.detail for note in extraction.notes] == [
+        "codex-servers: mcp_servers is not a table"
+    ]
+
+
+def test_a_bearer_reference_outside_authorization_is_not_the_auth_variable() -> None:
+    """Review 2, batch 5 6.1: only the Authorization header carries `auth_env_var`."""
+    headers = {"X-Token": "Bearer ${K}", "X-Team": "core"}
+    document = {"mcpServers": {"x": {"type": "http", "url": "https://x", "headers": headers}}}
+
+    extraction = extract_value("claude-project-servers", document)
+
+    assert extraction.value == {
+        "x": Server(name="x", transport="http", url="https://x", headers={"X-Team": "core"})
+    }
+    assert [n.detail for n in extraction.notes] == [
+        "claude-servers: x: header X-Token holds a reference with no source form"
+    ]

@@ -67,7 +67,7 @@ Codex, Pi and Antigravity have none.
 
 ## What loadout writes is narrower than this page, and the preset is not a capability map
 
-`GLOBAL_PRESET` in `src/loadout/agents.py` is lopsided, and reading it as a capability map gets
+`GLOBAL_PRESET` in `src/loadout/harnesses.py` is lopsided, and reading it as a capability map gets
 the answer wrong. It records what is **built**, and a slice missing from it may be unbuilt,
 impossible, or — as both entries in the table this section used to carry turned out to be —
 neither.

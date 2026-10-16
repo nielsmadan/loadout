@@ -1,5 +1,5 @@
 """A skill that names an agent hands its work to it: a fork on Claude, a delegation line
-in every other harness's copy, and an error when no source agent has that name (P-34 c)."""
+in every other harness's copy, and an error when no source agent has that name."""
 
 from __future__ import annotations
 
@@ -7,8 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from loadout.emit import Copied, render_global, render_project
+from loadout.emit import render_global, render_project
 from loadout.errors import LoadoutError
+from loadout.output import Copied
 from loadout.skills import BANNER, discover_skills, render_skill
 
 SKILL = (

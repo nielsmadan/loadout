@@ -3,7 +3,7 @@
 Run from the repository root:
 
 ```sh
-.venv/bin/pytest -q tests/test_template_catalog.py tests/test_artifacts.py tests/test_templates.py tests/test_template_cli.py tests/test_bundled_templates.py tests/test_git_integration.py
+.venv/bin/pytest -q tests/test_template_catalog.py tests/test_templates.py tests/test_template_cli.py tests/test_bundled_templates.py tests/test_git_integration.py
 .venv/bin/python tests/regenerate_expected.py --check
 just check
 ```

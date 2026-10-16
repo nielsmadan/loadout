@@ -12,8 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from loadout.emit import Copied, render_all
+from loadout.emit import render_all
 from loadout.errors import LoadoutError
+from loadout.output import Copied
 from loadout.skills import (
     BANNER,
     apply_body,

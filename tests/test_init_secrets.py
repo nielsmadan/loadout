@@ -1,4 +1,4 @@
-"""A secret found during adoption stays in the source and is warned about (D-07): detection
+"""A secret found during adoption stays in the source and is warned about (ADR 0030): detection
 decides nothing about where content goes, so tracked project content stays shared, untracked
 co-owned settings stay private, and every source file holding a secret is named."""
 

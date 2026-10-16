@@ -1,4 +1,4 @@
-"""Files loadout did not write, in folders a harness reads whole (D-04).
+"""Files loadout did not write, in folders a harness reads whole (ADR 0030).
 
 Codex reads every file in its rules folder and each harness reads every folder in
 its skills directory and every file in its agents directory, so a file there that no loadout root wrote takes effect beside
@@ -7,22 +7,28 @@ the source. It is flagged rather than absorbed: porting it is the /loadout skill
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
-from .agents import DIRECTORY_SLICES
+from .destinations import resolve_destination
 from .discovery import RUNTIME_DIRECTORIES, RUNTIME_FILES, UNMANAGED_NAMES
-from .manifest import load_profile, manifest_path, resolve_destination
+from .harnesses import DIRECTORY_SLICES
+from .manifest import load_profile, manifest_path
 from .output import Output
-from .project import PROJECT_PRESET, load_project_config, project_config_path
+from .project import PROJECT_PRESET, PROTECTED, load_project_config, project_config_path
 from .written import every_recorded_path
 
 WHOLE_FOLDER_RENDERERS = frozenset({"codex", "codex-project"})
 
 
-def managed_folders(root: Path, profile: str = "default") -> tuple[Path, ...]:
-    """The folders a declared slice writes into and its harness reads whole."""
+def managed_folders(
+    root: Path, profile: str = "default"
+) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
+    """The folders a declared slice writes into and its harness reads whole, and the
+    links found in the way of a project's own, which are reported rather than entered."""
     folders: list[Path] = []
+    links: list[Path] = []
     if manifest_path(root).is_file():
         manifest = load_profile(root, profile)
         folders += [
@@ -45,20 +51,41 @@ def managed_folders(root: Path, profile: str = "default") -> tuple[Path, ...]:
         ]
     if project_config_path(root).is_file():
         config = load_project_config(project_config_path(root))
-        folders += [
+        project: list[Path] = []
+        project += [
             root / spec.output
             for harness in config.harnesses
             for slice_name in DIRECTORY_SLICES
             for spec in (PROJECT_PRESET[harness].get(slice_name),)
             if spec is not None and spec.output is not None
         ]
-        folders += [
+        project += [
             (root / spec.output).parent
             for harness in config.harnesses
             for spec in PROJECT_PRESET[harness].values()
             if spec.renderer in WHOLE_FOLDER_RENDERERS and spec.output is not None
         ]
-    return tuple(dict.fromkeys(folders))
+        # A committed link can make a project folder any folder on the machine, or the
+        # git dir, so a project folder is scanned only where sync would write.
+        for folder in project:
+            link = _first_link(root, folder)
+            if link is not None:
+                links.append(link)
+            elif folder.relative_to(root).parts[0].casefold() not in PROTECTED:
+                folders.append(folder)
+    return tuple(dict.fromkeys(folders)), tuple(dict.fromkeys(links))
+
+
+def _first_link(root: Path, folder: Path) -> Path | None:
+    parts = folder.relative_to(root).parts
+    return next(
+        (
+            root.joinpath(*parts[:depth])
+            for depth in range(1, len(parts) + 1)
+            if root.joinpath(*parts[:depth]).is_symlink()
+        ),
+        None,
+    )
 
 
 def _ignored(relative: Path) -> bool:
@@ -89,8 +116,9 @@ def unmanaged_entries(
 ) -> list[Path]:
     """Each file, or whole folder, in a managed folder that no output and no root's
     record of what it wrote accounts for."""
-    accounted = frozenset(outputs) | every_recorded_path()
-    return _scan(managed_folders(root, profile), accounted)
+    folders, links = managed_folders(root, profile)
+    accounted = frozenset(outputs) | every_recorded_path(folders)
+    return [*links, *_scan(folders, accounted)]
 
 
 def _scan(folders: Iterable[Path], accounted: frozenset[Path]) -> list[Path]:
@@ -106,8 +134,11 @@ def _scan(folders: Iterable[Path], accounted: frozenset[Path]) -> list[Path]:
 
 
 def describe_unmanaged(path: Path) -> str:
-    """The content a port would need, or for a folder the files it holds."""
-    if path.is_dir() and not path.is_symlink():
+    """The content a port would need, or for a folder the files it holds. A link is
+    never followed: it may name anything, and only where it points is reported."""
+    if path.is_symlink():
+        return f"link -> {os.readlink(path)}\n"
+    if path.is_dir():
         return "".join(
             f"{child.relative_to(path)}\n" for child in sorted(path.rglob("*")) if child.is_file()
         )

@@ -1,4 +1,4 @@
-"""Retiring what sync wrote before and no longer renders (D-03).
+"""Retiring what sync wrote before and no longer renders (ADR 0022).
 
 A candidate is a destination in the written record that this run does not render.
 Whether it is still loadout's own output is the guard's question, answered once in
@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
-from .files import atomic_write, describe_file
+from .files import Drift, atomic_write, describe_file
 from .output import Output
 from .skills import SKILL_DOCUMENT
 from .surgery import apply_json, apply_toml
@@ -30,9 +30,13 @@ def stripped(path: Path, entry: WrittenEntry, existing: str) -> str:
     return apply_toml(existing, frozenset(entry.owned), "")
 
 
-def orphan_drift(orphans: Mapping[Path, WrittenEntry]) -> list[tuple[Path, str, str]]:
-    """What retiring would change, in check's (path, on disk, wanted) shape."""
-    drift: list[tuple[Path, str, str]] = []
+def orphan_drift(orphans: Mapping[Path, WrittenEntry]) -> list[Drift]:
+    """What retiring would change, as drift."""
+    drift: list[Drift] = []
+
+    def retires(path: Path, actual: str, expected: str) -> None:
+        drift.append(Drift(path=path, actual=actual, expected=expected, kind="orphaned"))
+
     for path, entry in sorted(orphans.items()):
         if not path.is_file():
             continue
@@ -40,11 +44,11 @@ def orphan_drift(orphans: Mapping[Path, WrittenEntry]) -> list[tuple[Path, str, 
             existing = path.read_text(encoding="utf-8", newline="")
             wanted = stripped(path, entry, existing)
             if wanted != existing:
-                drift.append((path, existing, wanted))
+                retires(path, existing, wanted)
         elif entry.kind == "text":
-            drift.append((path, path.read_text(encoding="utf-8", newline=""), ""))
+            retires(path, path.read_text(encoding="utf-8", newline=""), "")
         else:
-            drift.append((path, describe_file(path), "(absent)\n"))
+            retires(path, describe_file(path), "(absent)\n")
     return drift
 
 

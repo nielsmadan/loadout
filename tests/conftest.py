@@ -6,18 +6,7 @@ from pathlib import Path
 import pytest
 
 from fixture_root import PROJECT_HARNESSES, build_project_root, build_root
-
-HARNESS_VARIABLES = (
-    "CLAUDE_CONFIG_DIR",
-    "CODEX_HOME",
-    "PI_CODING_AGENT_DIR",
-    "XDG_CONFIG_HOME",
-    "XDG_STATE_HOME",
-    "OPENCODE_CONFIG",
-    "OPENCODE_CONFIG_DIR",
-    "FACTORY_HOME_OVERRIDE",
-    "LOADOUT_TEST_HARNESS_C",
-)
+from isolation import HARNESS_VARIABLES
 
 
 @pytest.fixture(autouse=True)

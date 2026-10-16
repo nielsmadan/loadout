@@ -6,7 +6,8 @@ from pathlib import Path
 import pytest
 
 import loadout
-from loadout.written import read_written, written_state_path
+from loadout import sync
+from loadout.written import read_written, record_written, text_entry, written_state_path
 
 pytestmark = pytest.mark.integration
 
@@ -288,7 +289,7 @@ def _global_source_without_codex(root: Path) -> None:
 def test_another_tool_s_hook_survives_retiring_the_settings_it_lives_in(
     tmp_path: Path, fake_home: Path, capsys
 ) -> None:
-    """P-29's scenario the other way round: a hook another tool added to a settings
+    """The mirror of a retired hook: a hook another tool added to a settings
     file loadout no longer renders makes it a hand edit, so it is kept."""
     root = _global_source(tmp_path / "source")
     assert _sync(root) == 0
@@ -321,3 +322,23 @@ def test_sync_counts_only_the_gitignore_entries_it_added(tmp_path: Path, capsys)
         "/CLAUDE.md",
         "/.claude/settings.json",
     ]
+
+
+def test_an_orphan_sync_left_alone_costs_no_variant_render(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Performance: the guard built every committed and profile variant before it asked
+    the record whether an orphan was still as sync wrote it."""
+    root = tmp_path / "source"
+    root.mkdir()
+    orphan = tmp_path / "home/.claude/old.md"
+    orphan.parent.mkdir(parents=True)
+    orphan.write_text("written by sync\n")
+    record_written(root, {orphan: text_entry(orphan, "written by sync\n")})
+    renders: list[Path] = []
+    monkeypatch.setattr(sync, "_committed_variants", lambda root, *_: renders.append(root) or {})
+    monkeypatch.setattr(sync, "_render_variants", lambda root, *_: renders.append(root) or {})
+
+    assert sync.unaccepted_outputs(root, {}) == []
+
+    assert renders == []

@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 import loadout
+from loadout.emit import render_all
 from loadout.errors import LoadoutError
 from loadout.files import check_all
 from loadout.notices import collect_notices
@@ -115,7 +116,7 @@ def test_a_stale_record_is_reported_as_drift(tmp_path: Path, fake_home: Path) ->
     record = tmp_path / "defaults" / "codex.owned"
     record.write_text("# tampered\nmodel\n", encoding="utf-8")
 
-    assert [path for path, _, _ in check_all(tmp_path)] == [record]
+    assert [item.path for item in check_all(render_all(tmp_path))] == [record]
 
 
 def test_a_defaults_fragment_is_not_parsed_as_a_plugins_fragment(
@@ -170,7 +171,7 @@ def test_nested_defaults_preserve_skill_overrides_and_unrelated_bytes(
     expected_foreign = original.replace(initial, "", 1) if initial else original
     assert result.replace("max_context_tokens = 10000\n", "") == expected_foreign
     assert read_record(tmp_path / "defaults/codex.owned") == {"skills.max_context_tokens"}
-    assert check_all(tmp_path) == []
+    assert check_all(render_all(tmp_path)) == []
     write_all(tmp_path)
     assert target.read_text(encoding="utf-8") == result
 
@@ -190,7 +191,7 @@ def test_nested_removal_leaves_sibling_settings_and_array_tables(
     assert tomllib.loads(result)["skills"] == tomllib.loads(SKILL_OVERRIDES)["skills"]
     assert SKILL_OVERRIDES in result
     assert read_record(tmp_path / "defaults/codex.owned") == frozenset()
-    assert check_all(tmp_path) == []
+    assert check_all(render_all(tmp_path)) == []
 
 
 def test_nested_default_updates_and_explicit_removal(tmp_path: Path, fake_home: Path) -> None:
@@ -208,7 +209,7 @@ def test_nested_default_updates_and_explicit_removal(tmp_path: Path, fake_home: 
         "skills.max_context_tokens",
         "skills.other",
     }
-    assert check_all(tmp_path) == []
+    assert check_all(render_all(tmp_path)) == []
 
 
 @pytest.mark.parametrize(
@@ -258,7 +259,7 @@ def test_literal_keys_are_quoted_in_the_ownership_record(tmp_path: Path, fake_ho
         **tomllib.loads(EXISTING),
         "skills": {"max_context_tokens": 10000},
     }
-    assert check_all(tmp_path) == []
+    assert check_all(render_all(tmp_path)) == []
 
 
 def test_global_cli_syncs_nested_defaults_without_force(tmp_path: Path, fake_home: Path) -> None:
@@ -297,7 +298,7 @@ def test_legacy_literal_ownership_does_not_claim_nested_overrides(
     assert tomllib.loads(result) == {**tomllib.loads(foreign), **(literal if keep_literal else {})}
     assert result.startswith(foreign)
     assert read_record(record) == (frozenset({'"skills.config"'}) if keep_literal else frozenset())
-    assert check_all(tmp_path) == []
+    assert check_all(render_all(tmp_path)) == []
     write_all(tmp_path)
     assert target.read_text() == result
 
@@ -327,7 +328,7 @@ def test_first_array_sync_is_immediately_clean(tmp_path: Path, fake_home: Path) 
     write_all(tmp_path)
     result = target.read_bytes()
     assert tomllib.loads(result.decode()) == {**tomllib.loads(EXISTING), **content}
-    assert check_all(tmp_path) == []
+    assert check_all(render_all(tmp_path)) == []
     write_all(tmp_path)
     assert target.read_bytes() == result
 

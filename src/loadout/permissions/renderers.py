@@ -56,9 +56,8 @@ PI_SCHEMA = (
 CATEGORIES = ("allow", "deny", "ask")
 
 # The renderers that author `permission.bash["*"]` — the only documents a
-# `[shell] default` can reach. Declared once: `extract.CAPABILITIES` says who may
-# vote on the key and `emit.py` reports the targets it does not reach, and both
-# have to mean the same set. `pi-project` writes one only when the source states
+# `[shell] default` can reach. Declared once, for `notices.py` to report the
+# targets it does not reach. `pi-project` writes one only when the source states
 # a default: pi-permission-system merges the project `bash` map over the global
 # one, so an unstated `*` there would override the global catch-all.
 CATCH_ALL_RENDERERS = frozenset({"opencode", "pi", "pi-project"})
@@ -379,6 +378,11 @@ def _removed(content: dict[str, Any], label: str) -> tuple[str, ...]:
             f"{REMOVE_KEY}; a key is either managed or evicted, not both"
         )
     return tuple(sorted(removed))
+
+
+def evicted_keys(content: dict[str, Any]) -> frozenset[str]:
+    """The keys a fragment owns only to strip them."""
+    return frozenset(_removed(content, "codex.defaults")) if REMOVE_KEY in content else frozenset()
 
 
 def _fragment_keys(content: dict[str, Any]) -> frozenset[str]:

@@ -14,9 +14,10 @@ from typing import Any
 
 import pytest
 
-from loadout.emit import Merged, render_global
+from loadout.emit import render_all, render_global
 from loadout.errors import LoadoutError
 from loadout.files import check_all
+from loadout.output import Merged
 from render_helpers import write_all
 
 FRAGMENT: dict[str, Any] = {
@@ -140,7 +141,7 @@ def test_pi_preserves_its_runtime_changelog_cursor(
 
     document["lastChangelogVersion"] = "0.85.0"
     live.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
-    assert check_all(root) == []
+    assert check_all(render_all(root)) == []
     write_all(root)
     assert json.loads(live.read_text(encoding="utf-8"))["lastChangelogVersion"] == "0.85.0"
 
@@ -183,7 +184,7 @@ def test_droid_preserves_its_runtime_trusted_folders(
 
     document["trustedFolders"]["/workspace"]["trustedAt"] = "2026-09-14T10:00:00.000Z"
     live.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
-    assert check_all(root) == []
+    assert check_all(render_all(root)) == []
 
 
 def test_droid_runtime_trusted_folders_cannot_be_a_settings_source(tmp_path: Path) -> None:

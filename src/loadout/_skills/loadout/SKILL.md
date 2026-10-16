@@ -11,7 +11,7 @@ Edit the declared source for each configured consumer. Generated harness files a
 
 1. For setup or migration, read [onboarding](references/onboarding.md). Preview with
    `loadout init project --dry-run --json` or `loadout init global --dry-run --json`, resolve
-   agents and ownership, then apply the approved
+   harnesses and ownership, then apply the approved
    plan. Never execute discovered scripts or installers.
 2. For ordinary changes, read [configuration routing](references/configuration.md). Default to
    personal configuration for the current project; explicit project/global scope takes precedence.
