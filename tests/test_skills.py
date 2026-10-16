@@ -24,6 +24,7 @@ from loadout.skills import (
     render_skill,
     split_frontmatter,
 )
+from registration import register
 
 PLAIN = """---
 name: doc
@@ -241,6 +242,7 @@ def test_a_directory_form_source_renders_every_skill_and_file_unchanged(
     come back as source plus banner, supporting files byte for byte with their
     modes, at the same paths before and after the flat form was dropped."""
     source = tmp_path / "source"
+    register(source)
     skills = source / "skills"
     _write(skills, "doc", PLAIN)
     tool = _write(skills, "tool", PLAIN.replace("name: doc", "name: tool"))

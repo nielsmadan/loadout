@@ -164,7 +164,9 @@ class Snapshot:
         )
         configured = project_config_path(self.root).is_file() or manifest_path(self.root).is_file()
         if render and configured:
-            context = emit.RenderContext(self.destination, self.upstream, self.sources)
+            context = emit.RenderContext(
+                self.destination, self.upstream, self.sources, registered=lambda: self.root
+            )
             for path, output in emit.render_all(self.root, profile, context).items():
                 owned.add(path)
                 match output:

@@ -11,6 +11,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+from .emit import refuse_unregistered_global
 from .errors import LoadoutError
 from .manifest import MANIFEST_NAME
 from .project import PROJECT_CONFIG_NAME, PROJECT_DIR
@@ -211,6 +212,9 @@ def check_staged(root: Path, profile: str = "default") -> int:
     staged = _entries(repository)
     head_ref = git(repository, "rev-parse", "--revs-only", "HEAD").decode().strip()
     head = _entries(repository, head_ref) if head_ref else {}
+    refuse_unregistered_global(
+        root, held=str(relative / MANIFEST_NAME) in staged.keys() | head.keys()
+    )
     configs = {str(relative / MANIFEST_NAME), str(relative / PROJECT_DIR / PROJECT_CONFIG_NAME)}
     if not configs.intersection(staged.keys() | head.keys()):
         raise LoadoutError(

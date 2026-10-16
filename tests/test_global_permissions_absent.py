@@ -7,6 +7,7 @@ import pytest
 import loadout
 from loadout.emit import render_global
 from loadout.harnesses import GLOBAL_PRESET
+from registration import register
 
 SOURCE = '[[source]]\nname = "test"\npath = "."\n'
 
@@ -26,8 +27,8 @@ def _source(root: Path, agent: str, permissions: str | None) -> Path:
 def test_a_global_source_without_permissions_renders_as_an_empty_one(
     tmp_path: Path, agent: str
 ) -> None:
-    absent = render_global(_source(tmp_path / "absent", agent, None))
-    empty = render_global(_source(tmp_path / "empty", agent, ""))
+    absent = render_global(register(_source(tmp_path / "absent", agent, None)))
+    empty = render_global(register(_source(tmp_path / "empty", agent, "")))
 
     assert absent == empty
     assert absent

@@ -11,6 +11,7 @@ import pytest
 import loadout
 from loadout.emit import render_global, render_project
 from loadout.notices import collect_notices
+from registration import register
 
 AGENT = (
     "---\ndescription: Reviews a diff.\nmodel:\n  claude: sonnet\neffort: max\n---\n\nReview it.\n"
@@ -49,7 +50,7 @@ def _project(root: Path) -> Path:
 
 
 def test_a_global_agent_renders_to_every_harness(tmp_path: Path, fake_home: Path) -> None:
-    outputs = render_global(_global_source(tmp_path / "source"))
+    outputs = render_global(register(_global_source(tmp_path / "source")))
 
     assert {str(p.relative_to(fake_home)) for p in outputs if p.stem == "reviewer"} == set(
         GLOBAL_FILES
@@ -82,7 +83,7 @@ def test_sync_notes_an_effort_a_harness_cannot_take(tmp_path: Path, capsys) -> N
 def test_removing_a_global_agent_retires_it_everywhere(
     tmp_path: Path, fake_home: Path, capsys
 ) -> None:
-    root = _global_source(tmp_path / "source")
+    root = register(_global_source(tmp_path / "source"))
     assert loadout.main(["sync", "--root", str(root)]) == 0
     assert all((fake_home / name).is_file() for name in GLOBAL_FILES)
 
@@ -130,7 +131,7 @@ def test_an_agent_loadout_did_not_write_is_unmanaged(tmp_path: Path, capsys) -> 
 def test_a_source_whose_use_omits_agents_says_its_agents_are_not_rendered(
     tmp_path: Path,
 ) -> None:
-    root = _global_source(tmp_path / "source")
+    root = register(_global_source(tmp_path / "source"))
     manifest = root / "loadout.toml"
     manifest.write_text(manifest.read_text().replace('path = "."', 'path = "."\nuse = ["skills"]'))
 

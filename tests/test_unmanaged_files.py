@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 import loadout
+from registration import register
 
 pytestmark = pytest.mark.integration
 
@@ -48,7 +49,7 @@ def _check_json(root: Path, capsys) -> tuple[int, dict[str, str]]:
 def test_check_flags_an_approvals_file_codex_wrote_beside_the_rendered_rules(
     tmp_path: Path, fake_home: Path, capsys
 ) -> None:
-    root = _synced(_global_source(tmp_path / "source"), capsys)
+    root = _synced(register(_global_source(tmp_path / "source")), capsys)
     approvals = fake_home / ".codex/rules/default.rules"
     approvals.write_text('prefix_rule(pattern=["ls"], decision="allow")\n')
 
@@ -61,7 +62,7 @@ def test_check_flags_an_approvals_file_codex_wrote_beside_the_rendered_rules(
 def test_check_explains_an_unmanaged_file_and_shows_its_content(
     tmp_path: Path, fake_home: Path, capsys
 ) -> None:
-    root = _synced(_global_source(tmp_path / "source"), capsys)
+    root = _synced(register(_global_source(tmp_path / "source")), capsys)
     approvals = fake_home / ".codex/rules/default.rules"
     approvals.write_text('prefix_rule(pattern=["ls"], decision="allow")\n')
 
@@ -76,7 +77,7 @@ def test_check_explains_an_unmanaged_file_and_shows_its_content(
 def test_sync_names_an_unmanaged_file_and_leaves_it_in_place(
     tmp_path: Path, fake_home: Path, capsys
 ) -> None:
-    root = _synced(_global_source(tmp_path / "source"), capsys)
+    root = _synced(register(_global_source(tmp_path / "source")), capsys)
     approvals = fake_home / ".codex/rules/default.rules"
     approvals.write_text('prefix_rule(pattern=["ls"], decision="allow")\n')
 
@@ -89,7 +90,7 @@ def test_sync_names_an_unmanaged_file_and_leaves_it_in_place(
 def test_a_hand_installed_skill_is_flagged_as_one_folder(
     tmp_path: Path, fake_home: Path, capsys
 ) -> None:
-    root = _synced(_global_source(tmp_path / "source"), capsys)
+    root = _synced(register(_global_source(tmp_path / "source")), capsys)
     foreign = fake_home / ".claude/skills/foreign"
     (foreign / "scripts").mkdir(parents=True)
     (foreign / "SKILL.md").write_text("---\nname: foreign\n---\nForeign.\n")
@@ -104,7 +105,7 @@ def test_a_hand_installed_skill_is_flagged_as_one_folder(
 def test_a_file_added_inside_a_skill_loadout_wrote_is_flagged(
     tmp_path: Path, fake_home: Path, capsys
 ) -> None:
-    root = _synced(_global_source(tmp_path / "source"), capsys)
+    root = _synced(register(_global_source(tmp_path / "source")), capsys)
     extra = fake_home / ".claude/skills/review/notes.md"
     extra.write_text("Notes.\n")
 
@@ -117,18 +118,18 @@ def test_a_file_added_inside_a_skill_loadout_wrote_is_flagged(
 def test_a_skill_another_loadout_root_wrote_is_not_flagged(
     tmp_path: Path, fake_home: Path, capsys
 ) -> None:
-    first = _synced(_global_source(tmp_path / "first", "review"), capsys)
-    second = _synced(_global_source(tmp_path / "second", "deploy"), capsys)
+    first = _synced(register(_global_source(tmp_path / "first", "review")), capsys)
+    second = _synced(register(_global_source(tmp_path / "second", "deploy")), capsys)
     assert (fake_home / ".claude/skills/deploy/SKILL.md").is_file()
 
-    assert _check_json(first, capsys) == (0, {})
-    assert _check_json(second, capsys) == (0, {})
+    assert _check_json(register(first), capsys) == (0, {})
+    assert _check_json(register(second), capsys) == (0, {})
 
 
 def test_os_and_harness_state_in_a_managed_folder_is_not_flagged(
     tmp_path: Path, fake_home: Path, capsys
 ) -> None:
-    root = _synced(_global_source(tmp_path / "source"), capsys)
+    root = _synced(register(_global_source(tmp_path / "source")), capsys)
     (fake_home / ".codex/rules/.DS_Store").write_bytes(b"\0")
     system = fake_home / ".codex/skills/.system/imagegen"
     system.mkdir(parents=True)
@@ -156,7 +157,7 @@ def test_an_agent_loadout_did_not_write_in_a_global_agents_folder_is_flagged(
     tmp_path: Path, fake_home: Path, capsys
 ) -> None:
     """Review 5.6: each harness reads every file in its agents folder."""
-    root = _synced(_global_source(tmp_path / "source"), capsys)
+    root = _synced(register(_global_source(tmp_path / "source")), capsys)
     foreign = fake_home / ".claude/agents/foreign.md"
     foreign.parent.mkdir(parents=True, exist_ok=True)
     foreign.write_text("---\nname: foreign\ndescription: f\n---\nForeign.\n")
@@ -187,7 +188,7 @@ def test_a_rules_file_loadout_did_not_write_in_a_project_codex_folder_is_flagged
 def test_a_runtime_file_in_a_managed_folder_is_harness_state_not_unmanaged(
     tmp_path: Path, fake_home: Path, capsys
 ) -> None:
-    root = _synced(_global_source(tmp_path / "source"), capsys)
+    root = _synced(register(_global_source(tmp_path / "source")), capsys)
     (fake_home / ".codex/rules/auth.json").write_text('{"token": "x"}\n')
 
     assert _check_json(root, capsys) == (0, {})

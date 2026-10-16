@@ -16,6 +16,7 @@ import loadout
 from loadout.emit import render_global, render_project
 from loadout.permissions.renderers import render_codex
 from loadout.permissions.rules import Rules
+from registration import register
 
 HARNESSES = ("claude", "codex", "droid", "opencode", "pi")
 
@@ -42,7 +43,7 @@ def _relative(outputs: dict[Path, object], base: Path) -> set[str]:
 def test_global_scope_writes_no_rule_less_whole_permission_file(
     tmp_path: Path, fake_home: Path
 ) -> None:
-    written = _relative(render_global(_global(tmp_path / "g", "")), fake_home)
+    written = _relative(render_global(register(_global(tmp_path / "g", ""))), fake_home)
 
     assert {
         ".claude/settings.json",
@@ -72,14 +73,15 @@ def test_project_scope_writes_no_rule_less_whole_permission_file(tmp_path: Path)
 def test_a_rule_brings_the_whole_files_back(tmp_path: Path, fake_home: Path) -> None:
     rules = '[shell]\ndeny = ["rm"]\n\n[mcp]\ndeny = ["jina/*"]\n'
 
-    written = _relative(render_global(_global(tmp_path / "g", rules)), fake_home)
+    written = _relative(render_global(register(_global(tmp_path / "g", rules))), fake_home)
 
     assert {".codex/rules/permissions.rules", ".claude/mcp-permissions.json"} <= written
 
 
 def test_codex_with_only_glob_entries_has_no_rule_to_write(tmp_path: Path, fake_home: Path) -> None:
     written = _relative(
-        render_global(_global(tmp_path / "g", '[shell]\nallow = ["gamma-*"]\n')), fake_home
+        render_global(register(_global(tmp_path / "g", '[shell]\nallow = ["gamma-*"]\n'))),
+        fake_home,
     )
 
     assert ".codex/rules/permissions.rules" not in written

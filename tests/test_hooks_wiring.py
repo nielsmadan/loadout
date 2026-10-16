@@ -14,6 +14,7 @@ import pytest
 
 from loadout.emit import render_global
 from loadout.errors import LoadoutError
+from registration import register
 
 MANIFEST = """\
 [[source]]
@@ -51,6 +52,7 @@ def codex_hooks(outputs: dict[Path, str]) -> tuple[Path, dict]:
 
 
 def test_a_hooks_fragment_renders_to_codexs_own_file(tmp_path: Path) -> None:
+    register(tmp_path)
     outputs = render_global(build(tmp_path, {"notify": NOTIFY}), "default")
     path, document = codex_hooks(outputs)
     assert path.parts[-2:] == (".codex", "hooks.json")
@@ -60,6 +62,7 @@ def test_a_hooks_fragment_renders_to_codexs_own_file(tmp_path: Path) -> None:
 def test_two_fragments_compose_into_one_document(tmp_path: Path) -> None:
     """The slice's whole point: a second fragment adds to an event rather than
     replacing it (spec 1 §8, lists concatenate)."""
+    register(tmp_path)
     extra = {
         "PreToolUse": [
             {"matcher": "WebFetch", "hooks": [{"type": "command", "command": "nudge.sh"}]}
@@ -78,6 +81,7 @@ def test_the_destination_follows_codexs_config_variable(
 ) -> None:
     """ADR 0011 — the preset carries `${CODEX_HOME:-~/.codex}`, so a relocated
     harness is followed without editing a manifest."""
+    register(tmp_path)
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "elsewhere"))
     path, _ = codex_hooks(render_global(build(tmp_path, {"notify": NOTIFY}), "default"))
     assert path == tmp_path / "elsewhere" / "hooks.json"
@@ -86,6 +90,7 @@ def test_the_destination_follows_codexs_config_variable(
 def test_a_claude_only_variable_fails_the_render(tmp_path: Path) -> None:
     """The dangerous case, end to end: unresolved on Codex, the command exits 2,
     which Codex reads as block. Refused rather than written."""
+    register(tmp_path)
     bad = {
         "PreToolUse": [
             {"hooks": [{"type": "command", "command": '"$CLAUDE_PROJECT_DIR"/guard.sh'}]}
@@ -115,7 +120,7 @@ def test_every_agent_offers_hooks_and_renders_its_own_shape(tmp_path: Path) -> N
         root = build(
             tmp_path / agent, {"notify": NOTIFY}, MANIFEST.replace("[codex]", f"[{agent}]")
         )
-        outputs = render_global(root, "default")
+        outputs = render_global(register(root), "default")
         written = [c for p, c in outputs.items() if p.name == filename]
         assert len(written) == 1, f"{agent}: expected one {filename}, got {sorted(outputs)}"
         assert written[0].startswith(opening)
@@ -126,6 +131,7 @@ def test_an_agent_rejects_a_slice_its_preset_does_not_offer(tmp_path: Path) -> N
     """Naming a slice an agent has no destination for is an error rather than a
     silently ignored key. OpenCode has no `plugins` slice; it used to be
     `mcp`, before the servers slice gave OpenCode one too."""
+    register(tmp_path)
     manifest = MANIFEST.replace("[codex]\nhooks", "[opencode]\nplugins")
     root = build(tmp_path, {"notify": NOTIFY}, manifest)
     with pytest.raises(LoadoutError, match=r"unknown slice"):
@@ -164,6 +170,7 @@ def test_claude_hooks_compose_with_permissions_and_the_settings_residual(
 ) -> None:
     """Four slices, one file. This failed twice before `ValueSpec` existed: the
     hooks content leaked to top level and the settings residual was lost."""
+    register(tmp_path)
     document = claude_settings(render_global(build_claude(tmp_path), "default"))
     assert document["hooks"] == NOTIFY
     assert document["model"] == "opus" and document["env"] == {"X": "1"}
@@ -173,6 +180,7 @@ def test_claude_hooks_compose_with_permissions_and_the_settings_residual(
 def test_hooks_content_does_not_leak_to_the_top_level(tmp_path: Path) -> None:
     """The visible symptom of the earlier bug: `PreToolUse` sitting beside
     `model` instead of under `hooks`."""
+    register(tmp_path)
     document = claude_settings(render_global(build_claude(tmp_path), "default"))
     assert "PreToolUse" not in document
 
@@ -182,6 +190,7 @@ def test_a_stale_hooks_key_in_a_settings_fragment_loses_to_the_hooks_slice(
 ) -> None:
     """Extraction produces exactly this on first run — `~/.claude/settings.json`
     verbatim carries `hooks`, which the hooks slice owns (spec 2)."""
+    register(tmp_path)
     root = build_claude(tmp_path)
     (root / "settings" / "claude.json").write_text(
         json.dumps({"model": "opus", "hooks": {"Stop": [{"hooks": [{"command": "STALE"}]}]}}),

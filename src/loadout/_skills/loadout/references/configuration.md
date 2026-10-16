@@ -27,6 +27,10 @@ directory, optionally the active profile, and optionally the default harnesses f
 init. Explicit `--harness` selections override that default; initialized projects keep their own
 configured harnesses.
 
+Global scope renders only from the registered source. A `loadout sync` or `loadout check` that
+names any other directory holding a `loadout.toml` exits 3 before reading it; report that refusal
+and never register a directory, or replace a registration, to get past it.
+
 If the scope is absent, use the onboarding reference when setup is requested. An ordinary settings
 change does not itself authorize a migration; report the missing setup.
 

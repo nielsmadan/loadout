@@ -164,6 +164,11 @@ def reconstruction(root: Path, home: Path, preview: dict, expected: dict, logs: 
         target.write_bytes(git(root, "show", ":" + os.fsdecode(name), env=env))
         target.chmod(0o755 if mode == b"100755" else 0o644)
     source = fresh if preview["scope"] == "project" else fresh / "loadout"
+    if preview["scope"] == "global":
+        # Only the registered source renders global scope (ADR 0031).
+        machine = fresh_home / ".config/loadout/config.toml"
+        machine.parent.mkdir(parents=True)
+        machine.write_text(f"source = {json.dumps(str(source))}\n", encoding="utf-8")
     result = command(["sync", "--root", str(source)], env, logs, "reconstruction-sync")
     assert_exit(result)
 

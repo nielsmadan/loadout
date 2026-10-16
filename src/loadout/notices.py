@@ -40,6 +40,7 @@ from .emit import (
     project_skill_trees,
     project_slice_document,
     project_templates,
+    refuse_unregistered_global,
     selected_target,
     skill_trees,
     slice_document,
@@ -464,6 +465,7 @@ def collect_notices(
     ]
     if not manifest_path(root).is_file():
         return tuple(found)
+    refuse_unregistered_global(root, context)
     manifest = load_profile(root, profile)
     found.extend(
         _loose_skill_notices(

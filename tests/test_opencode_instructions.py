@@ -31,6 +31,7 @@ from pathlib import Path
 import pytest
 
 from loadout.emit import render_global
+from registration import register
 
 MANIFEST = """\
 [[source]]
@@ -62,6 +63,7 @@ def rendered(root: Path) -> dict[str, str]:
 
 
 def test_opencode_gets_its_own_agents_md(tmp_path: Path) -> None:
+    register(tmp_path)
     written = rendered(build(tmp_path))
     document = next(t for p, t in written.items() if p.endswith("opencode/AGENTS.md"))
     assert "shared body" in document
@@ -70,6 +72,7 @@ def test_opencode_gets_its_own_agents_md(tmp_path: Path) -> None:
 def test_the_document_is_opencodes_own_not_claudes(tmp_path: Path) -> None:
     """The whole point. Before this slice, OpenCode fell through to
     `~/.claude/CLAUDE.md`, so it read fragments chosen for a different harness."""
+    register(tmp_path)
     written = rendered(build(tmp_path))
     document = next(t for p, t in written.items() if p.endswith("opencode/AGENTS.md"))
     claude = next(t for p, t in written.items() if p.endswith("CLAUDE.md"))
@@ -83,7 +86,7 @@ def test_the_destination_follows_opencodes_config_variable(
     """ADR 0011. OpenCode's is `XDG_CONFIG_HOME`, which relocates the whole
     `opencode/` directory rather than naming it — so the subdirectory stays."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "moved"))
-    written = rendered(build(tmp_path))
+    written = rendered(register(build(tmp_path)))
     assert str(tmp_path / "moved" / "opencode" / "AGENTS.md") in written
 
 
@@ -91,6 +94,7 @@ def test_instructions_stay_out_of_opencode_json(tmp_path: Path) -> None:
     """A document at a path, not a key. `instructions` in opencode.json includes
     files someone else wrote; pointing it at loadout's own output would restate
     what AGENTS.md already is."""
+    register(tmp_path)
     written = rendered(build(tmp_path))
     config = next(t for p, t in written.items() if p.endswith("opencode.json"))
     assert "instructions" not in config
@@ -99,5 +103,6 @@ def test_instructions_stay_out_of_opencode_json(tmp_path: Path) -> None:
 def test_an_agent_block_naming_no_instructions_writes_no_document(tmp_path: Path) -> None:
     """Instructions need an order, so — unlike permissions and mcp — the slice
     renders only when a manifest asks for it."""
+    register(tmp_path)
     written = rendered(build(tmp_path, MANIFEST.replace('instructions = ["shared"]', "")))
     assert not any(p.endswith("opencode/AGENTS.md") for p in written)

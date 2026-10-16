@@ -5,6 +5,7 @@ from pathlib import Path
 
 from loadout.emit import render_all
 from loadout.files import atomic_write, check_all
+from registration import register
 from render_helpers import write_all
 
 
@@ -55,6 +56,7 @@ def test_write_all_creates_every_target(root: Path) -> None:
     # renderers, 2 instruction documents) plus the 3 external destinations those
     # instructions fan out to. The autonomous-only instruction target is excluded
     # under the default profile.
+    register(root)
     written = write_all(root)
     assert len(written) == 17
     for path in written:
@@ -62,11 +64,13 @@ def test_write_all_creates_every_target(root: Path) -> None:
 
 
 def test_check_all_is_clean_right_after_write(root: Path) -> None:
+    register(root)
     write_all(root)
     assert check_all(render_all(root)) == []
 
 
 def test_check_all_reports_a_modified_file(root: Path) -> None:
+    register(root)
     write_all(root)
     victim = root / "out" / "shared.md"
     victim.write_text("tampered\n")
@@ -75,6 +79,7 @@ def test_check_all_reports_a_modified_file(root: Path) -> None:
 
 
 def test_check_all_reports_a_missing_file_as_empty_actual(root: Path) -> None:
+    register(root)
     write_all(root)
     (root / "out" / "shared.md").unlink()
     drift = check_all(render_all(root))
@@ -86,6 +91,7 @@ def test_check_all_reports_a_missing_file_as_empty_actual(root: Path) -> None:
 def test_render_all_keys_are_absolute_paths_under_root(root: Path) -> None:
     # Destinations are the exception: they live under the (test-isolated) home
     # directory, not under root, by design.
+    register(root)
     for path in render_all(root):
         assert path.is_absolute()
         assert root in path.parents or Path.home() in path.parents

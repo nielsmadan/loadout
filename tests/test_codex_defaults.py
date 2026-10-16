@@ -12,6 +12,7 @@ from loadout.errors import LoadoutError
 from loadout.files import check_all
 from loadout.notices import collect_notices
 from loadout.record import read_record, render_record
+from registration import register
 from render_helpers import write_all
 
 pytestmark = pytest.mark.integration
@@ -51,6 +52,7 @@ def prepare(root: Path, fake_home: Path, fragment: dict[str, object]) -> Path:
 def test_managed_keys_reach_config_toml_without_disturbing_the_rest(
     tmp_path: Path, fake_home: Path
 ) -> None:
+    register(tmp_path)
     target = prepare(tmp_path, fake_home, FRAGMENT)
 
     write_all(tmp_path)
@@ -75,6 +77,7 @@ def test_a_key_removed_from_the_fragment_is_removed_from_config_toml(
     `model` is asserted alongside so this cannot pass against a strip that emptied
     the managed keys entirely.
     """
+    register(tmp_path)
     target = prepare(tmp_path, fake_home, {**FRAGMENT, "plan_mode_reasoning_effort": "max"})
     write_all(tmp_path)
     assert "plan_mode_reasoning_effort" in target.read_text(encoding="utf-8")
@@ -89,6 +92,7 @@ def test_a_key_removed_from_the_fragment_is_removed_from_config_toml(
 
 
 def test_the_record_is_written_beside_its_fragment(tmp_path: Path, fake_home: Path) -> None:
+    register(tmp_path)
     prepare(tmp_path, fake_home, FRAGMENT)
 
     write_all(tmp_path)
@@ -101,6 +105,7 @@ def test_the_record_is_written_beside_its_fragment(tmp_path: Path, fake_home: Pa
 def test_a_settings_key_nobody_manages_is_left_alone(tmp_path: Path, fake_home: Path) -> None:
     """The slice strips only what it manages, so a machine's own Codex settings
     survive a sync that never mentions them."""
+    register(tmp_path)
     target = prepare(tmp_path, fake_home, FRAGMENT)
 
     write_all(tmp_path)
@@ -111,6 +116,7 @@ def test_a_settings_key_nobody_manages_is_left_alone(tmp_path: Path, fake_home: 
 def test_a_stale_record_is_reported_as_drift(tmp_path: Path, fake_home: Path) -> None:
     """The record is an input as well as an output, so a hand edit to it silently
     changes what gets stripped. `check` has to say so rather than fix it."""
+    register(tmp_path)
     prepare(tmp_path, fake_home, FRAGMENT)
     write_all(tmp_path)
     record = tmp_path / "defaults" / "codex.owned"
@@ -130,6 +136,7 @@ def test_a_defaults_fragment_is_not_parsed_as_a_plugins_fragment(
     Latent until a second source-slice kind existed; `hooks` would have hit it
     just as hard on any agent that declared one.
     """
+    register(tmp_path)
     prepare(tmp_path, fake_home, FRAGMENT)
 
     assert collect_notices(tmp_path) is not None
@@ -151,6 +158,7 @@ enabled = true
 def test_nested_defaults_preserve_skill_overrides_and_unrelated_bytes(
     tmp_path: Path, fake_home: Path, initial: str
 ) -> None:
+    register(tmp_path)
     target = prepare(tmp_path, fake_home, {"skills": {"max_context_tokens": 10000}})
     original = (
         EXISTING + "\n[skills] # hand-written\n" + initial + "other = true\n\n" + SKILL_OVERRIDES
@@ -179,6 +187,7 @@ def test_nested_defaults_preserve_skill_overrides_and_unrelated_bytes(
 def test_nested_removal_leaves_sibling_settings_and_array_tables(
     tmp_path: Path, fake_home: Path
 ) -> None:
+    register(tmp_path)
     target = prepare(tmp_path, fake_home, {"skills": {"max_context_tokens": 10000}})
     target.write_text(EXISTING + "\n" + SKILL_OVERRIDES, encoding="utf-8")
     write_all(tmp_path)
@@ -195,6 +204,7 @@ def test_nested_removal_leaves_sibling_settings_and_array_tables(
 
 
 def test_nested_default_updates_and_explicit_removal(tmp_path: Path, fake_home: Path) -> None:
+    register(tmp_path)
     target = prepare(tmp_path, fake_home, {"skills": {"max_context_tokens": 4000, "other": True}})
     write_all(tmp_path)
     assert tomllib.loads(target.read_text())["skills"]["max_context_tokens"] == 4000
@@ -223,6 +233,7 @@ def test_nested_default_updates_and_explicit_removal(tmp_path: Path, fake_home: 
 def test_overlapping_defaults_ownership_is_refused(
     tmp_path: Path, fake_home: Path, content: dict[str, object]
 ) -> None:
+    register(tmp_path)
     target = prepare(tmp_path, fake_home, content)
     with pytest.raises(LoadoutError, match=r"owned|both"):
         write_all(tmp_path)
@@ -232,6 +243,7 @@ def test_overlapping_defaults_ownership_is_refused(
 def test_recorded_nested_ownership_cannot_overlap_another_slice(
     tmp_path: Path, fake_home: Path
 ) -> None:
+    register(tmp_path)
     target = prepare(tmp_path, fake_home, {"skills": {"max_context_tokens": 10000}})
     (tmp_path / "defaults/codex.owned").write_text(
         render_record(frozenset({"mcp_servers.test.url"}))
@@ -242,6 +254,7 @@ def test_recorded_nested_ownership_cannot_overlap_another_slice(
 
 
 def test_literal_keys_are_quoted_in_the_ownership_record(tmp_path: Path, fake_home: Path) -> None:
+    register(tmp_path)
     target = prepare(
         tmp_path,
         fake_home,
@@ -284,6 +297,7 @@ def test_global_cli_syncs_nested_defaults_without_force(tmp_path: Path, fake_hom
 def test_legacy_literal_ownership_does_not_claim_nested_overrides(
     tmp_path: Path, fake_home: Path, keep_literal: bool
 ) -> None:
+    register(tmp_path)
     literal = {"skills.config": [{"path": "/managed/new", "enabled": True}]}
     target = prepare(tmp_path, fake_home, literal if keep_literal else {})
     foreign = EXISTING + "\n" + SKILL_OVERRIDES
@@ -304,6 +318,7 @@ def test_legacy_literal_ownership_does_not_claim_nested_overrides(
 
 
 def test_file_backed_sync_preserves_foreign_crlf_bytes(tmp_path: Path, fake_home: Path) -> None:
+    register(tmp_path)
     target = prepare(tmp_path, fake_home, {"skills": {"max_context_tokens": 10000}})
     foreign = (EXISTING + "\n" + SKILL_OVERRIDES).replace("\n", "\r\n").encode()
     target.write_bytes(foreign)
@@ -323,6 +338,7 @@ def test_file_backed_sync_preserves_foreign_crlf_bytes(tmp_path: Path, fake_home
 
 
 def test_first_array_sync_is_immediately_clean(tmp_path: Path, fake_home: Path) -> None:
+    register(tmp_path)
     content = {"skills": {"config": [{"path": "/one"}, {"path": "/two"}]}}
     target = prepare(tmp_path, fake_home, content)
     write_all(tmp_path)
@@ -336,6 +352,7 @@ def test_first_array_sync_is_immediately_clean(tmp_path: Path, fake_home: Path) 
 def test_unknown_ownership_format_refuses_before_destination_writes(
     tmp_path: Path, fake_home: Path
 ) -> None:
+    register(tmp_path)
     target = prepare(tmp_path, fake_home, {"skills": {"max_context_tokens": 10000}})
     record = tmp_path / "defaults/codex.owned"
     record.write_text("# loadout-owned-format: 99\nskills.config\n")

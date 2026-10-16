@@ -31,7 +31,11 @@ loadout keeps for itself: init's backups and sync's complete diff. It is not the
 `destinations.py:resolve_destination` expands `${VAR}` in a destination against the environment, per
 [0011](../decisions/0011-a-destination-follows-a-relocated-harness.md).
 A render takes an `emit.RenderContext`: the destination resolver, the resolver for a template
-that is not vendored, and the manifest source parser. The staged-render and migration-validation
+that is not vendored, the manifest source parser, and `registered`, the one root that may render
+global scope. `render_global` refuses any other root before it reads the manifest
+(`emit.refuse_unregistered_global`, [0031](../decisions/0031-global-scope-renders-only-from-the-registered-source.md));
+by default that root is the source the machine config registers, and init's scratch preview, its
+isolated validation, the staged snapshot and the guard's committed tree name their own copy. The staged-render and migration-validation
 workers pass their own instead of patching modules. What renders again on a render's behalf takes
 the same context: the guard's profile and committed variants (`sync.unaccepted_outputs`),
 `sync.classified_drift`, and `notices.collect_notices`, which also takes the environment it reads.

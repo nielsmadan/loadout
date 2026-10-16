@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 import loadout
+from registration import register
 
 pytestmark = pytest.mark.integration
 
@@ -41,6 +42,7 @@ def test_global_sync_renders_the_same_bytes_twice(root: Path, fake_home: Path, c
     no prior text — a separator, a blank line between composed blocks — renders
     once correctly and never again.
     """
+    register(root)
     assert loadout.main(["sync", "--root", str(root), "--force"]) == 0
     first = _snapshot(fake_home, root)
     capsys.readouterr()

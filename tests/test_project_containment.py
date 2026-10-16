@@ -12,6 +12,7 @@ import loadout
 from loadout.errors import LoadoutError
 from loadout.project import refuse_external_links
 from loadout.templates import remove_vendored
+from registration import register
 
 pytestmark = pytest.mark.integration
 
@@ -540,7 +541,7 @@ def test_check_reports_a_managed_folder_that_resolves_outside_without_scanning_i
 
 def test_a_root_with_both_scopes_syncs(tmp_path: Path, fake_home: Path, capsys) -> None:
     """Review 2, 2.4: the project write rule ran over the global outputs under ~ too."""
-    root = _plain_project(tmp_path / "p")
+    root = register(_plain_project(tmp_path / "p"))
     (root / "instructions").mkdir()
     (root / "instructions/x.md").write_text("Global rules.\n")
     (root / "loadout.toml").write_text(

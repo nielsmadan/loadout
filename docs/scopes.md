@@ -70,6 +70,12 @@ legitimate state, not an error — see
 [0010](decisions/0010-a-machine-config-locates-the-global-source.md) and
 [0021](decisions/0021-global-init-records-project-harness-defaults.md).
 
+**Only the registered source renders global scope.** Global destinations are anywhere under the
+home directory, so registration is the trust decision: a `loadout.toml` in any other folder — a
+cloned repository, or one a pull request adds to a project — is refused before anything is read or
+written, and the project beside it with it. A missing or unreadable machine config registers
+nothing. See [0031](decisions/0031-global-scope-renders-only-from-the-registered-source.md).
+
 Everything the global scope owns lives under one directory it wholly owns, the same shape
 project scope already uses:
 

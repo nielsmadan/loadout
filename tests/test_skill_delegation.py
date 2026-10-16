@@ -11,6 +11,7 @@ from loadout.emit import render_global, render_project
 from loadout.errors import LoadoutError
 from loadout.output import Copied
 from loadout.skills import BANNER, discover_skills, render_skill
+from registration import register
 
 SKILL = (
     "---\nname: audit\ndescription: Audit a diff.\nagent: reviewer\n---\n\n# Audit\n\nCheck it.\n"
@@ -70,7 +71,7 @@ def _global_source(root: Path, *, agent: bool) -> Path:
 
 
 def test_a_global_skill_naming_a_defined_agent_renders(tmp_path: Path, fake_home: Path) -> None:
-    outputs = render_global(_global_source(tmp_path / "source", agent=True))
+    outputs = render_global(register(_global_source(tmp_path / "source", agent=True)))
 
     assert DELEGATION in str(outputs[fake_home / ".codex/skills/audit/SKILL.md"])
     assert "context: fork\nagent: reviewer" in str(
@@ -81,7 +82,7 @@ def test_a_global_skill_naming_a_defined_agent_renders(tmp_path: Path, fake_home
 def test_a_global_skill_naming_an_unknown_agent_is_an_error(
     tmp_path: Path, fake_home: Path
 ) -> None:
-    source = _global_source(tmp_path / "source", agent=False)
+    source = register(_global_source(tmp_path / "source", agent=False))
 
     with pytest.raises(LoadoutError, match="skill 'audit' hands its work to agent 'reviewer'"):
         render_global(source)

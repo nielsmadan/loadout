@@ -10,6 +10,7 @@ from loadout.errors import LoadoutError
 from loadout.harnesses import SliceOutput
 from loadout.output import Copied
 from loadout.project import PROJECT_PRESET
+from registration import register
 
 EXPECTED = Path(__file__).parent / "fixtures" / "expected" / "project"
 
@@ -276,6 +277,7 @@ def test_render_all_errors_when_neither_manifest_exists(tmp_path: Path) -> None:
 def test_render_all_unions_both_scopes_when_both_manifests_exist(root: Path, project: Path) -> None:
     """root and project both scaffold onto the same tmp_path; render_all must return
     outputs from both, not just one — the union claim the task exists to prove."""
+    register(root)
     assert root == project
     # render_all also returns destination paths under ~; this test only cares
     # about in-repo outputs, so drop anything not rooted under root.
@@ -289,6 +291,7 @@ def test_render_all_rejects_a_path_collision_between_scopes(root: Path, project:
     """A global permissions target pointed at the same path a project preset also
     generates must raise, not silently overwrite — construct the collision explicitly
     since the two scopes' natural presets never overlap on their own."""
+    register(root)
     manifest = root / "loadout.toml"
     manifest.write_text(
         manifest.read_text(encoding="utf-8").replace(

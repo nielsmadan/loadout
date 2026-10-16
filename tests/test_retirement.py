@@ -8,6 +8,7 @@ import pytest
 import loadout
 from loadout import sync
 from loadout.written import read_written, record_written, text_entry, written_state_path
+from registration import register
 
 pytestmark = pytest.mark.integration
 
@@ -265,7 +266,7 @@ def _global_source(root: Path, *, codex: bool = True) -> Path:
 def test_retiring_a_shared_file_strips_only_loadout_s_keys(
     tmp_path: Path, fake_home: Path, capsys
 ) -> None:
-    root = _global_source(tmp_path / "source")
+    root = register(_global_source(tmp_path / "source"))
     assert _sync(root) == 0
     config = fake_home / ".codex" / "config.toml"
     config.write_text('model = "o3"\n\n' + config.read_text())
@@ -291,7 +292,7 @@ def test_another_tool_s_hook_survives_retiring_the_settings_it_lives_in(
 ) -> None:
     """The mirror of a retired hook: a hook another tool added to a settings
     file loadout no longer renders makes it a hand edit, so it is kept."""
-    root = _global_source(tmp_path / "source")
+    root = register(_global_source(tmp_path / "source"))
     assert _sync(root) == 0
     settings = fake_home / ".claude" / "settings.json"
     document = json.loads(settings.read_text())

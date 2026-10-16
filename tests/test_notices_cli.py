@@ -16,6 +16,7 @@ import pytest
 
 import loadout
 from loadout.notices import OPENCODE_SKILL_FLAGS, collect_notices
+from registration import register
 
 pytestmark = pytest.mark.integration
 
@@ -40,7 +41,7 @@ def _root_with_hooks(tmp_path: Path, document: dict[str, object]) -> Path:
 
 
 def test_a_notice_reaches_the_terminal(tmp_path: Path, capsys) -> None:
-    root = _root_with_hooks(tmp_path, {"NoSuchEvent": []})
+    root = register(_root_with_hooks(tmp_path, {"NoSuchEvent": []}))
 
     loadout.main(["sync", "--root", str(root), "--force"])
     capsys.readouterr()
@@ -53,7 +54,7 @@ def test_a_notice_does_not_move_the_exit_code(tmp_path: Path, capsys) -> None:
     """The distinction the surface rests on. The render is correct — the source
     asked for an event this harness does not know — so `check` must still say the
     generated files are up to date and exit 0."""
-    root = _root_with_hooks(tmp_path, {"NoSuchEvent": []})
+    root = register(_root_with_hooks(tmp_path, {"NoSuchEvent": []}))
     assert loadout.main(["sync", "--root", str(root), "--force"]) == 0
     capsys.readouterr()
 
@@ -66,7 +67,7 @@ def test_a_notice_does_not_move_the_exit_code(tmp_path: Path, capsys) -> None:
 def test_real_drift_still_fails_alongside_a_notice(tmp_path: Path, fake_home: Path, capsys) -> None:
     """A notice must not mask drift, and drift must not suppress the notice — the
     two carry different information and a user needs both."""
-    root = _root_with_hooks(tmp_path, {"NoSuchEvent": []})
+    root = register(_root_with_hooks(tmp_path, {"NoSuchEvent": []}))
     assert loadout.main(["sync", "--root", str(root), "--force"]) == 0
     generated = fake_home / ".claude" / "settings.json"
     generated.write_text('{"clobbered": true}\n', encoding="utf-8")
@@ -88,6 +89,7 @@ def test_a_clean_source_says_nothing(tmp_path: Path, capsys) -> None:
     misses` below for the notice that provokes.
     """
     root = tmp_path / "quiet"
+    register(root)
     root.mkdir()
     (root / "permissions.toml").write_text("[shell]\nallow = ['ls']\n", encoding="utf-8")
     (root / "loadout.toml").write_text(
@@ -110,6 +112,7 @@ def test_a_stated_catch_all_names_the_harnesses_it_misses(root: Path, capsys) ->
     The glob assertion pins the other half of the same wiring: `unsupported_shell_globs`
     reaching output through `_permission_notices`, which nothing else exercises.
     """
+    register(root)
     loadout.main(["sync", "--root", str(root), "--force"])
     capsys.readouterr()
     loadout.main(["check", "--root", str(root)])
@@ -227,7 +230,7 @@ def test_the_global_skill_race_is_reported_when_no_flag_is_set(tmp_path: Path, m
     for flag in OPENCODE_SKILL_FLAGS:
         monkeypatch.delenv(flag, raising=False)
 
-    found = collect_notices(_root_with_skills(tmp_path))
+    found = collect_notices(register(_root_with_skills(tmp_path)))
 
     assert [n.slice for n in found] == ["skills"]
     assert "picks between the two copies" in found[0].message
@@ -236,7 +239,7 @@ def test_the_global_skill_race_is_reported_when_no_flag_is_set(tmp_path: Path, m
 def test_either_flag_silences_the_global_race(tmp_path: Path, monkeypatch) -> None:
     """`disableClaudeCodeSkills` is `broad || direct`, so a check reading one name
     reports a collision at whoever set the other."""
-    root = _root_with_skills(tmp_path)
+    root = register(_root_with_skills(tmp_path))
     for flag in OPENCODE_SKILL_FLAGS:
         for other in OPENCODE_SKILL_FLAGS:
             monkeypatch.delenv(other, raising=False)
@@ -250,6 +253,7 @@ def test_a_source_with_no_skills_has_no_collision_to_report(tmp_path: Path, monk
     for flag in OPENCODE_SKILL_FLAGS:
         monkeypatch.delenv(flag, raising=False)
     root = _root_with_skills(tmp_path)
+    register(root)
     shutil.rmtree(root / "skills")
 
     assert collect_notices(root) == ()
@@ -273,7 +277,7 @@ def test_an_unpermitted_server_does_not_move_the_exit_code(tmp_path: Path, capsy
     """Same contract as every other notice: the render is correct — mcp.toml
     defines a server the `[mcp]` policy never mentions — so `check` must still
     say the generated files are up to date and exit 0."""
-    root = _root_with_unpermitted_server(tmp_path)
+    root = register(_root_with_unpermitted_server(tmp_path))
     assert loadout.main(["sync", "--root", str(root), "--force"]) == 0
     capsys.readouterr()
 
@@ -287,6 +291,7 @@ def test_a_server_named_by_policy_says_nothing(tmp_path: Path, capsys) -> None:
     """Any policy entry naming the server is enough — even one tool, not just a
     wildcard — so a source that mentions it must stay silent."""
     root = tmp_path / "src"
+    register(root)
     root.mkdir(parents=True)
     (root / "mcp.toml").write_text(
         '[jina]\ntransport = "http"\nurl = "https://x"\n', encoding="utf-8"

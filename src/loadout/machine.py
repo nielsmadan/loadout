@@ -118,6 +118,21 @@ def profile_for(root: Path, explicit: str | None, config: MachineConfig | None) 
     """`resolve_profile`'s rule, given the machine config already loaded."""
     if explicit:
         return explicit
-    if config is not None and config.source.resolve() == root.resolve():
+    if config is not None and is_registered(root, config.source):
         return config.profile or "default"
     return "default"
+
+
+def is_registered(root: Path, source: Path | None) -> bool:
+    """Whether `root` is the registered source, through a link or a relative spelling."""
+    return source is not None and source.resolve() == root.resolve()
+
+
+def registered_source() -> Path | None:
+    """This machine's registered global source; None when there is no readable machine
+    config, so a missing or broken one registers nothing (ADR 0031)."""
+    try:
+        config = load_machine_config(machine_config_path(), require_source=False)
+    except LoadoutError:
+        return None
+    return None if config is None else config.source

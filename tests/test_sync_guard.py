@@ -11,6 +11,7 @@ from loadout.diffs import DIFF_LIMIT
 from loadout.emit import render_all
 from loadout.written import normalise as _normalise
 from loadout.written import written_state_path
+from registration import register
 
 pytestmark = pytest.mark.integration
 
@@ -54,6 +55,7 @@ def test_first_sync_warns_before_taking_over_another_writer_s_file(root: Path, c
     Adoption is the one time loadout is about to overwrite a file it has not written, so
     the warning is correct: look at it, then pass --force once.
     """
+    register(root)
     _commit_source(root)
     assert loadout.main(["sync", "--root", str(root)]) == 1
     assert "perm/opencode.json was modified outside loadout" in capsys.readouterr().err
@@ -64,6 +66,7 @@ def test_a_reworded_banner_is_not_a_hand_edit(root: Path, capsys) -> None:
     touched the file. Without this, rewording it makes every generated file on
     disk differ from every acceptable variant at once and the guard reports the
     whole tree as hand-edited — which it did, on 205 files."""
+    register(root)
     _adopt(root)
     output = root / "out" / "shared.md"
     body = output.read_text(encoding="utf-8").split("\n", 1)[1]
@@ -99,6 +102,7 @@ def test_adding_a_banner_to_a_file_without_one_is_not_a_hand_edit(root: Path, ca
     with no banner and one with a banner still differ by an interior blank —
     which `.strip()` cannot reach. Without collapsing the run, adopting a file
     another writer produced reports as a hand edit forever."""
+    register(root)
     _adopt(root)
     output = root / "out" / "shared.md"
     body = output.read_text(encoding="utf-8").split("\n", 2)[2].lstrip("\n")
@@ -110,6 +114,7 @@ def test_adding_a_banner_to_a_file_without_one_is_not_a_hand_edit(root: Path, ca
 
 
 def test_hand_edited_output_blocks_sync(root: Path, capsys) -> None:
+    register(root)
     _adopt(root)
     output = root / "out" / "shared.md"
     output.write_text(output.read_text() + "\nhand-written line\n", encoding="utf-8")
@@ -127,6 +132,7 @@ def test_hand_edited_output_blocks_sync(root: Path, capsys) -> None:
 
 def test_the_warning_names_what_would_be_lost(root: Path, capsys) -> None:
     """A harness granting itself a permission at runtime must be named, not just counted."""
+    register(root)
     _adopt(root)
     settings = root / "perm" / "claude.json"
     granted = '      "Bash(terraform apply:*)",\n'
@@ -159,6 +165,7 @@ def _abort_with_a_long_diff(root: Path, capsys, keys: int) -> str:
 def test_a_truncated_abort_still_names_the_complete_diff(
     root: Path, capsys, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    register(root)
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     _adopt(root)
 
@@ -174,6 +181,7 @@ def test_a_truncated_abort_still_names_the_complete_diff(
 def test_each_truncated_abort_replaces_the_last_complete_diff(
     root: Path, capsys, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    register(root)
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     _adopt(root)
 
@@ -186,6 +194,7 @@ def test_each_truncated_abort_replaces_the_last_complete_diff(
 
 
 def test_force_overwrites_a_file_modified_outside_loadout(root: Path, capsys) -> None:
+    register(root)
     _adopt(root)
     output = root / "out" / "shared.md"
     output.write_text("clobber me\n", encoding="utf-8")
@@ -196,6 +205,7 @@ def test_force_overwrites_a_file_modified_outside_loadout(root: Path, capsys) ->
 
 
 def test_unsynced_source_edit_does_not_block(root: Path, capsys) -> None:
+    register(root)
     _adopt(root)
     fragment = root / "instructions" / "shared.md"
     fragment.write_text(fragment.read_text() + "\nA freshly written sentence.\n", encoding="utf-8")
@@ -211,6 +221,7 @@ def test_source_edit_that_was_already_synced_does_not_block(root: Path, capsys) 
     After the first sync the outputs match the working render and no longer the
     committed one, so a committed-only baseline would report every file as modified.
     """
+    register(root)
     _adopt(root)
     fragment = root / "instructions" / "shared.md"
     fragment.write_text(fragment.read_text() + "\nA freshly written sentence.\n", encoding="utf-8")
@@ -223,6 +234,7 @@ def test_source_edit_that_was_already_synced_does_not_block(root: Path, capsys) 
 
 def test_reordered_json_keys_do_not_block(root: Path, capsys) -> None:
     """A co-owning harness rewriting its own config reorders keys loadout owns."""
+    register(root)
     _adopt(root)
     settings = root / "perm" / "claude.json"
     generated = settings.read_text()
@@ -238,6 +250,7 @@ def test_reordered_json_keys_do_not_block(root: Path, capsys) -> None:
 
 def test_profile_switch_does_not_block(root: Path, fake_home: Path, capsys) -> None:
     """Both instruction targets share ~/.harness-a/PRIMARY.md, one per profile."""
+    register(root)
     _commit_source(root)
     assert loadout.main(["sync", "--root", str(root), "--profile", "variant", "--force"]) == 0
     destination = fake_home / ".harness-a" / "PRIMARY.md"
@@ -257,6 +270,7 @@ def test_reverting_a_synced_source_edit_no_longer_blocks(root: Path, capsys) -> 
     exists in the working tree, so it matches neither render. It matches what sync
     recorded writing, which is the whole point of recording it.
     """
+    register(root)
     _adopt(root)
     fragment = root / "instructions" / "shared.md"
     original = fragment.read_text()
@@ -279,6 +293,7 @@ def test_editing_a_source_twice_before_committing_does_not_block(root: Path, cap
     output on disk is rendered from a state that is neither HEAD nor the working
     tree, so before the record this aborted and sent the user to --force.
     """
+    register(root)
     _adopt(root)
     fragment = root / "instructions" / "shared.md"
     original = fragment.read_text()
@@ -298,6 +313,7 @@ def test_two_sources_feeding_one_destination_do_not_block(root: Path, fake_home:
     """The live failure: with two inputs composing into one file you need not edit
     the same source twice. Edit one, sync, edit the other, and the output is a cross
     of committed and working state that neither render produces."""
+    register(root)
     _adopt(root)
     first = root / "settings" / "claude.json"
     second = root / "settings" / "claude-afk.json"
@@ -316,6 +332,7 @@ def test_two_sources_feeding_one_destination_do_not_block(root: Path, fake_home:
 def test_without_a_record_the_revert_blocks_exactly_as_before(root: Path, capsys) -> None:
     """Degradation is the property that makes this safe to ship: delete the record
     and the guard is the two-variant one, warning included."""
+    register(root)
     _adopt(root)
     fragment = root / "instructions" / "shared.md"
     original = fragment.read_text()
@@ -332,6 +349,7 @@ def test_without_a_record_the_revert_blocks_exactly_as_before(root: Path, capsys
 def test_force_records_what_it_wrote(root: Path) -> None:
     """Otherwise a forced sync leaves no baseline and the next ordinary sync aborts
     again — which is how a copied file's --force became permanent rather than final."""
+    register(root)
     _commit_source(root)
     assert not written_state_path(root).is_file()
 
@@ -343,6 +361,7 @@ def test_force_records_what_it_wrote(root: Path) -> None:
 def test_check_records_nothing(root: Path, capsys) -> None:
     """`check` is read-only, and a record written by it would assert loadout wrote
     bytes it never wrote."""
+    register(root)
     _commit_source(root)
 
     assert loadout.main(["check", "--root", str(root)]) == 1
@@ -365,6 +384,7 @@ def test_a_first_sync_without_any_baseline_refuses_a_file_loadout_did_not_write(
 ) -> None:
     """No commit and no record: the working source is all that is left to vouch for a
     file, and the fixture's opencode.json carries a key loadout never wrote."""
+    register(root)
     opencode = root / "perm" / "opencode.json"
     seeded = opencode.read_text(encoding="utf-8")
     assert not _has_commit(root)
@@ -379,6 +399,7 @@ def test_a_first_sync_without_any_baseline_refuses_a_file_loadout_did_not_write(
 def test_without_git_a_hand_edit_after_a_sync_is_refused(root: Path, capsys) -> None:
     """The record is the baseline git cannot supply. Before it was consulted here, this
     sync printed a note, overwrote the edit and exited 0."""
+    register(root)
     assert loadout.main(["sync", "--root", str(root), "--force"]) == 0
     assert not _has_commit(root)
     output = root / "out" / "shared.md"
@@ -394,6 +415,7 @@ def test_without_git_a_hand_edit_after_a_sync_is_refused(root: Path, capsys) -> 
 def test_without_git_an_unsynced_source_edit_is_not_a_hand_edit(root: Path) -> None:
     """The case the old skip existed for: the output still matches the record, so it
     is loadout's own write and the new render replaces it."""
+    register(root)
     assert loadout.main(["sync", "--root", str(root), "--force"]) == 0
     assert not _has_commit(root)
     fragment = root / "instructions" / "shared.md"
@@ -601,6 +623,7 @@ def test_a_truncated_abort_with_nowhere_to_keep_the_diff_still_exits_1(
     root: Path, capsys, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Review 2, 2.15: an unwritable state directory turned the abort into exit 4."""
+    register(root)
     blocked = tmp_path / "state-is-a-file"
     blocked.write_text("")
     monkeypatch.setenv("XDG_STATE_HOME", str(blocked))

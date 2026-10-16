@@ -230,6 +230,22 @@ def test_existing_source_registration_is_an_explicit_transaction(tmp_path, capsy
     assert tomllib.loads(machine.read_text())["source"] == str(tmp_path / "loadout")
 
 
+def test_keeping_another_registration_refuses_a_first_init(tmp_path, capsys):
+    """ADR 0031: the first sync renders global scope, which only the registered source may."""
+    _repo(tmp_path)
+    machine = machine_config_path()
+    machine.parent.mkdir(parents=True)
+    machine.write_text('source = "/different"\n')
+    before = sorted(tmp_path.rglob("*"))
+    init = ["init", "global", str(tmp_path), "--harness", "claude", "--yes"]
+
+    assert loadout.main([*init, "--registration", "keep"]) == 3
+
+    assert "would not be this machine's registered source" in capsys.readouterr().err
+    assert machine.read_text() == 'source = "/different"\n'
+    assert sorted(tmp_path.rglob("*")) == before
+
+
 @pytest.mark.parametrize("failure", [EOFError, KeyboardInterrupt])
 def test_global_apply_cancellation_does_not_mutate(tmp_path, monkeypatch, failure):
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)

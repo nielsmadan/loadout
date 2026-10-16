@@ -14,6 +14,7 @@ from loadout.skill_installation import (
     uninstall_skill_source,
 )
 from loadout.skills import discover_skills
+from registration import register
 from render_helpers import write_all
 
 pytestmark = pytest.mark.integration
@@ -142,7 +143,7 @@ def test_install_preserves_a_modified_installed_copy(tmp_path: Path) -> None:
 def test_normal_sync_deploys_the_installed_source_to_configured_agents(
     tmp_path: Path, fake_home: Path
 ) -> None:
-    root = _root(tmp_path)
+    root = register(_root(tmp_path))
     bundle = _bundle(tmp_path / "bundle")
     install_skill_source(inspect_skill_source(root, "default", bundle), bundle)
     write_all(root)
@@ -154,7 +155,7 @@ def test_normal_sync_deploys_the_installed_source_to_configured_agents(
 def test_uninstall_removes_owned_source_and_generated_outputs(
     tmp_path: Path, fake_home: Path
 ) -> None:
-    root = _root(tmp_path)
+    root = register(_root(tmp_path))
     bundle = _bundle(tmp_path / "bundle")
     install_skill_source(inspect_skill_source(root, "default", bundle), bundle)
     write_all(root)
@@ -167,7 +168,7 @@ def test_uninstall_removes_owned_source_and_generated_outputs(
 
 
 def test_uninstall_refuses_a_modified_generated_output(tmp_path: Path, fake_home: Path) -> None:
-    root = _root(tmp_path)
+    root = register(_root(tmp_path))
     bundle = _bundle(tmp_path / "bundle")
     install_skill_source(inspect_skill_source(root, "default", bundle), bundle)
     write_all(root)
@@ -185,7 +186,7 @@ def test_uninstall_accepts_what_sync_last_wrote_after_a_refresh(
 ) -> None:
     """Review 2.5: after a bundle refresh the outputs on disk are v1, the render is v2.
     Sync accepts them through its write record (ADR 0022), so uninstall must as well."""
-    root = _root(tmp_path)
+    root = register(_root(tmp_path))
     first = _bundle(tmp_path / "first", "v1\n")
     install_skill_source(inspect_skill_source(root, "default", first), first)
     assert loadout.main(["sync", "--root", str(root)]) == 0
@@ -205,7 +206,7 @@ def test_uninstall_accepts_what_sync_last_wrote_after_a_refresh(
 def test_uninstall_preserves_unrelated_files_in_the_generated_skill_directory(
     tmp_path: Path, fake_home: Path
 ) -> None:
-    root = _root(tmp_path)
+    root = register(_root(tmp_path))
     bundle = _bundle(tmp_path / "bundle")
     install_skill_source(inspect_skill_source(root, "default", bundle), bundle)
     write_all(root)

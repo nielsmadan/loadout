@@ -7,6 +7,7 @@ from loadout.errors import LoadoutError
 from loadout.files import check_all
 from loadout.manifest import Manifest
 from loadout.sources import parse_sources
+from registration import register
 from render_helpers import write_all
 
 pytestmark = pytest.mark.integration
@@ -60,6 +61,7 @@ def test_module_override_keeps_the_winners_bytes_and_mode(tmp_path: Path) -> Non
 
 
 def test_declared_overrides_reach_sync_and_check(tmp_path: Path, fake_home: Path) -> None:
+    register(tmp_path)
     write(tmp_path, "company/skills/review/SKILL.md", "company")
     write(tmp_path, "company/skills/review/old.txt", "old helper")
     write(tmp_path, "company/skills/retained/SKILL.md", "retained\n")

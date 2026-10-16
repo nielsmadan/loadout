@@ -18,6 +18,7 @@ from loadout.emit import render_all, render_global
 from loadout.errors import LoadoutError
 from loadout.files import check_all
 from loadout.output import Merged
+from registration import register
 from render_helpers import write_all
 
 FRAGMENT: dict[str, Any] = {
@@ -90,6 +91,7 @@ def droid_settings(outputs: dict[Path, str]) -> dict[str, Any]:
 def test_one_fragment_reaches_all_four_harnesses(tmp_path: Path) -> None:
     """The same reference, addressed three ways: by name and marketplace on
     Claude and Codex, by source on Pi."""
+    register(tmp_path)
     outputs = render_global(build(tmp_path, {"kit": FRAGMENT}), "default")
 
     assert claude_settings(outputs)["enabledPlugins"] == {
@@ -129,6 +131,7 @@ def test_pi_preserves_its_runtime_changelog_cursor(
         '[pi]\nplugins = ["kit"]', '[pi]\npreserve = ["theme"]\nplugins = ["kit"]'
     )
     root = build(tmp_path / "source", {"kit": FRAGMENT}, manifest)
+    register(root)
 
     write_all(root)
     document = json.loads(live.read_text(encoding="utf-8"))
@@ -147,6 +150,7 @@ def test_pi_preserves_its_runtime_changelog_cursor(
 
 
 def test_pi_runtime_changelog_cursor_cannot_be_a_settings_source(tmp_path: Path) -> None:
+    register(tmp_path)
     manifest = MANIFEST.replace(
         '[pi]\nplugins = ["kit"]', '[pi]\nsettings = "pi"\nplugins = ["kit"]'
     )
@@ -176,6 +180,7 @@ def test_droid_preserves_its_runtime_trusted_folders(
         encoding="utf-8",
     )
     root = build(tmp_path / "source", {"kit": FRAGMENT})
+    register(root)
 
     write_all(root)
     document = json.loads(live.read_text(encoding="utf-8"))
@@ -188,6 +193,7 @@ def test_droid_preserves_its_runtime_trusted_folders(
 
 
 def test_droid_runtime_trusted_folders_cannot_be_a_settings_source(tmp_path: Path) -> None:
+    register(tmp_path)
     manifest = MANIFEST.replace('[droid]\nplugins = ["kit"]', '[droid]\nsettings = "droid"')
     root = build(tmp_path, {"kit": FRAGMENT}, manifest)
     (root / "settings" / "droid.json").write_text(
@@ -203,6 +209,7 @@ def test_claude_plugins_compose_with_permissions_and_the_settings_residual(
 ) -> None:
     """`enabledPlugins` is the fourth slice landing in settings.json, so it has
     to arrive without displacing the three already there."""
+    register(tmp_path)
     document = claude_settings(render_global(build(tmp_path, {"kit": FRAGMENT}), "default"))
     assert document["model"] == "opus"
     assert document["permissions"]["allow"] == ["Bash(ls:*)"]
@@ -215,6 +222,7 @@ def test_claude_plugins_compose_with_permissions_and_the_settings_residual(
 def test_a_second_fragment_adds_a_plugin_rather_than_replacing_the_list(tmp_path: Path) -> None:
     """The slice's whole point: a profile states a delta instead of restating a
     list (spec 1 §8, maps merge key by key)."""
+    register(tmp_path)
     extra = {"plugins": {"telegram": {"marketplace": "claude-plugins-official"}}}
     root = build(tmp_path, {"kit": FRAGMENT, "extra": extra})
     (root / "loadout.toml").write_text(
@@ -230,6 +238,7 @@ def test_a_second_fragment_adds_a_plugin_rather_than_replacing_the_list(tmp_path
 def test_a_null_overlay_switches_a_plugin_off(tmp_path: Path) -> None:
     """How a profile takes a plugin out without deleting the fragment declaring
     it — the 208-line-copy problem, in the shape plugins takes."""
+    register(tmp_path)
     off = {"plugins": {"nono": None}}
     root = build(tmp_path, {"kit": FRAGMENT, "off": off})
     (root / "loadout.toml").write_text(
@@ -243,6 +252,7 @@ def test_a_null_overlay_switches_a_plugin_off(tmp_path: Path) -> None:
 def test_an_empty_plugins_list_renders_an_empty_enablement(tmp_path: Path) -> None:
     """A content renderer's off switch is an empty fragment list, as `permissions = []` is
     for a permission renderer."""
+    register(tmp_path)
     root = build(
         tmp_path, {"kit": FRAGMENT}, MANIFEST.replace('plugins  = ["kit"]', "plugins = []")
     )
@@ -253,6 +263,7 @@ def test_the_destinations_follow_each_harnesss_config_variable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """ADR 0011 — a relocated harness is followed without editing a manifest."""
+    register(tmp_path)
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "moved-claude"))
     monkeypatch.setenv("PI_CODING_AGENT_DIR", str(tmp_path / "moved-pi"))
     monkeypatch.setenv("FACTORY_HOME_OVERRIDE", str(tmp_path / "moved-droid-home"))
@@ -268,6 +279,7 @@ def test_the_destinations_follow_each_harnesss_config_variable(
 def test_opencode_rejects_a_plugins_key(tmp_path: Path) -> None:
     """OpenCode has no enablement list — a plugin is on because its file exists —
     so naming the slice is an error rather than a silently ignored key."""
+    register(tmp_path)
     root = build(
         tmp_path,
         {"kit": FRAGMENT},
@@ -281,5 +293,6 @@ def test_an_agent_block_naming_no_plugins_renders_none(tmp_path: Path) -> None:
     """Unlike permissions and mcp, plugins is not automatic: which plugins are on
     is an authoring decision, and an absent key means 'loadout does not manage
     this' rather than 'none'."""
+    register(tmp_path)
     root = build(tmp_path, {"kit": FRAGMENT}, "[[source]]\nname='t'\npath='.'\n\n[claude]\n")
     assert "enabledPlugins" not in claude_settings(render_global(root, "default"))

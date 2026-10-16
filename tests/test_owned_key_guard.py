@@ -13,6 +13,7 @@ import pytest
 
 import loadout
 from loadout.written import written_state_path
+from registration import register
 from test_codex_defaults import build
 
 pytestmark = pytest.mark.integration
@@ -33,6 +34,7 @@ def _edit(path: Path, change: dict[str, object]) -> None:
 
 
 def test_sync_stops_on_an_edit_to_an_owned_key(root: Path, capsys) -> None:
+    register(root)
     shared = _synced(root)
     _edit(shared, {"mcpServers": {"mine": {"type": "http", "url": "https://mine.example"}}})
     capsys.readouterr()
@@ -44,6 +46,7 @@ def test_sync_stops_on_an_edit_to_an_owned_key(root: Path, capsys) -> None:
 
 
 def test_check_names_an_edit_to_an_owned_key(root: Path, capsys) -> None:
+    register(root)
     shared = _synced(root)
     _edit(shared, {"mcpServers": {}})
     capsys.readouterr()
@@ -56,6 +59,7 @@ def test_check_names_an_edit_to_an_owned_key(root: Path, capsys) -> None:
 
 
 def test_an_edit_to_a_key_the_harness_owns_passes(root: Path, capsys) -> None:
+    register(root)
     shared = _synced(root)
     _edit(shared, {"numStartups": 7})
 
@@ -65,6 +69,7 @@ def test_an_edit_to_a_key_the_harness_owns_passes(root: Path, capsys) -> None:
 
 
 def test_a_source_change_since_the_last_sync_is_not_an_edit(root: Path) -> None:
+    register(root)
     shared = _synced(root)
     servers = root / "mcp.toml"
     servers.write_text(
@@ -81,6 +86,7 @@ def test_the_committed_render_accounts_for_the_owned_keys_without_a_record(
 ) -> None:
     """With the record gone, the owned keys on disk match only the committed source's
     render: a source edit since, not a hand edit."""
+    register(root)
     for args in (("init", "-q"), ("add", "-A"), ("commit", "-qm", "base")):
         subprocess.run(
             ["git", "-C", str(root), "-c", "user.email=t@e", "-c", "user.name=t", *args],
@@ -115,6 +121,7 @@ def test_a_removed_key_the_harness_writes_back_is_stripped_again(
     tmp_path: Path, fake_home: Path
 ) -> None:
     """G1: a `$remove` key is owned only to evict it, so its coming back is no edit."""
+    register(tmp_path)
     fragment = {"model": "gpt-5", "$remove": ["developer_instructions"]}
     target = _codex(tmp_path, fake_home, fragment, "")
     assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
@@ -129,6 +136,7 @@ def test_opting_a_key_in_overwrites_its_value_and_says_so(
     tmp_path: Path, fake_home: Path, capsys
 ) -> None:
     """G2: a key the record never covered is a source change, not a hand edit."""
+    register(tmp_path)
     target = _codex(tmp_path, fake_home, {"model": "gpt-5"}, 'model_reasoning_effort = "low"\n')
     assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
     _fragment(tmp_path, {"model": "gpt-5", "model_reasoning_effort": "high"})
@@ -146,6 +154,7 @@ def test_a_record_from_before_owned_hashes_accepts_a_source_change(
     tmp_path: Path, fake_home: Path
 ) -> None:
     """G3: no owned baseline behaves as before there was one."""
+    register(tmp_path)
     target = _codex(tmp_path, fake_home, {"model": "gpt-5"}, "")
     assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
     record = written_state_path(tmp_path)
@@ -163,6 +172,7 @@ def test_a_record_from_before_owned_hashes_accepts_a_source_change(
 
 def test_deleting_every_server_is_flagged_rather_than_written_back(root: Path, capsys) -> None:
     """G4a: removing the last server out of band is an edit like any other (ADR 0030)."""
+    register(root)
     shared = _synced(root)
     document = json.loads(shared.read_text())
     del document["mcpServers"]
@@ -181,6 +191,7 @@ def test_one_key_removed_while_the_source_changed_is_named_as_removed(
     tmp_path: Path, fake_home: Path, capsys
 ) -> None:
     """G4b: each key is judged alone, so the changed one passes and the gone one shows."""
+    register(tmp_path)
     target = _codex(tmp_path, fake_home, {"model": "gpt-5", "model_verbosity": "low"}, "")
     assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
     target.write_text(target.read_text().replace('model_verbosity = "low"\n', ""))
@@ -196,6 +207,7 @@ def test_one_key_removed_while_the_source_changed_is_named_as_removed(
 
 def test_a_value_changing_type_is_an_edit(tmp_path: Path, fake_home: Path, capsys) -> None:
     """G5: `true == 1` in Python, so the comparison is of canonical JSON."""
+    register(tmp_path)
     target = _codex(tmp_path, fake_home, {"hide_agent_reasoning": True}, "")
     assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
     target.write_text(target.read_text().replace("true", "1"))

@@ -10,6 +10,7 @@ from loadout.migration_models import Inventory, MigrationPlan
 from loadout.output import Merged
 from loadout.project import PROJECT_PRESET
 from loadout.skills import discover_skills, render_skill, split_frontmatter
+from registration import register
 
 ROOT = Path(__file__).parents[1]
 SKILL = ROOT / "src" / "loadout" / "_skills" / "loadout"
@@ -56,7 +57,7 @@ def _settings_reaches_output(root: Path, agent: str) -> bool:
     )
     documents = (
         output.document if isinstance(output, Merged) else output
-        for output in render_global(root).values()
+        for output in render_global(register(root)).values()
     )
     return any(
         "loadout-settings-probe" in document for document in documents if isinstance(document, str)

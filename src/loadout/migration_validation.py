@@ -182,7 +182,10 @@ def _worker() -> None:
         return Path(destinations[template])
 
     try:
-        outputs = render_all(Path(request["root"]), context=RenderContext(isolated_destination))
+        root = Path(request["root"])
+        # The planned source, isolated in scratch: init is what registers it.
+        context = RenderContext(isolated_destination, registered=lambda: root)
+        outputs = render_all(root, context=context)
         result: list[dict[str, Any]] = []
         for path, output in outputs.items():
             owned = None

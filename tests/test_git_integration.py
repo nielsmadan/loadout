@@ -14,6 +14,7 @@ from loadout.files import check_all
 from loadout.git_hooks import hook_content, install_hooks, plan_hooks, uninstall_hooks
 from loadout.machine import machine_config_path, resolve_profile
 from loadout.staged import check_staged
+from registration import register
 from render_helpers import write_all
 from test_codex_defaults import build
 
@@ -66,6 +67,7 @@ def _commit(repo, *paths):
 
 
 def test_staged_ownership_record_matches_its_producer_and_allows_updates(repo):
+    register(repo)
     build(repo, {"model": "fixture"})
     write_all(repo)
     _commit(repo, "loadout.toml", "permissions.toml", "defaults")
@@ -86,6 +88,7 @@ def test_staged_ownership_record_matches_its_producer_and_allows_updates(repo):
 
 
 def test_staged_ownership_record_deletion_requires_producer_retirement(repo):
+    register(repo)
     build(repo, {"model": "fixture"})
     write_all(repo)
     _commit(repo, "loadout.toml", "permissions.toml", "defaults")
@@ -108,6 +111,7 @@ def test_staged_ownership_record_deletion_requires_producer_retirement(repo):
 
 @pytest.mark.parametrize("fragment", [{"model": "fixture"}, {}])
 def test_staged_initial_producer_requires_its_generated_record(repo, fragment):
+    register(repo)
     build(repo, fragment)
     _git(repo, "add", "loadout.toml", "permissions.toml", "defaults")
     with pytest.raises(LoadoutError, match="ownership record"):
@@ -139,7 +143,7 @@ def test_bare_templates_never_fall_back_to_machine_or_bundled_source(repo, fake_
 
 
 def test_nested_global_snapshot_contains_sibling_sources_and_isolates_destinations(repo, fake_home):
-    root = repo / "nested/global"
+    root = register(repo / "nested/global")
     root.mkdir(parents=True)
     shared = repo / "nested/shared/instructions"
     shared.mkdir(parents=True)
@@ -152,7 +156,12 @@ def test_nested_global_snapshot_contains_sibling_sources_and_isolates_destinatio
     _git(repo, "add", "nested")
     assert check_staged(root) == 0
     assert loadout.main(["check", "--staged", "--root", str(root)]) == 0
-    assert list(fake_home.iterdir()) == []
+    registration = fake_home / ".config/loadout/config.toml"
+    assert sorted(fake_home.rglob("*")) == [
+        registration.parent.parent,
+        registration.parent,
+        registration,
+    ]
     _git(repo, "rm", "--cached", "nested/shared/instructions/rule.md")
     with pytest.raises(LoadoutError, match="snapshot is incomplete or invalid"):
         check_staged(root)
@@ -160,6 +169,7 @@ def test_nested_global_snapshot_contains_sibling_sources_and_isolates_destinatio
 
 @pytest.mark.parametrize("old_source", ["absolute", "escaping-symlink"])
 def test_head_source_migration_keeps_head_and_index_output_ownership(repo, fake_home, old_source):
+    register(repo)
     instructions = repo / "instructions"
     instructions.mkdir()
     (instructions / "rule.md").write_text("source instructions\n")
@@ -219,6 +229,7 @@ def test_head_source_migration_keeps_head_and_index_output_ownership(repo, fake_
 
 @pytest.mark.parametrize("target", ["instructions", "permissions"])
 def test_staged_ownership_selects_profile_before_resolving_destinations(repo, monkeypatch, target):
+    register(repo)
     monkeypatch.delenv("LOADOUT_REVIEW_OTHER", raising=False)
     (repo / "instructions").mkdir()
     (repo / "instructions/rule.md").write_text("selected instructions\n")

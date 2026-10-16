@@ -107,15 +107,18 @@ def test_an_unreadable_machine_config_leaves_a_project_on_default(
     assert resolve_profile(project) == "default"
 
 
-def test_a_hook_falls_back_to_default_on_an_unreadable_machine_config(
+def test_a_hook_renders_no_global_scope_on_an_unreadable_machine_config(
     tmp_path: Path, fake_home: Path, capsys
 ) -> None:
+    """ADR 0031: an unreadable machine config registers no source, so the hook that
+    used to fall back to `default` here is refused instead."""
     source = _registered_source(tmp_path, fake_home)
     _break_machine_config(fake_home, source)
 
-    assert loadout.main(["hook-event", "post-merge", "--root", str(source)]) == 0
+    assert loadout.main(["hook-event", "post-merge", "--root", str(source)]) == 3
 
-    assert (fake_home / "here.md").is_file()
+    assert "isn't this machine's registered source" in capsys.readouterr().err
+    assert not (fake_home / "here.md").exists()
 
 
 def test_a_loaded_machine_config_names_the_profile_of_its_own_source(tmp_path: Path) -> None:

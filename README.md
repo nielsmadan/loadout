@@ -235,8 +235,12 @@ which would retire the profile's outputs; a project and a git hook still fall ba
 
 ## `loadout.toml`
 
-A repo's root `loadout.toml` — the global source's manifest, or a project's — declares the
-sources fragments come from and the instruction files to render from them. A top-level key it does
+A repo's root `loadout.toml` — the global source's manifest — declares the sources fragments
+come from and the instruction files to render from them. It renders only from this machine's
+registered source, the directory the machine config names (`loadout init global <path>` registers
+one). Anywhere else, a project included, a root `loadout.toml` is refused before anything is read
+or written, with exit 3, so a cloned repository or a pull request cannot write under your home
+directory ([0031](docs/decisions/0031-global-scope-renders-only-from-the-registered-source.md)). A top-level key it does
 not read, whether a table or a value, is refused by name rather than ignored:
 
 ```toml

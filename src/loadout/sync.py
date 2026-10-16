@@ -27,6 +27,7 @@ from .files import (
     write_outputs,
 )
 from .gitignore import append_lines, remove_lines, require_plain_gitignore
+from .machine import is_registered
 from .output import (
     Copied,
     FrozenFile,
@@ -109,7 +110,11 @@ def _committed_variants(
                 tar.extractall(path=tmp_dir, filter="data")
         except (tarfile.TarError, OSError):
             return {}
-        return _render_variants(Path(tmp_dir), profiles, root, context)
+        # The committed tree of the registered source is that source at HEAD.
+        committed = Path(tmp_dir)
+        if is_registered(root, context.registered()):
+            context = replace(context, registered=lambda: committed)
+        return _render_variants(committed, profiles, root, context)
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -7,6 +7,7 @@ from loadout.emit import render_global, render_project
 from loadout.harnesses import GLOBAL_PRESET
 from loadout.output import Merged
 from loadout.templates import vendored_path
+from registration import register
 
 
 def test_a_project_renders_mcp_json_for_claude(project: Path) -> None:
@@ -107,6 +108,7 @@ def test_no_mcp_toml_still_writes_the_merged_key_so_the_last_server_can_go(
     That was live: `sync` deleted one of two servers fine and silently kept the
     last one, because the empty case skipped the slice entirely.
     """
+    register(tmp_path)
     root = build_global(tmp_path, "\n[claude]\n", mcp_toml=None)
 
     rendered = render_global(root)
@@ -121,6 +123,7 @@ def test_no_mcp_toml_still_writes_the_merged_key_so_the_last_server_can_go(
 def test_a_global_source_renders_claude_servers_without_being_named(tmp_path: Path) -> None:
     """`mcp` is automatic — defining a server needs no per-agent authoring
     decision, the same reasoning that makes `permissions` automatic."""
+    register(tmp_path)
     root = build_global(tmp_path, "\n[claude]\n")
 
     rendered = render_global(root)
@@ -137,6 +140,7 @@ def test_a_global_source_renders_claude_servers_without_being_named(tmp_path: Pa
 def test_codex_global_writes_config_toml(tmp_path: Path, fake_home: Path) -> None:
     """No longer staged: declared ownership lets loadout write the real file, so
     `[mcp_servers.…]` reaches Codex without a merge script the user provides."""
+    register(tmp_path)
     root = build_global(tmp_path, "\n[codex]\n")
 
     rendered = render_global(root)
@@ -149,6 +153,7 @@ def test_codex_global_writes_config_toml(tmp_path: Path, fake_home: Path) -> Non
 
 
 def test_pi_global_writes_its_own_mcp_json(tmp_path: Path) -> None:
+    register(tmp_path)
     root = build_global(tmp_path, "\n[pi]\npermissions = false\n")
 
     rendered = render_global(root)
@@ -159,6 +164,7 @@ def test_pi_global_writes_its_own_mcp_json(tmp_path: Path) -> None:
 
 
 def test_droid_writes_global_mcp_json(tmp_path: Path) -> None:
+    register(tmp_path)
     root = build_global(tmp_path, "\n[droid]\npermissions = false\n")
     rendered = render_global(root)
     written = next(p for p in rendered if str(p).endswith("/.factory/mcp.json"))
@@ -171,6 +177,7 @@ def test_opencode_global_composes_the_mcp_key_with_permission(tmp_path: Path) ->
     """opencode-servers is a ValueSpec sharing opencode.json with the
     permissions slice — the same composing shape project scope already proves,
     now at global scope."""
+    register(tmp_path)
     root = build_global(tmp_path, "\n[opencode]\n")
 
     rendered = render_global(root)

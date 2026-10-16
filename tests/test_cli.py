@@ -9,6 +9,7 @@ import pytest
 
 import loadout
 from loadout.errors import LoadoutError
+from registration import register
 
 pytestmark = pytest.mark.integration
 
@@ -192,12 +193,14 @@ def test_skill_uninstall_removes_source_and_synced_outputs(
 
 
 def test_sync_writes_files_and_returns_0(root: Path, capsys) -> None:
+    register(root)
     assert loadout.main(["sync", "--root", str(root), "--force"]) == 0
     assert (root / "out" / "shared.md").is_file()
     assert "shared.md" in capsys.readouterr().out
 
 
 def test_sync_default_profile_omits_the_variant_target(root: Path, fake_home: Path) -> None:
+    register(root)
     assert loadout.main(["sync", "--root", str(root), "--force"]) == 0
     assert (root / "out" / "primary.md").is_file()
     written = (fake_home / ".harness-a" / "PRIMARY.md").read_text(encoding="utf-8")
@@ -205,6 +208,7 @@ def test_sync_default_profile_omits_the_variant_target(root: Path, fake_home: Pa
 
 
 def test_sync_profile_variant_selects_the_variant_target(root: Path, fake_home: Path) -> None:
+    register(root)
     assert loadout.main(["sync", "--root", str(root), "--profile", "variant", "--force"]) == 0
     written = (fake_home / ".harness-a" / "PRIMARY.md").read_text(encoding="utf-8")
     assert "The variant." in written
@@ -230,11 +234,13 @@ def test_sync_profile_variant_selects_the_variant_target(root: Path, fake_home: 
 
 
 def test_check_returns_0_when_clean(root: Path) -> None:
+    register(root)
     loadout.main(["sync", "--root", str(root), "--force"])
     assert loadout.main(["check", "--root", str(root)]) == 0
 
 
 def test_check_returns_1_and_diffs_on_drift(root: Path, capsys) -> None:
+    register(root)
     loadout.main(["sync", "--root", str(root), "--force"])
     (root / "out" / "shared.md").write_text("tampered\n")
     assert loadout.main(["check", "--root", str(root)]) == 1
@@ -247,6 +253,7 @@ def test_check_drift_depends_on_the_active_profile(root: Path, capsys) -> None:
     """Syncing under 'default' leaves the shared destination holding the default
     document, so check is clean under 'default' and reports drift under 'variant',
     which expects the other document at that same path."""
+    register(root)
     assert loadout.main(["sync", "--root", str(root), "--force"]) == 0
     assert loadout.main(["check", "--root", str(root)]) == 0
     capsys.readouterr()
@@ -262,6 +269,7 @@ def test_missing_manifest_returns_3(tmp_path: Path, capsys) -> None:
 
 
 def test_missing_fragment_file_returns_3(root: Path, capsys) -> None:
+    register(root)
     (root / "instructions" / "shared.md").unlink()
     assert loadout.main(["sync", "--root", str(root)]) == 3
     assert "shared" in capsys.readouterr().err
@@ -300,6 +308,7 @@ def test_harness_is_not_a_command(root: Path, capsys) -> None:
 
 
 def test_sync_with_unknown_fragment_returns_3(root: Path, capsys) -> None:
+    register(root)
     manifest = root / "loadout.toml"
     manifest.write_text(
         manifest.read_text(encoding="utf-8").replace('"intro"', '"no-such-fragment"'),
@@ -310,6 +319,7 @@ def test_sync_with_unknown_fragment_returns_3(root: Path, capsys) -> None:
 
 
 def test_sync_with_ambiguous_fragment_returns_3(root: Path, capsys) -> None:
+    register(root)
     second = root / "second" / "instructions"
     second.mkdir(parents=True)
     (second / "shared.md").write_text("duplicate\n", encoding="utf-8")
@@ -399,6 +409,7 @@ def test_zero_targets_of_either_kind_returns_3_not_0(root: Path, capsys) -> None
 
 
 def test_duplicate_output_across_targets_returns_3_not_0(root: Path, capsys) -> None:
+    register(root)
     manifest = root / "loadout.toml"
     manifest.write_text(
         manifest.read_text(encoding="utf-8").replace(
@@ -544,6 +555,7 @@ def test_sync_succeeds_under_a_non_utf8_locale(root: Path, monkeypatch) -> None:
     # Fragments contain non-ASCII characters (em-dash, ellipsis). Under a
     # locale whose default encoding is ASCII, file I/O must still work
     # because loadout always opens files as UTF-8 explicitly.
+    register(root)
     monkeypatch.setenv("LC_ALL", "C")
     monkeypatch.setenv("LANG", "C")
     monkeypatch.setenv("PYTHONCOERCECLOCALE", "0")
@@ -719,6 +731,7 @@ def _check(root: Path, capsys, *extra: str) -> tuple[int, str]:
 
 
 def test_check_json_names_each_drifted_path_with_the_plain_exit_code(root: Path, capsys) -> None:
+    register(root)
     assert loadout.main(["sync", "--root", str(root), "--force"]) == 0
     (root / "out" / "shared.md").write_text("tampered\n")
     capsys.readouterr()
@@ -734,6 +747,7 @@ def test_check_json_names_each_drifted_path_with_the_plain_exit_code(root: Path,
 
 
 def test_check_json_on_a_clean_tree_is_an_empty_result(root: Path, capsys) -> None:
+    register(root)
     assert loadout.main(["sync", "--root", str(root), "--force"]) == 0
     capsys.readouterr()
 

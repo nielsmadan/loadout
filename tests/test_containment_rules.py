@@ -8,9 +8,12 @@ from pathlib import Path
 
 import pytest
 
+from loadout.emit import RenderContext, refuse_unregistered_global, render_all
 from loadout.errors import LoadoutError
 from loadout.machine import resolve_profile
+from loadout.notices import collect_notices
 from loadout.project import refuse_escaping, refuse_external_links
+from registration import register
 
 
 def _project(root: Path) -> Path:
@@ -161,3 +164,48 @@ def test_an_unreadable_machine_config_stops_only_a_global_source(
         resolve_profile(source)
     assert resolve_profile(source, lenient=True) == "default"
     assert resolve_profile(project) == "default"
+
+
+def _global_source(root: Path) -> Path:
+    (root / "instructions").mkdir(parents=True)
+    (root / "instructions/x.md").write_text("Rules.\n")
+    (root / "loadout.toml").write_text(
+        '[[source]]\nname = "s"\npath = "."\n\n'
+        '[instructions.mine]\ndestinations = ["~/mine.md"]\norder = ["x"]\n'
+    )
+    return root
+
+
+def test_an_unregistered_global_source_is_refused_by_name(tmp_path: Path) -> None:
+    source = _global_source(tmp_path / "source")
+    register(tmp_path / "elsewhere")
+
+    with pytest.raises(LoadoutError, match=rf"^{source}: this folder holds a global setup"):
+        render_all(source)
+
+
+def test_the_registered_source_renders_through_a_link(tmp_path: Path, fake_home: Path) -> None:
+    source = register(_global_source(tmp_path / "source"))
+    (tmp_path / "alias").symlink_to(source, target_is_directory=True)
+
+    assert list(render_all(tmp_path / "alias")) == [fake_home / "mine.md"]
+
+
+def test_a_render_context_names_the_root_it_may_render(tmp_path: Path, fake_home: Path) -> None:
+    source = _global_source(tmp_path / "source")
+
+    outputs = render_all(source, context=RenderContext(registered=lambda: source))
+
+    assert list(outputs) == [fake_home / "mine.md"]
+
+
+def test_a_manifest_not_on_disk_is_refused_when_held(tmp_path: Path) -> None:
+    with pytest.raises(LoadoutError, match="this folder holds a global setup"):
+        refuse_unregistered_global(tmp_path, held=True)
+
+
+def test_notices_refuse_an_unregistered_global_source(tmp_path: Path) -> None:
+    source = _global_source(tmp_path / "source")
+
+    with pytest.raises(LoadoutError, match="this folder holds a global setup"):
+        collect_notices(source)

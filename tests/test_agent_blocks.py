@@ -12,6 +12,7 @@ from loadout.errors import LoadoutError
 from loadout.harnesses import GLOBAL_PRESET, SliceOutput
 from loadout.output import Merged
 from loadout.permissions.renderers import RENDERERS, JsonSpec, ValueSpec
+from registration import register
 from render_helpers import write_all
 
 SOURCE = """
@@ -53,17 +54,19 @@ render       = "pi"
 """,
     )
     by_agent = build(tmp_path / "agent", "\n[pi]\n")
-    assert rendered(by_hand) == rendered(by_agent)
+    assert rendered(register(by_hand)) == rendered(register(by_agent))
 
 
 def test_an_empty_agent_block_still_renders_its_automatic_slices(tmp_path: Path) -> None:
     """`[pi]` alone is a complete declaration — permissions needs no authoring
     decision, so it does not have to be asked for."""
+    register(tmp_path)
     root = build(tmp_path, "\n[pi]\n")
     assert any("pi-permission-system" in p for p in rendered(root))
 
 
 def test_skills_default_to_every_configured_agent(tmp_path: Path) -> None:
+    register(tmp_path)
     root = build(tmp_path, "\n[claude]\n\n[droid]\n")
     skill = root / "skills" / "review"
     skill.mkdir(parents=True)
@@ -76,6 +79,7 @@ def test_skills_default_to_every_configured_agent(tmp_path: Path) -> None:
 
 
 def test_a_global_skill_policy_selects_named_agents(tmp_path: Path) -> None:
+    register(tmp_path)
     root = build(
         tmp_path,
         '\n[claude]\n\n[droid]\n\n[skills.review]\nagents = ["droid"]\n',
@@ -91,11 +95,13 @@ def test_a_global_skill_policy_selects_named_agents(tmp_path: Path) -> None:
 
 
 def test_instructions_are_not_automatic_because_they_need_an_order(tmp_path: Path) -> None:
+    register(tmp_path)
     root = build(tmp_path, "\n[pi]\n")
     assert not any(p.endswith("AGENTS.md") for p in rendered(root))
 
 
 def test_naming_instructions_renders_them_in_that_order(tmp_path: Path) -> None:
+    register(tmp_path)
     root = build(tmp_path, '\n[pi]\ninstructions = ["intro"]\n')
     written = [p for p in rendered(root) if p.endswith("AGENTS.md")]
     assert written and "intro" in rendered(root)[written[0]]
@@ -103,6 +109,7 @@ def test_naming_instructions_renders_them_in_that_order(tmp_path: Path) -> None:
 
 def test_an_empty_permissions_list_selects_nothing(tmp_path: Path) -> None:
     """An empty composition renders the target holding no rule."""
+    register(tmp_path)
     root = build(tmp_path, "\n[pi]\npermissions = []\n")
     doc = next(text for p, text in rendered(root).items() if "pi-permission-system" in p)
     assert "alpha" not in doc
@@ -111,6 +118,7 @@ def test_an_empty_permissions_list_selects_nothing(tmp_path: Path) -> None:
 def test_claude_mcp_writes_a_destination_rather_than_staging(tmp_path: Path) -> None:
     """It staged into the repo until 2026-09-04; now it owns one key of a file the
     harness also writes, so nothing in the repo is produced for it."""
+    register(tmp_path)
     root = build(tmp_path, "\n[claude]\n")
     # The slice renders nothing without a server to render.
     (root / "mcp.toml").write_text(
@@ -122,6 +130,7 @@ def test_claude_mcp_writes_a_destination_rather_than_staging(tmp_path: Path) -> 
 
 
 def test_an_unknown_agent_is_rejected_with_the_known_ones(tmp_path: Path) -> None:
+    register(tmp_path)
     root = build(tmp_path, "\n[claud]\n")
     with pytest.raises(
         LoadoutError, match=r"unknown top-level key\(s\) claud .*harness tables: claude"
@@ -133,12 +142,14 @@ def test_an_unknown_slice_names_what_the_agent_offers(tmp_path: Path) -> None:
     # `plugins`, not `hooks` or `mcp` — OpenCode gained a hooks slice with the
     # adapters and a global `mcp` slice with server definitions; it still has
     # no plugins slice (see the comment beneath GLOBAL_PRESET in harnesses.py).
+    register(tmp_path)
     root = build(tmp_path, "\n[opencode]\nplugins = []\n")
     with pytest.raises(LoadoutError, match="unknown slice"):
         render_global(root)
 
 
 def test_an_agent_block_coexists_with_the_older_spelling(tmp_path: Path) -> None:
+    register(tmp_path)
     root = build(
         tmp_path,
         """
@@ -162,6 +173,8 @@ def test_two_slices_of_one_agent_compose_into_one_file(
     document it is handed; `render_pi` builds from scratch and so owns its file
     outright — see the next test."""
 
+    register(tmp_path)
+
     def render_marker(rules: object, base: dict[str, object]) -> dict[str, object]:
         out = dict(base)
         out["marker"] = "written by the second slice"
@@ -183,6 +196,7 @@ def test_an_owned_key_beats_a_stale_one_in_the_residual(tmp_path: Path) -> None:
     """Residual-first ordering: a stale owned key left in a settings fragment
     must lose to the slice that owns it. Extraction produces exactly such a
     fragment on first run (spec 2), so this is a real case."""
+    register(tmp_path)
     root = build(tmp_path, '\n[opencode]\nsettings = "opencode"\n')
     (root / "settings").mkdir(exist_ok=True)
     (root / "settings" / "opencode.json").write_text(
@@ -196,6 +210,7 @@ def test_an_owned_key_beats_a_stale_one_in_the_residual(tmp_path: Path) -> None:
 def test_two_different_agents_naming_one_file_is_still_a_collision(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    register(tmp_path)
     clash = GLOBAL_PRESET["pi"]["permissions"].destination
     monkeypatch.setitem(
         GLOBAL_PRESET["codex"], "permissions", SliceOutput(renderer="codex", destination=clash)
@@ -211,6 +226,7 @@ def test_a_whole_file_renderer_refuses_to_compose(
 ) -> None:
     """`render_pi` builds its document from scratch, so threading through it
     would silently discard whatever the earlier slice rendered. Say so instead."""
+    register(tmp_path)
     dest = GLOBAL_PRESET["pi"]["permissions"].destination
     monkeypatch.setitem(
         GLOBAL_PRESET["pi"], "marker", SliceOutput(renderer="claude", destination=dest)
@@ -231,6 +247,7 @@ def test_a_contributor_writes_one_key_and_the_residual_survives(
     contributor running first put its content at top level and the settings
     fragment vanished entirely.
     """
+    register(tmp_path)
     monkeypatch.setitem(
         GLOBAL_PRESET["opencode"],
         "hooks",
@@ -265,6 +282,7 @@ def test_a_value_renderer_without_an_owned_key_is_rejected(
 ) -> None:
     """The two renderer kinds are distinguishable at registration, so a mismatch
     fails rather than quietly writing the wrong shape."""
+    register(tmp_path)
     monkeypatch.setitem(
         GLOBAL_PRESET["opencode"],
         "hooks",
@@ -289,6 +307,7 @@ def test_false_switches_an_automatic_slice_off(tmp_path: Path) -> None:
     capability for whoever does use it, and one machine's manifest says it has no
     use for it.
     """
+    register(tmp_path)
     root = build_root(tmp_path)
     manifest = root / "loadout.toml"
     manifest.write_text(manifest.read_text() + "\n[pi]\npermissions = false\n", encoding="utf-8")
@@ -301,6 +320,7 @@ def test_false_switches_an_automatic_slice_off(tmp_path: Path) -> None:
 def test_an_automatic_slice_renders_when_not_switched_off(tmp_path: Path) -> None:
     """The loser of the pair above — without it, a guard that never rendered pi
     at all would pass the first test."""
+    register(tmp_path)
     root = build_root(tmp_path)
     manifest = root / "loadout.toml"
     manifest.write_text(manifest.read_text() + "\n[pi]\n", encoding="utf-8")
@@ -318,6 +338,7 @@ def test_a_removed_key_is_owned_but_rendered_nowhere(tmp_path: Path) -> None:
     this value", and there is no value that means "write nothing". `null` is taken —
     merge_documents reads it as *drop from the fragment*, which un-owns the key
     instead of evicting it."""
+    register(tmp_path)
     root = build(tmp_path, '[codex]\ndefaults = "d"\n')
     (root / "defaults").mkdir(exist_ok=True)
     (root / "defaults" / "d.json").write_text(REMOVE_FRAGMENT, encoding="utf-8")
@@ -333,6 +354,7 @@ def test_a_removed_key_is_owned_but_rendered_nowhere(tmp_path: Path) -> None:
 def test_a_removed_key_is_stripped_from_the_destination(tmp_path: Path, fake_home: Path) -> None:
     """End to end: a key another tool keeps writing back is gone after a sync, body
     and all, while everything around it survives."""
+    register(tmp_path)
     root = build(tmp_path, '[codex]\ndefaults = "d"\n')
     (root / "defaults").mkdir(exist_ok=True)
     (root / "defaults" / "d.json").write_text(REMOVE_FRAGMENT, encoding="utf-8")
@@ -356,6 +378,7 @@ def test_a_removed_key_is_stripped_from_the_destination(tmp_path: Path, fake_hom
 def test_a_key_cannot_be_both_valued_and_removed(tmp_path: Path) -> None:
     """Contradictory rather than merely redundant: one says write this, the other
     says write nothing, and silently preferring either would surprise someone."""
+    register(tmp_path)
     root = build(tmp_path, '[codex]\ndefaults = "d"\n')
     (root / "defaults").mkdir(exist_ok=True)
     (root / "defaults" / "d.json").write_text(
@@ -367,6 +390,7 @@ def test_a_key_cannot_be_both_valued_and_removed(tmp_path: Path) -> None:
 
 
 def test_remove_must_be_a_list_of_names(tmp_path: Path) -> None:
+    register(tmp_path)
     root = build(tmp_path, '[codex]\ndefaults = "d"\n')
     (root / "defaults").mkdir(exist_ok=True)
     (root / "defaults" / "d.json").write_text('{"$remove": "developer_instructions"}', "utf-8")
@@ -380,6 +404,7 @@ def test_the_owned_record_names_destination_keys_not_vocabulary(tmp_path: Path) 
     verbatim — which the record did until the union used the raw fragment keys —
     would have loadout stripping a key literally named `$remove` from the harness's
     file, and would leave the removed key itself unrecorded."""
+    register(tmp_path)
     root = build(tmp_path, '[codex]\ndefaults = "d"\n')
     (root / "defaults").mkdir(exist_ok=True)
     (root / "defaults" / "d.json").write_text(REMOVE_FRAGMENT, encoding="utf-8")

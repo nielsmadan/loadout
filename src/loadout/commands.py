@@ -8,7 +8,7 @@ from typing import Literal
 
 from .bundled_skill import bundled_skill_path
 from .diffs import diff_lines, report_diff
-from .emit import render_all
+from .emit import refuse_unregistered_global, render_all
 from .errors import LoadoutError, UsageError
 from .files import DriftKind
 from .machine import state_dir
@@ -165,6 +165,7 @@ def _write_full_diff(lines: list[str]) -> Path | None:
 
 def cmd_sync(root: Path, profile: str, force: bool = False) -> int:
     root = root.absolute()
+    refuse_unregistered_global(root)
     prune_vanished()
     # Rendered once and reused for the guard, the write and the record, so what is
     # recorded is provably what was written rather than a third render of it.

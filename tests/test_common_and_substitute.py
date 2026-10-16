@@ -6,6 +6,7 @@ import pytest
 
 from loadout.emit import render_global
 from loadout.errors import LoadoutError
+from registration import register
 
 SOURCE = """
 [[source]]
@@ -40,6 +41,7 @@ def docs(root: Path, profile: str = "default") -> dict[str, str]:
 def test_all_supplies_defaults_to_every_declared_agent(tmp_path: Path) -> None:
     """Restores what `instructions.shared` did, without the pseudo-agent: each
     agent still writes its own file, from one declaration."""
+    register(tmp_path)
     root = build(tmp_path, '\n[all]\ninstructions = ["intro"]\n\n[codex]\n\n[pi]\n')
     written = {p: t for p, t in docs(root).items() if p.endswith("AGENTS.md")}
     assert len(written) == 2, "both agents wrote their own file"
@@ -47,6 +49,7 @@ def test_all_supplies_defaults_to_every_declared_agent(tmp_path: Path) -> None:
 
 
 def test_an_agent_overrides_all_per_key(tmp_path: Path) -> None:
+    register(tmp_path)
     root = build(
         tmp_path,
         '\n[all]\ninstructions = ["intro"]\n\n[claude]\ninstructions = ["claude-intro"]\n\n[pi]\n',
@@ -60,6 +63,7 @@ def test_an_agent_overrides_all_per_key(tmp_path: Path) -> None:
 
 def test_all_does_not_enable_an_undeclared_agent(tmp_path: Path) -> None:
     """Otherwise adding [all] would silently switch on every harness."""
+    register(tmp_path)
     root = build(tmp_path, '\n[all]\ninstructions = ["intro"]\n\n[pi]\n')
     assert not any(p.endswith("CLAUDE.md") for p in docs(root))
 
@@ -67,6 +71,7 @@ def test_all_does_not_enable_an_undeclared_agent(tmp_path: Path) -> None:
 def test_substitute_swaps_one_fragment_without_restating_the_order(tmp_path: Path) -> None:
     """The collapse this replaces variants for: change one entry of a list
     without repeating the rest, and with nothing inferred from a filename."""
+    register(tmp_path)
     root = build(tmp_path, '\n[pi]\ninstructions = ["intro", "policy"]\n')
     (root / "autonomous.toml").write_text(
         'extends = "default"\n\n[pi]\nsubstitute = { policy = "policy.autonomous" }\n',
@@ -80,6 +85,7 @@ def test_substitute_swaps_one_fragment_without_restating_the_order(tmp_path: Pat
 
 def test_substitute_in_all_reaches_every_agent(tmp_path: Path) -> None:
     """The case that made repetition an objection to substitute: declare once."""
+    register(tmp_path)
     root = build(tmp_path, '\n[all]\ninstructions = ["policy"]\n\n[codex]\n\n[pi]\n')
     (root / "autonomous.toml").write_text(
         'extends = "default"\n\n[all]\nsubstitute = { policy = "policy.autonomous" }\n',
@@ -90,6 +96,7 @@ def test_substitute_in_all_reaches_every_agent(tmp_path: Path) -> None:
 
 
 def test_the_default_profile_is_unaffected_by_a_substitution(tmp_path: Path) -> None:
+    register(tmp_path)
     root = build(tmp_path, '\n[pi]\ninstructions = ["policy"]\n')
     (root / "autonomous.toml").write_text(
         'extends = "default"\n\n[pi]\nsubstitute = { policy = "policy.autonomous" }\n',
@@ -99,6 +106,7 @@ def test_the_default_profile_is_unaffected_by_a_substitution(tmp_path: Path) -> 
 
 
 def test_substituting_to_a_missing_fragment_errors(tmp_path: Path) -> None:
+    register(tmp_path)
     root = build(tmp_path, '\n[pi]\ninstructions = ["policy"]\n')
     (root / "autonomous.toml").write_text(
         'extends = "default"\n\n[pi]\nsubstitute = { policy = "nosuch" }\n', encoding="utf-8"
@@ -116,6 +124,7 @@ def test_a_default_an_agent_has_no_slice_for_is_ignored(tmp_path: Path) -> None:
     (`~/.config/opencode/AGENTS.md`). The behaviour is unchanged; only the
     example had to be one that is still true.
     """
+    register(tmp_path)
     root = build(tmp_path, '\n[all]\nplugins = ["kit"]\n\n[opencode]\n\n[pi]\n')
     written = docs(root)
     pi = next(t for p, t in written.items() if p.endswith("agent/settings.json"))
@@ -126,6 +135,7 @@ def test_a_default_an_agent_has_no_slice_for_is_ignored(tmp_path: Path) -> None:
 def test_a_key_the_agent_itself_names_is_still_typo_checked(tmp_path: Path) -> None:
     """The leniency is for defaults only — an agent naming a slice it has not
     got is a mistake worth reporting."""
+    register(tmp_path)
     root = build(tmp_path, '\n[opencode]\nplugins = ["kit"]\n')
     with pytest.raises(LoadoutError, match="unknown slice"):
         render_global(root)

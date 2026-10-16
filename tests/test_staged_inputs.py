@@ -10,6 +10,7 @@ import pytest
 
 from loadout import staged
 from loadout.staged import _entries, _render_inputs
+from registration import register
 
 pytestmark = pytest.mark.integration
 
@@ -65,6 +66,7 @@ def test_the_head_snapshot_holds_only_what_ownership_reads(
 ) -> None:
     """Performance, should-fix 1: a global source at a repository's root wrote the whole
     of HEAD to temp, though the HEAD pass reads only the manifests and project config."""
+    register(tmp_path)
     root = _repository(
         tmp_path,
         {

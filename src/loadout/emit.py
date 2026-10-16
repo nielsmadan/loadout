@@ -11,6 +11,7 @@ from .destinations import resolve_destination
 from .documents import merge_documents
 from .errors import LoadoutError
 from .harnesses import DIRECTORY_SLICES, SHARED_SKILL_READERS
+from .machine import is_registered, registered_source
 from .manifest import (
     MANIFEST_NAME,
     InstructionTarget,
@@ -86,11 +87,28 @@ PROJECT_DOCUMENTS = {"hooks": "hooks.json", "plugins": "plugins.json"}
 @dataclass(frozen=True)
 class RenderContext:
     """What a render reads from outside the source: where a destination lands, where a
-    template that is not vendored comes from, and how a manifest's sources are found."""
+    template that is not vendored comes from, how a manifest's sources are found, and
+    which root may render global scope."""
 
     destination: Callable[[str, str], Path] = resolve_destination
     upstream: Callable[[str], ResolvedItem] = resolve_upstream_template
     sources: SourceParser = parse_sources
+    registered: Callable[[], Path | None] = registered_source
+
+
+def refuse_unregistered_global(
+    root: Path, context: RenderContext | None = None, *, held: bool = False
+) -> None:
+    """Global scope writes anywhere under HOME, so it renders only from the source this
+    machine registered; a cloned or PR-added `loadout.toml` stops here, before any of it
+    is read (ADR 0031). `held` names a manifest that is not on disk, such as a staged one."""
+    if (held or manifest_path(root).is_file()) and not is_registered(
+        root, (context or RenderContext()).registered()
+    ):
+        raise LoadoutError(
+            f"{root}: this folder holds a global setup ({MANIFEST_NAME}) that isn't this "
+            "machine's registered source; register it with `loadout init global <path>`"
+        )
 
 
 @dataclass(frozen=True)
@@ -642,6 +660,7 @@ def render_global(
     root: Path, profile: str = "default", context: RenderContext | None = None
 ) -> dict[Path, Output]:
     context = context or RenderContext()
+    refuse_unregistered_global(root, context)
     manifest = load_profile(root, profile, sources=context.sources)
     declared = _declared_profiles(manifest) | declared_profile_files(root)
     if profile != "default" and profile not in declared:

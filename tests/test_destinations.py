@@ -8,6 +8,7 @@ import pytest
 from loadout.emit import render_global
 from loadout.errors import LoadoutError
 from loadout.manifest import load_manifest
+from registration import register
 from render_helpers import write_all
 
 MANIFEST_WITH_DESTINATIONS = """
@@ -106,12 +107,14 @@ def build(tmp_path: Path, manifest_body: str) -> Path:
 
 
 def test_destination_receives_the_same_bytes_as_the_output(tmp_path: Path) -> None:
+    register(tmp_path)
     root = build(tmp_path, MANIFEST_WITH_DESTINATIONS)
     rendered = render_global(root)
     assert rendered[root / "out/AGENTS.md"] == rendered[Path.home() / ".codex/AGENTS.md"]
 
 
 def test_one_output_fans_out_to_every_destination(tmp_path: Path) -> None:
+    register(tmp_path)
     root = build(tmp_path, MANIFEST_WITH_DESTINATIONS)
     rendered = render_global(root)
     expected = rendered[root / "out/AGENTS.md"]
@@ -122,6 +125,7 @@ def test_one_output_fans_out_to_every_destination(tmp_path: Path) -> None:
 def test_each_destination_preserves_its_own_foreign_keys(tmp_path: Path) -> None:
     """Rendering is per output path, so a co-owner writing one destination cannot
     have its key stamped onto the others."""
+    register(tmp_path)
     root = build(tmp_path, CO_OWNED_DESTINATIONS)
     seed_mcp(root / "out" / "opencode.json", "in_repo")
     seed_mcp(Path.home() / ".config/opencode/opencode.json", "on_machine")
@@ -138,6 +142,7 @@ def test_each_destination_preserves_its_own_foreign_keys(tmp_path: Path) -> None
 def test_a_destination_only_target_preserves_from_the_destination(tmp_path: Path) -> None:
     """With no in-repo output there is no staged copy to read foreign keys back from,
     so the destination itself has to be the source of them."""
+    register(tmp_path)
     root = build(tmp_path, DESTINATION_ONLY_CO_OWNED)
     destination = Path.home() / ".config/opencode/opencode.json"
     seed_mcp(destination, "on_machine")
@@ -148,6 +153,7 @@ def test_a_destination_only_target_preserves_from_the_destination(tmp_path: Path
 
 
 def test_two_targets_sharing_a_destination_collide(tmp_path: Path) -> None:
+    register(tmp_path)
     root = build(tmp_path, COLLIDING_DESTINATIONS)
     with pytest.raises(LoadoutError, match="destination") as caught:
         render_global(root)
@@ -156,6 +162,7 @@ def test_two_targets_sharing_a_destination_collide(tmp_path: Path) -> None:
 
 
 def test_profiles_resolve_the_collision(tmp_path: Path) -> None:
+    register(tmp_path)
     root = build(tmp_path, PROFILED_SHARED_DESTINATION)
     shared = Path.home() / ".shared-dest.md"
 
@@ -170,6 +177,7 @@ def test_a_destination_matching_another_targets_output_collides(tmp_path: Path) 
     """The claimed map must track output paths too, not just destinations, so a
     destination that happens to name another target's in-repo output raises
     instead of silently overwriting it."""
+    register(tmp_path)
     owner_output = (tmp_path / "out" / "owner.md").as_posix()
     manifest_body = f"""
 [[source]]
@@ -195,6 +203,7 @@ order = ["plain"]
 def test_permission_target_destination_receives_the_same_bytes_as_the_output(
     tmp_path: Path,
 ) -> None:
+    register(tmp_path)
     root = build(tmp_path, MANIFEST_WITH_DESTINATIONS)
     rendered = render_global(root)
     assert rendered[root / "out/perm.rules"] == rendered[Path.home() / ".codex/perm.rules"]
@@ -285,6 +294,7 @@ order = ["plain"]
 def test_instruction_target_without_output_renders_only_to_its_destination(
     tmp_path: Path,
 ) -> None:
+    register(tmp_path)
     root = build(tmp_path, NO_OUTPUT_INSTRUCTION)
     rendered = render_global(root)
     dest = Path.home() / ".claude/CLAUDE.md"
@@ -297,6 +307,7 @@ def test_instruction_target_without_output_renders_only_to_its_destination(
 def test_permission_target_without_output_renders_only_to_its_destination(
     tmp_path: Path,
 ) -> None:
+    register(tmp_path)
     root = build(tmp_path, NO_OUTPUT_PERMISSION)
     rendered = render_global(root)
     dest = Path.home() / ".codex/perm.rules"
@@ -308,6 +319,7 @@ def test_permission_target_without_output_renders_only_to_its_destination(
 def test_instruction_target_without_output_writes_no_file_at_the_repo_root(
     tmp_path: Path,
 ) -> None:
+    register(tmp_path)
     root = build(tmp_path, NO_OUTPUT_INSTRUCTION)
     write_all(root)
     assert not (root / "out").exists()
@@ -315,6 +327,7 @@ def test_instruction_target_without_output_writes_no_file_at_the_repo_root(
 
 
 def test_target_without_output_or_destinations_is_rejected(tmp_path: Path) -> None:
+    register(tmp_path)
     root = build(tmp_path, NO_OUTPUT_NO_DESTINATIONS)
     with pytest.raises(LoadoutError, match=r"instructions\.solo"):
         render_global(root)
@@ -323,6 +336,7 @@ def test_target_without_output_or_destinations_is_rejected(tmp_path: Path) -> No
 def test_mixed_manifest_renders_targets_with_and_without_output_together(
     tmp_path: Path,
 ) -> None:
+    register(tmp_path)
     root = build(tmp_path, MIXED_OUTPUT_AND_NO_OUTPUT)
     rendered = render_global(root)
 
@@ -338,6 +352,7 @@ def test_mixed_manifest_renders_targets_with_and_without_output_together(
 def test_destination_collides_with_anothers_output_even_without_its_own_output(
     tmp_path: Path,
 ) -> None:
+    register(tmp_path)
     owner_output = (tmp_path / "out" / "owner.md").as_posix()
     root = build(tmp_path, COLLISION_DESTINATION_VS_OTHERS_OUTPUT.format(owner_output=owner_output))
     with pytest.raises(LoadoutError, match="destination") as caught:
@@ -346,6 +361,7 @@ def test_destination_collides_with_anothers_output_even_without_its_own_output(
 
 
 def test_two_destinations_collide_when_one_target_has_no_output(tmp_path: Path) -> None:
+    register(tmp_path)
     root = build(tmp_path, COLLIDING_DESTINATIONS_NO_OUTPUT)
     with pytest.raises(LoadoutError, match="destination") as caught:
         render_global(root)
@@ -382,6 +398,7 @@ def test_a_set_variable_relocates_the_destination(
 ) -> None:
     """The whole point: a harness that moved its config directory gets written to
     where it actually reads, not to the hardcoded default."""
+    register(tmp_path)
     relocated = tmp_path / "elsewhere" / "claude"
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(relocated))
     root = env_root(tmp_path, "${CLAUDE_CONFIG_DIR:-~/.claude}/CLAUDE.md")
@@ -393,6 +410,7 @@ def test_a_set_variable_relocates_the_destination(
 def test_an_unset_variable_falls_back_to_the_default_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake_home: Path
 ) -> None:
+    register(tmp_path)
     monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
     root = env_root(tmp_path, "${CLAUDE_CONFIG_DIR:-~/.claude}/CLAUDE.md")
 
@@ -405,6 +423,7 @@ def test_an_empty_variable_counts_as_unset(
 ) -> None:
     """Matches machine_config_path's reading of XDG_CONFIG_HOME — an exported but
     empty variable takes the fallback rather than writing to `/CLAUDE.md`."""
+    register(tmp_path)
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", "")
     root = env_root(tmp_path, "${CLAUDE_CONFIG_DIR:-~/.claude}/CLAUDE.md")
 
@@ -415,6 +434,7 @@ def test_an_empty_variable_counts_as_unset(
 def test_a_variable_with_no_fallback_is_an_error_when_unset(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    register(tmp_path)
     monkeypatch.delenv("CODEX_HOME", raising=False)
     root = env_root(tmp_path, "${CODEX_HOME}/AGENTS.md")
 
@@ -428,6 +448,7 @@ def test_an_empty_fallback_is_an_error_rather_than_expanding_to_nothing(
 ) -> None:
     """`${VAR:-}` would otherwise resolve to `/CLAUDE.md` — the write the no-fallback
     error exists to prevent, spelled differently."""
+    register(tmp_path)
     monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
     root = env_root(tmp_path, "${CLAUDE_CONFIG_DIR:-}/CLAUDE.md")
 
@@ -450,6 +471,7 @@ def test_a_reference_the_grammar_does_not_cover_is_an_error(
 ) -> None:
     """Left literal these become path text, so `sync` would create a directory named
     after the template and `check` would then compare against it and report clean."""
+    register(tmp_path)
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/opt/claude")
     root = env_root(tmp_path, template)
 
@@ -462,6 +484,7 @@ def test_a_destination_that_resolves_relative_is_an_error(
 ) -> None:
     """A relative destination is written under whatever directory loadout happened to
     be run from, so it must not resolve at all."""
+    register(tmp_path)
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", "relative-dir")
     root = env_root(tmp_path, "${CLAUDE_CONFIG_DIR}/CLAUDE.md")
 
@@ -491,6 +514,7 @@ def test_an_unselected_profiles_variable_does_not_have_to_be_set(
 ) -> None:
     """Resolution is per selected target. A machine that never runs the `elsewhere`
     profile has no reason to set its variable, and must not be blocked by it."""
+    register(tmp_path)
     monkeypatch.delenv("ELSEWHERE_CONFIG_DIR", raising=False)
     here = tmp_path / "here" / "CLAUDE.md"
     root = build(tmp_path, PROFILED_ENV_DESTINATION.replace("HERE_DESTINATION", str(here)))
@@ -503,6 +527,7 @@ def test_an_unselected_profiles_variable_does_not_have_to_be_set(
 def test_a_permission_destination_expands_the_same_way(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    register(tmp_path)
     relocated = tmp_path / "codex-home"
     monkeypatch.setenv("CODEX_HOME", str(relocated))
     root = env_root(tmp_path, "${CODEX_HOME}/rules/perm.rules", ENV_PERMISSION_DESTINATION)
@@ -514,6 +539,7 @@ def test_a_permission_destination_expands_the_same_way(
 def test_a_variable_substitutes_mid_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Expansion is textual, so a reference away from the start of the entry is
     substituted like any other — the prefix around it survives verbatim."""
+    register(tmp_path)
     monkeypatch.setenv("HARNESS_DIR", "harness-x")
     root = env_root(tmp_path, str(tmp_path) + "/base/${HARNESS_DIR}/opencode.json")
 
@@ -523,6 +549,7 @@ def test_a_variable_substitutes_mid_path(tmp_path: Path, monkeypatch: pytest.Mon
 
 def test_a_destination_with_no_reference_is_left_alone(tmp_path: Path, fake_home: Path) -> None:
     """A literal `$` is not a reference — only the `${...}` form substitutes."""
+    register(tmp_path)
     root = env_root(tmp_path, "~/.weird$dir/CLAUDE.md")
 
     write_all(root)
@@ -534,6 +561,7 @@ def test_an_expansion_containing_dot_dot_is_rejected(
 ) -> None:
     """Validation runs on the resolved path — after both `${...}` and `~` — so a
     variable cannot smuggle in the `..` a literal destination is refused for."""
+    register(tmp_path)
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", "~/.config/../../escape")
     root = env_root(tmp_path, "${CLAUDE_CONFIG_DIR}/CLAUDE.md")
 
@@ -565,6 +593,7 @@ def test_two_templates_that_expand_to_one_path_collide(
 
     The assertions name the resolved path and both owners, so an expansion *failure*
     — which also mentions "destination" and "instructions" — cannot satisfy them."""
+    register(tmp_path)
     shared = str(tmp_path / "shared")
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", shared)
     monkeypatch.setenv("OTHER_DIR", shared)
@@ -583,6 +612,7 @@ def test_the_target_holds_the_template_and_resolution_happens_per_render(
 ) -> None:
     """Keeping the template on the target is what lets a later render pick up a
     changed variable, rather than freezing one machine's expansion into the manifest."""
+    register(tmp_path)
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/opt/claude")
     root = env_root(tmp_path, "${CLAUDE_CONFIG_DIR}/CLAUDE.md")
 

@@ -17,6 +17,7 @@ import pytest
 from loadout.emit import render_global
 from loadout.errors import LoadoutError
 from loadout.output import Copied
+from registration import register
 from render_helpers import write_all
 
 pytestmark = pytest.mark.integration
@@ -66,6 +67,7 @@ def test_both_shapes_land_at_their_authored_relative_paths(
             "pi/extensions/subagent/config.json": SUBAGENT,
         },
     )
+    register(root)
 
     write_all(root)
     assert (agent_dir / "pi-statusline.json").read_text(encoding="utf-8") == STATUSLINE
@@ -79,6 +81,7 @@ def test_the_bytes_are_copied_rather_than_reserialised(
     here — survives. Re-emitting through the JSON writer would not."""
     monkeypatch.setenv("PI_CODING_AGENT_DIR", str(tmp_path / "agent"))
     root = build(tmp_path / "src", "[pi]\n", {"pi/pi-statusline.json": STATUSLINE})
+    register(root)
 
     output = render_global(root)[tmp_path / "agent" / "pi-statusline.json"]
     assert isinstance(output, Copied)
@@ -91,12 +94,12 @@ def test_the_directory_is_the_declaration(tmp_path: Path, monkeypatch: pytest.Mo
     no tree for that agent contributes nothing — so every existing manifest
     renders exactly as before."""
     monkeypatch.setenv("PI_CODING_AGENT_DIR", str(tmp_path / "agent"))
-    without = render_global(build(tmp_path / "a", "[pi]\n"))
+    without = render_global(register(build(tmp_path / "a", "[pi]\n")))
     # Other pi slices legitimately write under the agent dir, so name the file.
     assert (tmp_path / "agent" / "pi-statusline.json") not in without
 
     with_tree = render_global(
-        build(tmp_path / "b", "[pi]\n", {"pi/pi-statusline.json": STATUSLINE})
+        register(build(tmp_path / "b", "[pi]\n", {"pi/pi-statusline.json": STATUSLINE}))
     )
     assert (tmp_path / "agent" / "pi-statusline.json") in with_tree
 
@@ -110,6 +113,7 @@ def test_module_config_false_switches_it_off(
         "[pi]\nmodule-config = false\n",
         {"pi/pi-statusline.json": STATUSLINE},
     )
+    register(root)
     assert (tmp_path / "agent" / "pi-statusline.json") not in render_global(root)
 
 
@@ -117,6 +121,7 @@ def test_a_path_offered_by_two_sources_is_refused(tmp_path: Path) -> None:
     """The loser must be provably present: both source names appear, so this
     cannot pass against a build where the second source is never read."""
     root = tmp_path / "src"
+    register(root)
     root.mkdir(parents=True)
     other = tmp_path / "other"
     for base, text in ((root, STATUSLINE), (other, SUBAGENT)):
@@ -148,6 +153,7 @@ def test_a_path_colliding_with_a_rendered_destination_is_refused(
         '[pi]\nplugins = ["p"]\n',
         {"pi/settings.json": '{"packages": []}\n'},
     )
+    register(root)
     (root / "plugins").mkdir(exist_ok=True)
     (root / "plugins" / "p.json").write_text('{"plugins": {}}\n', encoding="utf-8")
 
@@ -160,6 +166,7 @@ def test_an_executable_file_keeps_its_mode(tmp_path: Path, monkeypatch: pytest.M
     mode does not survive a str, which is why the slice copies."""
     monkeypatch.setenv("PI_CODING_AGENT_DIR", str(tmp_path / "agent"))
     root = build(tmp_path / "src", "[pi]\n", {"pi/hook.sh": "#!/bin/sh\necho hi\n"})
+    register(root)
     (root / "module-config/pi/hook.sh").chmod(0o755)
 
     write_all(root)
@@ -183,6 +190,7 @@ def test_the_slice_is_not_pi_specific(tmp_path: Path, monkeypatch: pytest.Monkey
             "pi/pi-statusline.json": STATUSLINE,
         },
     )
+    register(root)
     (root / "instructions").mkdir(exist_ok=True)
     (root / "instructions" / "intro.md").write_text("intro\n", encoding="utf-8")
 
@@ -213,6 +221,7 @@ def test_an_opencode_plugin_lands_beside_the_generated_hooks_plugin(
         '[opencode]\nhooks = ["notify"]\n',
         {"opencode/plugins/tracker.ts": PLUGIN},
     )
+    register(root)
     (root / "hooks").mkdir(exist_ok=True)
     (root / "hooks" / "notify.json").write_text(
         '{"PreToolUse": [{"matcher": "Bash", "hooks": '

@@ -25,7 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from fixture_root import EXPECTED, FIXTURES, build_project_root, build_root
-from loadout.emit import declared_profiles, render_global, render_project
+from loadout.emit import RenderContext, declared_profiles, render_global, render_project
 from loadout.output import Copied, Merged
 
 
@@ -33,8 +33,11 @@ def render_everything() -> dict[str, str]:
     files: dict[str, str] = {}
     with tempfile.TemporaryDirectory() as directory:
         root = build_root(Path(directory))
+        # A fixture, not this machine's source: registering it would rewrite the real
+        # machine config, so the render is told it may render global scope instead.
+        context = RenderContext(registered=lambda: root)
         for profile in sorted(declared_profiles(root)):
-            for path, rendered in render_global(root, profile).items():
+            for path, rendered in render_global(root, profile, context).items():
                 # A merged output shares its file with the harness; the expected tree
                 # holds the part loadout owns.
                 content = rendered.document if isinstance(rendered, Merged) else rendered

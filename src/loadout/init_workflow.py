@@ -16,11 +16,17 @@ import tomlkit
 from .credentials import findings, redact
 from .diffs import diff_lines, report_diff
 from .discovery import discover, initialized_project_path
-from .emit import render_all
+from .emit import RenderContext, refuse_unregistered_global, render_all
 from .errors import LoadoutError, UsageError
 from .harnesses import KNOWN_HARNESSES
 from .init_options import InitOptions
-from .machine import load_machine_config, machine_config_path, resolve_profile
+from .machine import (
+    is_registered,
+    load_machine_config,
+    machine_config_path,
+    registered_source,
+    resolve_profile,
+)
 from .migration import plan_migration
 from .migration_backup import (
     Backup,
@@ -145,6 +151,23 @@ def _registration(
     if plan.inventory.harnesses:
         registration["harnesses"] = list(plan.inventory.harnesses)
     return SourceWrite(path, tomlkit.dumps(registration).encode(), 0o600, True), None
+
+
+def _refuse_unregistered_render(plan: MigrationPlan, machine: SourceWrite | None) -> None:
+    """The first sync renders global scope, which only the registered source may do, so
+    keeping another registration leaves init nothing it can render (ADR 0031)."""
+    source = plan.inventory.source_root
+    if (
+        plan.inventory.scope == "global"
+        and not plan.already_initialized
+        and machine is None
+        and not is_registered(source, registered_source())
+    ):
+        raise LoadoutError(
+            f"{source} would not be this machine's registered source, and only that source "
+            "renders global scope; nothing was changed. Run init with --registration replace "
+            "to register it"
+        )
 
 
 def written_through(plan: MigrationPlan, machine: SourceWrite | None) -> tuple[str, ...]:
@@ -332,7 +355,9 @@ def planned_render(plan: MigrationPlan, profile: str) -> tuple[RenderedChange, .
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(write.content)
             path.chmod(write.mode)
-        for path in render_all(scratch, profile):
+        # init registers the source it plans, so its scratch copy may render global scope.
+        context = RenderContext(registered=lambda: scratch)
+        for path in render_all(scratch, profile, context):
             original = real / path.relative_to(scratch) if path.is_relative_to(scratch) else None
             if original is None or not original.is_file() or path.exists() or path.is_symlink():
                 continue
@@ -343,7 +368,7 @@ def planned_render(plan: MigrationPlan, profile: str) -> tuple[RenderedChange, .
                 path.symlink_to(scratch / target.relative_to(real.resolve()))
             else:
                 path.write_bytes(original.read_bytes())
-        outputs = _rebased(render_all(scratch, profile), scratch, real)
+        outputs = _rebased(render_all(scratch, profile, context), scratch, real)
         return tuple(compare_with_disk(outputs))
 
 
@@ -465,6 +490,8 @@ def _interrupted(options: InitOptions) -> int | None:
 def _run_init(options: InitOptions) -> int:
     if (pending := _interrupted(options)) is not None:
         return pending
+    if options.scope == "project":
+        refuse_unregistered_global(options.root)
     options, plan = _resolve(options)
     machine, issue = _registration(options, plan)
     if issue:
@@ -472,6 +499,7 @@ def _run_init(options: InitOptions) -> int:
     if not plan.complete:
         _show(Preview(plan), as_json=options.json, status="incomplete", exit_code=2)
         return 2
+    _refuse_unregistered_render(plan, machine)
     profile = _render_profile(plan)
     render = () if plan.already_initialized else planned_render(plan, profile)
     ignores = (
