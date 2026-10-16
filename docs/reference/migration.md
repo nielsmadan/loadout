@@ -170,26 +170,21 @@ owner-only (group and other bits cleared, so 0600 for a 0644 original), and so i
 from an original only its owner could read, such as `mcp.toml` from a 0600 `~/.claude.json`. A
 skill file with a secret deploys from that source, so its generated copy is owner-only too. The
 reason names what
-was found, never the value, and the preview's render diff shows each such value as
-`<redacted>`, as every diff loadout prints does. Redaction happens inside `diffs.diff_lines`, so
-no printed diff can skip it, and it reads the whole of both texts, whatever their size or bytes,
-since a diff shows them in full. Each secret is replaced where it lies: a PEM key from its BEGIN
-line to its END line, a token by its shape, a label's value to its closing quote or, unquoted, to
-the end of its line after `key: value` or `key = value`, a ` #` or ` //` comment and trailing
-whitespace aside, so `password: horse battery staple` shows as `password: <redacted>`, and, after
-a bare `KEY=value`, to the first whitespace, as a shell reads it, a YAML block scalar (`password: |`, with its chomping and
-indentation indicators in either order) through its indented body, with a one-word scheme after an
-authorization label (`Token`, `Digest`, `ApiKey`) left in view, and a value a JSON or TOML
-document flags at the string literal holding it, however it is escaped. A flagged value is
-always replaced where it was flagged, a flag's value inside a longer string such as
-`"command": "srv --api-key=…"` included. Whatever its length, it is also replaced wherever it
-occurs on either side as a whole word or a whole string literal, never inside another word: on a
-command line, in a multi-line TOML string, or bare on the other side, and in full where it starts
-inside another flagged value and runs past it. A value spanning several
-lines leaves one `<redacted>` on each. Redaction never hides a change: the diff compares the real
-lines and prints their redacted text, so a line that differs only inside a redacted value is still
-shown as changed, marked `(differs inside a redacted value)`. A port must read the real value from
-the file, never copy `<redacted>`. One vocabulary names a secret wherever it sits
+was found, never the value. A file holding such a value is never diffed, in the preview or in any
+diff loadout prints, on a terminal or in `sync-abort.diff`: one line names the file, counts the
+lines that differ and gives the reason, `notes.md: 2 line(s) differ; diff not shown because the
+file holds a secret (a value labelled as a secret) — read the file directly`. The check is made
+inside `diffs.diff_lines`, so no printed diff can skip it, on either side of the diff, and it reads
+the whole of both texts, whatever their size or bytes, since a diff would show them in full. Nothing
+is hidden: a change anywhere in the file, inside the secret or beside it, is counted, so read the
+file on disk and the source directly to see it (see
+[0032](../decisions/0032-a-file-holding-a-secret-is-never-diffed.md)). Where a label's value ends
+decides whether it is a reference, a placeholder or a literal: to its closing quote or,
+unquoted, to the end of its line after `key: value` or `key = value`, a ` #` or ` //` comment and
+trailing whitespace aside, and after a bare `KEY=value` to the first whitespace, as a shell reads
+it; a YAML block scalar's value (`password: |`, with its chomping and indentation indicators in
+either order) is its indented body, and after an authorization label a one-word scheme (`Token`,
+`Digest`, `ApiKey`) is skipped. One vocabulary names a secret wherever it sits
 (`SECRET_NAMES` in `credentials.py`): a key, a flag or a `name = value` label whose last words are
 token, API key, secret, password, passphrase, pass, credential(s), authorization, auth, access
 key, private key, secret key, client secret, signing key or PAT, or a provider's name followed by
@@ -215,7 +210,8 @@ and `--api-key-file`, `max_tokens` or `auth_env_var` do not. A file looks like i
 A reference such as `$API_KEY`, `${API_KEY}`, `{env:API_KEY}` or `$env:API_KEY`, a number, a
 switch, a path, and a documentation placeholder ending in `EXAMPLE` or made of x's after its prefix
 (`AKIAXXXXXXXXXXXXXXXX`), is not a secret. A binary file (a NUL in its first 8 KiB) is not
-scanned, and only the first MiB of any other file is; neither limit applies to redacting a diff. The check is a heuristic: it can miss a
+scanned, and only the first MiB of any other file is; neither limit applies to the check before a
+diff. The check is a heuristic: it can miss a
 secret and can flag a value that is not one. A private original is listed as
 `Private (stays on this machine): <path>: <reason>`, with the reason in `--json` as
 `private_reason`: its name, Git ignoring it, or Git not tracking it.

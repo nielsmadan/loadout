@@ -615,13 +615,20 @@ def test_syncing_an_undeclared_template_says_it_is_not_declared(
 TOKEN = "ghp_" + "a1B2" * 9
 
 
+WITHHELD = (
+    "web/notes.md: 1 line(s) differ; diff not shown because the file holds a secret "
+    "(a token in a provider's format) — read the file directly\n"
+)
+
+
 def test_sync_never_prints_a_token_the_upstream_added(
     bare_project: Path,
     fake_home: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Review 4, batch 1.2: the tree diff printed it in clear."""
+    """Review 4, batch 1.2: the tree diff printed it in clear. The file is withheld from
+    the diff and still counted (ADR 0032)."""
     upstream = _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
     main(["template", "add", "web", "--vendored", "--root", str(bare_project)])
     (upstream / "notes.md").write_text(f"push with {TOKEN}\n", encoding="utf-8")
@@ -630,8 +637,10 @@ def test_sync_never_prints_a_token_the_upstream_added(
     assert main(["template", "sync", "web", "--root", str(bare_project)]) == 0
 
     captured = capsys.readouterr()
-    assert "+push with <redacted>\n" in captured.err
-    assert TOKEN not in captured.out + captured.err
+    assert (captured.out, captured.err) == (
+        "updated web from source, 1 file(s) changed\n",
+        WITHHELD,
+    )
 
 
 def test_a_refused_sync_never_prints_a_token_the_upstream_added(
@@ -650,9 +659,9 @@ def test_a_refused_sync_never_prints_a_token_the_upstream_added(
 
     assert main(["template", "sync", "web", "--root", str(bare_project)]) == 1
 
-    captured = capsys.readouterr()
-    assert "+push with <redacted>\n" in captured.err
-    assert TOKEN not in captured.out + captured.err
+    err = capsys.readouterr().err
+    assert WITHHELD in err.splitlines(keepends=True)
+    assert '+allow = ["vite"]\n' in err
 
 
 def test_bare_add_labels_a_vendored_copy_once(

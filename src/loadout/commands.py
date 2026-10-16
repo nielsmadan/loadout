@@ -524,7 +524,12 @@ def _make_tracked(root: Path, name: str) -> int:
 
 def _tree_diff(local: Path, upstream: Path, label: str) -> list[str]:
     """A unified diff per file across both trees, added and removed files included."""
-    lines: list[str] = []
+    return [line for diff in _file_diffs(local, upstream, label) for line in diff]
+
+
+def _file_diffs(local: Path, upstream: Path, label: str) -> list[list[str]]:
+    """Each changed file's diff lines, so a file whose diff is withheld still counts."""
+    diffs: list[list[str]] = []
     for relative in sorted({*template_files(local), *template_files(upstream)}):
         here, there = local / relative, upstream / relative
         try:
@@ -534,11 +539,11 @@ def _tree_diff(local: Path, upstream: Path, label: str) -> list[str]:
             # A template carries whatever a skill carries, binaries included, and
             # a byte diff of one is noise rather than a review.
             if not (here.is_file() and there.is_file()) or here.read_bytes() != there.read_bytes():
-                lines.append(f"{label}/{relative}: differs (binary)\n")
+                diffs.append([f"{label}/{relative}: differs (binary)\n"])
             continue
         if actual != expected:
-            lines.extend(diff_lines(f"{label}/{relative}", actual, expected, context=3))
-    return lines
+            diffs.append(diff_lines(f"{label}/{relative}", actual, expected, context=3))
+    return diffs
 
 
 def cmd_template_sync(root: Path, name: str, *, yes: bool = False) -> int:
@@ -621,11 +626,9 @@ def cmd_template_sync(root: Path, name: str, *, yes: bool = False) -> int:
             record_hash(root, name, current)
         return 0
 
-    changed = _tree_diff(local, upstream, name)
+    changed = _file_diffs(local, upstream, name)
     copy_tree(upstream, local)
     record_hash(root, name, tree_hash(local))
-    print(
-        f"updated {name} from source, {sum(1 for c in changed if c.startswith('---'))} file(s) changed"
-    )
-    report_diff(changed)
+    print(f"updated {name} from source, {len(changed)} file(s) changed")
+    report_diff([line for diff in changed for line in diff])
     return 0

@@ -18,9 +18,9 @@ from loadout.credentials import (
     MAX_SCANNED,
     credential_material,
     findings,
-    redact,
-    redacted_pair,
+    names_a_secret,
 )
+from loadout.diffs import diff_lines
 from loadout.sync import RenderedChange
 
 SECRETS = {
@@ -246,7 +246,7 @@ def test_a_documentation_placeholder_is_not_a_secret(placeholder: str) -> None:
     assert credential_material(f"key: {placeholder}\n".encode()) is None
 
 
-def test_the_preview_diff_never_repeats_a_secret_it_names(capsys) -> None:
+def test_the_preview_names_a_file_holding_a_secret_instead_of_diffing_it(capsys) -> None:
     """The warning named the secret while the render diff above it printed its value."""
     change = RenderedChange(
         path=Path("/p/settings.json"),
@@ -257,9 +257,10 @@ def test_the_preview_diff_never_repeats_a_secret_it_names(capsys) -> None:
 
     workflow._show_render((change,))
 
-    out = capsys.readouterr().out
-    assert '"DEPLOY_KEY": "<redacted>"' in out
-    assert "abc123secret" not in out
+    assert capsys.readouterr().out.splitlines()[-1] == (
+        "/p/settings.json: 1 line(s) differ; diff not shown because the file holds a secret "
+        "(env.DEPLOY_KEY) — read the file directly"
+    )
 
 
 TOKEN = b"ghp_" + b"a1B2" * 9
@@ -302,7 +303,8 @@ def test_a_token_in_text_is_found_however_large_the_file() -> None:
 
 @pytest.mark.integration
 def test_only_the_scanned_prefix_of_a_large_file_is_read() -> None:
-    """The scan's cap, which detection keeps; redaction reads the whole text."""
+    """The scan's cap, which init's detection keeps; the check before a diff reads the
+    whole text."""
     assert _scan_in_a_subprocess(b"x" * MAX_SCANNED + b"\n" + TOKEN, 10) == "[]"
 
 
@@ -336,60 +338,29 @@ def test_a_user_password_far_along_the_command_line_is_still_found() -> None:
     assert credential_material(line.encode()) == "a user:password on an HTTP client's command line"
 
 
-REDACTED = {
-    "a JSON-escaped value": (
-        "json",
-        '{"env": {"PASSWORD": "pa\\"ss-w0rd"}}\n',
-        '{"env": {"PASSWORD": "<redacted>"}}\n',
-    ),
-    "a PEM inside JSON": (
-        "json",
-        '{"key": "-----BEGIN PRIVATE KEY-----\\nMIIBODY\\n-----END PRIVATE KEY-----\\n"}\n',
-        '{"key": "<redacted>\\n"}\n',
-    ),
-    "a PEM in markdown": (
-        "md",
-        "-----BEGIN RSA PRIVATE KEY-----\nMIIBODY\n-----END RSA PRIVATE KEY-----\nafter\n",
-        # A placeholder a line, so each still pairs with the line it stands for.
-        "<redacted>\n<redacted>\n<redacted>\nafter\n",
-    ),
-    "a PEM with no END line": (
-        "md",
-        "-----BEGIN PRIVATE KEY-----\nMIIBODY\n",
-        "<redacted>\n<redacted>\n",
-    ),
-    "a label value past punctuation": ("md", "password: hunter2!REST\n", "password: <redacted>\n"),
-    "a quoted label in plain text": (
-        "txt",
-        '"API_TOKEN": "abcdef123456"\n',
-        '"API_TOKEN": "<redacted>"\n',
-    ),
-    "a quoted label in unparsable JSON": (
-        "json",
-        '{"API_TOKEN": "abcdef123456",\n',
-        '{"API_TOKEN": "<redacted>",\n',
-    ),
-    "a value holding an at sign": (
-        "md",
-        "password = p@ssword123\npath = /p/x\n",
-        "password = <redacted>\npath = /p/x\n",
-    ),
+# Each of these printed part or all of its secret while diffs were redacted (review 3, 1.7).
+SPELLINGS = {
+    "a JSON-escaped value": ("json", '{"env": {"PASSWORD": "pa\\"ss-w0rd"}}\n'),
+    "a PEM with no END line": ("md", "-----BEGIN PRIVATE KEY-----\nMIIBODY\n"),
+    "a label value past punctuation": ("md", "password: hunter2!REST\n"),
+    "a quoted label in plain text": ("txt", '"API_TOKEN": "abcdef123456"\n'),
+    "a quoted label in unparsable JSON": ("json", '{"API_TOKEN": "abcdef123456",\n'),
+    "a value holding an at sign": ("md", "password = p@ssword123\npath = /p/x\n"),
 }
 
 
-@pytest.mark.parametrize("case", sorted(REDACTED))
-def test_a_printed_diff_redacts_every_spelling_of_a_secret(case: str) -> None:
-    """Review 3, 1.7: each of these printed part or all of the secret."""
-    format_name, text, expected = REDACTED[case]
+@pytest.mark.parametrize("case", sorted(SPELLINGS))
+def test_a_file_holding_any_spelling_of_a_secret_is_not_diffed(case: str) -> None:
+    format_name, text = SPELLINGS[case]
+    rel = f"file.{format_name}"
+    reason = credential_material(text.encode(), format_name)
 
-    assert redacted_pair(text, "", format_name) == (expected, "")
-
-
-def test_a_secret_on_one_side_is_redacted_on_both() -> None:
-    assert redacted_pair("token: ghp_" + "a1B2" * 9 + "\n", "x ghp_" + "a1B2" * 9 + "\n") == (
-        "token: <redacted>\n",
-        "x <redacted>\n",
+    withheld = (
+        f"{rel}: {text.count(chr(10))} line(s) differ; diff not shown because the file holds "
+        f"a secret ({reason}) — read the file directly\n"
     )
+
+    assert diff_lines(rel, text, "", context=1) == [withheld]
 
 
 LABELLED = "a value labelled as a secret"
@@ -459,6 +430,122 @@ def test_a_document_is_parsed_up_to_the_cap_and_no_further(extra: int, reason: s
     assert credential_material(content, "json") == reason
 
 
-def test_redaction_replaces_the_longest_value_first() -> None:
-    """A shorter value replaced first would leave the rest of a longer one behind."""
-    assert redact("token=abcdef abc\n", ["abc", "abcdef"]) == "token=<redacted> <redacted>\n"
+KEY = "FAKE" + "abcdef1234567890"
+
+
+@pytest.mark.parametrize(
+    ("line", "value"),
+    [
+        # After `: ` a value runs to the line's end or a comment, YAML style; after a
+        # bare `=` to the first whitespace, shell style (review 6, batch 3).
+        ("password: horse battery staple", "horse battery staple"),
+        ("password: FAKEabc123 # used by staging", "FAKEabc123"),
+        ("password: FAKE abc123 // staging", "FAKE abc123"),
+        ("password: FAKEabc123#staging", "FAKEabc123#staging"),
+        ("db_password = pass w0rd FAKE", "pass w0rd FAKE"),
+        ("export API_TOKEN=FAKEabc123 then run make dev", "FAKEabc123"),
+        ("password:FAKEabc123 then more", "FAKEabc123"),
+        ("Authorization: Token abc123def456 extra", "abc123def456"),
+        ("Authorization: Digest abc123def456", "abc123def456"),
+        ("Authorization: Bearer abc123def456", "abc123def456"),
+        ("Authorization: Token\tabc123def456", "abc123def456"),
+        ("OPENAI_KEY=abc123def456", "abc123def456"),
+        ("client_secret: abc123def456", "abc123def456"),
+        ("signingKey: abc123def456", "abc123def456"),
+    ],
+)
+def test_a_labelled_value_is_read_to_its_end(line: str, value: str) -> None:
+    assert findings(f"{line}\nnext\n".encode()) == [(LABELLED, value)]
+
+
+@pytest.mark.parametrize("header", ["|", "|-", "|+", ">2", "|-2", "|2-", ">+1", ">1+"])
+def test_a_block_scalar_s_body_is_the_value_whichever_order_its_indicators_take(
+    header: str,
+) -> None:
+    """Review 6, batch 1.2: `|2-`, indentation before chomping, was read as the value."""
+    text = f"password: {header}\n  {KEY}\n  second line\nnext: x\n"
+
+    assert findings(text.encode()) == [(LABELLED, f"{KEY}\n  second line")]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        f"env:\n  GITHUB_TOKEN: {KEY}\n",
+        f"mcpServers:\n  gh:\n    env:\n      API_KEY: {KEY}\n",
+        f"env:\n  password: |\n    {KEY}\n",
+        f"notes:\npassword: {KEY}\n",
+    ],
+    ids=["env", "mcpServers", "block", "after a parent"],
+)
+def test_a_secret_nested_under_a_parent_key_is_found(text: str) -> None:
+    """Review 6, batch 1.1: a label's separator spanned the newline, so `env:` took the
+    next line as its value and the real label was never read."""
+    assert findings(text.encode()) == [(LABELLED, KEY)]
+
+
+@pytest.mark.parametrize(
+    ("text", "why"),
+    [
+        (
+            f'prefix_rule(pattern=["mycli", "--api-key", "{KEY}"], decision="allow")\n',
+            "the value after --api-key",
+        ),
+        (f"curl --token {KEY} https://x\n", "the value after --token"),
+        (f'curl --token "{KEY}" -s\n', "the value after --token"),
+        (f"curl --api-key={KEY} -s\n", "the value of --api-key"),
+    ],
+    ids=["codex rules array", "flag then value", "flag then quoted value", "flag=value"],
+)
+def test_a_secret_flag_s_value_in_text_is_found(text: str, why: str) -> None:
+    """Review 6, batch 2.6: outside a parsed document, only `label: value` was."""
+    assert findings(text.encode()) == [(why, KEY)]
+
+
+@pytest.mark.parametrize(
+    ("text", "found"),
+    [
+        ('{"env": {"DATABASE": "abc\\u0064efgh1234"}}\n', [("env.DATABASE", "abcdefgh1234")]),
+        ('{"env": {"DATABASE": "hunt2"}}\n', [("env.DATABASE", "hunt2")]),
+        # A hand edit's trailing comma leaves the document unparsable (review 6, batch 2.6).
+        (
+            f'{{"env": {{"MY_SERVICE": "{KEY}", "LOG_LEVEL": "debug",}}, "x": 1}}\n',
+            [("env.MY_SERVICE", KEY)],
+        ),
+    ],
+    ids=["escaped", "short", "unparsable"],
+)
+def test_a_value_map_entry_is_found_by_where_it_sits(
+    text: str, found: list[tuple[str, str]]
+) -> None:
+    assert findings(text.encode(), "json") == found
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "use sk_" + "live_4eC39HqLyjWDarjtT1zdp7dc here",
+        "use rk_" + "test_4eC39HqLyjWDarjtT1zdp7dc here",
+        "hf_token hf_" + "AbCdEfGhIjKlMnOpQrStUvWxYz0123",
+        "post to https://hooks.slack.com/services/T0000/B0000/XXXXabcdEFGH1234",
+        "key django-insecure-0123456789abcdefghij",
+        "x-ghp_" + "a1B2" * 9 + "-y",
+    ],
+)
+def test_a_provider_s_token_shape_is_credential_material(text: str) -> None:
+    assert credential_material(text.encode()) is not None
+
+
+@pytest.mark.parametrize(
+    "name", ["SECRET_KEY", "STRIPE_SECRET_KEY", "client_secret", "signingKey", "OPENAI_KEY"]
+)
+def test_the_vocabulary_names_these_secrets(name: str) -> None:
+    assert names_a_secret(name)
+
+
+def test_a_provider_names_a_key_only_directly_before_it() -> None:
+    """Review 6, batch 3 (rx-provider-pos)."""
+    assert [names_a_secret(name) for name in ("my_openai_key", "openai_model_key")] == [
+        True,
+        False,
+    ]

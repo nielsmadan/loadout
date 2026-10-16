@@ -85,10 +85,10 @@ on disk, and for a key removed outside loadout the `+` lines are what sync would
 runtime is reported verbatim rather than silently discarded. When the terminal shortens that
 diff, the whole of it goes to `$XDG_STATE_HOME/loadout/sync-abort.diff` (mode 0600), which the
 next such abort replaces and the next sync that completes removes; when that directory cannot be
-written, the abort says so by leaving the line out and still exits 1. Every diff loadout prints,
-there, in `check`, in `template sync` and in the init preview, shows a value the credential
-check recognises as `<redacted>`. Port the edit into the source with the bundled `/loadout` skill, or
-pass `--force` to discard it.
+written, the abort says so by leaving the line out and still exits 1. A file holding a value the
+credential check recognises is never diffed, there, in `check`, in `template sync` or in the init
+preview: one line names it and counts the lines that differ, so read the file directly. Port the
+edit into the source with the bundled `/loadout` skill, or pass `--force` to discard it.
 
 Comparison is by parsed document for JSON targets, not by bytes, so a harness re-serialising
 its own config in a different key order does not read as an edit. In a file loadout shares with

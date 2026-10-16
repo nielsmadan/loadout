@@ -8,11 +8,9 @@ gives it away.
 
 from __future__ import annotations
 
-import bisect
-import itertools
 import json
 import re
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterator
 from dataclasses import dataclass
 from itertools import pairwise
 
@@ -234,16 +232,22 @@ def findings(content: bytes, format_name: str = "copy") -> list[tuple[str, str]]
     return _flagged_in(text, format_name, structured=len(content) <= MAX_SCANNED)
 
 
+def secret_reason(text: str, format_name: str = "copy") -> str | None:
+    """Why `text` holds a secret, or None: whether a diff of it may be shown. The whole
+    text is read, past `MAX_SCANNED` and past a NUL, as a diff prints all of it."""
+    return next((why for why, _ in _flagged_in(text, format_name, structured=True)), None)
+
+
 def _flagged_in(text: str, format_name: str, *, structured: bool) -> list[tuple[str, str]]:
     """Each secret `text` holds, as (why, the value): by its shape, by its label, and in a
-    JSON or TOML document by where it sits. The scan caps what it reads; redaction does not."""
+    JSON or TOML document by where it sits."""
     found = [
         (_REASONS[match.lastgroup or "token"], match.group(0))
         for match in _SHAPES.finditer(text)
         if not _placeholder(match.group(0))
     ]
-    found += [(LABELLED_REASON, value) for value, _, _ in _labelled_values(text)]
-    found += [(why, value) for why, value, _, _ in _flag_values(text)]
+    found += [(LABELLED_REASON, value) for value in _labelled_values(text)]
+    found += list(_flag_values(text))
     if structured and format_name in {"json", "toml"}:
         found += _placed(text, format_name)
     return found
@@ -288,24 +292,23 @@ def credential_material(content: bytes, format_name: str = "copy") -> str | None
     return next((why for why, _ in findings(content, format_name)), None)
 
 
-def _labelled_values(text: str) -> Iterator[tuple[str, int, int]]:
-    """Each labelled secret: the word that decides it, and where its whole value lies,
-    to its closing quote or the end of its line (review 4, batch 1.3). After an
-    authorization label a one-word scheme, such as `Token` or `Digest`, is skipped."""
+def _labelled_values(text: str) -> Iterator[str]:
+    """Each labelled secret's value: the word that decides it, or unquoted, its whole
+    value (review 4, batch 1.3). After an authorization label a one-word scheme, such as
+    `Token` or `Digest`, is skipped."""
     for match in _LABELLED.finditer(text):
-        line = False
         if match.group("bearer") is not None:
             decided, start, quote = match.group("bearer"), match.start("bearer"), ""
         elif names_a_secret(match.group("label")):
             decided, start, quote = match.group("value"), match.start("value"), match.group("quote")
             # `key: value` runs to the line's end, YAML style; `KEY=value`, shell style,
             # to the first whitespace (review 6, batch 3).
-            line = bool(match.group("gap"))
             if not quote:
+                line = bool(match.group("gap"))
                 decided = text[start : _value_end(text, start, quote, line=line)]
             scheme = _SCHEME_VALUE.match(text, match.end("value"))
             if _words(match.group("label"))[-1:] in _AUTHORIZATION and scheme is not None:
-                decided, start, line = scheme.group("value"), scheme.start("value"), False
+                decided, start = scheme.group("value"), scheme.start("value")
         else:
             continue
         if not quote and _BLOCK_SCALAR.fullmatch(decided):
@@ -313,9 +316,9 @@ def _labelled_values(text: str) -> Iterator[tuple[str, int, int]]:
             end = _block_end(text, match.start())
             body = text[text.find("\n", start) + 1 : end].strip()
             if body and _secret_value(body):
-                yield body, start, end
+                yield body
         elif _secret_value(decided):
-            yield decided, start, _value_end(text, start, quote, line=line)
+            yield decided
 
 
 # A flag's value in text: after `=`, after whitespace on a command line, or as the next
@@ -327,22 +330,17 @@ _FLAG_VALUE = re.compile(
 )
 
 
-def _flag_values(text: str) -> Iterator[tuple[str, str, int, int]]:
-    """Each value a secret flag gives in text, as `_flagged` names it in a document,
-    and where it lies: to its closing quote, or, unquoted, to the end of the word."""
+def _flag_values(text: str) -> Iterator[tuple[str, str]]:
+    """Each value a secret flag gives in text, as (why, the value), as `_flagged` names
+    it in a document: to its closing quote, or, unquoted, to the end of the word."""
     for match in _FLAG_VALUE.finditer(text):
         flag, start, quote = match.group("flag"), match.start("value"), match.group("quote")
         if not _secret_flag(flag):
             continue
-        end = (
-            _value_end(text, start, quote)
-            if quote
-            else min(match.end("value"), _value_end(text, start, quote))
-        )
-        value = text[start:end]
+        value = text[start : _value_end(text, start, quote)] if quote else match.group("value")
         if _literal(value) and _secret_value(value):
             why = "of" if match.group("inline") is not None else "after"
-            yield f"the value {why} {flag}", value, start, end
+            yield f"the value {why} {flag}", value
 
 
 _BLOCK_SCALAR = re.compile(r"[|>](?:[-+]?[1-9]?|[1-9][-+])")
@@ -389,209 +387,6 @@ def _value_end(text: str, start: int, quote: str, *, line: bool = False) -> int:
         return start + len(text[start:end].rstrip())
     found = _WHITESPACE.search(text, start, line_end)
     return line_end if found is None else found.start()
-
-
-# A string literal of a JSON or TOML document, multi-line ones included, decoded and
-# compared against what the parsed document flagged (review 6, batch 1.2).
-_STRING_LITERAL = re.compile(
-    r'"""(?P<multi>[\s\S]*?)"""(?!")'
-    r"|'''(?P<multi_literal>[\s\S]*?)'''(?!')"
-    r'|"(?P<basic>(?:[^"\\\n]|\\.)*)"'
-    r"|'(?P<literal>[^'\n]*)'"
-)
-_ESCAPES = {
-    "b": "\b",
-    "t": "\t",
-    "n": "\n",
-    "f": "\f",
-    "r": "\r",
-    '"': '"',
-    "\\": "\\",
-    "/": "/",
-    "e": "\x1b",
-}
-
-
-def _decoded(raw: str, *, escapes: bool, multi: bool) -> tuple[str, list[int]]:
-    """A literal's value, and where in `raw` each of its characters starts, with one entry
-    past the end, so a value found decoded is redacted where it is written."""
-    chars: list[str] = []
-    starts: list[int] = []
-    position = 2 if multi and raw.startswith("\r\n") else 1 if multi and raw.startswith("\n") else 0
-    while position < len(raw):
-        char = raw[position]
-        if not escapes or char != "\\" or position + 1 == len(raw):
-            chars.append(char)
-            starts.append(position)
-            position += 1
-            continue
-        following = raw[position + 1]
-        if following in "uU":
-            width = 4 if following == "u" else 8
-            digits = raw[position + 2 : position + 2 + width]
-            try:
-                chars.append(chr(int(digits, 16)))
-            except ValueError:
-                chars.append(char)
-                starts.append(position)
-                position += 1
-                continue
-            starts.append(position)
-            position += 2 + width
-        elif following in _ESCAPES:
-            chars.append(_ESCAPES[following])
-            starts.append(position)
-            position += 2
-        elif multi and following in " \t\r\n":
-            # A line-ending backslash: the whitespace after it is no part of the value.
-            position += 1
-            while position < len(raw) and raw[position] in " \t\r\n":
-                position += 1
-        else:
-            chars.append(char)
-            starts.append(position)
-            position += 1
-    return "".join(chars), [*starts, len(raw)]
-
-
-@dataclass(frozen=True)
-class _Secrets:
-    """One side of a diff, scanned once: where each secret lies, and each value flagged."""
-
-    spans: list[tuple[int, int]]
-    values: list[str]
-
-
-def _secrets_in(text: str, format_name: str) -> _Secrets:
-    """Every secret `text` holds, by shape, by label and, in a JSON or TOML document, by
-    where it sits: one scan and one parse a side (review 5, batch 3.2)."""
-    shapes = [match for match in _SHAPES.finditer(text) if not _placeholder(match.group(0))]
-    labelled = [(value, start, end) for value, start, end in _labelled_values(text)]
-    labelled += [(value, start, end) for _, value, start, end in _flag_values(text)]
-    spans = [(match.start(), match.end()) for match in shapes]
-    spans += [(start, end) for _, start, end in labelled]
-    values = [match.group(0) for match in shapes] + [value for value, _, _ in labelled]
-    if format_name in {"json", "toml"}:
-        secrets = [value for _, value in _placed(text, format_name)]
-        spans += list(_structured_spans(text, set(secrets)))
-        values += secrets
-    return _Secrets(spans, values)
-
-
-def _structured_spans(text: str, secrets: set[str]) -> Iterator[tuple[int, int]]:
-    """Where each string literal holds a value the parsed document flagged: the whole
-    literal when it is the value, else each whole occurrence in it, mapped back from the
-    decoded value to the raw spelling, escapes and all."""
-    if not secrets:
-        return
-    for match in _STRING_LITERAL.finditer(text):
-        group = match.lastgroup or "basic"
-        raw = match.group(group)
-        decoded, starts = _decoded(
-            raw, escapes=group in {"basic", "multi"}, multi=group.startswith("multi")
-        )
-        offset = match.start(group)
-        if decoded in secrets:
-            yield offset, offset + len(raw)
-            continue
-        for start, end in _carried_spans(decoded, secrets):
-            yield offset + starts[start], offset + starts[end]
-
-
-def _replaced(text: str, spans: Iterable[tuple[int, int]]) -> str:
-    """`text` with each span replaced, overlapping ones as one."""
-    pieces: list[str] = []
-    position = 0
-    for start, end in sorted(spans):
-        # Touching or overlapping spans are one secret, under one placeholder.
-        if pieces and start <= position:
-            position = max(position, end)
-            continue
-        pieces += [text[position:start], "<redacted>"]
-        position = end
-    return "".join([*pieces, text[position:]])
-
-
-_WORD = re.compile(r"[\w-]")
-# Where a whole value can start: not inside a run of word characters.
-_STARTS = re.compile(r"(?<![\w-])(?=[\s\S])")
-
-
-def redact(text: str, values: Iterable[str]) -> str:
-    """`text` with each whole occurrence of a secret value replaced."""
-    return _replaced(text, _carried_spans(text, values))
-
-
-def _carried_spans(text: str, values: Iterable[str]) -> list[tuple[int, int]]:
-    """Each whole occurrence of a value in `text`, never one inside another word, the
-    longest that fits at each place. One pass, each start looked up by its first
-    characters: a pass per value took 7.4 s for 16k of them (review 4, batch 3.1)."""
-    unique = sorted({value for value in values if value}, key=len, reverse=True)
-    if not unique:
-        return []
-    width = len(unique[-1])
-    by_prefix: dict[str, list[str]] = {}
-    for value in unique:
-        by_prefix.setdefault(value[:width], []).append(value)
-    spans: list[tuple[int, int]] = []
-    # Each start is tried, inside an earlier match too: callers merge overlapping spans.
-    for start in _STARTS.finditer(text):
-        at = start.start()
-        for value in by_prefix.get(text[at : at + width], ()):
-            end = at + len(value)
-            if text.startswith(value, at) and not _WORD.match(text, end):
-                spans.append((at, end))
-                break
-    return spans
-
-
-def redacted_lines(
-    actual: str, expected: str, format_name: str = "copy"
-) -> tuple[list[str], list[str]]:
-    """Both sides of a diff, line for line as written, each secret replaced where it lies,
-    and every value either side flags replaced on both wherever it occurs as a whole word,
-    whatever its length (review 6, batch 1.2). A secret spanning lines leaves a placeholder
-    on each, so the lines still pair with the raw ones a diff is computed from. The whole of
-    each text is read, however long and whatever bytes it holds."""
-    sides = [(text, _secrets_in(text, format_name)) for text in (actual, expected)]
-    carried = [
-        spelling
-        for text, found in sides
-        for value in (*(text[start:end] for start, end in found.spans), *found.values)
-        for spelling in (value, json.dumps(value)[1:-1])
-    ]
-    shown = [
-        _by_line(text, [*found.spans, *_carried_spans(text, carried)]) for text, found in sides
-    ]
-    return shown[0], shown[1]
-
-
-def redacted_pair(actual: str, expected: str, format_name: str = "copy") -> tuple[str, str]:
-    """`redacted_lines`, each side joined back into one text."""
-    before, after = redacted_lines(actual, expected, format_name)
-    return "".join(before), "".join(after)
-
-
-def _by_line(text: str, spans: list[tuple[int, int]]) -> list[str]:
-    """`text`'s lines, each with the parts of `spans` on it replaced: a line ending is
-    never replaced, so a line stays a line. Each span is placed by bisection, so the cost
-    is the lines it touches, not every line."""
-    lines = text.splitlines(keepends=True)
-    starts = list(itertools.accumulate((len(line) for line in lines), initial=0))
-    bodies = [line.rstrip("\r\n") for line in lines]
-    per_line: dict[int, list[tuple[int, int]]] = {}
-    for start, stop in spans:
-        first = bisect.bisect_right(starts, start) - 1
-        last = bisect.bisect_left(starts, stop) - 1
-        for index in range(max(first, 0), min(last, len(lines) - 1) + 1):
-            low = max(start, starts[index]) - starts[index]
-            high = min(stop, starts[index] + len(bodies[index])) - starts[index]
-            if high > low:
-                per_line.setdefault(index, []).append((low, high))
-    return [
-        _replaced(body, per_line[index]) + line[len(body) :] if index in per_line else line
-        for index, (line, body) in enumerate(zip(lines, bodies, strict=True))
-    ]
 
 
 def _structured(value: object, key: str = "") -> Iterator[tuple[str, str]]:
