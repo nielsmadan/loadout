@@ -48,7 +48,9 @@ An existing machine configuration is protected from reinitialisation.
 
 ## Choose your agents
 
-Replace the new source's starter manifest with:
+`init global` writes one block per harness, holding what it adopted. Add to those blocks rather
+than replacing the file, which would drop what was adopted. A source that adds shared
+instructions looks like this:
 
 ```toml title="~/agent-config/loadout/loadout.toml"
 [[source]]

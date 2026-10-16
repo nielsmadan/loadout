@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import tempfile
 from collections import defaultdict
 from dataclasses import replace
 from pathlib import Path
@@ -9,13 +8,19 @@ from typing import Any, Literal
 
 import tomlkit
 
-from .agents import GLOBAL_PRESET
+from .agents import DIRECTORY_SLICES, GLOBAL_PRESET
 from .composition import HEADER
-from .discovery import PROJECT_ROOTS, credential_material, digest, path_preconditions
+from .discovery import (
+    PROJECT_ROOTS,
+    RUNTIME_DOCUMENTS,
+    authored_part,
+    credential_material,
+    path_preconditions,
+)
 from .emit import PROJECT_SETTINGS_DIR, project_owned_keys
 from .errors import LoadoutError
 from .extract import extract, extract_codex_plugins, extract_codex_servers, extract_value
-from .manifest import load_manifest
+from .manifest import MANIFEST_NAME, load_manifest
 from .migration_models import (
     Candidate,
     CategoryReadiness,
@@ -27,34 +32,21 @@ from .migration_models import (
     RootMapping,
     SourceWrite,
     Unadopted,
+    UnadoptedKind,
 )
-from .migration_paths import DestinationLayout, entry_path
+from .migration_paths import entry_path, inventory_layout
 from .migration_validation import validate_plan
 from .native_documents import key_fingerprints, parse_document
-from .output import CATEGORIES
+from .output import CATEGORIES, sha256
 from .output import toml_item as _toml_item
 from .permissions.merge import merge_rules
-from .permissions.renderers import RENDERERS, JsonSpec, TextSpec
-from .permissions.rules import Rules, parse_rules
-from .project import PROJECT_PRESET, load_project_config
+from .permissions.rules import Rules
+from .project import PROJECT_CONFIG_NAME, PROJECT_PRESET, load_project_config
 from .servers import serialize_servers
 from .skills import SKILL_DOCUMENT
-from .subagents import (
-    EFFORT_LEVELS,
-    EFFORT_SCALE,
-    EFFORT_SPELLING,
-    NativeAgent,
-    agent_file_name,
-    extract_agent,
-    yaml_string,
-)
+from .subagents import NativeAgent, agent_file_name, extract_agent, source_agent
 
 CODEX_RULES_OUTPUT = Path(PROJECT_PRESET["codex"]["permissions"].output or "").name
-RUNTIME_KEYS = {
-    "codex": frozenset({"projects", "trust"}),
-    "droid": frozenset({"trustedFolders"}),
-    "pi": frozenset({"lastChangelogVersion"}),
-}
 OWNERS: dict[str, dict[str, tuple[str, ...]]] = {
     "claude": {
         "permissions": ("permissions",),
@@ -69,6 +61,9 @@ OWNERS: dict[str, dict[str, tuple[str, ...]]] = {
     "opencode": {"permissions": ("permission",), "mcp": ("mcp",), "plugins": ("plugin",)},
     "pi": {"plugins": ("packages",)},
 }
+NOT_ADOPTED = "No source slice adopts this category; existing files stay in place."
+# Templates carry no agents, so agents is a readiness category but not an output.CATEGORIES one.
+READINESS_CATEGORIES = CATEGORIES | {"agents"}
 TREE_CATEGORIES = {
     "skills": "skills",
     "commands": "instructions",
@@ -174,46 +169,12 @@ def _merged_servers(values: list[tuple[str, object]]) -> dict[str, Any]:
     return servers
 
 
-def _same_document(first: bytes, second: bytes, format_name: str) -> bool:
-    a = parse_document(first.decode(), format_name)
-    b = parse_document(second.decode(), format_name)
-    return tuple(a) == tuple(b) and key_fingerprints(
-        first.decode(), format_name, frozenset(a)
-    ) == key_fingerprints(second.decode(), format_name, frozenset(b))
-
-
-def _portable(content: bytes, renderer: str, format_name: str) -> bytes | None:
-    try:
-        original = (
-            parse_document(content.decode(), format_name)
-            if format_name == "json"
-            else content.decode()
-        )
-        extracted = extract(renderer, original)
-        serialized = _rules_source(extracted.rules)
-        with tempfile.TemporaryDirectory(prefix="loadout-rule-probe-") as scratch:
-            source = Path(scratch) / "permissions.toml"
-            source.write_bytes(serialized)
-            rules = parse_rules(source)
-        spec = RENDERERS[renderer]
-        if isinstance(spec, JsonSpec):
-            rendered = serialize_document(spec.fn(rules, {}), "json")
-            return serialized if _same_document(content, rendered, "json") else None
-        assert isinstance(spec, TextSpec)
-        return serialized if content == spec.fn(rules).encode() else None
-    except (LoadoutError, ValueError, TypeError, KeyError, AttributeError, UnicodeError):
-        return None
-
-
 def _partial(candidate: Candidate, scope: str | None) -> bool:
     """A global document a harness also writes runtime state into."""
-    if candidate.format not in {"json", "toml"} or scope != "global":
-        return False
     return (
-        (candidate.agents[0] == "claude" and candidate.document_name == ".claude.json")
-        or (candidate.agents[0] == "codex" and candidate.document_name == "config.toml")
-        or (candidate.agents[0] == "droid" and candidate.document_name == "settings.json")
-        or (candidate.agents[0] == "pi" and candidate.document_name == "settings.json")
+        candidate.format in {"json", "toml"}
+        and scope == "global"
+        and RUNTIME_DOCUMENTS.get(candidate.harnesses[0]) == candidate.document_name
     )
 
 
@@ -221,16 +182,7 @@ def _authored(candidate: Candidate, scope: str | None) -> Candidate:
     if candidate.format not in {"json", "toml"} or not _partial(candidate, scope):
         return candidate
     document = parse_document(candidate.content.decode(), candidate.format)
-    authored = (
-        {key: value for key, value in document.items() if key == "mcpServers"}
-        if candidate.document_name == ".claude.json" and candidate.agents[0] == "claude"
-        else {
-            key: value
-            for key, value in document.items()
-            if key not in RUNTIME_KEYS.get(candidate.agents[0], frozenset())
-        }
-    )
-    content = serialize_document(authored, candidate.format)
+    content = serialize_document(authored_part(document, candidate.harnesses[0]), candidate.format)
     reason = credential_material(content, candidate.format)
     return replace(
         candidate,
@@ -265,7 +217,7 @@ def _choose(inventory: Inventory) -> tuple[tuple[Candidate, ...], tuple[Issue, .
         chosen.append(
             replace(
                 selected,
-                agents=tuple(dict.fromkeys(a for c in candidates for a in c.agents)),
+                harnesses=tuple(dict.fromkeys(a for c in candidates for a in c.harnesses)),
                 private=any(c.private for c in candidates),
             )
         )
@@ -301,7 +253,7 @@ def _preset_destination(inventory: Inventory, template: str) -> Path:
 def _preset_routes(inventory: Inventory, config: dict[str, Any]) -> tuple[tuple[str, Path], ...]:
     return tuple(
         (spec.destination, _preset_destination(inventory, spec.destination))
-        for agent in inventory.agents
+        for agent in inventory.harnesses
         for category, spec in GLOBAL_PRESET[agent].items()
         if spec.destination is not None and category in config.get(agent, {})
     )
@@ -322,7 +274,6 @@ class _PlanBuilder:
         self.expected: dict[Path, ExpectedOutput] = {}
         self.skill_policies: dict[str, dict[str, Any]] = {}
         self.private_skill_names: set[str] = set()
-        self.catalog_routes: dict[str, Path] = {}
         self.issues: list[Issue] = []
         self.notes: list[str] = []
         self.selected: tuple[Candidate, ...] = ()
@@ -336,12 +287,12 @@ class _PlanBuilder:
         self.unadopted_paths: set[Path] = set()
         self.absorbed: dict[Path, str] = {}
 
-    def leave_out(self, kind: str, name: str, candidates: list[Candidate]) -> None:
+    def leave_out(self, kind: UnadoptedKind, name: str, candidates: list[Candidate]) -> None:
         """Adopt nothing of an item whose copies disagree, and name every copy."""
         originals: dict[Path, tuple[str, ...]] = {}
         for candidate in candidates:
             item = _item_path(kind, name, candidate)
-            originals[item] = tuple(dict.fromkeys((*originals.get(item, ()), *candidate.agents)))
+            originals[item] = tuple(dict.fromkeys((*originals.get(item, ()), *candidate.harnesses)))
             self.unadopted_paths.update(_original_paths(candidate))
             if candidate.destination is not None:
                 self.records.pop(candidate.destination, None)
@@ -354,7 +305,6 @@ class _PlanBuilder:
         destination: Path,
         *,
         private: bool = False,
-        suffix: str = "",
     ) -> Path:
         if self.inventory.scope == "project":
             relative = destination.relative_to(self.inventory.root)
@@ -388,10 +338,9 @@ class _PlanBuilder:
                 )
             elif mapping and mapping.destination_template is None:
                 relative = (
-                    Path("mapped-" + digest(str(mapping.destination).encode())[:12]) / relative
+                    Path("mapped-" + sha256(str(mapping.destination).encode())[:12]) / relative
                 )
-        name = Path(category) / ("local" if private else "native") / "+".join(agents) / relative
-        return name.with_name(name.name + suffix) if suffix else name
+        return Path(category) / ("local" if private else "native") / "+".join(agents) / relative
 
     def write(
         self, relative: Path, content: bytes, *, mode: int = 0o644, private: bool = False
@@ -415,36 +364,23 @@ class _PlanBuilder:
             if key == "output"
             else _destination_template(self.inventory, destination)
         )
-        return {"agents": list(agents), key: value, "format": format_name}
+        return {"harnesses": list(agents), key: value, "format": format_name}
 
-    def expect(self, candidate: Candidate, *, owned: tuple[str, ...] | None = None) -> None:
+    def expect(self, candidate: Candidate) -> None:
         assert candidate.destination is not None
         content = candidate.content
         if candidate.format in {"json", "toml"}:
             keys = frozenset(parse_document(content.decode(), candidate.format))
-            fingerprints = key_fingerprints(content.decode(), candidate.format, keys)
-            if owned is not None and not keys:
-                return
             self.expected[candidate.destination] = ExpectedOutput(
                 candidate.destination,
                 candidate.format,
-                digest(content),
-                mode=next(
-                    (
-                        c.mode
-                        for c in self.inventory.candidates
-                        if c.path == candidate.destination and c.disposition == "migrated"
-                    ),
-                    0o600,
-                )
-                if owned is not None
-                else 0o600,
-                owned=owned,
-                fingerprints=fingerprints,
+                sha256(content),
+                mode=0o600,
+                fingerprints=key_fingerprints(content.decode(), candidate.format, keys),
             )
         else:
             self.expected[candidate.destination] = ExpectedOutput(
-                candidate.destination, "copy", digest(content), candidate.mode
+                candidate.destination, "copy", sha256(content), candidate.mode
             )
 
     def document(self, candidate: Candidate, *, existing: bool = True) -> None:
@@ -465,7 +401,7 @@ class _PlanBuilder:
     def global_document(self, candidate: Candidate, *, existing: bool) -> None:
         assert candidate.destination is not None
         document = parse_document(candidate.content.decode(), candidate.format)
-        agent = candidate.agents[0]
+        agent = candidate.harnesses[0]
         special = candidate.category in {"mcp", "hooks", "permissions", "mcp-permissions"}
         composite = candidate.document_name in {
             "settings.json",
@@ -497,7 +433,7 @@ class _PlanBuilder:
         if not special or residual:
             values = {"settings": residual, **values}
         self.available_categories.update(
-            (agent, category) for agent in candidate.agents for category in values
+            (agent, category) for agent in candidate.harnesses for category in values
         )
         for category, value in values.items():
             if category in {"permissions", "mcp-permissions"}:
@@ -514,27 +450,12 @@ class _PlanBuilder:
             if category in {"hooks", "plugins", "mcp"}:
                 spec = GLOBAL_PRESET[agent].get(category)
                 if spec is not None and spec.renderer:
-                    extracted_document = document
-                    if spec.renderer == "claude-servers":
-                        extracted_document = {
-                            **document,
-                            "mcpServers": {
-                                name: (
-                                    {"type": "stdio", **entry}
-                                    if isinstance(entry, dict)
-                                    and "command" in entry
-                                    and "type" not in entry
-                                    else entry
-                                )
-                                for name, entry in document.get("mcpServers", {}).items()
-                            },
-                        }
                     extraction = (
                         extract_codex_servers(candidate.content.decode())
                         if spec.renderer == "codex-config"
                         else extract_codex_plugins(candidate.content.decode())
                         if spec.renderer == "codex-plugins"
-                        else extract_value(spec.renderer, extracted_document)
+                        else extract_value(spec.renderer, document)
                     )
                     extracted = extraction.value
                     if existing:
@@ -550,14 +471,14 @@ class _PlanBuilder:
                 self.global_slices[agent].add("settings")
         if existing:
             self.records[candidate.destination] = self.record(
-                candidate.destination, candidate.agents, candidate.format
+                candidate.destination, candidate.harnesses, candidate.format
             )
 
     def project_document(self, candidate: Candidate, *, existing: bool) -> None:
         assert candidate.destination is not None
         document = parse_document(candidate.content.decode(), candidate.format)
         matched = False
-        for agent in candidate.agents:
+        for agent in candidate.harnesses:
             for category, spec in PROJECT_PRESET[agent].items():
                 if (
                     spec.output is None
@@ -585,7 +506,7 @@ class _PlanBuilder:
         if matched and existing:
             self.project_settings(candidate, document)
             self.records[candidate.destination] = self.record(
-                candidate.destination, candidate.agents, candidate.format
+                candidate.destination, candidate.harnesses, candidate.format
             )
         elif not matched and existing:
             self.retained.update(_original_paths(candidate))
@@ -593,13 +514,13 @@ class _PlanBuilder:
     def project_settings(self, candidate: Candidate, document: dict[str, Any]) -> None:
         """A co-owned file's keys that no slice writes go into the project source, so a
         clone renders them too rather than finding them only on this machine (P-48)."""
-        for agent in candidate.agents:
+        for agent in candidate.harnesses:
             spec = PROJECT_PRESET[agent]["permissions"]
             if not spec.preserve_foreign or self.inventory.root / str(spec.output) != (
                 candidate.destination
             ):
                 continue
-            owned = project_owned_keys(self.inventory.agents, str(spec.output))
+            owned = project_owned_keys(self.inventory.harnesses, str(spec.output))
             residual = {key: value for key, value in document.items() if key not in owned}
             if residual:
                 self.write(
@@ -617,13 +538,13 @@ class _PlanBuilder:
 
     def global_opaque(self, candidate: Candidate, *, existing: bool) -> None:
         assert candidate.destination is not None
-        agent = candidate.agents[0]
+        agent = candidate.harnesses[0]
         if candidate.category == "instructions":
             if existing:
                 self.global_instructions[agent] = candidate
                 self.global_slices[agent].add("instructions")
                 self.records[candidate.destination] = self.record(
-                    candidate.destination, candidate.agents, candidate.format
+                    candidate.destination, candidate.harnesses, candidate.format
                 )
             return
         if candidate.category == "permissions":
@@ -643,20 +564,20 @@ class _PlanBuilder:
         assert candidate.destination is not None
         if candidate.category == "instructions" and candidate.destination in {
             self.inventory.root / spec.output
-            for agent in candidate.agents
+            for agent in candidate.harnesses
             if (spec := PROJECT_PRESET[agent].get("instructions")) is not None
             and spec.output is not None
         }:
             self.project_instructions.append(candidate)
             self.records[candidate.destination] = self.record(
-                candidate.destination, candidate.agents, candidate.format
+                candidate.destination, candidate.harnesses, candidate.format
             )
             return
         if candidate.category == "permissions":
             renderer = _permission_renderer(candidate, True)
             if renderer is not None:
                 rules = self.extracted_rules(renderer, candidate, candidate.content.decode())
-                self.project_values["permissions"].append((candidate.agents[0], rules))
+                self.project_values["permissions"].append((candidate.harnesses[0], rules))
                 self.adopt_rules_file(candidate)
                 return
         self.retained.update(_original_paths(candidate))
@@ -666,11 +587,11 @@ class _PlanBuilder:
         such as the approvals Codex writes to default.rules, is deleted once its rules
         are in the source rather than left enforcing beside it (D-04)."""
         assert candidate.destination is not None
-        if candidate.agents[0] == "codex" and candidate.destination.name != CODEX_RULES_OUTPUT:
+        if candidate.harnesses[0] == "codex" and candidate.destination.name != CODEX_RULES_OUTPUT:
             self.absorbed.update(dict.fromkeys(_original_paths(candidate), CODEX_RULES_ABSORBED))
             return
         self.records[candidate.destination] = self.record(
-            candidate.destination, candidate.agents, candidate.format
+            candidate.destination, candidate.harnesses, candidate.format
         )
 
     def extracted_rules(
@@ -708,37 +629,33 @@ class _PlanBuilder:
             self.write(Path(f"{category}.json"), serialize_document(value, "json"))
         return instructions
 
-    def finish_global_sources(self) -> dict[str, dict[str, object]]:
-        blocks: dict[str, dict[str, object]] = defaultdict(dict)
+    def write_global_sources(self) -> None:
         for agent, candidate in self.global_instructions.items():
             self.write(Path(f"instructions/{agent}.md"), candidate.content, mode=candidate.mode)
-            blocks[agent]["instructions"] = [agent]
         for category, values in self.global_values.items():
             if category == "permissions":
                 self.write(Path("permissions.toml"), _rules_source(_merged_rules(values)))
-                for agent, _ in values:
-                    blocks[agent]["permissions"] = True
-                continue
-            if category == "mcp":
+            elif category == "mcp":
                 servers = _merged_servers(values)
                 self.write(Path("mcp.toml"), serialize_servers(servers) or SERVERS_EXAMPLE)
-                for agent, _ in values:
-                    blocks[agent]["mcp"] = True
-                continue
-            for agent, value in values:
-                assert isinstance(value, dict)
-                name = agent
-                if category == "settings":
-                    self.write(Path(f"settings/{name}.json"), serialize_document(value, "json"))
-                    blocks[agent]["settings"] = [name]
-                    continue
-                self.write(Path(f"{category}/{name}.json"), serialize_document(value, "json"))
-                blocks[agent][category] = [name]
+            else:
+                for agent, value in values:
+                    assert isinstance(value, dict)
+                    self.write(Path(f"{category}/{agent}.json"), serialize_document(value, "json"))
         if self.inventory.source_root / "mcp.toml" not in self.writes:
             self.write(Path("mcp.toml"), SERVERS_EXAMPLE)
         self.write(Path("README.md"), SOURCE_README)
+
+    def global_blocks(self) -> dict[str, dict[str, object]]:
+        """Each agent's manifest block: the slices `write_global_sources` wrote for it."""
+        blocks: dict[str, dict[str, object]] = defaultdict(dict)
+        for agent in self.global_instructions:
+            blocks[agent]["instructions"] = [agent]
+        for category, values in self.global_values.items():
+            for agent, _ in values:
+                blocks[agent][category] = True if category in {"permissions", "mcp"} else [agent]
         for agent, slices in self.global_slices.items():
-            for directory in ("skills", "agents", "module-config"):
+            for directory in (*DIRECTORY_SLICES, "module-config"):
                 if directory in slices:
                     blocks[agent][directory] = True
         return blocks
@@ -762,14 +679,7 @@ class _PlanBuilder:
             )
             self.expect(candidate)
         record = self.record(destination, agents, "tree")
-        record.update(category=category, source=source.as_posix())
-        record["modes"] = {
-            c.destination.relative_to(destination).as_posix(): c.mode
-            for c in candidates
-            if c.destination is not None
-        }
-        if private:
-            record["optional"] = True
+        record["category"] = category
         self.records[destination] = record
 
     def catalog_skill_tree(
@@ -849,7 +759,7 @@ class _PlanBuilder:
         if mapping.kind == "file":
             return
         for directory, category in TREE_CATEGORIES.items():
-            if directory == "rules" and "codex" in mapping.agents:
+            if directory == "rules" and "codex" in mapping.harnesses:
                 continue
             target = mapping.destination / directory
             entries = tuple(
@@ -860,7 +770,7 @@ class _PlanBuilder:
             if not self.handle_global_tree(mapping, directory, category, entries) and not (
                 self.handle_project_tree(category, entries)
             ):
-                agents = tuple(dict.fromkeys(a for c in entries for a in c.agents))
+                agents = tuple(dict.fromkeys(a for c in entries for a in c.harnesses))
                 self.original_tree(target, agents, category, entries)
             for candidate in entries:
                 remaining.pop(candidate.destination)
@@ -896,7 +806,7 @@ class _PlanBuilder:
 
     def global_tree(self, mapping: RootMapping, entries: tuple[Candidate, ...]) -> None:
         supported = tuple(
-            agent for agent in mapping.agents if "module-config" in GLOBAL_PRESET[agent]
+            agent for agent in mapping.harnesses if "module-config" in GLOBAL_PRESET[agent]
         )
         if not supported:
             self.retained.update(
@@ -940,7 +850,6 @@ class _PlanBuilder:
                 continue
             destination = target / name
             self.tree(destination, agents, category, candidates)
-            self.records[destination]["template_parts"] = False
 
     def dormant(
         self, destination: Path, agents: tuple[str, ...], category: str, format_name: str = "copy"
@@ -977,14 +886,14 @@ class _PlanBuilder:
 
     def dormant_routes(self) -> None:
         project = self.inventory.scope == "project"
-        for agent in self.inventory.agents:
+        for agent in self.inventory.harnesses:
             root = (
                 self.inventory.root / PROJECT_ROOTS[agent]
                 if project
                 else next(
                     m.destination
                     for m in self.inventory.mappings
-                    if m.kind == "harness" and m.agents == (agent,)
+                    if m.kind == "harness" and m.harnesses == (agent,)
                 )
             )
             settings = (
@@ -1006,14 +915,14 @@ class _PlanBuilder:
                 else root / ("CLAUDE.md" if agent == "claude" else "AGENTS.md")
             )
             consumers = (
-                tuple(a for a in self.inventory.agents if a != "claude")
+                tuple(a for a in self.inventory.harnesses if a != "claude")
                 if project and agent != "claude"
                 else (agent,)
             )
             self.dormant(instruction, consumers, "instructions")
             self.available_categories.add((agent, "skills"))
             if not project:
-                self.global_slices[agent].update(("skills", "agents"))
+                self.global_slices[agent].update(DIRECTORY_SLICES)
             if agent == "claude":
                 self.dormant(root / "hooks", (agent,), "hooks", "tree")
                 if not project:
@@ -1030,7 +939,7 @@ class _PlanBuilder:
                 )
                 self.dormant(
                     mcp,
-                    tuple(a for a in ("claude", "pi") if a in self.inventory.agents)
+                    tuple(a for a in ("claude", "pi") if a in self.inventory.harnesses)
                     if project
                     else (agent,),
                     "mcp",
@@ -1040,7 +949,7 @@ class _PlanBuilder:
                 self.dormant(root / "rules/permissions.rules", (agent,), "permissions")
                 if not project:
                     self.dormant(root / "hooks.json", (agent,), "hooks", "json")
-                    self.dormant(root / "plugins", (agent,), "plugins", "tree")
+                    self.available_categories.add((agent, "plugins"))
             elif agent == "opencode":
                 self.available_categories.add((agent, "hooks"))
                 self.dormant(root / "plugins", (agent,), "plugins", "tree")
@@ -1051,7 +960,7 @@ class _PlanBuilder:
                     "permissions",
                     "json",
                 )
-                self.dormant(root / "extensions/loadout.ts", (agent,), "hooks")
+                self.available_categories.add((agent, "hooks"))
                 self.dormant(
                     self.inventory.root / ".mcp.json" if project else root / "mcp.json",
                     (agent,),
@@ -1061,7 +970,7 @@ class _PlanBuilder:
 
 
 def _permission_renderer(candidate: Candidate, project: bool) -> str | None:
-    agent = candidate.agents[0]
+    agent = candidate.harnesses[0]
     if candidate.category == "mcp-permissions" and agent == "claude":
         return "claude-mcp-permissions"
     if agent == "claude":
@@ -1081,29 +990,29 @@ def _initialized(inventory: Inventory) -> MigrationPlan:
     try:
         if inventory.scope == "project":
             config = load_project_config(config_path)
-            if inventory.agents and set(inventory.agents) != set(config.harnesses):
+            if inventory.harnesses and set(inventory.harnesses) != set(config.harnesses):
                 raise LoadoutError("configured harness selection differs")
-            inventory = replace(inventory, agents=config.harnesses)
+            inventory = replace(inventory, harnesses=config.harnesses)
         else:
             manifest = load_manifest(config_path)
             agents = tuple(
                 dict.fromkeys(
                     (
-                        *(p.agent for p in manifest.permissions if p.agent),
+                        *(p.harness for p in manifest.permissions if p.harness),
                         *(
                             p.renderer.split("-", 1)[0]
                             for p in manifest.permissions
                             if p.renderer.split("-", 1)[0] in PROJECT_ROOTS
                         ),
                         *(t.name for t in manifest.targets if t.name in PROJECT_ROOTS),
-                        *(s.agent for s in manifest.skills),
-                        *(m.agent for m in manifest.module_config),
+                        *(s.harness for s in manifest.skills),
+                        *(m.harness for m in manifest.module_config),
                     )
                 )
             )
-            if inventory.agents and set(inventory.agents) != set(agents):
+            if inventory.harnesses and set(inventory.harnesses) != set(agents):
                 raise LoadoutError("configured harness selection differs")
-            inventory = replace(inventory, agents=agents)
+            inventory = replace(inventory, harnesses=agents)
     except (LoadoutError, OSError, ValueError):
         return MigrationPlan(
             inventory,
@@ -1111,7 +1020,7 @@ def _initialized(inventory: Inventory) -> MigrationPlan:
                 Issue(
                     "initialized-source",
                     (config_path,),
-                    "An existing Loadout source needs repair or a matching harness selection; it will not be reinterpreted as raw configuration.",
+                    "An existing loadout source needs repair or a matching harness selection; it will not be reinterpreted as raw configuration.",
                 ),
             ),
         )
@@ -1120,20 +1029,21 @@ def _initialized(inventory: Inventory) -> MigrationPlan:
         preconditions=inventory.preconditions,
         already_initialized=True,
         notes=(
-            "Existing Loadout source recognized. No migration is planned; use normal check/sync for its managed scope.",
+            "Existing loadout source recognized. No migration is planned; use normal check/sync for its managed scope.",
         ),
     )
 
 
 def _project_config(inventory: Inventory, builder: _PlanBuilder) -> dict[str, Any]:
-    config: dict[str, Any] = {"harnesses": list(inventory.agents)}
+    config: dict[str, Any] = {"harnesses": list(inventory.harnesses)}
     if instructions := builder.finish_project_sources():
         config["instructions"] = list(instructions)
     return config
 
 
 def _global_config(inventory: Inventory, builder: _PlanBuilder) -> dict[str, Any]:
-    blocks = builder.finish_global_sources()
+    builder.write_global_sources()
+    blocks = builder.global_blocks()
     offered = {
         relative.parts[0].removesuffix(".toml").removesuffix(".json")
         for path in builder.writes
@@ -1159,7 +1069,7 @@ def _global_config(inventory: Inventory, builder: _PlanBuilder) -> dict[str, Any
     config: dict[str, Any] = {
         "source": [{"name": "migrated", "path": ".", "use": use}],
     }
-    for agent in inventory.agents:
+    for agent in inventory.harnesses:
         config[agent] = blocks.get(agent, {})
     return config
 
@@ -1176,21 +1086,11 @@ def plan_migration(inventory: Inventory) -> MigrationPlan:
         builder.leave_out("skill", name, conflicting)
     try:
         _adopt_agents(builder, candidates)
-    except LoadoutError as error:
-        return MigrationPlan(
-            inventory,
-            issues=(
-                Issue(
-                    "source-composition",
-                    (inventory.source_root,),
-                    f"The native sources could not be composed safely: {error}",
-                ),
-            ),
+        candidates = tuple(
+            c
+            for c in candidates
+            if c.category != "agents" and not builder.unadopted_paths & {c.path}
         )
-    candidates = tuple(
-        c for c in candidates if c.category != "agents" and not builder.unadopted_paths & {c.path}
-    )
-    try:
         builder.originals(candidates)
         builder.dormant_routes()
     except (LoadoutError, UnicodeError, ValueError, TypeError) as error:
@@ -1213,7 +1113,7 @@ def plan_migration(inventory: Inventory) -> MigrationPlan:
     if builder.skill_policies:
         config["skills"] = builder.skill_policies
     builder.write(
-        Path("config.toml" if inventory.scope == "project" else "loadout.toml"),
+        Path(PROJECT_CONFIG_NAME if inventory.scope == "project" else MANIFEST_NAME),
         tomlkit.dumps(config).encode(),
     )
     states = {s.path: s for s in inventory.preconditions}
@@ -1266,20 +1166,12 @@ def plan_migration(inventory: Inventory) -> MigrationPlan:
             )
         )
     )
-    ignores = ["/loadout/.loadout-state/"]
-    ignores += [
+    ignores = [
         "/" + relative.as_posix() + ("/" if p in private_namespaces else "")
         for p in (*builder.records, *private_paths)
         if (relative := _relative_original(p, inventory.root)) is not None
     ]
     originals = _original_entries(builder, private_paths)
-    checkpoint = tuple(
-        dict.fromkeys(
-            item.path
-            for item in originals
-            if item.action != "retain" and _relative_original(item.path, inventory.root) is not None
-        )
-    )
     obsolete = tuple(
         {entry_path(item.path): item.path for item in originals if item.action == "retire"}.values()
     )
@@ -1288,16 +1180,13 @@ def plan_migration(inventory: Inventory) -> MigrationPlan:
         inventory,
         source_writes=tuple(builder.writes.values()),
         expected_outputs=tuple(builder.expected.values()),
-        required_absences=(),
-        required_owned_absences=(),
         obsolete=obsolete,
         originals=originals,
         ignores=tuple(dict.fromkeys(ignores)),
         private_paths=private_paths,
-        checkpoint_paths=checkpoint,
         preconditions=tuple(states.values()),
         categories=categories,
-        artifact_routes=(
+        destination_routes=(
             ()
             if inventory.scope == "project"
             else (
@@ -1306,12 +1195,11 @@ def plan_migration(inventory: Inventory) -> MigrationPlan:
                     (record.get("destination", record.get("output", "")), path)
                     for path, record in builder.records.items()
                 ),
-                *builder.catalog_routes.items(),
             )
         ),
         notes=(
             "Native documents may be reformatted; ordered keys, literal values and opaque bytes/modes are validated.",
-            "Credential detection is conservative but cannot establish that authored content is secret-free; review checkpoint paths before approval.",
+            "Credential detection is a heuristic and cannot establish that authored content is secret-free; review which files stay private before approval.",
             *builder.notes,
         ),
         unadopted=tuple(builder.unadopted),
@@ -1368,7 +1256,7 @@ def _adopt_agents(builder: _PlanBuilder, candidates: tuple[Candidate, ...]) -> N
     for candidate in candidates:
         if candidate.category != "agents" or candidate.destination is None:
             continue
-        harness = candidate.agents[0]
+        harness = candidate.harnesses[0]
         problem = None
         try:
             native = extract_agent(
@@ -1391,7 +1279,8 @@ def _adopt_agents(builder: _PlanBuilder, candidates: tuple[Candidate, ...]) -> N
         if len(texts) > 1:
             builder.leave_out("agent", name, [c for _, c, _ in group])
             continue
-        builder.write(Path("agents") / f"{name}.md", _source_agent(group).encode())
+        source = source_agent([(harness, native) for harness, _, native in group])
+        builder.write(Path("agents") / f"{name}.md", source.encode())
         if builder.inventory.scope != "project":
             # Global scope reaches the agents folders through each block's preset route.
             continue
@@ -1402,31 +1291,7 @@ def _adopt_agents(builder: _PlanBuilder, candidates: tuple[Candidate, ...]) -> N
             )
 
 
-def _source_agent(group: list[tuple[str, Candidate, NativeAgent]]) -> str:
-    """The source agent whose render gives each harness what its copy says."""
-    markdown = next((n for h, _, n in group if h != "codex"), None)
-    description = yaml_string((markdown or group[0][2]).description)
-    body = (markdown or group[0][2]).body
-    lines = [f"description: {description}"]
-    models = [(h, n.model) for h, _, n in group if n.model is not None]
-    if models:
-        lines += ["model:", *(f"  {h}: {m}" for h, m in models)]
-    efforts = [(h, n.effort) for h, _, n in group if n.effort is not None]
-    words = {e for _, e in efforts}
-    shared = next(iter(words)) if len(words) == 1 and len(efforts) == len(group) else None
-    if shared in EFFORT_SCALE and all(shared in EFFORT_LEVELS.get(h, ()) for h, _, _ in group):
-        lines.append(f"effort: {shared}")
-    elif efforts:
-        lines += ["effort:"] + [
-            f"  {h}: {EFFORT_SPELLING.get(h, {}).get(e, e)}" for h, e in efforts
-        ]
-    for harness, _, native in group:
-        if native.extra:
-            lines += [f"{harness}:", *(f"  {line}" for line in native.extra)]
-    return "---\n" + "\n".join(lines) + "\n---\n" + body
-
-
-def _item_path(kind: str, name: str, candidate: Candidate) -> Path:
+def _item_path(kind: UnadoptedKind, name: str, candidate: Candidate) -> Path:
     """The skill folder a candidate file belongs to, or the instruction file itself."""
     path = candidate.destination or candidate.path
     if kind != "skill":
@@ -1464,8 +1329,7 @@ def _original_entries(
     builder: _PlanBuilder, private_paths: tuple[Path, ...]
 ) -> tuple[OriginalEntry, ...]:
     inventory = builder.inventory
-    home = dict(inventory.destination_environment).get("HOME")
-    layout = DestinationLayout(inventory.root, inventory.mappings, Path(home) if home else None)
+    layout = inventory_layout(inventory)
     private = tuple(entry_path(path) for path in private_paths)
     destinations = tuple(layout.normalize(path) for path in builder.records)
     retained = tuple(
@@ -1515,16 +1379,27 @@ def _original_entries(
 
 def _readiness(builder: _PlanBuilder) -> tuple[CategoryReadiness, ...]:
     result = []
-    for category in sorted(CATEGORIES):
-        for agent in builder.inventory.agents:
+    agents_source = builder.inventory.source_root / "agents"
+    adopted_agents = any(path.is_relative_to(agents_source) for path in builder.writes)
+    for category in sorted(READINESS_CATEGORIES):
+        for agent in builder.inventory.harnesses:
             paths = tuple(
                 path
                 for path, record in builder.records.items()
-                if agent in record["agents"]
-                and (record.get("category") == category or category in record.get("parts", {}))
+                if agent in record["harnesses"] and record.get("category") == category
             )
             if paths:
                 result.append(CategoryReadiness(category, (agent,), paths, "routed"))
+            elif category == "agents" and adopted_agents:
+                result.append(
+                    CategoryReadiness(
+                        category,
+                        (agent,),
+                        (agents_source,),
+                        "routed",
+                        "Source agents render to every configured harness.",
+                    )
+                )
             elif category == "skills" and (agent, category) in builder.available_categories:
                 result.append(
                     CategoryReadiness(
@@ -1542,7 +1417,7 @@ def _readiness(builder: _PlanBuilder) -> tuple[CategoryReadiness, ...]:
                     plugin_paths := tuple(
                         path
                         for path, record in builder.records.items()
-                        if agent in record["agents"] and record.get("category") == "plugins"
+                        if agent in record["harnesses"] and record.get("category") == "plugins"
                     )
                 )
             ):
@@ -1558,24 +1433,14 @@ def _readiness(builder: _PlanBuilder) -> tuple[CategoryReadiness, ...]:
             elif (
                 builder.inventory.scope == "project"
                 and (agent, category) in builder.available_categories
-            ):
+            ) or category in {"support", "module-config", "templates"}:
                 result.append(
                     CategoryReadiness(
                         category,
                         (agent,),
                         (),
-                        "explicit-binding",
-                        "Add a source and an artifact binding when this category is needed.",
-                    )
-                )
-            elif category in {"support", "module-config", "templates"}:
-                result.append(
-                    CategoryReadiness(
-                        category,
-                        (agent,),
-                        (),
-                        "explicit-binding",
-                        "The module or selected template supplies its destination; add an artifact binding.",
+                        "not-adopted",
+                        NOT_ADOPTED,
                     )
                 )
             else:

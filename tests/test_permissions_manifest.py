@@ -176,3 +176,15 @@ def test_a_settings_fragment_reaches_only_the_slices_whose_renderer_reads_one(
     by_name = {t.name: t for t in load_manifest(path).permissions}
     assert by_name["droid"].settings == ("main",)
     assert by_name["droid-hooks"].settings == ()
+
+
+@pytest.mark.parametrize(
+    "line", ['artifacts = "artifacts.toml"', "[presets]\nx = 1", "unknown = 3"]
+)
+def test_an_unknown_top_level_key_is_refused(tmp_path: Path, line: str) -> None:
+    """Review 2.12: a key loadout does not read is a typo or a removed feature."""
+    path = tmp_path / "loadout.toml"
+    path.write_text(f'{line}\n\n[[source]]\nname = "s"\npath = "."\n\n[claude]\n')
+
+    with pytest.raises(LoadoutError, match="unknown top-level key"):
+        load_manifest(path)

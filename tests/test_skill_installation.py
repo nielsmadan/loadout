@@ -5,7 +5,6 @@ from pathlib import Path
 import pytest
 
 import loadout
-from loadout.emit import write_all
 from loadout.errors import LoadoutError
 from loadout.skill_installation import (
     OWNER_MARKER,
@@ -15,6 +14,7 @@ from loadout.skill_installation import (
     uninstall_skill_source,
 )
 from loadout.skills import discover_skills
+from render_helpers import write_all
 
 pytestmark = pytest.mark.integration
 

@@ -27,21 +27,29 @@ is what gets stripped, which is the only reason *removing* a key removes it. See
 `machine.py` resolves `$XDG_CONFIG_HOME/loadout/` — where machine state is *stored*: the config
 `--global` reads, what `--global` resolves the root and profile from, and the harness defaults a
 fresh project init uses. It is not the only machine state that is *read*:
-`manifest.py:resolve_destination` expands `${VAR}` in a destination against the environment, per
+`destinations.py:resolve_destination` expands `${VAR}` in a destination against the environment, per
 [0011](../decisions/0011-a-destination-follows-a-relocated-harness.md).
+A render takes an `emit.RenderContext`: the destination resolver, the resolver for a template
+that is not vendored, and the manifest source parser. The staged-render and migration-validation
+workers pass their own instead of patching modules.
 `written.py` stores the other half beside that config: what `sync` last wrote at each
 destination, which is the third variant the modified-outside-loadout guard compares against and
 the sidecar [0008](../decisions/0008-generated-files-carry-no-machine-state.md) deferred for
 orphan removal — see [0019](../decisions/0019-sync-records-what-it-wrote.md). It only widens
 acceptance: no record means the guard behaves exactly as it did before one existed.
 `retirement.py` consumes it: a recorded destination the run no longer renders is deleted, or has
-its recorded keys stripped, once `commands.unaccepted_outputs` (the guard's classifier) accepts
+its recorded keys stripped, once `sync.unaccepted_outputs` (the guard's classifier) accepts
 it — see [0022](../decisions/0022-sync-retires-what-it-no-longer-renders.md). With no record,
 nothing is retired. Do not
 confuse it with `record.py`, which records owned key *names* beside a fragment in the source
 repo and is committed.
-`project.py` (harness preset) is project scope; `scaffold.py` holds both scopes' scaffolding
-(`init project`, `init global`).
+`project.py` (harness preset) is project scope. `init` for both scopes is `init_workflow.py`,
+which runs `discovery.py`'s inventory through `migration*.py`'s plan, backup and transaction.
+`gitignore.py` holds the one escaping rule and the line edits both init and sync use.
+`commands.py` is the CLI's commands; what `sync` decides and does (the guard, writing, retiring)
+is `sync.py`, and returns values for the command to report. `files.py` writes outputs and
+compares them with disk, through any link at the destination. `notices.py` assembles the
+advisory notices a render reports.
 `templates.py` resolves a template *name* — the project's vendored copy first, then the
 `templates/` directory of every source the machine's global manifest declares — and owns the tree
 hash `template sync` compares a vendored copy against. A template is a source, so it merges

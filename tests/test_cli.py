@@ -159,7 +159,7 @@ def test_skill_install_with_no_configured_agents_does_not_choose_or_change_a_sou
         encoding="utf-8",
     )
     assert loadout.main(["integrate", "skill", "install", "--yes"]) == 0
-    assert "no configured agents" in capsys.readouterr().out
+    assert "no configured harness" in capsys.readouterr().out
     assert not (root / "one" / "skills" / "loadout").exists()
     assert not (root / "two" / "skills" / "loadout").exists()
 
@@ -414,6 +414,7 @@ def test_duplicate_output_across_targets_returns_3_not_0(root: Path, capsys) -> 
     assert "out/primary.md" in capsys.readouterr().err
 
 
+@pytest.mark.migration_integration
 def test_init_sync_check_round_trips_for_a_project_only_repo(tmp_path: Path, capsys) -> None:
     _init_repo(tmp_path)
     assert (
@@ -440,7 +441,6 @@ def test_init_sync_check_round_trips_for_a_project_only_repo(tmp_path: Path, cap
         "permissions.toml",
     }
     assert (tmp_path / ".gitignore").read_text().splitlines() == [
-        "/loadout/.loadout-state/",
         "/.claude/settings.json",
         "/opencode.json",
     ]
@@ -450,9 +450,8 @@ def test_init_sync_check_round_trips_for_a_project_only_repo(tmp_path: Path, cap
     assert loadout.main(["check", "--root", str(tmp_path)]) == 0
 
 
-def test_init_warns_but_succeeds_with_a_tracked_instruction_file_present(
-    tmp_path: Path, capsys
-) -> None:
+@pytest.mark.migration_integration
+def test_init_adopts_a_tracked_instruction_file_and_untracks_it(tmp_path: Path, capsys) -> None:
     _init_repo(tmp_path)
     (tmp_path / "CLAUDE.md").write_text("# project rules\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(tmp_path), "add", "CLAUDE.md"], check=True)
@@ -462,8 +461,9 @@ def test_init_warns_but_succeeds_with_a_tracked_instruction_file_present(
         == 0
     )
     out = capsys.readouterr().out
-    assert "CLAUDE.md" in out
-    assert (tmp_path / "loadout" / "config.toml").is_file()
+    assert "Untrack (generated, now ignored): CLAUDE.md" in out
+    assert (tmp_path / "loadout/instructions/main.md").read_text() == "# project rules\n"
+    assert 'instructions = ["main"]' in (tmp_path / "loadout/config.toml").read_text()
 
 
 def test_init_rejects_duplicate_harnesses(tmp_path: Path, capsys) -> None:
@@ -572,6 +572,7 @@ class _NoTTY:
         raise AssertionError("must not read from stdin when it is not a TTY")
 
 
+@pytest.mark.migration_integration
 def test_init_global_creates_the_source_and_machine_config(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
@@ -589,6 +590,7 @@ def test_init_global_creates_the_source_and_machine_config(
     assert "Migration complete" in out
 
 
+@pytest.mark.migration_integration
 def test_init_global_adopts_a_root_manifest_and_syncs_it(
     root: Path, fake_home: Path, monkeypatch, capsys
 ) -> None:
@@ -619,7 +621,7 @@ def test_init_global_without_source_defaults_to_cwd_and_requires_agents(
     assert loadout.main(["init", "global"]) == 2
 
     err = capsys.readouterr().err
-    assert "agents-required" in err
+    assert "harnesses-required" in err
     assert not (tmp_path / "cfg" / "loadout" / "config.toml").exists()
 
 
@@ -679,6 +681,7 @@ def test_init_project_no_longer_takes_a_starter(tmp_path: Path, capsys) -> None:
     assert list(tmp_path.iterdir()) == []
 
 
+@pytest.mark.migration_integration
 def test_init_notes_a_missing_machine_config(tmp_path: Path, monkeypatch, capsys) -> None:
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
     _init_repo(tmp_path)

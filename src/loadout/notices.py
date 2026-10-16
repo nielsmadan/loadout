@@ -20,16 +20,47 @@ pure and the caller supplies machine state (ADR 0001).
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import json
+import os
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from .adapters import OPENCODE_MAPPINGS, PI_MAPPINGS
+from .emit import (
+    PROJECT_DOCUMENTS,
+    SKILLS_SUBDIR,
+    RenderContext,
+    global_rules,
+    global_servers,
+    project_agents,
+    project_rules,
+    project_skill_trees,
+    project_slice_document,
+    project_templates,
+    selected_target,
+    skill_trees,
+    slice_document,
+    source_agents,
+)
+from .errors import LoadoutError
 from .hooks import CLAUDE_EVENTS, CODEX_EVENTS, DROID_EVENTS, unrecognised_events
+from .manifest import Manifest, load_profile, manifest_path, resolve_destination
 from .permissions.renderers import CATCH_ALL_RENDERERS
 from .permissions.rules import Rules, exact_command, is_exact, is_glob
-from .plugins import ADDRESSED_BY, unaddressable, unregistered_marketplaces
+from .plugins import ADDRESSED_BY, marketplaces, unaddressable, unregistered_marketplaces
+from .project import (
+    PROJECT_DIR,
+    PROJECT_PRESET,
+    load_project_config,
+    project_config_path,
+    project_slices,
+)
 from .servers import Server
+from .skill_policy import SkillPolicy, render_skill_for, selected_skill_agents
+from .skills import Skill, loose_skill_files, render_skill
+from .subagents import AGENTS_SUBDIR, Agent, agent_notes, discover_agents
 
 __all__ = [
     "Notice",
@@ -246,3 +277,277 @@ def notices_for(
                 add(f"marketplace {name!r} is not registered; the plugin will not resolve yet")
 
     return tuple(found)
+
+
+CLAUDE_MARKETPLACES = "${CLAUDE_CONFIG_DIR:-~/.claude}/plugins/known_marketplaces.json"
+
+
+def _known_marketplaces(
+    agent: str, document: dict[str, Any], environ: Mapping[str, str]
+) -> frozenset[str]:
+    """What counts as registered, which is a different question per harness.
+
+    Codex's registrations are ordinary configuration in a file loadout stages, so
+    the source answers for itself. Claude's live in a registry the harness
+    maintains, carrying timestamps and install paths — machine state a generated
+    file must not hold (ADR 0008) — so it is read here and never written. A
+    renderer could not do this at all (ADR 0001); a caller may.
+    """
+    if agent != "claude":
+        return frozenset(marketplaces(document))
+    try:
+        path = resolve_destination(CLAUDE_MARKETPLACES, "plugins.known_marketplaces", environ)
+        registry = json.loads(path.read_text(encoding="utf-8"))
+    except (LoadoutError, OSError, json.JSONDecodeError):
+        # A machine that has never registered one is the bootstrap case, not an
+        # error: the report exists to say what to run.
+        return frozenset()
+    return frozenset(registry) if isinstance(registry, dict) else frozenset()
+
+
+def _global_skill_race(manifest: Manifest, environ: Mapping[str, str]) -> tuple[Notice, ...]:
+    """The same collision as `project_notices`, one scope up.
+
+    Global scope reaches it sooner: a project has to declare `opencode` *and*
+    carry skills, while `~/.claude/skills` and `~/.config/opencode/skills` are
+    both written the moment any skill exists and any manifest names OpenCode.
+    Silent until then, which is why the condition is the manifest rather than the
+    slice — a source with no skills has no colliding name to lose.
+    """
+    available = tuple(target.harness for target in manifest.skills)
+    if "opencode" not in available:
+        return ()
+    return _claude_skill_race(
+        skill_trees(manifest), available, manifest.skill_policies, environ, "~/.claude/skills"
+    )
+
+
+def _claude_skill_race(
+    trees: tuple[Skill, ...],
+    harnesses: tuple[str, ...],
+    policies: tuple[SkillPolicy, ...],
+    environ: Mapping[str, str],
+    claude_skills: str,
+) -> tuple[Notice, ...]:
+    races = any(
+        {"claude", "opencode"}.issubset(selected_skill_agents(skill.name, harnesses, policies))
+        for skill in trees
+    )
+    if not races or not opencode_skills_race(environ):
+        return ()
+    return (
+        Notice(
+            agent="opencode",
+            slice="skills",
+            message=(
+                f"none of {' or '.join(OPENCODE_SKILL_FLAGS)} is set, so OpenCode also "
+                f"scans {claude_skills} and picks between the two copies of each skill at "
+                f"random — export one of them; see docs/reference/opencode.md"
+            ),
+        ),
+    )
+
+
+def _renderer_notices(agent: str, renderer: str, rules: Rules) -> list[Notice]:
+    """What a renderer cannot carry of these rules."""
+    unreached = unreached_catch_all(agent, renderer, rules.default) if rules.default else ()
+    return [
+        *unreached,
+        *unsupported_shell_globs(agent, renderer, rules),
+        *inexact_shell_entries(agent, renderer, rules),
+    ]
+
+
+def _permission_notices(manifest: Manifest, profile: str) -> tuple[Notice, ...]:
+    """Every selected target whose permission renderer carries less than the source.
+
+    Reads the same tiers `render_global` merges, so the verdict named is the one
+    that actually rendered. Silent when no source states the key — a notice that
+    fires for everyone teaches nothing.
+    """
+    selected = [t for t in manifest.permissions if selected_target(t, profile)]
+    if not selected:
+        return ()
+    rules = global_rules(manifest)
+    found: list[Notice] = []
+    for target in selected:
+        # `permissions = []` deselects the whole source, not this key in particular —
+        # the autonomous profile's mechanism, and reporting it here would fire on
+        # every sync that uses it. A legacy target names no agent, so it is
+        # labelled by the renderer it declared.
+        if not target.select_all:
+            continue
+        found.extend(_renderer_notices(target.harness or target.renderer, target.renderer, rules))
+    return tuple(dict.fromkeys(found))
+
+
+def _unpermitted_servers(manifest: Manifest) -> tuple[Notice, ...]:
+    """Every server no source's `[mcp]` policy names, across every source.
+
+    Two files, two merge algebras (docs/reference/config.md), so this reads both
+    independently rather than through `project_servers`. Silent when no source
+    offers mcp.toml: a manifest defining no servers has nothing to check.
+    """
+    servers = global_servers(manifest)
+    if not servers:
+        return ()
+    rules = global_rules(manifest)
+    return tuple(
+        Notice(
+            agent="mcp",
+            slice="servers",
+            message=(
+                f"{name} is defined but no [mcp] policy allow/ask/deny entry names it "
+                f"— its tools are all denied with no error"
+            ),
+        )
+        for name in unpermitted_servers(servers, rules)
+    )
+
+
+def _loose_skill_notices(skill_roots: Iterable[Path]) -> tuple[Notice, ...]:
+    return tuple(
+        Notice(
+            agent="all",
+            slice="skills",
+            message=f"{path} is not a skill and was skipped; a skill is skills/<name>/SKILL.md",
+        )
+        for skills_root in skill_roots
+        for path in loose_skill_files(skills_root)
+    )
+
+
+def collect_notices(root: Path, profile: str = "default") -> tuple[Notice, ...]:
+    """Advisory findings about project setup and global slice fragments."""
+    found: list[Notice] = list(project_notices(root, os.environ))
+    if not manifest_path(root).is_file():
+        return tuple(found)
+    manifest = load_profile(root, profile)
+    found.extend(
+        _loose_skill_notices(
+            source.path / SKILLS_SUBDIR
+            for source in manifest.sources
+            if SKILLS_SUBDIR in source.use
+        )
+    )
+    found.extend(_global_skill_race(manifest, os.environ))
+    found.extend(_agent_notices(source_agents(manifest), tuple(t.harness for t in manifest.agents)))
+    found.extend(
+        Notice(
+            agent=source.name,
+            slice=AGENTS_SUBDIR,
+            message=(
+                f"{source.path / AGENTS_SUBDIR} holds agents, but source {source.name!r} does "
+                f'not list "agents" in `use`, so none of them is rendered'
+            ),
+        )
+        for source in manifest.sources
+        if AGENTS_SUBDIR not in source.use and discover_agents(source.path / AGENTS_SUBDIR)
+    )
+    found.extend(_permission_notices(manifest, profile))
+    found.extend(_unpermitted_servers(manifest))
+    for target in manifest.permissions:
+        # A legacy `[permissions.*]` target names no agent and carries no slice
+        # content, so there is nothing to report about it.
+        if target.harness is None or target.content_slice is None:
+            continue
+        if not selected_target(target, profile):
+            continue
+        document = slice_document(target.content, target.content_slice, manifest)
+        # Only a plugins fragment has marketplaces, and reading them parses the
+        # document as one. Evaluated for every slice it rejects any other shape:
+        # a `defaults` fragment's keys, or a hooks fragment's event names, read as
+        # stray sections of a plugins document and the whole render fails.
+        known = (
+            _known_marketplaces(target.harness, document, os.environ)
+            if target.content_slice == "plugins"
+            else frozenset()
+        )
+        found.extend(notices_for(target.harness, target.content_slice, document, known))
+    return tuple(found)
+
+
+def project_notices(root: Path, environ: Mapping[str, str]) -> tuple[Notice, ...]:
+    """What project scope rendered while doing less than its source says.
+
+    Three kinds: a permission rule the selected renderer cannot carry, a slice
+    document naming something the harness will not act on, and setup on the
+    rendering machine that OpenCode needs at run time.
+
+    Driven by `PROJECT_PRESET` rather than by harness name, for the reason
+    `_permission_notices` is at global scope: a renderer that loses a catch-all or
+    a glob should report it whoever selected it, and a sixth harness should not
+    need an edit here to be heard.
+
+    The OpenCode variable matters on the machine OpenCode *runs* on, and this reads
+    the machine loadout is *rendering* on — the same box, because generated project
+    files are never committed and adoption is all-or-nothing, so everyone working
+    in a repo syncs it themselves. CI is the exception, where this is one advisory
+    line in a log and cannot touch an exit code.
+    """
+    path = project_config_path(root)
+    if not path.is_file():
+        return ()
+    config = load_project_config(path)
+    found: list[Notice] = []
+    found.extend(_loose_skill_notices((root / PROJECT_DIR / SKILLS_SUBDIR,)))
+    found.extend(
+        _agent_notices(
+            project_agents(root),
+            tuple(h for h in config.harnesses if AGENTS_SUBDIR in PROJECT_PRESET[h]),
+        )
+    )
+    templates = project_templates(root, config, RenderContext())
+    rules = project_rules(root, templates)
+    for agent, slice_name, spec in project_slices(config.harnesses):
+        if slice_name != "permissions" or not spec.renderer:
+            continue
+        found.extend(_renderer_notices(agent, spec.renderer, rules))
+    for agent, slice_name, _ in project_slices(config.harnesses):
+        if slice_name not in PROJECT_DOCUMENTS:
+            continue
+        document, contributed = project_slice_document(root, slice_name, templates)
+        if not contributed:
+            continue
+        known = (
+            _known_marketplaces(agent, document, environ)
+            if slice_name == "plugins"
+            else frozenset()
+        )
+        found.extend(notices_for(agent, slice_name, document, known))
+    trees = project_skill_trees(root, templates)
+    found.extend(
+        _claude_skill_race(
+            trees, config.harnesses, config.skill_policies, environ, ".claude/skills"
+        )
+    )
+    if "opencode" in config.harnesses and opencode_external_skills_race(environ):
+        differing = any(
+            {"codex", "opencode"}.issubset(
+                selected_skill_agents(skill.name, config.harnesses, config.skill_policies)
+            )
+            and render_skill_for(skill.name, config.skill_policies)
+            and render_skill(skill, "codex") != render_skill(skill, "opencode")
+            for skill in trees
+        )
+        if differing:
+            found.append(
+                Notice(
+                    agent="opencode",
+                    slice="skills",
+                    message=(
+                        f"{OPENCODE_EXTERNAL_SKILL_FLAG} is not set, so OpenCode also scans "
+                        ".agents/skills and picks between its variant and Codex's at random; "
+                        "export it or restrict the skill's agents; see docs/reference/opencode.md"
+                    ),
+                )
+            )
+    return tuple(found)
+
+
+def _agent_notices(agents: tuple[Agent, ...], harnesses: tuple[str, ...]) -> tuple[Notice, ...]:
+    return tuple(
+        Notice(agent=harness, slice=AGENTS_SUBDIR, message=note)
+        for agent in agents
+        for harness, note in agent_notes(agent, harnesses)
+    )

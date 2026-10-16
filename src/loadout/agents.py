@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-__all__ = ["GLOBAL_PRESET", "SliceOutput", "agent_slices", "known_agents"]
+__all__ = ["GLOBAL_PRESET", "SliceOutput", "agent_slices"]
 
 
 @dataclass(frozen=True)
@@ -59,6 +59,11 @@ class SliceOutput:
 # literal path. The variables differ in name and in kind, and two of OpenCode's
 # look right and are not — see docs/reference/README.md, which records how each
 # was verified. Keeping them here means a manifest never spells one out.
+# Slices whose directory is the declaration: one named item per entry, no value to set.
+DIRECTORY_SLICES = ("skills", "agents")
+# Factory calls its subagents droids, and keeps them in a folder of that name.
+DROID_AGENTS_DIRECTORY = "droids"
+
 GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
     "claude": {
         "skills": SliceOutput(destination="${CLAUDE_CONFIG_DIR:-~/.claude}/skills"),
@@ -164,7 +169,9 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
     },
     "droid": {
         "skills": SliceOutput(destination="${FACTORY_HOME_OVERRIDE:-~}/.factory/skills"),
-        "agents": SliceOutput(destination="${FACTORY_HOME_OVERRIDE:-~}/.factory/droids"),
+        "agents": SliceOutput(
+            destination=f"${{FACTORY_HOME_OVERRIDE:-~}}/.factory/{DROID_AGENTS_DIRECTORY}"
+        ),
         "module-config": SliceOutput(destination="${FACTORY_HOME_OVERRIDE:-~}/.factory"),
         "instructions": SliceOutput(destination="${FACTORY_HOME_OVERRIDE:-~}/.factory/AGENTS.md"),
         "permissions": SliceOutput(
@@ -281,10 +288,6 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
 # its dependencies live in an npm manifest `npm`/`bun` owns. There is no
 # enablement list to render, so naming `plugins` under `[opencode]` is an error
 # listing what that agent does offer.
-
-
-def known_agents() -> frozenset[str]:
-    return frozenset(GLOBAL_PRESET)
 
 
 def agent_slices(agent: str) -> dict[str, SliceOutput]:

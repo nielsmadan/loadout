@@ -2,7 +2,7 @@
 
 A candidate is a destination in the written record that this run does not render.
 Whether it is still loadout's own output is the guard's question, answered once in
-`commands.unaccepted_outputs`; nothing here judges content.
+`sync.unaccepted_outputs`; nothing here judges content.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
-from .emit import atomic_write, describe_file
+from .files import atomic_write, describe_file
 from .output import Output
 from .skills import SKILL_DOCUMENT
 from .surgery import apply_json, apply_toml

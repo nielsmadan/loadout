@@ -292,7 +292,7 @@ def _skipped_note(skipped: tuple[str, ...]) -> str:
     """
     if not skipped:
         return ""
-    lines = "".join(f"// - {entry}\n" for entry in dict.fromkeys(skipped))
+    lines = "".join(f"// - {json.dumps(entry)}\n" for entry in dict.fromkeys(skipped))
     return f"\n// Not carried — an adapter spawns a command, and these have none:\n{lines}"
 
 
@@ -300,7 +300,7 @@ def _unmapped(document: MappingABC[str, Any], mappings: tuple[AdapterMapping, ..
     unmapped = [e for e in document if e not in {m.event for m in mappings}]
     if not unmapped:
         return ""
-    lines = "".join(f"// - {event}\n" for event in unmapped)
+    lines = "".join(f"// - {json.dumps(event)}\n" for event in unmapped)
     return f"\n// No mapping on this harness, so these are not subscribed:\n{lines}"
 
 

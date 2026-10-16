@@ -12,7 +12,6 @@ def git(
     root: Path,
     *arguments: str,
     index: Path | None = None,
-    data: bytes | None = None,
     check: bool = True,
 ) -> subprocess.CompletedProcess[bytes]:
     environment = dict(os.environ)
@@ -23,7 +22,6 @@ def git(
         environment["GIT_INDEX_FILE"] = str(index)
     result = subprocess.run(
         ["git", "-C", str(root), *arguments],
-        input=data,
         capture_output=True,
         env=environment,
         check=False,

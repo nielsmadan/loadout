@@ -5,11 +5,12 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from .agents import GLOBAL_PRESET, SliceOutput, known_agents
+from .agents import DIRECTORY_SLICES, GLOBAL_PRESET, SliceOutput
 from .destinations import resolve_destination
 from .errors import LoadoutError
+from .harnesses import KNOWN_HARNESSES
 from .skill_policy import SkillPolicy, parse_skill_policies
-from .sources import Source, parse_sources
+from .sources import Source, SourceParser, parse_sources
 from .toml_paths import contains, key_path
 
 MANIFEST_NAME = "loadout.toml"
@@ -70,7 +71,7 @@ class SkillsTarget:
     decides *which*.
     """
 
-    agent: str
+    harness: str
     destinations: tuple[PurePosixPath, ...]
 
 
@@ -80,7 +81,7 @@ class AgentsTarget:
 
     Like skills, discovered rather than named: the directory is the declaration."""
 
-    agent: str
+    harness: str
     destinations: tuple[PurePosixPath, ...]
 
 
@@ -92,7 +93,7 @@ class ModuleConfigTarget:
     path inside the source tree is the declaration.
     """
 
-    agent: str
+    harness: str
     destinations: tuple[PurePosixPath, ...]
 
 
@@ -127,7 +128,7 @@ class PermissionTarget:
     # Which agent owns this target, when it came from an agent block. Several of
     # one agent's slices may write one file and compose into it; two *different*
     # owners naming one path is still a collision.
-    agent: str | None = None
+    harness: str | None = None
 
 
 @dataclass(frozen=True)
@@ -399,7 +400,9 @@ def _resolve_extends(path: Path) -> tuple[dict[str, object], tuple[Path, ...]]:
     return merged, tuple(seen)
 
 
-def load_profile(root: Path, profile: str = DEFAULT_PROFILE) -> Manifest:
+def load_profile(
+    root: Path, profile: str = DEFAULT_PROFILE, *, sources: SourceParser = parse_sources
+) -> Manifest:
     """The manifest for one profile.
 
     A profile is a file — `loadout.toml` for the default, `<profile>.toml`
@@ -411,12 +414,12 @@ def load_profile(root: Path, profile: str = DEFAULT_PROFILE) -> Manifest:
     path = profile_path(root, profile)
     if not path.is_file():
         path = manifest_path(root)
-    return load_manifest(path)
+    return load_manifest(path, sources=sources)
 
 
-def load_manifest(path: Path) -> Manifest:
+def load_manifest(path: Path, *, sources: SourceParser = parse_sources) -> Manifest:
     data, config_paths = _resolve_extends(path)
-    return _build_manifest(data, path, config_paths=config_paths)
+    return _build_manifest(data, path, config_paths=config_paths, sources=sources)
 
 
 COMMON_BLOCK = "all"
@@ -497,14 +500,14 @@ def _parse_agents(
     preset supplies the renderer and destination so a manifest never repeats a
     machine path. Both spellings coexist during the transition.
     """
-    unknown = sorted(
-        k
-        for k, v in data.items()
-        if isinstance(v, dict) and k not in RESERVED_KEYS and k not in known_agents()
-    )
+    unknown = sorted(k for k in data if k not in RESERVED_KEYS and k not in KNOWN_HARNESSES)
     if unknown:
-        known = ", ".join(sorted(known_agents()))
-        raise LoadoutError(f"{path}: unknown agent(s) {', '.join(unknown)} (known: {known})")
+        tables = ", ".join(sorted(KNOWN_HARNESSES))
+        keys = ", ".join(sorted(RESERVED_KEYS))
+        raise LoadoutError(
+            f"{path}: unknown top-level key(s) {', '.join(unknown)} "
+            f"(harness tables: {tables}; other keys: {keys})"
+        )
 
     common = data.get(COMMON_BLOCK, {})
     if not isinstance(common, dict):
@@ -515,7 +518,7 @@ def _parse_agents(
     skills: list[SkillsTarget] = []
     module_config: list[ModuleConfigTarget] = []
     agent_definitions: list[AgentsTarget] = []
-    for agent in sorted(known_agents()):
+    for agent in sorted(KNOWN_HARNESSES):
         declared = data.get(agent)
         if declared is None:
             # [all] supplies defaults to the agents you named; it does not name
@@ -549,12 +552,11 @@ def _parse_agents(
                 if out in claimed:
                     raise LoadoutError(f"{label}: output {str(out)!r} is already claimed")
                 claimed.add(out)
-            if slice_name in {"skills", "agents"}:
-                # The directory is the declaration for both, so neither takes a value.
+            if slice_name in DIRECTORY_SLICES:
                 _add_directory_target(slice_name, agent, destinations, skills, agent_definitions)
                 continue
             if slice_name == "module-config":
-                module_config.append(ModuleConfigTarget(agent=agent, destinations=destinations))
+                module_config.append(ModuleConfigTarget(harness=agent, destinations=destinations))
                 continue
             if slice_name == "instructions":
                 targets.append(
@@ -575,7 +577,7 @@ def _parse_agents(
             )
             permissions.append(
                 PermissionTarget(
-                    agent=agent,
+                    harness=agent,
                     name=agent if slice_name == "permissions" else f"{agent}-{slice_name}",
                     path=out,
                     renderer=spec.renderer or "",
@@ -613,18 +615,22 @@ def _add_directory_target(
     agents: list[AgentsTarget],
 ) -> None:
     if slice_name == "skills":
-        skills.append(SkillsTarget(agent=agent, destinations=destinations))
+        skills.append(SkillsTarget(harness=agent, destinations=destinations))
     else:
-        agents.append(AgentsTarget(agent=agent, destinations=destinations))
+        agents.append(AgentsTarget(harness=agent, destinations=destinations))
 
 
 def _build_manifest(
-    data: dict[str, object], path: Path, *, config_paths: tuple[Path, ...] = ()
+    data: dict[str, object],
+    path: Path,
+    *,
+    config_paths: tuple[Path, ...] = (),
+    sources: SourceParser = parse_sources,
 ) -> Manifest:
     raw_sources = data.get("source")
     if not isinstance(raw_sources, list) or not raw_sources:
         raise LoadoutError(f"{path}: at least one [[source]] entry is required")
-    sources = parse_sources(list(raw_sources), path.parent)
+    parsed_sources = sources(list(raw_sources), path.parent)
 
     claimed: set[PurePosixPath] = set()
     targets = _parse_instructions(data.get("instructions", {}), path, claimed)
@@ -647,7 +653,7 @@ def _build_manifest(
             f"{path}: no [<agent>], [instructions.<agent>] or [permissions.<name>] targets declared"
         )
     skill_policies = parse_skill_policies(data.get("skills"))
-    configured_skill_agents = {target.agent for target in agent_skills}
+    configured_skill_agents = {target.harness for target in agent_skills}
     for policy in skill_policies:
         extra = set(policy.agents) - configured_skill_agents
         if extra:
@@ -657,7 +663,7 @@ def _build_manifest(
             )
 
     return Manifest(
-        sources=sources,
+        sources=parsed_sources,
         targets=targets,
         permissions=permissions,
         skills=agent_skills,

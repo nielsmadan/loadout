@@ -1,30 +1,20 @@
 from __future__ import annotations
 
-import hashlib
 import os
-from collections.abc import Mapping
+import stat
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from . import migration_git
-from .deployment import (
-    DeploymentEntry,
-    DeploymentPlan,
-    DeploymentScope,
-    FileChange,
-    Receipt,
-    ScopePlan,
-    apply_deployment,
-)
-from .discovery import entry_state
+from .discovery import DESTINATION_ENVIRONMENT, entry_state
 from .errors import LoadoutError
-from .migration_backup import Image, Operation, install, snapshot
+from .gitignore import escape, with_lines
+from .migration_backup import Image, Operation, Phase, install, snapshot
 from .migration_models import EntryState, MigrationPlan, SourceWrite
-from .migration_paths import DestinationLayout, entry_path
+from .migration_paths import DestinationLayout, entry_path, inventory_layout
 from .migration_validation import validate_plan
-from .native_documents import apply_document, key_fingerprints
-from .output import FrozenFile
+from .surgery import apply_json, apply_toml
 
 
 @dataclass(frozen=True)
@@ -43,6 +33,7 @@ class Delinked:
             "target": str(self.target),
             "directory": self.directory,
             "superseded": [str(p) for p in self.superseded],
+            "written_into": list(self.written_into),
         }
 
 
@@ -51,7 +42,6 @@ class MigrationPreparation:
     plan: MigrationPlan = field(repr=False)
     operations: tuple[Operation, ...] = field(repr=False)
     preconditions: tuple[EntryState, ...] = field(repr=False)
-    deployment: DeploymentPlan | None = field(default=None, repr=False)
     repository: Path | None = None
     untracked: tuple[str, ...] = ()
     new_repository: Path | None = None
@@ -70,23 +60,13 @@ class MigrationPreparation:
 
     def touched(self) -> tuple[Path, ...]:
         """Every path applying this can change, for the backup taken first."""
-        receipts = (
-            path
-            for scope_plan in (self.deployment.scopes if self.deployment else ())
-            for path in (
-                scope_plan.scope.receipt_path,
-                scope_plan.scope.receipt_path.parent / ".gitignore",
-            )
-        )
         index = (
             (migration_git.index_path(self.repository),)
             if self.repository is not None and self.untracked
             else ()
         )
         repository = (self.new_repository / ".git",) if self.new_repository else ()
-        return tuple(
-            dict.fromkeys((*(o.path for o in self.operations), *receipts, *index, *repository))
-        )
+        return tuple(dict.fromkeys((*(o.path for o in self.operations), *index, *repository)))
 
     def canonical(self, path: Path) -> Path:
         """The one spelling of `path` a backup records. Beneath a link init replaces it
@@ -142,14 +122,14 @@ class _Builder:
             return Image()
         return snapshot(path)
 
-    def put(self, path: Path, image: Image, phase: str) -> None:
+    def put(self, path: Path, image: Image, phase: Phase) -> None:
         before = self.image(path)
         if before == image:
             return
         self.operations.append(Operation(path, before, image, phase))
         self.images[path] = image
 
-    def parents(self, path: Path, phase: str, *, private: tuple[Path, ...] = ()) -> None:
+    def parents(self, path: Path, phase: Phase, *, private: tuple[Path, ...] = ()) -> None:
         for parent in reversed(path.parents):
             image = self.image(parent)
             mode = 0o700 if any(parent.is_relative_to(p) for p in private) else 0o755
@@ -170,10 +150,7 @@ def _verify(states: tuple[EntryState, ...]) -> None:
 
 
 def _layout(plan: MigrationPlan) -> DestinationLayout:
-    home = dict(plan.inventory.destination_environment).get("HOME")
-    return DestinationLayout(
-        plan.inventory.root, plan.inventory.mappings, Path(home) if home else None
-    )
+    return inventory_layout(plan.inventory)
 
 
 def _links(plan: MigrationPlan, outputs: tuple[Path, ...]) -> tuple[Path, ...]:
@@ -198,20 +175,19 @@ def _links(plan: MigrationPlan, outputs: tuple[Path, ...]) -> tuple[Path, ...]:
 def _mirror(
     builder: _Builder,
     path: Path,
-    outputs: Mapping[Path, FrozenFile],
+    outputs: tuple[Path, ...],
     plan: MigrationPlan,
 ) -> None:
     """Rebuild a replaced link's directory: entries loadout does not write link back
-    into the target, and each output it does is written now with what it will hold, so
-    a shared document keeps the keys loadout does not own once the link is gone."""
+    into the target, and each output it does starts as the file it was, so the first
+    render keeps the keys loadout does not own exactly as the preview showed."""
     originals = {entry_path(o.path): o for o in plan.originals}
     retired = tuple(entry_path(p) for p in plan.obsolete)
     for child in sorted(path.iterdir()):
         adopted = tuple(p for p in outputs if p == child or p.is_relative_to(child))
         if adopted:
             if child in adopted:
-                frozen = outputs[child]
-                builder.put(child, Image("file", frozen.content, frozen.mode), "topology")
+                builder.put(child, _as_found(child), "topology")
                 continue
             if not child.is_dir():
                 raise LoadoutError(f"destination topology conflicts with a file: {child}")
@@ -226,8 +202,13 @@ def _mirror(
             builder.put(child, Image("symlink", os.fsencode(target), 0o777), "topology")
 
 
-def _topology(builder: _Builder, plan: MigrationPlan, outputs: Mapping[Path, FrozenFile]) -> None:
-    for link in _links(plan, tuple(outputs)):
+def _as_found(path: Path) -> Image:
+    resolved = path.resolve()
+    return Image("file", resolved.read_bytes(), stat.S_IMODE(resolved.stat().st_mode))
+
+
+def _topology(builder: _Builder, plan: MigrationPlan, outputs: tuple[Path, ...]) -> None:
+    for link in _links(plan, outputs):
         directory = link.is_dir()
         builder.put(link, Image(), "topology")
         if directory:
@@ -235,120 +216,27 @@ def _topology(builder: _Builder, plan: MigrationPlan, outputs: Mapping[Path, Fro
             _mirror(builder, link, outputs, plan)
 
 
-def _frozen_outputs(plan: MigrationPlan) -> dict[Path, FrozenFile]:
+def _rendered_paths(plan: MigrationPlan) -> tuple[Path, ...]:
+    """Every output the first render will leave on disk."""
     layout = _layout(plan)
-    result: dict[Path, FrozenFile] = {}
+    result: list[Path] = []
     for output in plan.generated_writes:
         path = layout.normalize(output.path)
-        content, mode = output.content, output.mode
         if output.owned is not None:
             actual = snapshot(output.path.resolve())
             if actual.kind not in {"file", "absent"}:
                 raise LoadoutError(f"partial destination must be a document: {path}")
-            content = apply_document(
-                actual.content.decode(), frozenset(output.owned), content.decode(), output.format
-            ).encode()
-            if not content and output.emit_empty:
-                content = b"{}\n" if output.format == "json" else b""
-            if actual.kind == "absent" and not content and not output.emit_empty:
+            apply = apply_json if output.format == "json" else apply_toml
+            if actual.kind == "absent" and not apply(
+                "", frozenset(output.owned), output.content.decode()
+            ):
                 continue
-            mode = actual.mode if actual.kind == "file" else 0o600
-        result[path] = FrozenFile(content, mode)
-    return result
-
-
-def _deployment(
-    builder: _Builder,
-    plan: MigrationPlan,
-    frozen: dict[Path, FrozenFile],
-) -> DeploymentPlan:
-    inventory = plan.inventory
-    assert inventory.scope is not None
-    scope = DeploymentScope(
-        inventory.scope,
-        inventory.root.resolve()
-        if inventory.scope == "project"
-        else inventory.source_root.resolve(),
-        inventory.source_root.resolve(),
-        (),
-    )
-    before_receipt = None
-    layout = _layout(plan)
-    routes = tuple((route, layout.normalize(path)) for route, path in plan.artifact_routes)
-    entries = []
-    changes = []
-    for output in plan.generated_writes:
-        path = layout.normalize(output.path)
-        if path not in frozen:
-            continue
-        builder.parents(path, "topology")
-        image = builder.image(path)
-        if image.kind not in {"file", "absent"}:
-            raise LoadoutError(f"destination is not installable: {path}")
-        before = FrozenFile(image.content, image.mode) if image.kind == "file" else None
-        after = frozen[path]
-        changes.append(FileChange(path, before, after))
-        route, base = max(
-            (r for r in routes if path.is_relative_to(r[1])), key=lambda r: len(r[1].parts)
-        )
-        entries.append(
-            DeploymentEntry(
-                anchor=str(scope.anchor),
-                route=route,
-                root=str(scope.anchor if scope.name == "project" else base),
-                relative=path.relative_to(base).as_posix(),
-                format=output.format if output.owned is not None else "whole",
-                mode=after.mode,
-                digest=""
-                if output.owned is not None
-                else hashlib.sha256(after.content).hexdigest(),
-                owned=tuple(sorted(output.owned or ())),
-                values=key_fingerprints(
-                    after.content.decode(), output.format, frozenset(output.owned)
-                )
-                if output.owned is not None
-                else (),
-            )
-        )
-    return DeploymentPlan(
-        (ScopePlan(scope, before_receipt, Receipt(), tuple(entries), tuple(changes)),),
-        frozenset(frozen),
-        (),
-        (),
-        (),
-    )
-
-
-def _deployment_operations(builder: _Builder, deployment: DeploymentPlan) -> None:
-    scope = deployment.scopes[0]
-    for change in scope.changes:
-        assert change.after is not None
-        builder.put(change.path, Image("file", change.after.content, change.after.mode), "deploy")
-
-
-def _ignore_lines(plan: MigrationPlan) -> tuple[str, ...]:
-    patterns = list(plan.ignores)
-    result = []
-    for value in patterns:
-        if any(character in value for character in "\n\r\0"):
-            raise LoadoutError(
-                "migration paths containing newlines cannot be represented in .gitignore"
-            )
-        escaped = "".join("\\" + c if c in "\\*?[] " else c for c in value)
-        if escaped not in result:
-            result.append(escaped)
+        result.append(path)
     return tuple(result)
 
 
-def _append_ignores(content: bytes, patterns: tuple[str, ...]) -> bytes:
-    text = content.decode()
-    present = set(text.splitlines())
-    missing = [p for p in dict.fromkeys(patterns) if p not in present]
-    if not missing:
-        return content
-    return (
-        text + ("\n" if text and not text.endswith("\n") else "") + "\n".join(missing) + "\n"
-    ).encode()
+def _ignore_lines(plan: MigrationPlan) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(escape(value) for value in plan.ignores))
 
 
 def _ignored_outputs(plan: MigrationPlan) -> tuple[Path, ...]:
@@ -363,9 +251,7 @@ def _ignored_outputs(plan: MigrationPlan) -> tuple[Path, ...]:
     )
 
 
-def _filesystem_plan(
-    plan: MigrationPlan, machine_write: SourceWrite | None
-) -> tuple[_Builder, DeploymentPlan | None]:
+def _filesystem_plan(plan: MigrationPlan, machine_write: SourceWrite | None) -> _Builder:
     builder = _Builder()
     if machine_write is not None:
         if not machine_write.path.is_absolute() or machine_write.path.is_symlink():
@@ -374,24 +260,22 @@ def _filesystem_plan(
             )
         if machine_write.path.is_relative_to(plan.inventory.source_root):
             raise LoadoutError("machine registration must not overlap authored source")
-    frozen = _frozen_outputs(plan)
-    _topology(builder, plan, frozen)
+    rendered = _rendered_paths(plan)
+    _topology(builder, plan, rendered)
     layout = _layout(plan)
     private = tuple(layout.normalize(p) for p in plan.private_paths)
     for write in plan.source_writes:
         path = layout.normalize(write.path)
         builder.parents(path, "source", private=private)
         builder.put(path, Image("file", write.content, write.mode), "source")
-    deployment = (
-        _deployment(builder, plan, frozen)
-        if not plan.already_initialized and plan.generated_writes
-        else None
-    )
-    if deployment is not None:
-        _deployment_operations(builder, deployment)
+    # The first render writes these; checked here so a bad destination stops init first.
+    for path in rendered if not plan.already_initialized else ():
+        builder.parents(path, "topology")
+        if builder.image(path).kind not in {"file", "absent"}:
+            raise LoadoutError(f"destination is not installable: {path}")
     for path in plan.obsolete:
         target = entry_path(path)
-        if target in frozen or target in builder.images:
+        if target in rendered or target in builder.images:
             continue
         if not _retirable(plan, target) or target.is_dir():
             raise LoadoutError(f"retirement must name an individual adopted source: {path}")
@@ -404,7 +288,7 @@ def _filesystem_plan(
             Image("file", machine_write.content, machine_write.mode),
             "registration",
         )
-    return builder, None
+    return builder
 
 
 def prepare_migration(
@@ -425,7 +309,7 @@ def prepare_migration(
         validated = validate_plan(plan)
         if not validated.complete or validated.generated_writes != plan.generated_writes:
             raise LoadoutError("migration source reconstruction differs from the approved plan")
-    builder, deployment = _filesystem_plan(plan, machine_write)
+    builder = _filesystem_plan(plan, machine_write)
     repository: Path | None = None
     untracked: tuple[str, ...] = ()
     new_repository: Path | None = None
@@ -438,7 +322,7 @@ def prepare_migration(
             ignore_path,
             Image(
                 "file",
-                _append_ignores(current.content, (*_ignore_lines(plan), *ignores)),
+                with_lines(current.content.decode(), (*_ignore_lines(plan), *ignores)).encode(),
                 current.mode if current.kind == "file" else 0o644,
             ),
             "ignore",
@@ -452,7 +336,6 @@ def prepare_migration(
         plan,
         tuple(builder.operations),
         plan.preconditions,
-        deployment,
         repository,
         untracked,
         new_repository,
@@ -465,13 +348,7 @@ def apply_migration(prepared: MigrationPreparation) -> MigrationResult:
     _verify(prepared.preconditions)
     if not prepared.operations:
         return MigrationResult((), (), True)
-    deployed = False
     for operation in prepared.operations:
-        if operation.phase == "deploy":
-            if not deployed and prepared.deployment is not None:
-                apply_deployment(prepared.deployment)
-            deployed = True
-            continue
         install(operation.path, operation.after)
     if prepared.new_repository is not None:
         migration_git.git(prepared.new_repository, "init", "-q")
@@ -497,15 +374,7 @@ def _verify_environment(plan: MigrationPlan) -> None:
     if plan.already_initialized:
         return
     captured = dict(plan.inventory.destination_environment)
-    for key in (
-        "HOME",
-        "CLAUDE_CONFIG_DIR",
-        "CODEX_HOME",
-        "XDG_CONFIG_HOME",
-        "PI_CODING_AGENT_DIR",
-        "OPENCODE_CONFIG",
-        "OPENCODE_CONFIG_DIR",
-    ):
+    for key in DESTINATION_ENVIRONMENT:
         if (os.environ.get(key) or None) != captured.get(key):
             raise LoadoutError(
                 f"destination environment changed; rediscover before applying migration: {key}"

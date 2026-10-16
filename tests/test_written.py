@@ -11,12 +11,13 @@ import hashlib
 import json
 from pathlib import Path
 
-from loadout import commands
+from loadout import sync
 from loadout.output import Copied
 from loadout.written import (
     WrittenEntry,
     accepts_bytes,
     accepts_text,
+    every_recorded_path,
     normalise,
     read_written,
     record_written,
@@ -30,7 +31,7 @@ def entry(content: str = "hello\n") -> WrittenEntry:
 
 
 def test_a_record_round_trips(tmp_path: Path) -> None:
-    record_written(tmp_path, "default", {Path("/dest/out.md"): entry()})
+    record_written(tmp_path, {Path("/dest/out.md"): entry()})
 
     read = read_written(tmp_path)
 
@@ -49,8 +50,8 @@ def test_two_roots_do_not_share_a_record(tmp_path: Path) -> None:
 def test_earlier_entries_survive_a_later_run(tmp_path: Path) -> None:
     """Retention is what makes this the orphan sidecar rather than a cache: a
     destination this run no longer renders is exactly what orphan removal needs."""
-    record_written(tmp_path, "default", {Path("/dest/first.md"): entry()})
-    record_written(tmp_path, "default", {Path("/dest/second.md"): entry()})
+    record_written(tmp_path, {Path("/dest/first.md"): entry()})
+    record_written(tmp_path, {Path("/dest/second.md"): entry()})
 
     assert set(read_written(tmp_path)) == {Path("/dest/first.md"), Path("/dest/second.md")}
 
@@ -65,6 +66,26 @@ def test_a_corrupt_record_reads_as_empty_rather_than_raising(tmp_path: Path) -> 
     path.write_text("{ this is not json", encoding="utf-8")
 
     assert read_written(tmp_path) == {}
+
+
+def test_a_record_that_is_not_utf8_reads_as_empty_rather_than_raising(tmp_path: Path) -> None:
+    path = written_state_path(tmp_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b'{"version": \xff}')
+
+    assert read_written(tmp_path) == {}
+
+
+def test_every_recorded_path_names_each_roots_outputs(tmp_path: Path) -> None:
+    a, b = tmp_path / "a", tmp_path / "b"
+    a.mkdir()
+    b.mkdir()
+    record_written(a, {Path("/dest/a.md"): entry()})
+    record_written(b, {Path("/dest/b.md"): entry()})
+    garbage = written_state_path(a).with_name("garbage.json")
+    garbage.write_bytes(b"\xff")
+
+    assert every_recorded_path() == {Path("/dest/a.md"), Path("/dest/b.md")}
 
 
 def test_a_future_version_reads_as_empty(tmp_path: Path) -> None:
@@ -93,9 +114,9 @@ def test_text_acceptance_ignores_what_the_normaliser_ignores(tmp_path: Path) -> 
 
 
 def test_normalise_is_the_one_the_guard_uses(tmp_path: Path) -> None:
-    """Recorded here and compared in commands.py, so the two must be the same
+    """Recorded here and compared in sync.py, so the two must be the same
     function — a record hashed with a different normaliser accepts nothing."""
-    assert commands.normalise is normalise
+    assert sync.normalise is normalise
 
 
 def test_a_record_that_cannot_be_written_is_not_an_error(tmp_path: Path, monkeypatch) -> None:
@@ -105,16 +126,15 @@ def test_a_record_that_cannot_be_written_is_not_an_error(tmp_path: Path, monkeyp
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "denied"))
     (tmp_path / "denied").write_text("not a directory", encoding="utf-8")
 
-    assert record_written(tmp_path, "default", {Path("/dest/out.md"): entry()}) is None
+    assert record_written(tmp_path, {Path("/dest/out.md"): entry()}) is None
     assert read_written(tmp_path) == {}
 
 
-def test_copied_output_record_matches_the_emitted_prefix_and_mode(tmp_path: Path) -> None:
+def test_copied_output_record_matches_the_emitted_prefix(tmp_path: Path) -> None:
     source = tmp_path / "source.md"
     source.write_bytes(b"instructions\n")
     source.chmod(0o644)
     output = tmp_path / "output.md"
     copied = Copied(source, prefix=b"generated\n", mode=0o755)
-    entries = commands._entries_for({output: copied})
+    entries = sync._entries_for({output: copied})
     assert entries[output].sha256 == hashlib.sha256(b"generated\ninstructions\n").hexdigest()
-    assert entries[output].executable is True

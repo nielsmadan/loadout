@@ -32,8 +32,8 @@ The records identify init backups by path but do not copy their private contents
 
 | Case | Expected result |
 |---|---|
-| Empty project, four explicit harnesses | Read-only preview; noninteractive approval required; every category ready; empty instruction outputs absent; repeat leaves HEAD/index unchanged |
-| Populated project with partial unrelated staging | Original config survives in source; generated paths leave the index; unrelated staged/unstaged notes stay distinct; source edits sync and output edits refuse |
+| Empty project, four explicit harnesses | Read-only preview; noninteractive approval required; source holds only `config.toml` and `permissions.toml`; empty instruction outputs absent; staged source passes `check --staged`; repeat leaves HEAD/index unchanged |
+| Populated project with partial unrelated staging | Init commits nothing; original config survives in source; generated paths leave the index; unrelated staged/unstaged notes stay distinct; source edits sync and output edits refuse |
 | Global source and bundled skill lifecycle | Manifest registration points at the source; Pi runtime version survives sync; all four source-managed skill copies install, repeat safely and uninstall |
 | Conflicting global copies | Preview and `--yes` refuse without mutation; explicit source selection determines deployed content |
 | Frontend/backend templates after init | `template add <name> --vendored` vendors a bundled template with provenance and its instructions render on the next sync |

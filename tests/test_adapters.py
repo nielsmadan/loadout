@@ -69,7 +69,7 @@ def test_an_unmapped_event_is_named_and_not_embedded(render: Any) -> None:
     document = {**DOCUMENT, "WorktreeCreate": [{"hooks": [cmd()]}]}
     source = render(document)
     assert "WorktreeCreate" not in embedded(source)
-    assert "// - WorktreeCreate" in source
+    assert '// - "WorktreeCreate"' in source
 
 
 @pytest.mark.parametrize("render", RENDERERS)
@@ -79,8 +79,21 @@ def test_a_prompt_hook_is_reported_rather_than_dropped_in_silence(render: Any) -
     they would look in is this one."""
     document = {"PreToolUse": [{"hooks": [{"type": "prompt", "prompt": "check"}]}]}
     source = render(document)
-    assert "// - PreToolUse: prompt" in source
+    assert '// - "PreToolUse: prompt"' in source
     assert embedded(source) == {}
+
+
+@pytest.mark.parametrize("render", RENDERERS)
+def test_a_name_with_a_line_break_stays_inside_its_comment(render: Any) -> None:
+    """A line break in an event or type name would end the `//` comment and put
+    the rest of the name into the module as code."""
+    document = {
+        "Worktree\nCreate": [{"hooks": [cmd()]}],
+        "PreToolUse": [{"hooks": [{"type": "prompt\u2028x", "prompt": "check"}]}],
+    }
+    lines = render(document).splitlines()
+    assert '// - "PreToolUse: prompt\\u2028x"' in lines
+    assert '// - "Worktree\\nCreate"' in lines
 
 
 @pytest.mark.parametrize("render", RENDERERS)

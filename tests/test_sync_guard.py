@@ -8,6 +8,7 @@ import pytest
 
 import loadout
 from loadout.commands import DIFF_LIMIT
+from loadout.emit import render_all
 from loadout.written import normalise as _normalise
 from loadout.written import written_state_path
 
@@ -141,26 +142,47 @@ def test_the_warning_names_what_would_be_lost(root: Path, capsys) -> None:
     assert "would be lost" in err
 
 
-def test_a_truncated_abort_still_names_the_complete_diff(root: Path, capsys) -> None:
-    _adopt(root)
+def _abort_with_a_long_diff(root: Path, capsys, keys: int) -> str:
     # Comfortably more lines than DIFF_LIMIT on their own, so the note appears
     # whatever the rendered document happens to be.
-    bulk = {f"key-{index}": index for index in range(60)}
+    bulk = {f"key-{index}": index for index in range(keys)}
     (root / "perm" / "opencode.json").write_text(
         json.dumps(bulk, indent=2) + "\n", encoding="utf-8"
     )
     capsys.readouterr()
-
     assert loadout.main(["sync", "--root", str(root)]) == 1
     err = capsys.readouterr().err
-    assert "more line(s)" in err
+    assert "more diff line(s)" in err
+    return err.rsplit("The complete diff is at ", 1)[1].strip()
+
+
+def test_a_truncated_abort_still_names_the_complete_diff(
+    root: Path, capsys, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    _adopt(root)
 
     # The terminal shortens it; the file must not. A blocking prompt the reader
     # cannot see all of is one they learn to skip, and skipping this one means
     # reaching for --force — the thing the guard exists to prevent.
-    path = Path(err.rsplit("The complete diff is at ", 1)[1].strip())
-    assert path.is_file()
+    path = Path(_abort_with_a_long_diff(root, capsys, keys=60))
+    assert path == (tmp_path / "state" / "loadout" / "sync-abort.diff").resolve()
+    assert path.stat().st_mode & 0o777 == 0o600
     assert len(path.read_text(encoding="utf-8").splitlines()) > DIFF_LIMIT
+
+
+def test_each_truncated_abort_replaces_the_last_complete_diff(
+    root: Path, capsys, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    _adopt(root)
+
+    first = _abort_with_a_long_diff(root, capsys, keys=60)
+    second = _abort_with_a_long_diff(root, capsys, keys=61)
+
+    assert second == first
+    assert [p.name for p in (tmp_path / "state" / "loadout").iterdir()] == ["sync-abort.diff"]
+    assert '-  "key-60": 60' in Path(second).read_text(encoding="utf-8")
 
 
 def test_force_overwrites_a_file_modified_outside_loadout(root: Path, capsys) -> None:
@@ -224,7 +246,8 @@ def test_profile_switch_does_not_block(root: Path, fake_home: Path, capsys) -> N
 
     assert loadout.main(["sync", "--root", str(root)]) == 0
     assert "modified outside loadout" not in capsys.readouterr().err
-    assert destination.read_text() != under_variant
+    assert destination.read_text() == render_all(root, "default")[destination]
+    assert under_variant == render_all(root, "variant")[destination]
 
 
 def test_reverting_a_synced_source_edit_no_longer_blocks(root: Path, capsys) -> None:
@@ -317,13 +340,14 @@ def test_force_records_what_it_wrote(root: Path) -> None:
     assert written_state_path(root).is_file()
 
 
-def test_check_records_nothing(root: Path) -> None:
+def test_check_records_nothing(root: Path, capsys) -> None:
     """`check` is read-only, and a record written by it would assert loadout wrote
     bytes it never wrote."""
     _commit_source(root)
 
-    loadout.main(["check", "--root", str(root)])
+    assert loadout.main(["check", "--root", str(root)]) == 1
 
+    assert "DRIFT (missing): out/primary.md" in capsys.readouterr().err
     assert not written_state_path(root).is_file()
 
 

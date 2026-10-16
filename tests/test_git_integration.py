@@ -8,11 +8,13 @@ from pathlib import Path
 import pytest
 
 import loadout
-from loadout.emit import check_all, render_all, write_all
+from loadout.emit import render_all
 from loadout.errors import LoadoutError
+from loadout.files import check_all
 from loadout.git_hooks import install_hooks, plan_hooks, uninstall_hooks
 from loadout.machine import machine_config_path
 from loadout.staged import check_staged
+from render_helpers import write_all
 from test_codex_defaults import build
 
 pytestmark = pytest.mark.migration_integration
@@ -43,15 +45,19 @@ def repo(tmp_path, monkeypatch):
 def _project(root):
     source = root / "loadout"
     source.mkdir(parents=True)
-    (source / "config.toml").write_text(
-        'harnesses=["codex"]\npresets=false\nartifacts="artifacts.toml"\n'
-    )
-    (source / "artifacts.toml").write_text(
-        '[[artifact]]\nagents=["codex"]\nformat="copy"\ncategory="instructions"\n'
-        'output="AGENTS.md"\nsource="instructions.md"\n'
-    )
-    (source / "instructions.md").write_text("original\n")
+    (source / "config.toml").write_text('harnesses=["codex"]\ninstructions=["main"]\n')
+    (source / "permissions.toml").write_text("")
+    (source / "instructions").mkdir()
+    (source / "instructions/main.md").write_text("original\n")
     return source
+
+
+def test_the_fixture_project_is_one_sync_accepts(repo):
+    """The hook tests never render it, so nothing else would notice it going stale."""
+    _project(repo)
+
+    assert loadout.main(["sync", "--root", str(repo)]) == 0
+    assert (repo / "AGENTS.md").read_text().endswith("original\n")
 
 
 def _commit(repo, *paths):

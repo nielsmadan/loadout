@@ -4,17 +4,33 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from .output import ArtifactScope
+from .output import Scope
 
+IssueCode = Literal[
+    "harnesses-required",
+    "dependency-activation",
+    "initialized-conflict",
+    "initialized-source",
+    "invalid-native-document",
+    "opencode-both-formats",
+    "reconstruction-failed",
+    "registration-conflict",
+    "scope-required",
+    "source-composition",
+    "source-exists",
+    "symlink-cycle",
+    "symlink-target",
+    "external-symlink",
+]
+UnadoptedKind = Literal["instructions", "skill", "agent"]
 Disposition = Literal["migrated", "runtime-private exclusion", "retained dependency", "unresolved"]
-RENDERED_MODE = 0o600
 
 
 @dataclass(frozen=True)
 class RootMapping:
     source: Path
     destination: Path
-    agents: tuple[str, ...]
+    harnesses: tuple[str, ...]
     kind: Literal["harness", "shared", "file"] = "harness"
     category: str | None = None
     destination_template: str | None = None
@@ -33,7 +49,7 @@ class EntryState:
 
 @dataclass(frozen=True)
 class Issue:
-    code: str
+    code: IssueCode
     paths: tuple[Path, ...]
     message: str
 
@@ -43,7 +59,7 @@ class Candidate:
     path: Path
     canonical: Path | None
     destination: Path | None
-    agents: tuple[str, ...]
+    harnesses: tuple[str, ...]
     category: str
     disposition: Disposition
     reason: str
@@ -63,8 +79,8 @@ class Candidate:
 class Inventory:
     root: Path
     source_root: Path
-    scope: ArtifactScope | None
-    agents: tuple[str, ...]
+    scope: Scope | None
+    harnesses: tuple[str, ...]
     mappings: tuple[RootMapping, ...]
     candidates: tuple[Candidate, ...]
     preconditions: tuple[EntryState, ...]
@@ -77,13 +93,13 @@ class Inventory:
             "root": str(self.root),
             "source_root": str(self.source_root),
             "scope": self.scope,
-            "agents": list(self.agents),
+            "harnesses": list(self.harnesses),
             "initialized": str(self.initialized) if self.initialized else None,
             "mappings": [
                 {
                     "source": str(m.source),
                     "destination": str(m.destination),
-                    "agents": list(m.agents),
+                    "harnesses": list(m.harnesses),
                     "kind": m.kind,
                     "category": m.category,
                 }
@@ -94,7 +110,7 @@ class Inventory:
                     "path": str(c.path),
                     "canonical": str(c.canonical) if c.canonical else None,
                     "destination": str(c.destination) if c.destination else None,
-                    "agents": list(c.agents),
+                    "harnesses": list(c.harnesses),
                     "category": c.category,
                     "disposition": c.disposition,
                     "reason": c.reason,
@@ -124,7 +140,6 @@ class GeneratedWrite:
     mode: int = 0o644
     format: str = "copy"
     owned: tuple[str, ...] | None = None
-    emit_empty: bool = False
     mode_policy: Literal["exact", "preserve-destination"] = "exact"
 
 
@@ -139,18 +154,11 @@ class ExpectedOutput:
 
 
 @dataclass(frozen=True)
-class OwnedAbsence:
-    path: Path
-    format: str
-    keys: tuple[str, ...]
-
-
-@dataclass(frozen=True)
 class CategoryReadiness:
     category: str
-    agents: tuple[str, ...]
+    harnesses: tuple[str, ...]
     destinations: tuple[Path, ...]
-    state: Literal["routed", "explicit-binding", "unsupported"]
+    state: Literal["routed", "not-adopted", "unsupported"]
     reason: str = ""
 
 
@@ -167,7 +175,7 @@ class Unadopted:
     """An item whose copies disagree across harnesses: left in place, every copy
     named with the harnesses it serves, for the /loadout skill to merge (D-05)."""
 
-    kind: str
+    kind: UnadoptedKind
     name: str
     originals: tuple[tuple[Path, tuple[str, ...]], ...]
 
@@ -188,20 +196,17 @@ class MigrationPlan:
     source_writes: tuple[SourceWrite, ...] = ()
     generated_writes: tuple[GeneratedWrite, ...] = ()
     expected_outputs: tuple[ExpectedOutput, ...] = ()
-    required_absences: tuple[Path, ...] = ()
-    required_owned_absences: tuple[OwnedAbsence, ...] = ()
     obsolete: tuple[Path, ...] = ()
     originals: tuple[OriginalEntry, ...] = ()
     ignores: tuple[str, ...] = ()
     private_paths: tuple[Path, ...] = ()
-    checkpoint_paths: tuple[Path, ...] = ()
     preconditions: tuple[EntryState, ...] = ()
     issues: tuple[Issue, ...] = ()
     validated: bool = False
     already_initialized: bool = False
     notes: tuple[str, ...] = ()
     categories: tuple[CategoryReadiness, ...] = ()
-    artifact_routes: tuple[tuple[str, Path], ...] = ()
+    destination_routes: tuple[tuple[str, Path], ...] = ()
     unadopted: tuple[Unadopted, ...] = ()
 
     @property
@@ -229,11 +234,6 @@ class MigrationPlan:
                 for w in self.generated_writes
             ],
             "expected_outputs": [str(o.path) for o in self.expected_outputs],
-            "required_absences": [str(p) for p in self.required_absences],
-            "required_owned_absences": [
-                {"path": str(a.path), "format": a.format, "keys": list(a.keys)}
-                for a in self.required_owned_absences
-            ],
             "obsolete": [str(p) for p in self.obsolete],
             "originals": [
                 {
@@ -246,14 +246,13 @@ class MigrationPlan:
             ],
             "ignores": list(self.ignores),
             "private_paths": [str(p) for p in self.private_paths],
-            "checkpoint_paths": [str(p) for p in self.checkpoint_paths],
             "issues": [_issue_preview(i) for i in self.issues],
             "unadopted": [u.preview() for u in self.unadopted],
             "notes": list(self.notes),
             "categories": [
                 {
                     "category": c.category,
-                    "agents": list(c.agents),
+                    "harnesses": list(c.harnesses),
                     "destinations": [str(p) for p in c.destinations],
                     "state": c.state,
                     "reason": c.reason,

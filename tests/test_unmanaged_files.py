@@ -150,3 +150,44 @@ def test_a_project_skill_folder_loadout_did_not_write_is_flagged(tmp_path: Path,
 
     assert code == 1
     assert kinds == {str(foreign): "unmanaged"}
+
+
+def test_an_agent_loadout_did_not_write_in_a_global_agents_folder_is_flagged(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    """Review 5.6: each harness reads every file in its agents folder."""
+    root = _synced(_global_source(tmp_path / "source"), capsys)
+    foreign = fake_home / ".claude/agents/foreign.md"
+    foreign.parent.mkdir(parents=True, exist_ok=True)
+    foreign.write_text("---\nname: foreign\ndescription: f\n---\nForeign.\n")
+
+    code, kinds = _check_json(root, capsys)
+
+    assert code == 1
+    assert kinds == {str(foreign): "unmanaged"}
+
+
+def test_a_rules_file_loadout_did_not_write_in_a_project_codex_folder_is_flagged(
+    tmp_path: Path, capsys
+) -> None:
+    root = tmp_path / "project"
+    (root / "loadout").mkdir(parents=True)
+    (root / "loadout/config.toml").write_text('harnesses = ["codex"]\n')
+    (root / "loadout/permissions.toml").write_text('[shell]\ndeny = ["rm"]\n')
+    _synced(root, capsys)
+    approvals = root / ".codex/rules/default.rules"
+    approvals.write_text('prefix_rule(pattern=["ls"], decision="allow")\n')
+
+    code, kinds = _check_json(root, capsys)
+
+    assert code == 1
+    assert kinds == {str(approvals): "unmanaged"}
+
+
+def test_a_runtime_file_in_a_managed_folder_is_harness_state_not_unmanaged(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    root = _synced(_global_source(tmp_path / "source"), capsys)
+    (fake_home / ".codex/rules/auth.json").write_text('{"token": "x"}\n')
+
+    assert _check_json(root, capsys) == (0, {})

@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
+from .agents import DIRECTORY_SLICES
 from .discovery import RUNTIME_DIRECTORIES, RUNTIME_FILES, UNMANAGED_NAMES
 from .manifest import load_profile, manifest_path, resolve_destination
 from .output import Output
@@ -25,7 +26,7 @@ def managed_folders(root: Path, profile: str = "default") -> tuple[Path, ...]:
     if manifest_path(root).is_file():
         manifest = load_profile(root, profile)
         folders += [
-            resolve_destination(str(destination), f"{target.agent}.{slice_name}")
+            resolve_destination(str(destination), f"{target.harness}.{slice_name}")
             for slice_name, targets in (("skills", manifest.skills), ("agents", manifest.agents))
             for target in targets
             for destination in target.destinations
@@ -47,7 +48,7 @@ def managed_folders(root: Path, profile: str = "default") -> tuple[Path, ...]:
         folders += [
             root / spec.output
             for harness in config.harnesses
-            for slice_name in ("skills", "agents")
+            for slice_name in DIRECTORY_SLICES
             for spec in (PROJECT_PRESET[harness].get(slice_name),)
             if spec is not None and spec.output is not None
         ]

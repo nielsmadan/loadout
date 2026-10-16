@@ -16,22 +16,10 @@ from pathlib import Path
 import pytest
 
 import loadout
+from loadout.output import CATEGORIES
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = (sys.executable, "-m", "loadout")
-CATEGORIES = {
-    "instructions",
-    "permissions",
-    "mcp",
-    "mcp-permissions",
-    "settings",
-    "hooks",
-    "plugins",
-    "skills",
-    "module-config",
-    "support",
-    "templates",
-}
 
 
 def _git(root, *arguments):
@@ -116,19 +104,10 @@ def evidence(request, tmp_path):
     record.save()
 
 
-def _categories(source):
-    present = {path.name for path in source.iterdir() if path.is_dir()}
-    assert present >= CATEGORIES
-    return sorted(present)
-
-
-def _instruction_source(root, output):
+def _instruction_source(root):
     config = tomllib.loads((root / "loadout/config.toml").read_text())
-    records = tomllib.loads((root / "loadout" / config["artifacts"]).read_text())["artifact"]
-    (record,) = [row for row in records if row.get("output") == output]
-    assert record["format"] == "copy"
-    assert record["category"] == "instructions"
-    return root / "loadout" / record["source"]
+    assert config["instructions"] == ["main"]
+    return root / "loadout/instructions/main.md"
 
 
 def _project_example(root, before, evidence):
@@ -137,7 +116,7 @@ def _project_example(root, before, evidence):
         "source": {
             str(path.relative_to(root)): path.read_bytes().decode()
             for path in sorted((root / "loadout").rglob("*"))
-            if path.is_file() and ".loadout-state" not in path.relative_to(root).parts
+            if path.is_file()
         },
         "after": {name: (root / name).read_bytes().decode() for name in before},
     }
@@ -175,17 +154,19 @@ def test_empty_project_preview_approval_and_repeat(tmp_path, evidence):
     result = json.loads(evidence.cli(root, *arguments, "--yes").stdout)
     assert result["status"] == "complete"
     assert result["already_initialized"] is False
-    categories = _categories(root / "loadout")
+    source = sorted(path.name for path in (root / "loadout").iterdir())
+    assert source == ["config.toml", "permissions.toml"]
     assert not (root / "AGENTS.md").exists()
     assert not (root / "CLAUDE.md").exists()
     evidence.cli(root, "check")
+    _git(root, "add", "loadout", ".gitignore")
     evidence.cli(root, "check", "--staged")
     before_repeat = _git(root, "diff", "--cached", "--binary")
     repeated = json.loads(evidence.cli(root, *arguments, "--yes").stdout)
     assert repeated["already_initialized"] is True
     assert _git(root, "rev-parse", "HEAD") == initial
     assert _git(root, "diff", "--cached", "--binary") == before_repeat
-    evidence.save(result="Pass", scenarios=["Q01"], categories=categories)
+    evidence.save(result="Pass", scenarios=["Q01"], source=source)
 
 
 def test_populated_project_sources_index_and_drift(tmp_path, evidence):
@@ -193,50 +174,46 @@ def test_populated_project_sources_index_and_drift(tmp_path, evidence):
     (root / ".claude").mkdir()
     settings = {"permissions": {"allow": ["Bash(git status)", "Read(src/**)"]}, "model": "qa-model"}
     (root / ".claude/settings.json").write_text(json.dumps(settings, indent=2) + "\n")
-    (root / "CLAUDE.md").write_bytes(b"Existing Claude guidance.\r\n")
-    (root / "AGENTS.md").write_text("Existing Codex guidance.\n")
+    (root / "CLAUDE.md").write_bytes(b"Existing guidance.\r\n")
     (root / "notes.txt").write_text("base\n")
-    _git(root, "add", "notes.txt")
-    _git(root, "commit", "-qm", "notes baseline")
+    _git(root, "add", "notes.txt", "CLAUDE.md", ".claude/settings.json")
+    _git(root, "commit", "-qm", "baseline")
     initial = _git(root, "rev-parse", "HEAD")
     (root / "notes.txt").write_text("staged note\n")
     _git(root, "add", "notes.txt")
     (root / "notes.txt").write_text("unstaged note\n")
     arguments = ["init", "project", "--harness", "claude", "--harness", "codex", "--json"]
     example_before = {
-        name: (root / name).read_bytes().decode()
-        for name in (".claude/settings.json", "CLAUDE.md", "AGENTS.md")
+        name: (root / name).read_bytes().decode() for name in (".claude/settings.json", "CLAUDE.md")
     }
     result = json.loads(evidence.cli(root, *arguments, "--yes").stdout)
     assert result["status"] == "complete"
-    assert _git(root, "rev-parse", "HEAD") != initial
-    assert set(_git(root, "diff", "--name-only", initial.strip(), "HEAD").splitlines()) == {
-        ".claude/settings.json",
-        "CLAUDE.md",
-        "AGENTS.md",
-    }
+    assert result["untracked"] == [".claude/settings.json", "CLAUDE.md"]
+    assert _git(root, "rev-parse", "HEAD") == initial
     assert _git(root, "show", "HEAD:notes.txt") == "base\n"
     assert _git(root, "show", ":notes.txt") == "staged note\n"
     assert (root / "notes.txt").read_text() == "unstaged note\n"
-    assert json.loads((root / ".claude/settings.json").read_text()) == settings
-    assert (root / "CLAUDE.md").read_bytes() == b"Existing Claude guidance.\r\n"
+    rendered = json.loads((root / ".claude/settings.json").read_text())
+    assert rendered["model"] == "qa-model"
+    assert rendered["permissions"]["allow"] == settings["permissions"]["allow"]
+    assert (root / "CLAUDE.md").read_text().endswith("@AGENTS.md\n")
+    assert (root / "AGENTS.md").read_bytes().endswith(b"Existing guidance.\n")
     tracked = _git(root, "ls-files").splitlines()
-    assert "loadout/config.toml" in tracked
     assert "CLAUDE.md" not in tracked
-    assert "AGENTS.md" not in tracked
     assert ".claude/settings.json" not in tracked
     evidence.cli(root, "check")
+    _git(root, "add", "loadout", ".gitignore")
     _project_example(root, example_before, evidence)
-    source = _instruction_source(root, "CLAUDE.md")
-    original = source.read_bytes()
-    source.write_bytes(original + b"QA source edit.\n")
+    source = _instruction_source(root)
+    source.write_bytes(source.read_bytes() + b"QA source edit.\n")
     evidence.cli(root, "sync")
-    assert (root / "CLAUDE.md").read_bytes() == original + b"QA source edit.\n"
-    (root / "CLAUDE.md").write_text("External QA edit.\n")
+    synced = (root / "AGENTS.md").read_bytes()
+    assert synced.endswith(b"QA source edit.\n")
+    (root / "AGENTS.md").write_text("External QA edit.\n")
     drift = evidence.cli(root, "sync", expected=1)
-    assert "CLAUDE.md" in drift.stderr + drift.stdout
-    assert (root / "CLAUDE.md").read_text() == "External QA edit.\n"
-    (root / "CLAUDE.md").write_bytes(source.read_bytes())
+    assert "AGENTS.md" in drift.stderr + drift.stdout
+    assert (root / "AGENTS.md").read_text() == "External QA edit.\n"
+    (root / "AGENTS.md").write_bytes(synced)
     evidence.cli(root, "sync")
     evidence.cli(root, "check")
     evidence.save(result="Pass", scenarios=["Q02", "Q05", "Q14"], source=str(source))
@@ -254,11 +231,11 @@ def test_global_runtime_fields_and_source_managed_skill(tmp_path, fake_home, evi
     assert result["status"] == "complete"
     source = root / "loadout"
     assert (source / "loadout.toml").is_file()
-    _categories(source)
     machine = tomllib.loads((fake_home / ".config/loadout/config.toml").read_text())
     assert Path(machine["source"]) == source
     evidence.cli(root, "check", "--global")
-    pi.write_text(json.dumps({"defaultModel": "qa-model", "lastChangelogVersion": "qa-runtime-2"}))
+    runtime = json.loads(pi.read_text())
+    pi.write_text(json.dumps({**runtime, "lastChangelogVersion": "qa-runtime-2"}, indent=2) + "\n")
     evidence.cli(root, "sync", "--global")
     assert json.loads(pi.read_text())["lastChangelogVersion"] == "qa-runtime-2"
     evidence.cli(root, "integrate", "skill", "install", "--yes")
@@ -269,7 +246,8 @@ def test_global_runtime_fields_and_source_managed_skill(tmp_path, fake_home, evi
         fake_home / ".pi/agent/skills/loadout/SKILL.md",
     ]
     bundled = ROOT / "src/loadout/_skills/loadout/SKILL.md"
-    assert [path.read_bytes() for path in installed] == [bundled.read_bytes()] * 4
+    body = bundled.read_text().split("---\n", 2)[2]
+    assert all(path.read_text().endswith(body) for path in installed)
     authored = list((source / "skills").rglob("loadout/SKILL.md"))
     assert authored
     assert all(path.read_bytes() == bundled.read_bytes() for path in authored)
@@ -319,7 +297,7 @@ def test_bundled_template_after_init_through_cli(tmp_path, evidence, template):
     assert config["templates"] == [template]
     assert config["template"][template]["vendored"]
     vendored = root / "loadout/templates" / template
-    _categories(vendored)
+    assert {path.name for path in vendored.iterdir() if path.is_dir()} == CATEGORIES
     instructions = (vendored / "instructions.md").read_text().strip()
     assert instructions
     assert instructions in (root / "AGENTS.md").read_text()
@@ -400,16 +378,12 @@ def test_interactive_confirmation_cancellation(tmp_path, evidence, action):
 def test_prepare_source_managed_host_fixture(tmp_path, fake_home, evidence):
     root = _repository(tmp_path / "host fixture")
     evidence.cli(root, "init", "project", "--harness", "claude", "--yes", "--json")
-    config = tomllib.loads((root / "loadout/config.toml").read_text())
-    artifacts = tomllib.loads((root / "loadout" / config["artifacts"]).read_text())["artifact"]
-    (route,) = [
-        row for row in artifacts if row.get("category") == "skills" and "claude" in row["agents"]
-    ]
-    source = root / "loadout" / route["source"] / "loadout"
+    source = root / "loadout/skills/loadout"
     shutil.copytree(ROOT / "src/loadout/_skills/loadout", source)
     evidence.cli(root, "sync")
     installed = root / ".claude/skills/loadout/SKILL.md"
-    assert installed.read_bytes() == (source / "SKILL.md").read_bytes()
+    body = (source / "SKILL.md").read_text().split("---\n", 2)[2]
+    assert installed.read_text().endswith(body)
     isolated_config = fake_home / ".claude"
     isolated_config.mkdir()
     evidence.save(

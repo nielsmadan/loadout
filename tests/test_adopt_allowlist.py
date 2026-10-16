@@ -144,7 +144,7 @@ def test_a_managed_file_inside_an_unmanaged_directory_is_still_read(
     source = tmp_path / "agent-config"
     source.mkdir()
 
-    plan = plan_migration(discover(source, scope="global", agents=("pi",)))
+    plan = plan_migration(discover(source, scope="global", harnesses=("pi",)))
 
     read = {c.path for c in plan.inventory.candidates}
     assert config in read
@@ -166,6 +166,6 @@ def test_opencode_plugin_directory_is_read_under_either_spelling(
     source = tmp_path / "agent-config"
     source.mkdir()
 
-    plan = plan_migration(discover(source, scope="global", agents=("opencode",)))
+    plan = plan_migration(discover(source, scope="global", harnesses=("opencode",)))
 
     assert {singular, plural} <= {c.path for c in plan.inventory.candidates}

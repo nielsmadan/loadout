@@ -96,7 +96,7 @@ of editing its harness-owned settings file.
 Project MCP server definitions reach Claude, Droid, and OpenCode directly.
 Pi reads Claude's `.mcp.json` when that shared destination is present; a Pi-only project has no
 MCP output. Codex has no verified project MCP destination. Global MCP server definitions render
-for all five configured agents. Claude's output owns only `mcpServers` in `.claude.json`; Droid
+for all five configured harnesses. Claude's output owns only `mcpServers` in `.claude.json`; Droid
 writes `.factory/mcp.json`.
 
 Project skills reach all five harnesses. Codex reads `.agents/skills`.
@@ -175,8 +175,8 @@ map replaces the entire field. Top-level `remove = ["instructions.claude.output"
 inherited TOML key path before child fields apply; remove a whole target before redeclaring it
 for wholesale replacement. Missing/overlapping paths and traversal through lists are errors.
 Removing an agent field exposes applicable `[all]` defaults. Legacy instruction targets also
-accept `substitute`. Native profiles select complete artifact indexes; reuse shared inputs in
-those indexes and vary only the final overlays. Project configs and template catalogs have no
+accept `substitute`. Reuse shared fragments across profiles and vary only the final overlay, as
+in `settings = ["pi", "pi-autonomous"]`. Project configs and template catalogs have no
 `extends`; catalogs compose selected parts.
 
 When a non-default profile is active and the request names no profile, ask whether the change is:
@@ -204,7 +204,7 @@ For a permission error, verify the exact blocked path using the running environm
 diagnostics, report that path and verdict, and stop. Do not relocate the source or weaken the
 operation to work around a real denial.
 
-Finish by naming changed source files, configured agents reached, unsupported or excluded agents,
+Finish by naming changed source files, configured harnesses reached, unsupported or excluded agents,
 and whether sync completed.
 
 ## Porting a change made outside loadout

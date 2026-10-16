@@ -176,3 +176,20 @@ def test_a_block_scalar_description_survives_adoption(
         'description: "Reviews a diff.\\nStrictly.\\n"\n'
         in (source / "loadout/agents/reviewer.md").read_text()
     )
+
+
+def test_adopted_agents_appear_in_the_readiness_list(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    """Review 2.13."""
+    _write(fake_home / ".claude/agents/reviewer.md", CLAUDE)
+    source = tmp_path / "source"
+    source.mkdir()
+    argv = ["init", "global", str(source), "--harness", "claude", "--harness", "codex"]
+
+    assert loadout.main([*argv, "--dry-run", "--json"]) == 0
+
+    categories = json.loads(capsys.readouterr().out)["categories"]
+    assert sorted(
+        (c["harnesses"][0], c["state"]) for c in categories if c["category"] == "agents"
+    ) == [("claude", "routed"), ("codex", "routed")]

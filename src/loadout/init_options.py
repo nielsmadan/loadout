@@ -2,17 +2,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
-from .output import ArtifactScope
+from .output import Scope
 
 
 @dataclass(frozen=True)
 class InitOptions:
     root: Path
-    scope: ArtifactScope
-    source: Path | None = None
-    agents: tuple[str, ...] = ()
-    registration: str | None = None
+    scope: Scope
+    harnesses: tuple[str, ...] = ()
+    registration: Literal["keep", "replace"] | None = None
     dry_run: bool = False
     json: bool = False
     yes: bool = False

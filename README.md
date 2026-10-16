@@ -42,18 +42,16 @@ Install the version-matched `loadout` skill into the configured global Loadout s
     loadout integrate skill status
     loadout integrate skill uninstall        # remove the owned source copy and generated outputs
 
-The command reads the machine config and active profile. Legacy manifests vendor a normal
-`skills/loadout/` source. An existing copy is selected using the same declared overrides as
-rendering; `--source NAME` must identify that active source. When no copy exists and several
-declared sources offer skills, choose the installation source with `--source NAME`.
-Native manifests install into every active skill-directory tree route, deduplicating shared source
-paths and reporting each route's consumers. `--profile NAME` overrides the active profile.
+The command reads the machine config and active profile and vendors a normal `skills/loadout/`
+source copy. An existing copy is selected using the same declared overrides as rendering;
+`--source NAME` must identify that active source. When no copy exists and several declared
+sources offer skills, choose the installation source with `--source NAME`. `--profile NAME`
+overrides the active profile.
 
-An ownership marker records the installed content hash. Legacy markers stay inside the source
-copy and are excluded by the skill renderer; native markers live in `.loadout-bundles/` outside
-deployable trees. Native installation work and recoverable originals stay under private,
-gitignored `.loadout-state/`. Reinstalling refreshes an unchanged older copy. A source copy you edited, an unowned
-skill with the same name, or a generated output edited outside Loadout is reported and left alone.
+An ownership marker, `.loadout-bundle.toml` inside the source copy, records the installed content
+hash; the skill renderer never copies it. Reinstalling refreshes an unchanged older copy. A source
+copy you edited, an unowned skill with the same name, or a generated output edited outside Loadout
+is reported and left alone, and the command exits 3.
 Uninstall removes only the owned source and the files rendered from it that sync would accept as
 its own (the current render, what was committed, or what sync last wrote); unrelated files in the
 destination directory survive.
@@ -61,18 +59,13 @@ When uninstalling an overriding copy, the command also removes its `loadout` ove
 the manifest that declares it, preserving other entries, comments and file mode. The earlier
 source's skill becomes active again and the command's sync deploys it. An inherited declaration
 is updated in its declaring parent, affecting every profile that inherits those sources.
-Native changes preflight all selected destinations, roll back failed changes while their postimages
-still match, and update normal deployment receipts. A rollback conflict retains originals and
-`recovery.json` in the reported private work directory for explicit reconciliation.
-Mixed native/legacy installs recheck frozen legacy output bytes, modes and absences immediately
-before each write or removal; concurrent edits are preserved and earlier changes roll back.
-If a native source copy disappears, reinstall repairs it using its unchanged external ownership
-marker; uninstall removes that marker. Invalid or changed ownership metadata blocks the operation.
+Each file is moved aside before it is removed and put back if a later step fails; one that cannot
+be put back is left where the error names it.
 
 Invoke the installed skill as `loadout` using the harness's skill syntax. Configuration defaults
 to personal rules for the current project; use `--project` for committed repository configuration
 or `--global` for machine-wide configuration. The skill edits Loadout sources, applies generic
-requests to configured agents that support them, and runs the matching sync command. Restart an
+requests to configured harnesses that support them, and runs the matching sync command. Restart an
 already-running agent session after first installation so it refreshes its skill catalog.
 
 A fragment name may be qualified as `source/name`. Loadout refuses an unqualified name that more
@@ -87,8 +80,10 @@ loadout itself could have produced: rendered from the committed source and from 
 tree, under every declared profile. A file matching none of them was written by something
 else, so `sync` names it, changes nothing, and exits 1. It prints a diff alongside the name —
 the `-` lines are the ones that exist only on disk, so a permission a harness granted itself at
-runtime is reported verbatim rather than silently discarded. Port the edit into the source with
-the bundled `/loadout` skill, or pass `--force` to discard it.
+runtime is reported verbatim rather than silently discarded. When the terminal shortens that
+diff, the whole of it goes to `$XDG_STATE_HOME/loadout/sync-abort.diff` (mode 0600), which the
+next such abort replaces. Port the edit into the source with the bundled `/loadout` skill, or
+pass `--force` to discard it.
 
 Comparison is by parsed document for JSON targets, not by bytes, so a harness re-serialising
 its own config in a different key order does not read as an edit.
@@ -181,8 +176,8 @@ time, per [0011](docs/decisions/0011-a-destination-follows-a-relocated-harness.m
 Global init discovers existing configuration in live harness roots and the selected directory,
 which defaults to cwd. Under a harness root it reads only the paths loadout manages and leaves
 everything else alone unread, so runtime state, `.DS_Store` files and notes never stop it; the
-[list](docs/reference/migration.md#what-discovery-reads) is per harness. It migrates into `<source>/loadout/`, with explicit native category routes
-and private sources where required, and registers that actual manifest directory and resolved
+[list](docs/reference/migration.md#what-discovery-reads) is per harness. It migrates into `<source>/loadout/`: a manifest with one block per harness,
+the source slices it adopted beside it, and private sources where required. It registers that actual manifest directory and resolved
 harness list. That list becomes the default for fresh project init. An existing Loadout manifest
 is recognized as source and left intact; repeat init reports no migration while refreshing the
 saved harness default.
@@ -224,7 +219,8 @@ the global source render the same profile, and neither retires the other's outpu
 ## `loadout.toml`
 
 A repo's root `loadout.toml` — the global source's manifest, or a project's — declares the
-sources fragments come from and the instruction files to render from them:
+sources fragments come from and the instruction files to render from them. A top-level key it does
+not read, whether a table or a value, is refused by name rather than ignored:
 
 ```toml
 [[source]]

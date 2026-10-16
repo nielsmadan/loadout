@@ -38,7 +38,7 @@ def test_many_siblings_share_privacy_probe(tmp_path: Path, monkeypatch) -> None:
         return original(command, *args, **kwargs)
 
     monkeypatch.setattr(subprocess, "run", run)
-    inventory = discover(tmp_path, scope="project", agents=("claude",))
+    inventory = discover(tmp_path, scope="project", harnesses=("claude",))
     migrated = [
         candidate for candidate in inventory.candidates if candidate.disposition == "migrated"
     ]

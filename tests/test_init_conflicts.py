@@ -107,6 +107,15 @@ def test_disagreeing_project_instructions_are_reported_and_the_rest_adopted(
     assert 'allow = ["=ls"]' in (root / "loadout/permissions.toml").read_text()
     assert (root / "CLAUDE.md").read_text() == "Claude rules.\n"
     assert (root / "AGENTS.md").read_text() == "Agents rules.\n"
+    git = ["git", "-C", str(root)]
+    tracked = subprocess.run(
+        [*git, "ls-files", "CLAUDE.md", "AGENTS.md"], capture_output=True, check=True
+    )
+    assert tracked.stdout.decode().splitlines() == ["AGENTS.md", "CLAUDE.md"]
+    ignored = subprocess.run(
+        [*git, "check-ignore", "CLAUDE.md", "AGENTS.md"], capture_output=True, check=False
+    )
+    assert (ignored.returncode, ignored.stdout) == (1, b"")
 
 
 def test_merged_project_instructions_land_through_the_guard(tmp_path: Path, capsys) -> None:

@@ -12,12 +12,13 @@ Edit the declared source for each configured consumer. Generated harness files a
 1. For setup or migration, read [onboarding](references/onboarding.md). Preview with
    `loadout init project --dry-run --json` or `loadout init global --dry-run --json`, resolve
    agents and ownership, then apply the approved
-   transaction. Never execute discovered scripts or installers.
+   plan. Never execute discovered scripts or installers.
 2. For ordinary changes, read [configuration routing](references/configuration.md). Default to
    personal configuration for the current project; explicit project/global scope takes precedence.
-   Locate the existing config and follow its declared producers, including native artifact parts
-   and trees. Ask before widening scope or changing a source shared by other consumers.
-3. Apply a generic request to configured agents with a sound mapping. Report unsupported consumers.
+   Locate the existing config and follow its declared producers: the manifest's agent blocks and
+   the source slices they name. Ask before widening scope or changing a source shared by other
+   consumers.
+3. Apply a generic request to configured harnesses with a sound mapping. Report unsupported consumers.
    Keep MCP server definitions separate from MCP tool-approval policy. Preserve ordering, comments,
    private sources and unrelated fields; never create overlapping producers.
 4. Sync the edited source: `loadout sync --root <repo>` for project/personal changes;
@@ -28,11 +29,11 @@ Edit the declared source for each configured consumer. Generated harness files a
 
 ## Examples
 
-- “Set up Loadout here” previews discovery, resolves the scope and configured agents, and shows
+- “Set up Loadout here” previews discovery, resolves the scope and configured harnesses, and shows
   writes and removals before applying. Success leaves editable, uncommitted source and a backup.
-- “Allow `just test` for me” edits the existing personal permissions producer and syncs. If a
-  migrated native route has no personal producer, ask before changing committed ownership.
-- “Change the global Pi model” follows the declared native settings part when present, edits its
+- “Allow `just test` for me” edits the existing personal permissions producer and syncs. If the
+  project has no personal producer, ask before changing committed ownership.
+- “Change the global Pi model” follows the settings fragment Pi's agent block names, edits its
   `defaultModel` value and syncs the selected profile.
 
 ## Troubleshooting

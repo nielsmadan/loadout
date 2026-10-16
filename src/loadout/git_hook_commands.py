@@ -21,7 +21,7 @@ def run_hook(event: str, root: Path, profile: str, arguments: list[str]) -> int:
     if result:
         command = shlex.join(["loadout", "sync", "--root", str(root), "--profile", profile])
         print(
-            f"Git {event.removeprefix('post-')} already completed; Loadout regeneration failed. "
+            f"Git {event.removeprefix('post-')} already completed; loadout regeneration failed. "
             f"Preserve output edits, reconcile the reported conflict, then run: {command}",
             file=sys.stderr,
         )

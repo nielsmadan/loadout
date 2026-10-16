@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .agents import known_agents
 from .errors import LoadoutError
+from .harnesses import KNOWN_HARNESSES
 
 
 @dataclass(frozen=True)
@@ -41,9 +41,11 @@ def parse_skill_policies(raw: object, label: str = "skills") -> tuple[SkillPolic
             raise LoadoutError(f"{label}.{name}.agents must be a list of strings")
         if len(agents) != len(set(agents)):
             raise LoadoutError(f"{label}.{name}.agents contains duplicates")
-        unknown_agents = sorted(set(agents) - known_agents())
-        if unknown_agents:
-            raise LoadoutError(f"{label}.{name}: unknown agent(s) {', '.join(unknown_agents)}")
+        unknown_harnesses = sorted(set(agents) - KNOWN_HARNESSES)
+        if unknown_harnesses:
+            raise LoadoutError(
+                f"{label}.{name}: unknown harness(es) {', '.join(unknown_harnesses)}"
+            )
         render = block.get("render", True)
         if not isinstance(render, bool):
             raise LoadoutError(f"{label}.{name}.render must be a boolean")

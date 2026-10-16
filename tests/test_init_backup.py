@@ -7,6 +7,7 @@ the untracking of the generated outputs it ignores.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -573,3 +574,274 @@ def test_every_init_json_answer_carries_status_and_exit_code(
         answers.append((envelope["status"], envelope["exit_code"]))
 
     assert answers == [("preview", 0), ("complete", 0), ("restored", 0), ("error", 3)]
+
+
+def _settings_entry(manifest: dict) -> dict:
+    (entry,) = (
+        e for e in manifest["entries"] if Path(e["path"]).parts[-2:] == (".claude", "settings.json")
+    )
+    return entry
+
+
+def test_each_before_image_is_its_own_file_beside_the_manifest(tmp_path: Path) -> None:
+    """Review 2.8: the manifest names each image by digest instead of carrying it."""
+    root = _project(tmp_path / "p")
+    assert _init_project(root, "--yes") == 0
+    (backup,) = backups()
+
+    entry = _settings_entry(json.loads((backup.directory / "manifest.json").read_text()))
+
+    digest = hashlib.sha256(CLAUDE_SETTINGS.encode()).hexdigest()
+    assert entry["sha256"] == digest
+    assert (backup.directory / "images" / digest).read_text() == CLAUDE_SETTINGS
+
+
+def test_a_damaged_image_refuses_the_restore_and_changes_nothing(tmp_path: Path) -> None:
+    root = _project(tmp_path / "p")
+    assert _init_project(root, "--yes") == 0
+    (backup,) = backups()
+    entry = _settings_entry(json.loads((backup.directory / "manifest.json").read_text()))
+    image = backup.directory / "images" / entry["sha256"]
+    image.write_text("{}\n")
+    adopted = _snapshot(root)
+
+    with pytest.raises(LoadoutError, match=f"{image}.*damaged"):
+        workflow.run_restore(yes=True, as_json=True)
+
+    assert _snapshot(root) == adopted
+    assert image.read_text() == "{}\n"
+
+
+def test_a_reduced_backup_keeps_only_the_images_of_what_it_kept(tmp_path: Path, capsys) -> None:
+    root = _project(tmp_path / "p")
+    assert _init_project(root, "--yes") == 0
+    (root / ".claude/settings.json").write_text('{"mine": true}\n')
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 1
+
+    (backup,) = backups()
+    manifest = json.loads((backup.directory / "manifest.json").read_text())
+    assert (
+        _settings_entry(manifest)["sha256"] == hashlib.sha256(CLAUDE_SETTINGS.encode()).hexdigest()
+    )
+    stored = {image.name for image in (backup.directory / "images").iterdir()}
+    assert stored == {e["sha256"] for e in manifest["entries"] if e["kind"] == "file"}
+
+
+def test_the_preview_lists_only_operations_init_applies(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    """Review 3.1: the first render's outputs are listed under `outputs`, not as operations."""
+    settings = _write(fake_home / ".claude/settings.json", CLAUDE_SETTINGS)
+    _write(fake_home / ".claude/CLAUDE.md", "# Me\n")
+    source = tmp_path / "source"
+    source.mkdir()
+    argv = ["init", "global", str(source), "--harness", "claude", "--dry-run", "--json"]
+
+    assert loadout.main(argv) == 0
+
+    preview = json.loads(capsys.readouterr().out)
+    assert {o["phase"] for o in preview["operations"]} == {"source", "registration", "ignore"}
+    assert str(settings) in {o["path"] for o in preview["outputs"]}
+
+
+def test_the_preview_carries_exactly_these_fields(tmp_path: Path, fake_home: Path, capsys) -> None:
+    """Review 3.5: a field the plan never fills is not part of `init --json`."""
+    _write(fake_home / ".claude/settings.json", CLAUDE_SETTINGS)
+    source = tmp_path / "source"
+    source.mkdir()
+    argv = ["init", "global", str(source), "--harness", "claude", "--dry-run", "--json"]
+
+    assert loadout.main(argv) == 0
+
+    assert sorted(json.loads(capsys.readouterr().out)) == [
+        "already_initialized",
+        "candidates",
+        "categories",
+        "complete",
+        "delinked",
+        "exit_code",
+        "expected_outputs",
+        "generated_writes",
+        "harnesses",
+        "ignores",
+        "initialized",
+        "issues",
+        "mappings",
+        "notes",
+        "obsolete",
+        "operations",
+        "originals",
+        "outputs",
+        "private_paths",
+        "registration",
+        "root",
+        "scope",
+        "source_repository",
+        "source_root",
+        "source_writes",
+        "status",
+        "unadopted",
+        "untrack_paths",
+        "validated",
+    ]
+
+
+def test_a_first_render_that_is_not_written_restores_every_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """Review 5.1: the render refusing is a failure like any other, so init undoes itself."""
+    root = _project(tmp_path / "p")
+    before = _snapshot(root)
+    monkeypatch.setattr(workflow, "_first_sync", lambda *args, **kwargs: 1)
+
+    assert _init_project(root, "--yes") == 1
+
+    assert "the first render was not written" in capsys.readouterr().err
+    assert _snapshot(root) == before
+
+
+def test_an_interrupt_during_apply_restores_every_path_and_still_interrupts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review 5.2: Ctrl-C is not an Exception, and must neither skip the restore nor be
+    swallowed by it."""
+    root = _project(tmp_path / "p")
+    before = _snapshot(root)
+    deploy = workflow.deploy
+
+    def interrupted(*args: object, **kwargs: object) -> object:
+        deploy(*args, **kwargs)  # type: ignore[arg-type]
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(workflow, "deploy", interrupted)
+
+    with pytest.raises(KeyboardInterrupt):
+        _init_project(root, "--yes")
+
+    assert _snapshot(root) == before
+
+
+def test_the_backup_is_readable_only_by_its_owner(tmp_path: Path) -> None:
+    """Review 5.3: before-images can hold anything the adopted files held."""
+    root = _project(tmp_path / "p")
+    assert _init_project(root, "--yes") == 0
+    (backup,) = backups()
+
+    modes = {
+        "root": backups_root().stat().st_mode & 0o777,
+        "backup": backup.directory.stat().st_mode & 0o777,
+        "images": (backup.directory / "images").stat().st_mode & 0o777,
+        "manifest": (backup.directory / "manifest.json").stat().st_mode & 0o777,
+    }
+    image_modes = {p.stat().st_mode & 0o777 for p in (backup.directory / "images").iterdir()}
+
+    assert modes == {"root": 0o700, "backup": 0o700, "images": 0o700, "manifest": 0o600}
+    assert image_modes == {0o600}
+
+
+def _interrupted_init(root: Path) -> None:
+    """An init killed after its first render, leaving its backup marked in progress."""
+    with pytest.MonkeyPatch.context() as patch:
+        _killed(patch)
+        _fail_after_deploy(patch)
+        assert _init_project(root, "--yes") == 1
+
+
+def _terminal(monkeypatch: pytest.MonkeyPatch, answer: str) -> list[str]:
+    prompts: list[str] = []
+
+    def reply(prompt: str) -> str:
+        prompts.append(prompt)
+        return answer
+
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr(workflow, "_answer", reply)
+    return prompts
+
+
+def test_the_next_init_at_a_terminal_restores_an_interrupted_one_when_asked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """Review 5.9."""
+    root = _project(tmp_path / "p")
+    before = _snapshot(root)
+    _interrupted_init(root)
+    prompts = _terminal(monkeypatch, "y")
+
+    assert _init_project(root) == 0
+
+    assert prompts[0].startswith("An earlier init did not finish.")
+    assert "Restored what init changed" in capsys.readouterr().out
+    assert _snapshot(root) == before
+
+
+def test_declining_to_restore_an_interrupted_init_keeps_its_backup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    root = _project(tmp_path / "p")
+    _interrupted_init(root)
+    _terminal(monkeypatch, "n")
+
+    assert _init_project(root) == 2
+
+    assert "declined; the backup stays" in capsys.readouterr().out
+    assert [b.interrupted for b in backups()] == [True]
+
+
+def test_without_a_terminal_an_interrupted_init_is_named_and_left(tmp_path: Path, capsys) -> None:
+    root = _project(tmp_path / "p")
+    _interrupted_init(root)
+    (backup,) = backups()
+    capsys.readouterr()
+
+    assert _init_project(root, "--yes") == 2
+
+    assert (
+        f"an earlier init did not finish; restore it with `loadout init restore` (backup {backup.directory})"
+        in capsys.readouterr().err
+    )
+    assert backup.interrupted
+
+
+def test_init_restore_without_yes_or_a_terminal_is_refused(tmp_path: Path, capsys) -> None:
+    root = _project(tmp_path / "p")
+    assert _init_project(root, "--yes") == 0
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore"]) == 2
+
+    assert "init restore requires --yes" in capsys.readouterr().err
+    assert len(backups()) == 1
+
+
+def test_init_restore_at_a_terminal_asks_and_honours_a_no(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    root = _project(tmp_path / "p")
+    assert _init_project(root, "--yes") == 0
+    adopted = _snapshot(root)
+    prompts = _terminal(monkeypatch, "n")
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore"]) == 0
+
+    assert prompts[0].startswith("Restore everything init changed")
+    assert "declined; no changes made" in capsys.readouterr().out
+    assert _snapshot(root) == adopted
+
+
+def test_init_restore_at_a_terminal_restores_on_yes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    root = _project(tmp_path / "p")
+    before = _snapshot(root)
+    assert _init_project(root, "--yes") == 0
+    _terminal(monkeypatch, "yes")
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore"]) == 0
+
+    assert "Restored what init changed" in capsys.readouterr().out
+    assert _snapshot(root) == before

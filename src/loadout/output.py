@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hashlib
+import os
 import stat
+import tempfile
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -11,7 +14,7 @@ from tomlkit.items import Item
 
 from .errors import LoadoutError
 
-ArtifactScope = Literal["project", "global"]
+Scope = Literal["project", "global"]
 CATEGORIES = frozenset(
     {
         "instructions",
@@ -48,8 +51,6 @@ class Merged:
     document: str
     records: tuple[tuple[Path, str], ...] = ()
     format: str = "toml"
-    native: bool = False
-    emit_empty: bool = False
 
 
 @dataclass(frozen=True)
@@ -78,6 +79,41 @@ def no_symlinks(path: Path, root: Path | None = None) -> None:
         if current in (root, current.parent):
             break
         current = current.parent
+
+
+def read_file(path: Path) -> FrozenFile | None:
+    no_symlinks(path)
+    for parent in path.parents:
+        if parent.exists() and not parent.is_dir():
+            raise LoadoutError(f"deployment parent must be a directory: {parent}")
+    if not path.exists():
+        return None
+    metadata = path.stat()
+    if not stat.S_ISREG(metadata.st_mode):
+        raise LoadoutError(f"deployment path must be a regular file: {path}")
+    return FrozenFile(path.read_bytes(), stat.S_IMODE(metadata.st_mode))
+
+
+def atomic_install(path: Path, frozen: FrozenFile, boundary: Path | None = None) -> None:
+    """Replace `path` with `frozen`, refusing a link between it and `boundary` (or `/`)."""
+    no_symlinks(path, boundary)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix=".loadout-")
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(frozen.content)
+            handle.flush()
+            os.fchmod(handle.fileno(), frozen.mode)
+            os.fsync(handle.fileno())
+        no_symlinks(path, boundary)
+        os.replace(temporary, path)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
+
+
+def sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
 
 
 def item_name(name: str, path: Path) -> str:

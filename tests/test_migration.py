@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import subprocess
-import tomllib
 from pathlib import Path
 
 import pytest
@@ -10,8 +9,10 @@ import pytest
 import loadout
 from loadout.discovery import discover, entry_state, live_roots
 from loadout.emit import render_all
+from loadout.errors import LoadoutError
 from loadout.migration import plan_migration
 from loadout.migration_models import MigrationPlan
+from loadout.migration_transaction import prepare_migration
 
 pytestmark = pytest.mark.integration
 
@@ -25,7 +26,7 @@ def write(root: Path, relative: str, content: str | bytes, mode: int = 0o644) ->
 
 
 def migration(root: Path, agents: tuple[str, ...] = ("claude",)) -> MigrationPlan:
-    plan = plan_migration(discover(root, scope="project", agents=agents))
+    plan = plan_migration(discover(root, scope="project", harnesses=agents))
     assert plan.complete, plan.preview()
     return plan
 
@@ -34,17 +35,12 @@ def generated(plan: MigrationPlan, path: Path) -> bytes:
     return next(write.content for write in plan.generated_writes if write.path == path)
 
 
-def index(plan: MigrationPlan) -> dict[str, object]:
-    source = next(w for w in plan.source_writes if w.path.name == "artifacts.toml")
-    return tomllib.loads(source.content.decode())
-
-
 def test_shared_instructions_do_not_invent_scope_or_harnesses(tmp_path: Path) -> None:
     write(tmp_path, "AGENTS.md", "Shared rules\n")
     inventory = discover(tmp_path)
-    assert {issue.code for issue in inventory.issues} == {"scope-required", "agents-required"}
+    assert {issue.code for issue in inventory.issues} == {"scope-required", "harnesses-required"}
     assert not plan_migration(inventory).complete
-    assert inventory.agents == ()
+    assert inventory.harnesses == ()
 
 
 def test_nested_instructions_and_program_dependency_layout(tmp_path: Path) -> None:
@@ -99,7 +95,7 @@ def test_project_init_leaves_an_agent_file_it_cannot_read_in_place(tmp_path: Pat
     assert all("agents" not in write.path.parts for write in plan.source_writes)
 
 
-def test_credentials_and_personal_sources_are_excluded_from_checkpoints(tmp_path: Path) -> None:
+def test_credentials_and_personal_sources_are_kept_private(tmp_path: Path) -> None:
     secret = "literal-test-token-123"
     mcp = write(
         tmp_path,
@@ -119,7 +115,6 @@ def test_credentials_and_personal_sources_are_excluded_from_checkpoints(tmp_path
     plan = migration(tmp_path)
     assert {mcp, personal, auth} <= set(plan.private_paths)
     assert skill not in set(plan.private_paths)
-    assert set(plan.checkpoint_paths).isdisjoint({mcp, personal, auth})
     assert secret not in json.dumps(plan.preview())
     assert all(w.private for w in plan.source_writes if secret.encode() in w.content)
     assert all(c.content == b"" for c in plan.inventory.candidates if c.path == auth)
@@ -130,7 +125,7 @@ def test_default_claude_mcp_is_sibling_of_default_harness_directory(
     tmp_path: Path, fake_home: Path
 ) -> None:
     mcp = write(fake_home, ".claude.json", '{"mcpServers": {"one":{"command":"test"}}}')
-    plan = plan_migration(discover(tmp_path, scope="global", agents=("claude",)))
+    plan = plan_migration(discover(tmp_path, scope="global", harnesses=("claude",)))
     assert plan.complete, plan.preview()
     assert generated(plan, mcp)
     assert fake_home / ".claude/.claude.json" not in {c.path for c in plan.inventory.candidates}
@@ -153,7 +148,7 @@ def test_symlink_into_known_runtime_root_is_excluded(tmp_path: Path) -> None:
     link = tmp_path / ".claude/skills/probe/SKILL.md"
     link.parent.mkdir(parents=True)
     link.symlink_to(auth)
-    inventory = discover(tmp_path, scope="project", agents=("claude",))
+    inventory = discover(tmp_path, scope="project", harnesses=("claude",))
     assert all(c.disposition == "runtime-private exclusion" for c in inventory.candidates)
     assert all(c.content == b"" for c in inventory.candidates)
 
@@ -170,7 +165,7 @@ def test_unmanaged_entries_under_a_harness_root_are_never_read(tmp_path: Path, n
 
 def test_jsonc_at_a_managed_path_is_adopted_as_opencode_json(tmp_path: Path) -> None:
     path = write(tmp_path, "opencode.jsonc", '{ // comment\n "theme": "x",\n}\n')
-    plan = plan_migration(discover(tmp_path, scope="project", agents=("opencode",)))
+    plan = plan_migration(discover(tmp_path, scope="project", harnesses=("opencode",)))
     assert plan.complete
     written = {w.path: w.content for w in plan.source_writes}
     assert json.loads(written[tmp_path / "loadout/settings/opencode.json"]) == {"theme": "x"}
@@ -180,7 +175,7 @@ def test_jsonc_at_a_managed_path_is_adopted_as_opencode_json(tmp_path: Path) -> 
 def test_jsonc_beside_opencode_json_blocks_complete_migration(tmp_path: Path) -> None:
     path = write(tmp_path, "opencode.jsonc", "{}\n")
     json_path = write(tmp_path, "opencode.json", "{}\n")
-    plan = plan_migration(discover(tmp_path, scope="project", agents=("opencode",)))
+    plan = plan_migration(discover(tmp_path, scope="project", harnesses=("opencode",)))
     assert not plan.complete
     assert [(i.code, i.paths) for i in plan.issues] == [
         ("opencode-both-formats", (path, json_path))
@@ -283,7 +278,7 @@ def test_runtime_history_references_are_excluded_before_dependency_discovery(
         ".claude.json",
         '{"mcpServers": {}, "projects": {"historic": {"path": "/unknown/historic-project"}}}',
     )
-    plan = plan_migration(discover(tmp_path, scope="global", agents=("claude",)))
+    plan = plan_migration(discover(tmp_path, scope="global", harnesses=("claude",)))
     assert plan.complete, plan.preview()
 
 
@@ -302,7 +297,7 @@ def test_the_source_directory_is_never_scanned_for_harness_layouts(
     ):
         write(tmp_path, relative, "{}\n")
     live = write(fake_home, ".claude/CLAUDE.md", "Live rules.\n")
-    plan = plan_migration(discover(tmp_path, scope="global", agents=("claude",)))
+    plan = plan_migration(discover(tmp_path, scope="global", harnesses=("claude",)))
     assert plan.complete, plan.preview()
     assert {c.path for c in plan.inventory.candidates} == {live}
 
@@ -331,7 +326,6 @@ def test_private_instruction_excludes_canonical_original_and_aliases(tmp_path: P
     originals = {canonical, tmp_path / "CLAUDE.md", tmp_path / "AGENTS.md"}
     assert originals <= set(plan.private_paths)
     assert {"/" + p.relative_to(tmp_path).as_posix() for p in originals} <= set(plan.ignores)
-    assert set(plan.checkpoint_paths).isdisjoint(originals)
     assert set(plan.obsolete).isdisjoint(originals)
 
 
@@ -360,7 +354,7 @@ def test_relative_dependencies_are_adopted_at_their_deployed_layout(fake_home: P
     helper = write(fake_home, ".claude/scripts/common.sh", "true\n")
     source = fake_home / "agent-config"
     source.mkdir()
-    plan = plan_migration(discover(source, scope="global", agents=("claude",)))
+    plan = plan_migration(discover(source, scope="global", harnesses=("claude",)))
     assert plan.complete, plan.preview()
     assert generated(plan, script) == script.read_bytes()
     assert generated(plan, helper) == helper.read_bytes()
@@ -379,7 +373,7 @@ def test_absolute_dependency_on_a_de_linked_original_stays_blocked(
     (fake_home / ".claude").symlink_to(dotfiles, target_is_directory=True)
     source = tmp_path / "source"
     source.mkdir()
-    plan = plan_migration(discover(source, scope="global", agents=("claude",)))
+    plan = plan_migration(discover(source, scope="global", harnesses=("claude",)))
     assert {issue.code for issue in plan.issues} == {"dependency-activation"}
     assert not plan.complete
 
@@ -393,7 +387,7 @@ def test_instruction_search_records_each_traversed_directory(tmp_path: Path) -> 
     assert entry_state(tmp_path / "src") != before[tmp_path / "src"]
     assert any(
         c.path == instruction
-        for c in discover(tmp_path, scope="project", agents=("claude",)).candidates
+        for c in discover(tmp_path, scope="project", harnesses=("claude",)).candidates
     )
 
 
@@ -414,7 +408,7 @@ def test_symlinked_harness_root_does_not_expand_inventory_boundary(tmp_path: Pat
     project.mkdir()
     external = write(tmp_path, "external/skills/one/SKILL.md", "external skill\n")
     (project / ".claude").symlink_to(external.parents[2], target_is_directory=True)
-    plan = plan_migration(discover(project, scope="project", agents=("claude",)))
+    plan = plan_migration(discover(project, scope="project", harnesses=("claude",)))
     assert {issue.code for issue in plan.issues} == {"external-symlink"}
     assert plan.source_writes == ()
 
@@ -448,14 +442,14 @@ def test_a_project_under_a_symlinked_prefix_is_not_external(tmp_path: Path) -> N
     alias = tmp_path / "alias"
     alias.symlink_to(tmp_path / "real", target_is_directory=True)
     project = alias / "project"
-    plan = plan_migration(discover(project, scope="project", agents=("claude",)))
+    plan = plan_migration(discover(project, scope="project", harnesses=("claude",)))
     assert plan.complete, plan.preview()
     assert project / "loadout/skills/one/SKILL.md" in {w.path for w in plan.source_writes}
 
 
 def test_symlink_cycle_in_harness_root_is_reported(tmp_path: Path) -> None:
     (tmp_path / ".claude").symlink_to(".claude", target_is_directory=True)
-    plan = plan_migration(discover(tmp_path, scope="project", agents=("claude",)))
+    plan = plan_migration(discover(tmp_path, scope="project", harnesses=("claude",)))
     assert {issue.code for issue in plan.issues} == {"symlink-target"}
 
 
@@ -467,12 +461,11 @@ def test_private_and_runtime_originals_have_retained_dispositions(fake_home: Pat
     mixed = write(fake_home, ".codex/config.toml", 'model="test"\n[trust]\nvalue=true\n')
     source = fake_home / "agent-config"
     source.mkdir()
-    plan = plan_migration(discover(source, scope="global", agents=("claude", "codex")))
+    plan = plan_migration(discover(source, scope="global", harnesses=("claude", "codex")))
     assert plan.complete, plan.preview()
     retained = {item.path for item in plan.originals if item.action == "retain"}
     assert {private, auth, marker, mixed} <= retained
     assert plan.obsolete == ()
-    assert plan.checkpoint_paths == ()
     assert {private, auth, mixed} <= set(plan.private_paths)
 
 
@@ -491,7 +484,7 @@ def test_symlinked_harness_absolute_dependency_on_retired_source_is_blocked(
     (fake_home / ".claude").symlink_to(dotfiles / "canonical", target_is_directory=True)
     source = tmp_path / "source"
     source.mkdir()
-    plan = plan_migration(discover(source, scope="global", agents=("claude",)))
+    plan = plan_migration(discover(source, scope="global", harnesses=("claude",)))
     assert {issue.code for issue in plan.issues} == {"dependency-activation"}
     assert plan.issues[0].paths == (
         fake_home / ".claude/hooks/check.sh",
@@ -535,7 +528,7 @@ def test_direct_harness_root_absolute_source_dependencies_are_blocked(
     write(target, "hooks/check.sh", f"source {reference}\n")
     source = tmp_path / "agent-config"
     source.mkdir()
-    plan = plan_migration(discover(source, scope="global", agents=("claude",)))
+    plan = plan_migration(discover(source, scope="global", harnesses=("claude",)))
     assert {issue.code for issue in plan.issues} == {"dependency-activation"}
     assert {issue.paths[0] for issue in plan.issues} == {destination / "hooks/check.sh"}
     assert not plan.complete
@@ -550,7 +543,7 @@ def test_one_skill_name_with_two_contents_is_left_out_and_the_rest_adopted(
     source = fake_home / "agent-config"
     source.mkdir()
 
-    plan = plan_migration(discover(source, scope="global", agents=("claude", "codex")))
+    plan = plan_migration(discover(source, scope="global", harnesses=("claude", "codex")))
 
     assert plan.issues == ()
     assert plan.complete
@@ -575,7 +568,7 @@ def test_different_project_instruction_documents_are_left_out(tmp_path: Path) ->
     claude = write(tmp_path, "CLAUDE.md", "Claude rules.\n")
     agents = write(tmp_path, "AGENTS.md", "Agents rules.\n")
     write(tmp_path, ".claude/settings.json", '{"permissions": {"allow": ["Bash(ls)"]}}\n')
-    inventory = discover(tmp_path, scope="project", agents=("claude", "codex"))
+    inventory = discover(tmp_path, scope="project", harnesses=("claude", "codex"))
 
     plan = plan_migration(inventory)
 
@@ -603,7 +596,23 @@ def test_different_global_instruction_documents_stay_per_harness(fake_home: Path
     write(fake_home, ".codex/AGENTS.md", "Codex global.\n")
     source = fake_home / "agent-config"
     source.mkdir()
-    plan = plan_migration(discover(source, scope="global", agents=("claude", "codex")))
+    plan = plan_migration(discover(source, scope="global", harnesses=("claude", "codex")))
     written = {w.path.relative_to(source).as_posix(): w.content for w in plan.source_writes}
     assert written["loadout/instructions/claude.md"] == b"Claude global.\n"
     assert written["loadout/instructions/codex.md"] == b"Codex global.\n"
+
+
+@pytest.mark.parametrize("name", ["FACTORY_HOME_OVERRIDE", "CODEX_HOME"])
+def test_a_harness_root_moved_after_planning_is_refused(
+    fake_home: Path, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    """Review 4.1: every harness root discovery captures is checked before applying."""
+    monkeypatch.setenv(name, str(fake_home / "first"))
+    source = fake_home / "agent-config"
+    source.mkdir()
+    plan = plan_migration(discover(source, scope="global", harnesses=("claude",)))
+    assert plan.complete, plan.preview()
+    monkeypatch.setenv(name, str(fake_home / "second"))
+
+    with pytest.raises(LoadoutError, match=f"destination environment changed.*{name}"):
+        prepare_migration(plan)

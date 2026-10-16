@@ -2,10 +2,12 @@ from pathlib import Path
 
 import pytest
 
-from loadout.emit import check_all, module_config_files, skill_trees, write_all
+from loadout.emit import module_config_files, skill_trees
 from loadout.errors import LoadoutError
+from loadout.files import check_all
 from loadout.manifest import Manifest
 from loadout.sources import parse_sources
+from render_helpers import write_all
 
 pytestmark = pytest.mark.integration
 

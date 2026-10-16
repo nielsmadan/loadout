@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import copy
 import itertools
+import math
 import re
 import shlex
 import tomllib
@@ -520,8 +521,12 @@ def _codex_refusal(label: str, document: str, node: ast.AST, reason: str) -> Loa
     return LoadoutError(f"{label}: line {getattr(node, 'lineno', 0)}: {reason}: {text}")
 
 
-def _codex_pattern(value: Any) -> tuple[tuple[str, ...], ...] | None:
-    """Every token list a pattern matches, a union of literals expanded in place."""
+CODEX_EXPANSION_LIMIT = 1024
+
+
+def _codex_positions(value: Any) -> list[list[str]] | None:
+    """The literals a pattern allows at each position; their product is every token list
+    it matches."""
     if not isinstance(value, list) or not value:
         return None
     positions: list[list[str]] = []
@@ -532,7 +537,7 @@ def _codex_pattern(value: Any) -> tuple[tuple[str, ...], ...] | None:
         if not all(isinstance(option, str) and option for option in options):
             return None
         positions.append(options)
-    return tuple(itertools.product(*positions))
+    return positions
 
 
 def _codex_rule(label: str, document: str, statement: ast.stmt) -> CodexRule:
@@ -554,17 +559,25 @@ def _codex_rule(label: str, document: str, statement: ast.stmt) -> CodexRule:
             )
         try:
             values[keyword.arg] = ast.literal_eval(keyword.value)
-        except ValueError:
+        except (ValueError, TypeError, RecursionError, MemoryError):
             raise _codex_refusal(
                 label, document, call, f"{keyword.arg} must be written as a literal"
             ) from None
-    alternatives = _codex_pattern(values.get("pattern"))
-    if alternatives is None:
+    positions = _codex_positions(values.get("pattern"))
+    if positions is None:
         raise _codex_refusal(
             label, document, call, "pattern must be a non-empty list of strings or string lists"
         )
+    if (count := math.prod(len(options) for options in positions)) > CODEX_EXPANSION_LIMIT:
+        raise _codex_refusal(
+            label,
+            document,
+            call,
+            f"pattern matches {count} token lists; at most {CODEX_EXPANSION_LIMIT} can be adopted",
+        )
+    alternatives = tuple(itertools.product(*positions))
     decision = values.get("decision", "allow")
-    if decision not in CODEX_CATEGORY:
+    if not isinstance(decision, str) or decision not in CODEX_CATEGORY:
         raise _codex_refusal(label, document, call, f"decision {decision!r} is not one Codex reads")
     dropped = tuple(name for name in CODEX_UNCARRIED if name in values)
     return CodexRule(call.lineno, alternatives, decision, dropped)
@@ -980,60 +993,64 @@ OPENCODE_BEARER = re.compile(r"^Bearer \{env:(?P<var>[^}]+)\}$")
 
 
 def _bearer_env_var(
-    headers: Any, pattern: re.Pattern[str], label: str, notes: list[Note]
-) -> str | None:
+    headers: Any, pattern: re.Pattern[str], label: str
+) -> tuple[str | None, tuple[Note, ...]]:
+    notes: list[Note] = []
     if not isinstance(headers, Mapping):
         notes.append(Note("unrecognised", f"{label}: headers is not a table"))
-        return None
+        return None, tuple(notes)
     stray = sorted(set(headers) - {"Authorization"})
     if stray:
         notes.append(Note("cannot", f"{label}: header(s) {', '.join(stray)} have no source form"))
     auth = headers.get("Authorization")
     if not isinstance(auth, str):
         notes.append(Note("unrecognised", f"{label}: headers carry no Authorization"))
-        return None
+        return None, tuple(notes)
     match = pattern.fullmatch(auth)
     if match is None:
         notes.append(Note("cannot", f"{label}: Authorization {auth!r} names no plain env var"))
-        return None
-    return match["var"]
+        return None, tuple(notes)
+    return match["var"], tuple(notes)
 
 
 def _extract_claude_server(
-    name: str, entry: Any, notes: list[Note], label: str = "claude-servers"
-) -> Server | None:
+    name: str, entry: Any, label: str = "claude-servers"
+) -> tuple[Server | None, tuple[Note, ...]]:
+    notes: list[Note] = []
     if not isinstance(entry, Mapping):
         notes.append(Note("unrecognised", f"{label}: {name} is not a table"))
-        return None
+        return None, tuple(notes)
     stray = sorted(set(entry) - CLAUDE_SERVER_KEYS)
     if stray:
         notes.append(Note("cannot", f"{label}: {name} carries {', '.join(stray)}"))
-    kind = entry.get("type")
+    # Claude Code reads an entry with a command and no type as stdio.
+    kind = entry.get("type", "stdio" if "command" in entry else None)
     if kind == "http":
         url = entry.get("url")
         if not isinstance(url, str):
             notes.append(Note("unrecognised", f"{label}: {name} http entry has no url"))
-            return None
+            return None, tuple(notes)
         auth_env_var = None
         if "headers" in entry:
-            auth_env_var = _bearer_env_var(
-                entry["headers"], CLAUDE_BEARER, f"{label}: {name}", notes
+            auth_env_var, found = _bearer_env_var(
+                entry["headers"], CLAUDE_BEARER, f"{label}: {name}"
             )
-        return Server(name=name, transport="http", url=url, auth_env_var=auth_env_var)
+            notes.extend(found)
+        return Server(name=name, transport="http", url=url, auth_env_var=auth_env_var), tuple(notes)
     if kind == "stdio":
         command = entry.get("command")
         if not isinstance(command, str):
             notes.append(Note("unrecognised", f"{label}: {name} stdio entry has no command"))
-            return None
+            return None, tuple(notes)
         return Server(
             name=name,
             transport="stdio",
             command=command,
             args=tuple(entry.get("args", ())),
             env=dict(entry.get("env", {})),
-        )
+        ), tuple(notes)
     notes.append(Note("unrecognised", f"{label}: {name} unknown type {kind!r}"))
-    return None
+    return None, tuple(notes)
 
 
 def extract_claude_servers(document: Any) -> ValueExtraction:
@@ -1057,7 +1074,8 @@ def extract_claude_servers(document: Any) -> ValueExtraction:
     servers: dict[str, Server] = {}
     if isinstance(config, Mapping):
         for name, entry in config.items():
-            server = _extract_claude_server(name, entry, notes)
+            server, found = _extract_claude_server(name, entry)
+            notes.extend(found)
             if server is not None:
                 servers[name] = server
     else:
@@ -1080,7 +1098,8 @@ def extract_droid_servers(document: Any) -> ValueExtraction:
     servers: dict[str, Server] = {}
     if isinstance(config, Mapping):
         for name, entry in config.items():
-            server = _extract_claude_server(name, entry, notes, "droid-servers")
+            server, found = _extract_claude_server(name, entry, "droid-servers")
+            notes.extend(found)
             if server is not None:
                 servers[name] = server
     else:
@@ -1088,10 +1107,11 @@ def extract_droid_servers(document: Any) -> ValueExtraction:
     return ValueExtraction(servers, tuple(notes))
 
 
-def _extract_opencode_server(name: str, entry: Any, notes: list[Note]) -> Server | None:
+def _extract_opencode_server(name: str, entry: Any) -> tuple[Server | None, tuple[Note, ...]]:
+    notes: list[Note] = []
     if not isinstance(entry, Mapping):
         notes.append(Note("unrecognised", f"opencode-servers: {name} is not a table"))
-        return None
+        return None, tuple(notes)
     stray = sorted(set(entry) - OPENCODE_SERVER_KEYS)
     if stray:
         notes.append(Note("cannot", f"opencode-servers: {name} carries {', '.join(stray)}"))
@@ -1100,12 +1120,13 @@ def _extract_opencode_server(name: str, entry: Any, notes: list[Note]) -> Server
         url = entry.get("url")
         if not isinstance(url, str):
             notes.append(Note("unrecognised", f"opencode-servers: {name} remote entry has no url"))
-            return None
+            return None, tuple(notes)
         auth_env_var = None
         if "headers" in entry:
             label = f"opencode-servers: {name}"
-            auth_env_var = _bearer_env_var(entry["headers"], OPENCODE_BEARER, label, notes)
-        return Server(name=name, transport="http", url=url, auth_env_var=auth_env_var)
+            auth_env_var, found = _bearer_env_var(entry["headers"], OPENCODE_BEARER, label)
+            notes.extend(found)
+        return Server(name=name, transport="http", url=url, auth_env_var=auth_env_var), tuple(notes)
     if kind == "local":
         command = entry.get("command")
         if (
@@ -1116,7 +1137,7 @@ def _extract_opencode_server(name: str, entry: Any, notes: list[Note]) -> Server
             notes.append(
                 Note("unrecognised", f"opencode-servers: {name} local entry has no command")
             )
-            return None
+            return None, tuple(notes)
         head, *rest = command
         return Server(
             name=name,
@@ -1124,9 +1145,9 @@ def _extract_opencode_server(name: str, entry: Any, notes: list[Note]) -> Server
             command=head,
             args=tuple(rest),
             env=dict(entry.get("environment", {})),
-        )
+        ), tuple(notes)
     notes.append(Note("unrecognised", f"opencode-servers: {name} unknown type {kind!r}"))
-    return None
+    return None, tuple(notes)
 
 
 def extract_opencode_servers(document: Any) -> ValueExtraction:
@@ -1141,7 +1162,8 @@ def extract_opencode_servers(document: Any) -> ValueExtraction:
     servers: dict[str, Server] = {}
     if isinstance(mcp, Mapping):
         for name, entry in mcp.items():
-            server = _extract_opencode_server(name, entry, notes)
+            server, found = _extract_opencode_server(name, entry)
+            notes.extend(found)
             if server is not None:
                 servers[name] = server
     else:
@@ -1171,7 +1193,8 @@ def extract_claude_global_servers(document: Any) -> ValueExtraction:
             {}, (Note("unrecognised", "claude-servers: mcpServers is not a table"),)
         )
     for name, entry in config.items():
-        server = _extract_claude_server(name, entry, notes)
+        server, found = _extract_claude_server(name, entry)
+        notes.extend(found)
         if server is not None:
             servers[name] = server
     return ValueExtraction(servers, tuple(notes))
@@ -1180,10 +1203,11 @@ def extract_claude_global_servers(document: Any) -> ValueExtraction:
 PI_SERVER_KEYS = frozenset({"url", "bearerTokenEnv", "command", "args", "env"})
 
 
-def _extract_pi_server(name: str, entry: Any, notes: list[Note]) -> Server | None:
+def _extract_pi_server(name: str, entry: Any) -> tuple[Server | None, tuple[Note, ...]]:
+    notes: list[Note] = []
     if not isinstance(entry, Mapping):
         notes.append(Note("unrecognised", f"pi-servers: {name} is not a table"))
-        return None
+        return None, tuple(notes)
     stray = sorted(set(entry) - PI_SERVER_KEYS)
     if stray:
         notes.append(Note("cannot", f"pi-servers: {name} carries {', '.join(stray)}"))
@@ -1191,26 +1215,26 @@ def _extract_pi_server(name: str, entry: Any, notes: list[Note]) -> Server | Non
         url = entry.get("url")
         if not isinstance(url, str):
             notes.append(Note("unrecognised", f"pi-servers: {name} http entry has no url"))
-            return None
+            return None, tuple(notes)
         auth_env_var = entry.get("bearerTokenEnv")
         if auth_env_var is not None and not isinstance(auth_env_var, str):
             notes.append(Note("unrecognised", f"pi-servers: {name} bearerTokenEnv is not a string"))
             auth_env_var = None
-        return Server(name=name, transport="http", url=url, auth_env_var=auth_env_var)
+        return Server(name=name, transport="http", url=url, auth_env_var=auth_env_var), tuple(notes)
     if "command" in entry:
         command = entry.get("command")
         if not isinstance(command, str):
             notes.append(Note("unrecognised", f"pi-servers: {name} stdio entry has no command"))
-            return None
+            return None, tuple(notes)
         return Server(
             name=name,
             transport="stdio",
             command=command,
             args=tuple(entry.get("args", ())),
             env=dict(entry.get("env", {})),
-        )
+        ), tuple(notes)
     notes.append(Note("unrecognised", f"pi-servers: {name} entry has neither url nor command"))
-    return None
+    return None, tuple(notes)
 
 
 def extract_pi_servers(document: Any) -> ValueExtraction:
@@ -1231,7 +1255,8 @@ def extract_pi_servers(document: Any) -> ValueExtraction:
     servers: dict[str, Server] = {}
     if isinstance(config, Mapping):
         for name, entry in config.items():
-            server = _extract_pi_server(name, entry, notes)
+            server, found = _extract_pi_server(name, entry)
+            notes.extend(found)
             if server is not None:
                 servers[name] = server
     else:
@@ -1252,10 +1277,11 @@ def _not_adopted(name: str, keys: list[str]) -> str:
     )
 
 
-def _extract_codex_server(name: str, block: Any, notes: list[Note]) -> Server | None:
+def _extract_codex_server(name: str, block: Any) -> tuple[Server | None, tuple[Note, ...]]:
+    notes: list[Note] = []
     if not isinstance(block, Mapping):
         notes.append(Note("unrecognised", f"codex-servers: {name} is not a table"))
-        return None
+        return None, tuple(notes)
     if "url" in block:
         stray = sorted(set(block) - CODEX_SERVER_HTTP_KEYS)
         if stray:
@@ -1263,14 +1289,14 @@ def _extract_codex_server(name: str, block: Any, notes: list[Note]) -> Server | 
         url = block.get("url")
         if not isinstance(url, str):
             notes.append(Note("unrecognised", f"codex-servers: {name} http entry has no url"))
-            return None
+            return None, tuple(notes)
         auth_env_var = block.get("bearer_token_env_var")
         if auth_env_var is not None and not isinstance(auth_env_var, str):
             notes.append(
                 Note("unrecognised", f"codex-servers: {name} bearer_token_env_var is not a string")
             )
             auth_env_var = None
-        return Server(name=name, transport="http", url=url, auth_env_var=auth_env_var)
+        return Server(name=name, transport="http", url=url, auth_env_var=auth_env_var), tuple(notes)
     if "command" in block:
         stray = sorted(set(block) - CODEX_SERVER_STDIO_KEYS)
         if stray:
@@ -1278,7 +1304,7 @@ def _extract_codex_server(name: str, block: Any, notes: list[Note]) -> Server | 
         command = block.get("command")
         if not isinstance(command, str):
             notes.append(Note("unrecognised", f"codex-servers: {name} stdio entry has no command"))
-            return None
+            return None, tuple(notes)
         env = block.get("env", {})
         return Server(
             name=name,
@@ -1286,9 +1312,9 @@ def _extract_codex_server(name: str, block: Any, notes: list[Note]) -> Server | 
             command=command,
             args=tuple(block.get("args", ())),
             env=dict(env) if isinstance(env, Mapping) else {},
-        )
+        ), tuple(notes)
     notes.append(Note("unrecognised", f"codex-servers: {name} entry has neither url nor command"))
-    return None
+    return None, tuple(notes)
 
 
 def extract_codex_servers(document: Any) -> ValueExtraction:
@@ -1308,7 +1334,8 @@ def extract_codex_servers(document: Any) -> ValueExtraction:
     notes: list[Note] = []
     servers: dict[str, Server] = {}
     for name, block in data.get("mcp_servers", {}).items():
-        server = _extract_codex_server(name, block, notes)
+        server, found = _extract_codex_server(name, block)
+        notes.extend(found)
         if server is not None:
             servers[name] = server
     return ValueExtraction(servers, tuple(notes))

@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 
 import tomlkit
@@ -26,7 +27,7 @@ from .manifest import load_manifest, manifest_path
 from .output import no_symlinks as _no_symlinks
 from .project import PROJECT_DIR, load_project_config, project_config_path
 from .resolve import ResolvedItem, Slice
-from .skills import EXCLUDED_DIRECTORIES, EXCLUDED_NAMES, EXCLUDED_SUFFIXES
+from .skills import excluded
 from .sources import Source
 from .template_catalog import load_catalog, template_name
 from .toml_paths import apply_paths, key_name
@@ -124,7 +125,13 @@ def declared_sources(config_path: Path | None = None) -> tuple[Source, ...]:
     return sources
 
 
-def resolve_template(name: str, root: Path, config_path: Path | None = None) -> ResolvedItem:
+def resolve_template(
+    name: str,
+    root: Path,
+    config_path: Path | None = None,
+    *,
+    upstream: Callable[[str, Path | None], ResolvedItem] | None = None,
+) -> ResolvedItem:
     """A template name, resolved the way a fragment name is — one level up.
 
     A vendored copy stops resolution before the machine config is even read. That
@@ -137,7 +144,7 @@ def resolve_template(name: str, root: Path, config_path: Path | None = None) -> 
         return ResolvedItem(name=name, source=VENDORED, path=local)
 
     try:
-        return resolve_upstream_template(name, config_path)
+        return (upstream or resolve_upstream_template)(name, config_path)
     except (TemplateNotFound, NoGlobalSource) as error:
         configured = not isinstance(error, NoGlobalSource)
         raise LoadoutError(_not_found(name, root, configured=configured)) from error
@@ -321,13 +328,13 @@ def template_divergence(root: Path) -> list[str]:
     if not path.is_file():
         return []
     config = load_project_config(path)
-    diverged: list[str] = []
-    for name in config.templates:
-        recorded = config.vendored_hash(name)
-        local = vendored_path(root, name)
-        if recorded is not None and local.exists() and tree_hash(local) != recorded:
-            diverged.append(name)
-    return diverged
+    return [
+        name
+        for name in config.templates
+        if (recorded := config.vendored_hash(name)) is not None
+        and (local := vendored_path(root, name)).exists()
+        and tree_hash(local) != recorded
+    ]
 
 
 def unverifiable_templates(root: Path) -> list[str]:
@@ -352,12 +359,6 @@ def unverifiable_templates(root: Path) -> list[str]:
     ]
 
 
-def _excluded(relative: Path) -> bool:
-    if any(part in EXCLUDED_DIRECTORIES for part in relative.parts):
-        return True
-    return relative.name in EXCLUDED_NAMES or relative.suffix in EXCLUDED_SUFFIXES
-
-
 def template_files(tree: Path) -> tuple[Path, ...]:
     """Sorted content paths relative to the directory or manifest parent, excluding build output."""
     if tree.is_file():
@@ -368,7 +369,7 @@ def template_files(tree: Path) -> tuple[Path, ...]:
         sorted(
             item.relative_to(tree)
             for item in tree.rglob("*")
-            if item.is_file() and not _excluded(item.relative_to(tree))
+            if item.is_file() and not excluded(item.relative_to(tree))
         )
     )
 

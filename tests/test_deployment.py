@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 
 import loadout
@@ -77,6 +78,27 @@ def test_gitignore_names_each_skill_folder_loadout_writes(tmp_path: Path) -> Non
     ignored = (tmp_path / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert "/.claude/skills/mine/" in ignored
     assert "/.claude/skills" not in ignored
+
+
+def test_a_skill_folder_with_glob_characters_is_ignored_by_its_literal_name(
+    tmp_path: Path,
+) -> None:
+    """Review 3.3: sync escapes its lines the way init does, so `[1]` is not a glob."""
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    _preset_project(tmp_path, '"claude"')
+    _skill(tmp_path / "loadout" / "skills", "x[1] y")
+
+    assert cli(tmp_path, "sync") == 0
+
+    ignored = (tmp_path / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert "/.claude/skills/x\\[1\\]\\ y/" in ignored
+    check = subprocess.run(
+        ["git", "-C", str(tmp_path), "check-ignore", "--", ".claude/skills/x[1] y/SKILL.md"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert check.stdout == ".claude/skills/x[1] y/SKILL.md\n"
 
 
 def test_mcp_json_is_written_and_ignored_only_once_there_is_a_source(tmp_path: Path) -> None:

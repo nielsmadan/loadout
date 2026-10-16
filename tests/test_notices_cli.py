@@ -15,8 +15,7 @@ from pathlib import Path
 import pytest
 
 import loadout
-from loadout.emit import collect_notices
-from loadout.notices import OPENCODE_SKILL_FLAGS
+from loadout.notices import OPENCODE_SKILL_FLAGS, collect_notices
 
 pytestmark = pytest.mark.integration
 

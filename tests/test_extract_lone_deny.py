@@ -50,6 +50,14 @@ def test_a_trailing_star_deny_beside_its_bare_command_stays_a_glob(name: str) ->
 
 
 @pytest.mark.parametrize("name", SCOPES)
+def test_a_deny_with_no_command_before_the_star_stays_as_written(name: str) -> None:
+    """Review 5.7: an empty prefix is no command at all, so there is nothing to widen to."""
+    rules = extract(name, _document(name, {" *": "deny"})).rules
+
+    assert rules.deny == (" *",)
+
+
+@pytest.mark.parametrize("name", SCOPES)
 def test_a_deny_whose_prefix_is_itself_a_glob_stays_a_glob(name: str) -> None:
     rules = extract(name, _document(name, {"rm -* *": "deny"})).rules
 

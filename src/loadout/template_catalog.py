@@ -11,7 +11,7 @@ from .output import no_symlinks as _no_symlinks
 from .output import regular_file as _regular_file
 from .permissions.rules import parse_rules
 from .servers import parse_servers
-from .skills import SKILL_DOCUMENT, Skill, _excluded
+from .skills import SKILL_DOCUMENT, Skill, excluded
 
 CATEGORIES = {"instructions": ".md", "permissions": ".toml", "mcp": ".toml", "skills": ""}
 _NAME = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9_.-]*")
@@ -63,7 +63,7 @@ def _validate_part(target: Path, category: str) -> tuple[Path, ...]:
             _no_symlinks(item)
             if not item.is_dir():
                 _regular_file(item)
-                if not _excluded(item, item.relative_to(target)):
+                if not excluded(item.relative_to(target)):
                     files.append(item)
         return tuple(sorted(files))
     _regular_file(target)

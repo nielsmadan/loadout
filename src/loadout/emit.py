@@ -1,25 +1,15 @@
 from __future__ import annotations
 
 import json
-import os
-import shutil
-import stat
-import tempfile
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from .bundled_templates import BUNDLED
+from .agents import DIRECTORY_SLICES
 from .composition import HEADER, load_fragment, render
-from .deployment import (
-    DeploymentConflict,
-    DeploymentScope,
-    apply_deployment,
-    prepare_deployment,
-)
 from .documents import merge_documents
 from .errors import LoadoutError
-from .machine import load_machine_config, machine_config_path
 from .manifest import (
     MANIFEST_NAME,
     InstructionTarget,
@@ -34,20 +24,7 @@ from .manifest import (
     resolve_destination,
 )
 from .module_config import MODULE_CONFIG_SUBDIR, discover_module_config
-from .native_documents import apply_document
-from .notices import (
-    OPENCODE_EXTERNAL_SKILL_FLAG,
-    OPENCODE_SKILL_FLAGS,
-    Notice,
-    inexact_shell_entries,
-    notices_for,
-    opencode_external_skills_race,
-    opencode_skills_race,
-    unpermitted_servers,
-    unreached_catch_all,
-    unsupported_shell_globs,
-)
-from .output import Copied, FrozenFile, Merged, Output
+from .output import Copied, Merged, Output
 from .permissions.merge import merge_rules
 from .permissions.renderers import (
     RENDERERS,
@@ -62,7 +39,6 @@ from .permissions.renderers import (
     render_pi_project,
 )
 from .permissions.rules import EMPTY_RULES, Rules, parse_rules
-from .plugins import marketplaces
 from .project import (
     PROJECT_CONFIG_NAME,
     PROJECT_DIR,
@@ -74,8 +50,8 @@ from .project import (
     refuse_escaping,
     refuse_external_links,
 )
-from .record import read_record, render_record
-from .resolve import INSTRUCTIONS, SETTINGS, json_slice, resolve_item
+from .record import owned_now, read_record, render_record
+from .resolve import INSTRUCTIONS, SETTINGS, ResolvedItem, json_slice, resolve_item
 from .servers import SERVERS_SOURCE, Server, parse_servers
 from .skill_policy import SkillPolicy, render_skill_for, selected_skill_agents
 from .skills import (
@@ -84,29 +60,56 @@ from .skills import (
     Skill,
     check_skill_agents,
     discover_skills,
-    loose_skill_files,
     render_skill,
 )
-from .sources import Source, select_overrides
+from .sources import Source, SourceParser, parse_sources, select_overrides
 from .subagents import (
     AGENTS_SUBDIR,
     Agent,
     agent_file_name,
-    agent_notes,
     discover_agents,
     parse_agent,
     render_agent,
 )
-from .surgery import apply_json, apply_toml, concat_documents
+from .surgery import concat_documents
 from .template_catalog import Catalog, contribution_paths, load_catalogs
-from .templates import VENDORED, resolve_template
+from .templates import resolve_template, resolve_upstream_template
 from .toml_paths import overlapping_keys
 
-PERMISSIONS_SOURCE = ("permissions.toml",)
-PROJECT_SOURCE = "permissions.toml"
+PERMISSIONS_SOURCE = "permissions.toml"
 PROJECT_LOCAL_SOURCE = "permissions.local.toml"
 PROJECT_DOCUMENTS = {"hooks": "hooks.json", "plugins": "plugins.json"}
 __all__ = ["Copied", "Merged", "Output"]
+
+
+@dataclass(frozen=True)
+class RenderContext:
+    """What a render reads from outside the source: where a destination lands, where a
+    template that is not vendored comes from, and how a manifest's sources are found."""
+
+    destination: Callable[[str, str], Path] = resolve_destination
+    upstream: Callable[[str, Path | None], ResolvedItem] = resolve_upstream_template
+    sources: SourceParser = parse_sources
+
+
+@dataclass(frozen=True)
+class ProjectTemplates:
+    """A project's declared templates, resolved once per render."""
+
+    paths: tuple[Path, ...] = ()
+    catalogs: Mapping[Path, Catalog] = field(default_factory=dict)
+
+    def contributions(self, slice_name: str) -> tuple[Path, ...]:
+        return contribution_paths(self.paths, slice_name, catalogs=self.catalogs)
+
+
+def project_templates(
+    root: Path, config: ProjectConfig, context: RenderContext
+) -> ProjectTemplates:
+    paths = tuple(
+        resolve_template(name, root, upstream=context.upstream).path for name in config.templates
+    )
+    return ProjectTemplates(paths, load_catalogs(paths))
 
 
 def permission_sources(manifest: Manifest) -> tuple[Source, ...]:
@@ -121,7 +124,14 @@ def permission_sources(manifest: Manifest) -> tuple[Source, ...]:
     return tuple(
         source
         for source in manifest.sources
-        if "permissions" in source.use and (source.path.joinpath(*PERMISSIONS_SOURCE)).is_file()
+        if "permissions" in source.use and (source.path / PERMISSIONS_SOURCE).is_file()
+    )
+
+
+def global_rules(manifest: Manifest) -> Rules:
+    """Every permission source's rules merged, lowest priority first."""
+    return merge_rules(
+        *(parse_rules(source.path / PERMISSIONS_SOURCE) for source in permission_sources(manifest))
     )
 
 
@@ -402,7 +412,7 @@ def _attach_records(
         clash = overlapping_keys(recorded, owned - present)
         if clash:
             raise LoadoutError(f"{path}: {sorted(clash)} is already owned by another slice")
-        owned |= recorded | present
+        owned |= owned_now(recorded, present)
         records.append((path, render_record(present)))
     if not records:
         return document
@@ -506,7 +516,7 @@ def _declared_profiles(manifest: Manifest) -> set[str]:
     return declared
 
 
-def _selected(target: InstructionTarget | PermissionTarget, profile: str) -> bool:
+def selected_target(target: InstructionTarget | PermissionTarget, profile: str) -> bool:
     return target.profile is None or target.profile == profile
 
 
@@ -542,12 +552,14 @@ def _fixed(content: str) -> Callable[[Path], str]:
     return render_for
 
 
-def _target_paths(target: InstructionTarget | PermissionTarget, root: Path) -> list[Path]:
+def _target_paths(
+    target: InstructionTarget | PermissionTarget, root: Path, context: RenderContext
+) -> list[Path]:
     paths: list[Path] = []
     if target.path is not None:
         paths.append(root / str(target.path))
     label = _target_label(target)
-    paths.extend(resolve_destination(str(d), label) for d in target.destinations)
+    paths.extend(context.destination(str(d), label) for d in target.destinations)
     return paths
 
 
@@ -557,7 +569,7 @@ def _require_same_owner(first: PermissionTarget, second: PermissionTarget, path:
     `agent` is None for the hand-written spelling, where every target names its
     own file, so any second contributor there is the collision it always was.
     """
-    if first.agent is None or second.agent is None or first.agent != second.agent:
+    if first.harness is None or second.harness is None or first.harness != second.harness:
         raise LoadoutError(
             f"destination {path} is claimed by both permissions.{first.name} "
             f"and permissions.{second.name}"
@@ -568,19 +580,15 @@ def _expand(
     target: InstructionTarget | PermissionTarget,
     render_for: Callable[[Path], str],
     root: Path,
-    outputs: dict[Path, Output],
-    claimed: dict[Path, str],
+    state: tuple[dict[Path, Output], dict[Path, str]],
+    context: RenderContext,
 ) -> None:
+    outputs, claimed = state
     owner = _owner_label(target)
     # own_output is claimed too, not just tracked in outputs, so a later target's
     # destination that happens to name this exact path collides like any other.
     # A target with no `output` contributes no output path — only destinations.
-    paths: list[Path] = []
-    if target.path is not None:
-        paths.append(root / str(target.path))
-    label = _target_label(target)
-    paths.extend(resolve_destination(str(d), label) for d in target.destinations)
-    for path in paths:
+    for path in _target_paths(target, root, context):
         _claim(path, owner, claimed)
         outputs[path] = render_for(path)
 
@@ -593,275 +601,6 @@ def declared_profiles(root: Path) -> set[str]:
         profiles |= _declared_profiles(load_manifest(path))
         profiles |= declared_profile_files(root)
     return profiles
-
-
-CLAUDE_MARKETPLACES = "${CLAUDE_CONFIG_DIR:-~/.claude}/plugins/known_marketplaces.json"
-
-
-def _known_marketplaces(agent: str, document: dict[str, Any]) -> frozenset[str]:
-    """What counts as registered, which is a different question per harness.
-
-    Codex's registrations are ordinary configuration in a file loadout stages, so
-    the source answers for itself. Claude's live in a registry the harness
-    maintains, carrying timestamps and install paths — machine state a generated
-    file must not hold (ADR 0008) — so it is read here and never written. A
-    renderer could not do this at all (ADR 0001); a caller may.
-    """
-    if agent != "claude":
-        return frozenset(marketplaces(document))
-    try:
-        path = resolve_destination(CLAUDE_MARKETPLACES, "plugins.known_marketplaces")
-        registry = json.loads(path.read_text(encoding="utf-8"))
-    except (LoadoutError, OSError, json.JSONDecodeError):
-        # A machine that has never registered one is the bootstrap case, not an
-        # error: the report exists to say what to run.
-        return frozenset()
-    return frozenset(registry) if isinstance(registry, dict) else frozenset()
-
-
-def _global_skill_race(manifest: Manifest, environ: Mapping[str, str]) -> tuple[Notice, ...]:
-    """The same collision as `project_notices`, one scope up.
-
-    Global scope reaches it sooner: a project has to declare `opencode` *and*
-    carry skills, while `~/.claude/skills` and `~/.config/opencode/skills` are
-    both written the moment any skill exists and any manifest names OpenCode.
-    Silent until then, which is why the condition is the manifest rather than the
-    slice — a source with no skills has no colliding name to lose.
-    """
-    available = tuple(target.agent for target in manifest.skills)
-    if "opencode" not in available:
-        return ()
-    races = any(
-        {"claude", "opencode"}.issubset(
-            selected_skill_agents(skill.name, available, manifest.skill_policies)
-        )
-        for skill in skill_trees(manifest)
-    )
-    if not races or not opencode_skills_race(environ):
-        return ()
-    return (
-        Notice(
-            agent="opencode",
-            slice="skills",
-            message=(
-                f"none of {' or '.join(OPENCODE_SKILL_FLAGS)} is set, so OpenCode also "
-                f"scans ~/.claude/skills and picks between the two copies of each skill at "
-                f"random — export one of them; see docs/reference/opencode.md"
-            ),
-        ),
-    )
-
-
-def _permission_notices(manifest: Manifest, profile: str) -> tuple[Notice, ...]:
-    """Every selected target whose permission renderer carries less than the source.
-
-    Reads the same tiers `render_global` merges, so the verdict named is the one
-    that actually rendered. Silent when no source states the key — a notice that
-    fires for everyone teaches nothing.
-    """
-    selected = [t for t in manifest.permissions if _selected(t, profile)]
-    if not selected:
-        return ()
-    tiers = [
-        parse_rules(source.path.joinpath(*PERMISSIONS_SOURCE))
-        for source in permission_sources(manifest)
-    ]
-    rules = merge_rules(*tiers)
-    found: list[Notice] = []
-    for target in selected:
-        # `permissions = []` deselects the whole source, not this key in particular —
-        # the autonomous profile's mechanism, and reporting it here would fire on
-        # every sync that uses it. A legacy target names no agent, so it is
-        # labelled by the renderer it declared.
-        if not target.select_all:
-            continue
-        agent = target.agent or target.renderer
-        if rules.default is not None:
-            found.extend(unreached_catch_all(agent, target.renderer, rules.default))
-        found.extend(unsupported_shell_globs(agent, target.renderer, rules))
-        found.extend(inexact_shell_entries(agent, target.renderer, rules))
-    return tuple(dict.fromkeys(found))
-
-
-def _unpermitted_servers(manifest: Manifest) -> tuple[Notice, ...]:
-    """Every server no source's `[mcp]` policy names, across every source.
-
-    Two files, two merge algebras (docs/reference/config.md), so this reads both
-    independently rather than through `project_servers`. Silent when no source
-    offers mcp.toml: a manifest defining no servers has nothing to check.
-    """
-    servers = global_servers(manifest)
-    if not servers:
-        return ()
-    tiers = [
-        parse_rules(source.path.joinpath(*PERMISSIONS_SOURCE))
-        for source in permission_sources(manifest)
-    ]
-    rules = merge_rules(*tiers)
-    return tuple(
-        Notice(
-            agent="mcp",
-            slice="servers",
-            message=(
-                f"{name} is defined but no [mcp] policy allow/ask/deny entry names it "
-                f"— its tools are all denied with no error"
-            ),
-        )
-        for name in unpermitted_servers(servers, rules)
-    )
-
-
-def _loose_skill_notices(skill_roots: Iterable[Path]) -> tuple[Notice, ...]:
-    return tuple(
-        Notice(
-            agent="all",
-            slice="skills",
-            message=f"{path} is not a skill and was skipped; a skill is skills/<name>/SKILL.md",
-        )
-        for skills_root in skill_roots
-        for path in loose_skill_files(skills_root)
-    )
-
-
-def collect_notices(root: Path, profile: str = "default") -> tuple[Notice, ...]:
-    """Advisory findings about project setup and global slice fragments."""
-    found: list[Notice] = list(project_notices(root, os.environ))
-    if not manifest_path(root).is_file():
-        return tuple(found)
-    manifest = load_profile(root, profile)
-    found.extend(
-        _loose_skill_notices(
-            source.path / SKILLS_SUBDIR
-            for source in manifest.sources
-            if SKILLS_SUBDIR in source.use
-        )
-    )
-    found.extend(_global_skill_race(manifest, os.environ))
-    found.extend(_agent_notices(source_agents(manifest), tuple(t.agent for t in manifest.agents)))
-    found.extend(
-        Notice(
-            agent=source.name,
-            slice=AGENTS_SUBDIR,
-            message=(
-                f"{source.path / AGENTS_SUBDIR} holds agents, but source {source.name!r} does "
-                f'not list "agents" in `use`, so none of them is rendered'
-            ),
-        )
-        for source in manifest.sources
-        if AGENTS_SUBDIR not in source.use and discover_agents(source.path / AGENTS_SUBDIR)
-    )
-    found.extend(_permission_notices(manifest, profile))
-    found.extend(_unpermitted_servers(manifest))
-    for target in manifest.permissions:
-        # A legacy `[permissions.*]` target names no agent and carries no slice
-        # content, so there is nothing to report about it.
-        if target.agent is None or target.content_slice is None:
-            continue
-        if not _selected(target, profile):
-            continue
-        document = slice_document(target.content, target.content_slice, manifest)
-        # Only a plugins fragment has marketplaces, and reading them parses the
-        # document as one. Evaluated for every slice it rejects any other shape:
-        # a `defaults` fragment's keys, or a hooks fragment's event names, read as
-        # stray sections of a plugins document and the whole render fails.
-        known = (
-            _known_marketplaces(target.agent, document)
-            if target.content_slice == "plugins"
-            else frozenset()
-        )
-        found.extend(notices_for(target.agent, target.content_slice, document, known))
-    return tuple(found)
-
-
-def project_notices(root: Path, environ: Mapping[str, str]) -> tuple[Notice, ...]:
-    """What project scope rendered while doing less than its source says.
-
-    Three kinds: a permission rule the selected renderer cannot carry, a slice
-    document naming something the harness will not act on, and setup on the
-    rendering machine that OpenCode needs at run time.
-
-    Driven by `PROJECT_PRESET` rather than by harness name, for the reason
-    `_permission_notices` is at global scope: a renderer that loses a catch-all or
-    a glob should report it whoever selected it, and a sixth harness should not
-    need an edit here to be heard.
-
-    The OpenCode variable matters on the machine OpenCode *runs* on, and this reads
-    the machine loadout is *rendering* on — the same box, because generated project
-    files are never committed and adoption is all-or-nothing, so everyone working
-    in a repo syncs it themselves. CI is the exception, where this is one advisory
-    line in a log and cannot touch an exit code.
-    """
-    path = project_config_path(root)
-    if not path.is_file():
-        return ()
-    config = load_project_config(path)
-    found: list[Notice] = []
-    found.extend(_loose_skill_notices((root / PROJECT_DIR / SKILLS_SUBDIR,)))
-    found.extend(
-        _agent_notices(
-            project_agents(root),
-            tuple(h for h in config.harnesses if AGENTS_SUBDIR in PROJECT_PRESET[h]),
-        )
-    )
-    templates = tuple(resolve_template(name, root).path for name in config.templates)
-    catalogs = load_catalogs(templates)
-    rules = _project_rules(root, config, catalogs)
-    for agent, slice_name, spec in project_slices(config.harnesses):
-        if slice_name != "permissions" or not spec.renderer:
-            continue
-        if rules.default is not None:
-            found.extend(unreached_catch_all(agent, spec.renderer, rules.default))
-        found.extend(unsupported_shell_globs(agent, spec.renderer, rules))
-        found.extend(inexact_shell_entries(agent, spec.renderer, rules))
-    for agent, slice_name, _ in project_slices(config.harnesses):
-        if slice_name not in PROJECT_DOCUMENTS:
-            continue
-        document, contributed = project_slice_document(root, config, slice_name, catalogs=catalogs)
-        if not contributed:
-            continue
-        known = _known_marketplaces(agent, document) if slice_name == "plugins" else frozenset()
-        found.extend(notices_for(agent, slice_name, document, known))
-    trees = project_skill_trees(root, config)
-    claude_collision = any(
-        {"claude", "opencode"}.issubset(
-            selected_skill_agents(skill.name, config.harnesses, config.skill_policies)
-        )
-        for skill in trees
-    )
-    if claude_collision and opencode_skills_race(environ):
-        found.append(
-            Notice(
-                agent="opencode",
-                slice="skills",
-                message=(
-                    f"none of {' or '.join(OPENCODE_SKILL_FLAGS)} is set, so OpenCode also "
-                    f"scans .claude/skills and picks between the two copies of each skill at "
-                    f"random — export one of them; see docs/reference/opencode.md"
-                ),
-            )
-        )
-    if "opencode" in config.harnesses and opencode_external_skills_race(environ):
-        differing = any(
-            {"codex", "opencode"}.issubset(
-                selected_skill_agents(skill.name, config.harnesses, config.skill_policies)
-            )
-            and render_skill_for(skill.name, config.skill_policies)
-            and render_skill(skill, "codex") != render_skill(skill, "opencode")
-            for skill in trees
-        )
-        if differing:
-            found.append(
-                Notice(
-                    agent="opencode",
-                    slice="skills",
-                    message=(
-                        f"{OPENCODE_EXTERNAL_SKILL_FLAG} is not set, so OpenCode also scans "
-                        ".agents/skills and picks between its variant and Codex's at random; "
-                        "export it or restrict the skill's agents; see docs/reference/opencode.md"
-                    ),
-                )
-            )
-    return tuple(found)
 
 
 def _owns_its_file(target: PermissionTarget) -> bool:
@@ -887,8 +626,11 @@ def _rule_less(renderer: str, rules: Rules) -> bool:
     return False
 
 
-def render_global(root: Path, profile: str = "default") -> dict[Path, Output]:
-    manifest = load_profile(root, profile)
+def render_global(
+    root: Path, profile: str = "default", context: RenderContext | None = None
+) -> dict[Path, Output]:
+    context = context or RenderContext()
+    manifest = load_profile(root, profile, sources=context.sources)
     declared = _declared_profiles(manifest) | declared_profile_files(root)
     if profile != "default" and profile not in declared:
         known = ", ".join(sorted(declared)) or "none"
@@ -897,16 +639,12 @@ def render_global(root: Path, profile: str = "default") -> dict[Path, Output]:
     outputs: dict[Path, Output] = {}
     claimed: dict[Path, str] = {}
     for t in manifest.targets:
-        if _selected(t, profile):
-            _expand(t, _fixed(render(t, manifest)), root, outputs, claimed)
+        if selected_target(t, profile):
+            _expand(t, _fixed(render(t, manifest)), root, (outputs, claimed), context)
 
-    selected_permissions = [t for t in manifest.permissions if _selected(t, profile)]
+    selected_permissions = [t for t in manifest.permissions if selected_target(t, profile)]
     if selected_permissions:
-        tiers = [
-            parse_rules(source.path.joinpath(*PERMISSIONS_SOURCE))
-            for source in permission_sources(manifest)
-        ]
-        rules = merge_rules(*tiers)
+        rules = global_rules(manifest)
         servers = global_servers(manifest)
         groups: dict[Path, list[tuple[PermissionTarget, dict[str, Any], dict[str, Any]]]] = {}
         for target in selected_permissions:
@@ -927,7 +665,7 @@ def render_global(root: Path, profile: str = "default") -> dict[Path, Output]:
                 continue
             content = _permission_content(target, servers, manifest)
             residual = settings_document(target, manifest, root)
-            for path in _target_paths(target, root):
+            for path in _target_paths(target, root, context):
                 group = groups.setdefault(path, [])
                 if group:
                     _require_same_owner(group[0][0], target, path)
@@ -939,12 +677,12 @@ def render_global(root: Path, profile: str = "default") -> dict[Path, Output]:
                 compose_permission_document(contributors, rules, path), contributors, manifest
             )
 
-    _expand_every_skill(manifest, outputs, claimed)
-    _expand_agents(manifest, outputs, claimed)
+    _expand_every_skill(manifest, (outputs, claimed), context)
+    _expand_agents(manifest, (outputs, claimed), context)
     # After skills and agents, so a module-config path that lands on a rendered
     # destination collides with it rather than depending on which ran first.
     for module_config_target in manifest.module_config:
-        _expand_module_config(module_config_target, manifest, outputs, claimed)
+        _expand_module_config(module_config_target, manifest, (outputs, claimed), context)
     return outputs
 
 
@@ -974,14 +712,16 @@ def skill_trees(manifest: Manifest) -> tuple[Skill, ...]:
 
 
 def _expand_every_skill(
-    manifest: Manifest, outputs: dict[Path, Output], claimed: dict[Path, str]
+    manifest: Manifest,
+    state: tuple[dict[Path, Output], dict[Path, str]],
+    context: RenderContext,
 ) -> None:
     if not manifest.skills:
         return
     trees = skill_trees(manifest)
     _check_skill_agents(trees, manifest.skill_policies, source_agents(manifest))
     for skills_target in manifest.skills:
-        _expand_skills(skills_target, manifest, trees, (outputs, claimed))
+        _expand_skills(skills_target, manifest, trees, state, context)
 
 
 def _expand_skills(
@@ -989,28 +729,18 @@ def _expand_skills(
     manifest: Manifest,
     trees: tuple[Skill, ...],
     state: tuple[dict[Path, Output], dict[Path, str]],
+    context: RenderContext,
 ) -> None:
-    outputs, claimed = state
+    available = tuple(item.harness for item in manifest.skills)
     for destination in target.destinations:
-        base = resolve_destination(str(destination), f"{target.agent}.skills")
+        base = context.destination(str(destination), f"{target.harness}.skills")
         for skill in trees:
-            available = tuple(item.agent for item in manifest.skills)
-            if target.agent not in selected_skill_agents(
+            if target.harness not in selected_skill_agents(
                 skill.name, available, manifest.skill_policies
             ):
                 continue
-            directory = base / skill.name
-            document = directory / SKILL_DOCUMENT
-            _claim(document, f"{target.agent}.skills", claimed)
-            outputs[document] = (
-                render_skill(skill, target.agent)
-                if render_skill_for(skill.name, manifest.skill_policies)
-                else Copied(skill.document)
-            )
-            for relative in skill.supporting:
-                path = directory / relative
-                _claim(path, f"{target.agent}.skills", claimed)
-                outputs[path] = Copied(source=skill.supporting_root / relative)
+            render = render_skill_for(skill.name, manifest.skill_policies)
+            _write_skill(skill, target.harness, base, state, render=render)
 
 
 def _check_skill_agents(
@@ -1046,14 +776,16 @@ def source_agents(manifest: Manifest) -> tuple[Agent, ...]:
 
 
 def _expand_agents(
-    manifest: Manifest, outputs: dict[Path, Output], claimed: dict[Path, str]
+    manifest: Manifest,
+    state: tuple[dict[Path, Output], dict[Path, str]],
+    context: RenderContext,
 ) -> None:
     agents = source_agents(manifest) if manifest.agents else ()
     for target in manifest.agents:
-        label = f"{target.agent}.{AGENTS_SUBDIR}"
+        label = f"{target.harness}.{AGENTS_SUBDIR}"
         for destination in target.destinations:
-            base = resolve_destination(str(destination), label)
-            _write_agents(agents, target.agent, base, (outputs, claimed))
+            base = context.destination(str(destination), label)
+            _write_agents(agents, target.harness, base, state)
 
 
 def _write_agents(
@@ -1080,14 +812,6 @@ def _expand_project_agents(
 
 def project_agents(root: Path) -> tuple[Agent, ...]:
     return tuple(parse_agent(path) for path in discover_agents(root / PROJECT_DIR / AGENTS_SUBDIR))
-
-
-def _agent_notices(agents: tuple[Agent, ...], harnesses: tuple[str, ...]) -> tuple[Notice, ...]:
-    return tuple(
-        Notice(agent=harness, slice=AGENTS_SUBDIR, message=note)
-        for agent in agents
-        for harness, note in agent_notes(agent, harnesses)
-    )
 
 
 def module_config_files(manifest: Manifest, agent: str) -> tuple[tuple[PurePosixPath, Path], ...]:
@@ -1127,22 +851,26 @@ def module_config_files(manifest: Manifest, agent: str) -> tuple[tuple[PurePosix
 def _expand_module_config(
     target: ModuleConfigTarget,
     manifest: Manifest,
-    outputs: dict[Path, Output],
-    claimed: dict[Path, str],
+    state: tuple[dict[Path, Output], dict[Path, str]],
+    context: RenderContext,
 ) -> None:
-    files = module_config_files(manifest, target.agent)
+    outputs, claimed = state
+    files = module_config_files(manifest, target.harness)
     if not files:
         return
-    label = f"{target.agent}.{MODULE_CONFIG_SUBDIR}"
+    label = f"{target.harness}.{MODULE_CONFIG_SUBDIR}"
     for destination in target.destinations:
-        base = resolve_destination(str(destination), label)
+        base = context.destination(str(destination), label)
         for relative, source in files:
             path = base / Path(str(relative))
             _claim(path, label, claimed)
             outputs[path] = Copied(source=source)
 
 
-def render_all(root: Path, profile: str = "default") -> dict[Path, Output]:
+def render_all(
+    root: Path, profile: str = "default", context: RenderContext | None = None
+) -> dict[Path, Output]:
+    context = context or RenderContext()
     outputs: dict[Path, Output] = {}
     has_global = manifest_path(root).is_file()
     has_project = project_config_path(root).is_file()
@@ -1153,10 +881,10 @@ def render_all(root: Path, profile: str = "default") -> dict[Path, Output]:
             f"or {PROJECT_DIR}/{PROJECT_CONFIG_NAME}"
         )
 
-    global_outputs = render_global(root, profile) if has_global else {}
+    global_outputs = render_global(root, profile, context) if has_global else {}
     outputs.update(global_outputs)
     if has_project:
-        project_outputs = render_project(root)
+        project_outputs = render_project(root, context)
         collisions = sorted(str(p) for p in project_outputs if p in outputs)
         if collisions:
             raise LoadoutError(
@@ -1166,42 +894,11 @@ def render_all(root: Path, profile: str = "default") -> dict[Path, Output]:
     return outputs
 
 
-def _legacy_source_inputs(sources: tuple[Source, ...]) -> tuple[Path, ...]:
-    return tuple(
-        source.path / (f"{name}.toml" if name in {"permissions", "mcp"} else name)
-        for source in sources
-        for name in sorted(source.use)
-    )
-
-
-def _global_source_inputs(root: Path, manifest: Manifest) -> tuple[Path, ...]:
-    return (
-        *_legacy_source_inputs(manifest.sources),
-        manifest_path(root),
-        *manifest.config_paths,
-        *(root / str(t.base) for t in manifest.permissions if t.base is not None),
-    )
-
-
-def _project_source_inputs(root: Path, config: ProjectConfig) -> tuple[Path, ...]:
-    inputs = [root / PROJECT_DIR]
-    templates = [resolve_template(name, root) for name in config.templates]
-    inputs.extend(
-        template.path.parent if template.path.is_file() else template.path for template in templates
-    )
-    if any(template.source not in {VENDORED, BUNDLED} for template in templates):
-        path = machine_config_path()
-        machine = load_machine_config(path)
-        assert machine is not None
-        manifest = load_manifest(manifest_path(machine.source))
-        inputs.extend((path, *manifest.config_paths))
-    return tuple(inputs)
-
-
-def render_project(root: Path) -> dict[Path, Output]:
+def render_project(root: Path, context: RenderContext | None = None) -> dict[Path, Output]:
     refuse_external_links(root, EXCLUDED_DIRECTORIES)
     config = load_project_config(project_config_path(root))
-    outputs = _render_project_slices(root, config)
+    templates = project_templates(root, config, context or RenderContext())
+    outputs = _render_project_slices(root, config, templates)
     # Before anything compares or shows these: a diff of a file outside the project
     # would print it.
     records = (r for c in outputs.values() if isinstance(c, Merged) for r, _ in c.records)
@@ -1209,7 +906,7 @@ def render_project(root: Path) -> dict[Path, Output]:
     return outputs
 
 
-def _project_rules(root: Path, config: ProjectConfig, catalogs: Mapping[Path, Catalog]) -> Rules:
+def project_rules(root: Path, templates: ProjectTemplates) -> Rules:
     """The permission tiers project scope merges, lowest first.
 
     Templates are the lowest tier, in declared order: a template describes a kind
@@ -1221,12 +918,10 @@ def _project_rules(root: Path, config: ProjectConfig, catalogs: Mapping[Path, Ca
     actually rendered, the way `permission_sources` guarantees it at global scope.
     """
     project_dir = root / PROJECT_DIR
-    templates = tuple(resolve_template(name, root).path for name in config.templates)
     tiers: list[Rules] = [
-        parse_rules(contributed)
-        for contributed in contribution_paths(templates, "permissions", catalogs=catalogs)
+        parse_rules(contributed) for contributed in templates.contributions("permissions")
     ]
-    for path in (project_dir / PROJECT_SOURCE, project_dir / PROJECT_LOCAL_SOURCE):
+    for path in (project_dir / PERMISSIONS_SOURCE, project_dir / PROJECT_LOCAL_SOURCE):
         if path.is_file():
             tiers.append(parse_rules(path))
     return merge_rules(*tiers)
@@ -1273,17 +968,16 @@ def project_owned_keys(harnesses: tuple[str, ...], output: str) -> frozenset[str
     return frozenset(keys)
 
 
-def _render_project_slices(root: Path, config: ProjectConfig) -> dict[Path, Output]:
-    templates = tuple(resolve_template(name, root).path for name in config.templates)
-    catalogs = load_catalogs(templates)
-    rules = _project_rules(root, config, catalogs)
+def _render_project_slices(
+    root: Path, config: ProjectConfig, templates: ProjectTemplates
+) -> dict[Path, Output]:
+    rules = project_rules(root, templates)
 
-    instructions = project_instructions(root, config, catalogs=catalogs)
-    trees = project_skill_trees(root, config, catalogs=catalogs)
-    servers = project_servers(root, config, catalogs=catalogs)
+    instructions = project_instructions(root, config, templates)
+    trees = project_skill_trees(root, templates)
+    servers = project_servers(root, templates)
     project_documents = {
-        name: project_slice_document(root, config, name, catalogs=catalogs)
-        for name in PROJECT_DOCUMENTS
+        name: project_slice_document(root, name, templates) for name in PROJECT_DOCUMENTS
     }
 
     def _contributes(slice_name: str) -> bool:
@@ -1315,7 +1009,7 @@ def _render_project_slices(root: Path, config: ProjectConfig) -> dict[Path, Outp
         if spec.output is None:
             continue
         path = root / spec.output
-        if slice_name in {"skills", AGENTS_SUBDIR}:
+        if slice_name in DIRECTORY_SLICES:
             # Directories: skills went through the catalog above, agents below.
             continue
         if slice_name == "instructions":
@@ -1340,7 +1034,7 @@ def _render_project_slices(root: Path, config: ProjectConfig) -> dict[Path, Outp
             continue
         owner = f"{agent}.{slice_name}"
         contributor = PermissionTarget(
-            agent=agent,
+            harness=agent,
             name=agent if slice_name == "permissions" else f"{agent}-{slice_name}",
             path=None,
             renderer=spec.renderer or "",
@@ -1387,31 +1081,22 @@ def _project_residual(root: Path, agent: str, path: Path) -> dict[str, Any]:
 
 
 def project_slice_document(
-    root: Path,
-    config: ProjectConfig,
-    slice_name: str,
-    *,
-    catalogs: Mapping[Path, Catalog] | None = None,
+    root: Path, slice_name: str, templates: ProjectTemplates
 ) -> tuple[dict[str, Any], bool]:
-    templates = tuple(resolve_template(name, root).path for name in config.templates)
-    paths = list(contribution_paths(templates, slice_name, catalogs=catalogs))
+    paths = list(templates.contributions(slice_name))
     local = root / PROJECT_DIR / PROJECT_DOCUMENTS[slice_name]
     if local.is_file():
         paths.append(local)
     return merge_documents(*(_load_base(path) for path in paths)), bool(paths)
 
 
-def project_skill_trees(
-    root: Path, config: ProjectConfig, *, catalogs: Mapping[Path, Catalog] | None = None
-) -> tuple[Skill, ...]:
+def project_skill_trees(root: Path, templates: ProjectTemplates) -> tuple[Skill, ...]:
     """Collect skill trees in template order, then replace matching names from the project."""
     collected: dict[str, Skill] = {}
-    templates = tuple(resolve_template(name, root).path for name in config.templates)
-    loaded = load_catalogs(templates) if catalogs is None else catalogs
-    for template in templates:
+    for template in templates.paths:
         skills = (
-            loaded[template].skills()
-            if template in loaded
+            templates.catalogs[template].skills()
+            if template in templates.catalogs
             else discover_skills(template / SKILLS_SUBDIR)
         )
         for skill in skills:
@@ -1421,9 +1106,7 @@ def project_skill_trees(
     return tuple(sorted(collected.values(), key=lambda s: s.name))
 
 
-def project_servers(
-    root: Path, config: ProjectConfig, *, catalogs: Mapping[Path, Catalog] | None = None
-) -> dict[str, Server]:
+def project_servers(root: Path, templates: ProjectTemplates) -> dict[str, Server]:
     """Every server this project defines, templates first and the project last.
 
     Same tier rule as permissions, instructions and skills: a template is
@@ -1431,8 +1114,7 @@ def project_servers(
     replaces the template's rather than merging with it.
     """
     collected: dict[str, Server] = {}
-    templates = tuple(resolve_template(name, root).path for name in config.templates)
-    for contributed in contribution_paths(templates, "mcp", catalogs=catalogs):
+    for contributed in templates.contributions("mcp"):
         for server_name, server in parse_servers(contributed).items():
             collected[server_name] = server
     for server_name, server in parse_servers(root / PROJECT_DIR / SERVERS_SOURCE).items():
@@ -1440,7 +1122,7 @@ def project_servers(
     return collected
 
 
-def _write_project_skill(
+def _write_skill(
     skill: Skill,
     agent: str,
     base: Path,
@@ -1464,14 +1146,8 @@ def _expand_project_catalog(
     config: ProjectConfig,
     trees: tuple[Skill, ...],
     state: tuple[dict[Path, Output], dict[Path, str]],
-    *,
-    available: tuple[str, ...] | None = None,
 ) -> None:
-    available = tuple(
-        agent
-        for agent in (config.harnesses if available is None else available)
-        if "skills" in PROJECT_PRESET[agent]
-    )
+    available = tuple(agent for agent in config.harnesses if "skills" in PROJECT_PRESET[agent])
     for skill in trees:
         selected = selected_skill_agents(skill.name, available, config.skill_policies)
         should_render = render_skill_for(skill.name, config.skill_policies)
@@ -1489,7 +1165,7 @@ def _expand_project_catalog(
         for agent in remaining:
             spec = PROJECT_PRESET[agent]["skills"]
             assert spec.output is not None
-            _write_project_skill(skill, agent, root / spec.output, state, render=should_render)
+            _write_skill(skill, agent, root / spec.output, state, render=should_render)
 
 
 # Claude reads AGENTS.md only when no CLAUDE.md is on the path, so with another
@@ -1506,7 +1182,7 @@ def _imports_agents(root: Path, config: ProjectConfig) -> bool:
 
 
 def project_instructions(
-    root: Path, config: ProjectConfig, *, catalogs: Mapping[Path, Catalog] | None = None
+    root: Path, config: ProjectConfig, templates: ProjectTemplates
 ) -> str | None:
     """The project's instruction document, or None when it declares none.
 
@@ -1515,244 +1191,14 @@ def project_instructions(
     project itself says outranks it — which for prose means it comes last and is
     read last. Selecting a template includes its instruction parts automatically.
     """
-    blocks: list[str] = []
-    templates = tuple(resolve_template(name, root).path for name in config.templates)
-    for contributed in contribution_paths(templates, "instructions", catalogs=catalogs):
-        blocks.append(load_fragment(contributed))
-
     source = Source(name=PROJECT_DIR, path=root / PROJECT_DIR, use=frozenset({INSTRUCTIONS.use}))
-    blocks.extend(
-        load_fragment(resolve_item((source,), name, INSTRUCTIONS).path)
-        for name in config.instructions
-    )
+    blocks = [
+        *(load_fragment(contributed) for contributed in templates.contributions("instructions")),
+        *(
+            load_fragment(resolve_item((source,), name, INSTRUCTIONS).path)
+            for name in config.instructions
+        ),
+    ]
     if not blocks:
         return None
     return "\n\n".join([HEADER, *blocks]) + "\n"
-
-
-def atomic_write(path: Path, content: str) -> None:
-    # A destination is often a symlink into the user's config repo (the pre-loadout
-    # deployment mechanism). os.replace() on a symlink replaces the link itself, not
-    # its target — write through the link instead, so the symlink survives sync.
-    target = path.resolve() if path.is_symlink() else path
-    fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=".loadout-")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
-            handle.write(content)
-        os.replace(tmp, target)
-    except BaseException:
-        Path(tmp).unlink(missing_ok=True)
-        raise
-
-
-def atomic_copy(path: Path, source: Path) -> None:
-    target = path.resolve() if path.is_symlink() else path
-    fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=".loadout-")
-    try:
-        os.close(fd)
-        # copymode after the bytes, before the rename: an executable script must
-        # never be observable at its destination without its exec bit.
-        shutil.copyfile(source, tmp)
-        shutil.copymode(source, tmp)
-        os.replace(tmp, target)
-    except BaseException:
-        Path(tmp).unlink(missing_ok=True)
-        raise
-
-
-def artifact_deployment_scopes(root: Path, profile: str = "default") -> tuple[DeploymentScope, ...]:
-    return ()
-
-
-def write_all(root: Path, profile: str = "default", *, force: bool = False) -> list[Path]:
-    root = root.absolute()
-    outputs = render_all(root, profile)
-    return write_outputs(outputs, scopes=artifact_deployment_scopes(root, profile), force=force)
-
-
-def write_outputs(
-    outputs: Mapping[Path, Output],
-    *,
-    scopes: tuple[DeploymentScope, ...] = (),
-    force: bool = False,
-) -> list[Path]:
-    deployment = prepare_deployment(scopes, outputs, force=force)
-    if deployment.conflicts:
-        raise DeploymentConflict("; ".join(deployment.conflicts))
-    frozen: dict[Path, str | FrozenFile | Copied] = {}
-    for path, content in outputs.items():
-        if path not in deployment.managed:
-            frozen.update(_frozen(path, content))
-    written = apply_deployment(deployment)
-    for path in deployment.detached:
-        print(f"note: detached deployment retained for explicit cleanup: {path}")
-    for path, frozen_content in frozen.items():
-        if _unchanged(path, frozen_content):
-            continue
-        path.parent.mkdir(parents=True, exist_ok=True)
-        if isinstance(frozen_content, FrozenFile):
-            _atomic_frozen_copy(path, frozen_content.content, frozen_content.mode)
-        elif isinstance(frozen_content, Copied):
-            _atomic_stream_copy(path, frozen_content)
-        else:
-            atomic_write(path, frozen_content)
-        written.append(path)
-    return written
-
-
-def _frozen(path: Path, content: Output) -> dict[Path, str | FrozenFile | Copied]:
-    if isinstance(content, FrozenFile | Copied):
-        # A copy stays a reference and is streamed when written, never held whole.
-        return {path: content}
-    if isinstance(content, Merged):
-        applied = created_document(path, content)
-        return {**({path: applied} if applied is not None else {}), **dict(content.records)}
-    return {path: content}
-
-
-def _unchanged(path: Path, content: str | FrozenFile | Copied) -> bool:
-    """Same bytes already there, so rewriting would only move the mtime."""
-    if not path.is_file():
-        return False
-    if isinstance(content, Copied):
-        return _same_copy(path, content)
-    if isinstance(content, FrozenFile):
-        return (
-            path.read_bytes() == content.content
-            and path.stat().st_mode & 0o7777 == content.mode & 0o7777
-        )
-    return path.read_bytes() == content.encode("utf-8")
-
-
-def check_all(
-    root: Path, profile: str = "default", outputs: Mapping[Path, Output] | None = None
-) -> list[tuple[Path, str, str]]:
-    """Every output on disk that differs from `outputs`, rendered here when not given."""
-    root = root.absolute()
-    outputs = render_all(root, profile) if outputs is None else outputs
-    deployment = prepare_deployment(artifact_deployment_scopes(root, profile), outputs)
-    drift = list(deployment.drift)
-    for path in deployment.detached:
-        print(f"note: detached deployment retained for explicit cleanup: {path}")
-    for path, expected in outputs.items():
-        if path in deployment.managed:
-            continue
-        if isinstance(expected, FrozenFile):
-            if (
-                not path.is_file()
-                or path.read_bytes() != expected.content
-                or path.stat().st_mode & 0o7777 != expected.mode
-            ):
-                drift.append(
-                    (
-                        path,
-                        describe_file(path),
-                        f"{len(expected.content)} bytes, mode {expected.mode:o}\n",
-                    )
-                )
-            continue
-        if isinstance(expected, Copied):
-            if _copy_drifted(path, expected.source, expected.prefix):
-                drift.append(
-                    (path, describe_file(path), describe_file(expected.source, expected.prefix))
-                )
-            continue
-        actual = path.read_text(encoding="utf-8", newline="") if path.is_file() else ""
-        # Applying is identity on everything loadout does not own, so this compares
-        # owned keys alone: the harness writing its own project table cannot read
-        # as drift.
-        wanted = applied_document(path, expected) if isinstance(expected, Merged) else expected
-        if actual != wanted:
-            drift.append((path, actual, wanted))
-        if isinstance(expected, Merged):
-            for record_path, text in expected.records:
-                on_disk = record_path.read_text(encoding="utf-8") if record_path.is_file() else ""
-                if on_disk != text:
-                    drift.append((record_path, on_disk, text))
-    return drift
-
-
-CHUNK = 1 << 20
-
-
-def _same_copy(path: Path, copied: Copied) -> bool:
-    """Whether `path` already holds the copy, compared a chunk at a time."""
-    have = path.stat()
-    if stat.S_IMODE(have.st_mode) != copied.file_mode() & 0o7777:
-        return False
-    if have.st_size != len(copied.prefix) + copied.source.stat().st_size:
-        return False
-    with path.open("rb") as existing, copied.source.open("rb") as source:
-        if existing.read(len(copied.prefix)) != copied.prefix:
-            return False
-        while True:
-            chunk = source.read(CHUNK)
-            if existing.read(CHUNK) != chunk:
-                return False
-            if not chunk:
-                return True
-
-
-def _atomic_stream_copy(path: Path, copied: Copied) -> None:
-    target = path.resolve() if path.is_symlink() else path
-    fd, temporary = tempfile.mkstemp(dir=target.parent, prefix=".loadout-")
-    try:
-        with os.fdopen(fd, "wb") as handle, copied.source.open("rb") as source:
-            handle.write(copied.prefix)
-            shutil.copyfileobj(source, handle, CHUNK)
-            # Mode before the rename: an executable must never appear without its bit.
-            os.fchmod(handle.fileno(), copied.file_mode())
-        os.replace(temporary, target)
-    except BaseException:
-        Path(temporary).unlink(missing_ok=True)
-        raise
-
-
-def _atomic_frozen_copy(path: Path, content: bytes, mode: int) -> None:
-    target = path.resolve() if path.is_symlink() else path
-    fd, temporary = tempfile.mkstemp(dir=target.parent, prefix=".loadout-")
-    try:
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(content)
-            os.fchmod(handle.fileno(), mode)
-        os.replace(temporary, target)
-    except BaseException:
-        Path(temporary).unlink(missing_ok=True)
-        raise
-
-
-def created_document(path: Path, merged: Merged) -> str | None:
-    """The applied document, or None when the file is absent and would stay empty."""
-    applied = applied_document(path, merged)
-    return applied if applied or path.is_file() else None
-
-
-def applied_document(path: Path, merged: Merged) -> str:
-    """The destination with loadout's keys written in. The caller reads the file;
-    the renderer that produced `merged` never did (ADR 0001)."""
-    existing = path.read_text(encoding="utf-8", newline="") if path.is_file() else ""
-    if merged.native:
-        return apply_document(existing, merged.owned, merged.document, merged.format)
-    apply = apply_json if merged.format == "json" else apply_toml
-    return apply(existing, merged.owned, merged.document)
-
-
-def _copy_drifted(path: Path, source: Path, prefix: bytes = b"") -> bool:
-    if not path.is_file():
-        return True
-    if path.read_bytes() != prefix + source.read_bytes():
-        return True
-    return _executable(path) != _executable(source)
-
-
-def _executable(path: Path) -> bool:
-    return bool(path.stat().st_mode & 0o111)
-
-
-def describe_file(path: Path, prefix: bytes = b"") -> str:
-    # Drift on a copied file reports a summary, not the content: a tree carries
-    # binaries, and a byte diff of one is noise rather than a review.
-    if not path.is_file():
-        return "(absent)\n"
-    suffix = " (executable)" if _executable(path) else ""
-    return f"{len(prefix) + path.stat().st_size} bytes{suffix}\n"

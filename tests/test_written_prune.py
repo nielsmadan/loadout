@@ -28,7 +28,7 @@ def _project(root: Path) -> Path:
 
 def _dead_record(root: Path) -> Path:
     root.mkdir()
-    record_written(root, "default", {root / "CLAUDE.md": text_entry(root / "CLAUDE.md", "x\n")})
+    record_written(root, {root / "CLAUDE.md": text_entry(root / "CLAUDE.md", "x\n")})
     root.rmdir()
     return written_state_path(root)
 
@@ -76,7 +76,7 @@ def test_a_root_that_cannot_be_examined_keeps_its_record(tmp_path: Path) -> None
     live = _project(tmp_path / "live")
     hidden = tmp_path / "locked" / "root"
     hidden.mkdir(parents=True)
-    record_written(hidden, "default", {hidden / "a.md": text_entry(hidden / "a.md", "x\n")})
+    record_written(hidden, {hidden / "a.md": text_entry(hidden / "a.md", "x\n")})
     kept = written_state_path(hidden)
     hidden.parent.chmod(0)
     try:

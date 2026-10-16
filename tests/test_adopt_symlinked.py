@@ -104,6 +104,7 @@ def test_a_symlinked_claude_directory_is_adopted_by_de_linking(
                 str(dotfiles / "settings.json"),
                 str(dotfiles / "skills/review/SKILL.md"),
             ],
+            "written_into": ["agents", "skills"],
         }
     ]
     assert claude.is_symlink()
@@ -112,7 +113,7 @@ def test_a_symlinked_claude_directory_is_adopted_by_de_linking(
 
     out = capsys.readouterr().out
     assert (
-        f"{claude} was a symlink into {dotfiles}. Loadout's files are now real files here; "
+        f"{claude} was a symlink into {dotfiles}. loadout's files are now real files here; "
         f"everything else still links into {dotfiles}. {dotfiles}'s copies of CLAUDE.md, "
         "agents/helper.md, settings.json, skills/review/SKILL.md are no longer used. Entries "
         f"added later to {dotfiles}'s top level, or inside agents/, skills/, will not appear here."
@@ -148,7 +149,7 @@ def test_stow_style_per_file_links_are_adopted_by_de_linking(
         f"real file written by loadout; {dotfiles / 'settings.json'} is no longer used."
     ) in out
     assert (
-        f"{claude / 'skills/review'} was a symlink into {dotfiles / 'skills/review'}. Loadout's "
+        f"{claude / 'skills/review'} was a symlink into {dotfiles / 'skills/review'}. loadout's "
         f"files are now real files here; everything else still links into "
         f"{dotfiles / 'skills/review'}. {dotfiles / 'skills/review'}'s copies of SKILL.md are no "
         f"longer used. Entries added later to {dotfiles / 'skills/review'}'s top level will not "
@@ -262,3 +263,26 @@ def test_a_de_linked_root_keeps_the_unowned_keys_of_its_shared_document(
     assert not (fake_home / root).is_symlink()
     assert unowned in (fake_home / root / document).read_text()
     assert _snapshot(dotfiles) == before
+
+
+def test_a_de_linked_document_another_tool_writes_renders_as_previewed(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    """De-linking starts each output as the file it was, so the first render carries Pi's
+    runtime key forward exactly as the preview did instead of failing init."""
+    dotfiles = tmp_path / "dotfiles" / "pi"
+    dotfiles.mkdir(parents=True)
+    settings = {"defaultModel": "qa-model", "lastChangelogVersion": "1.2.3"}
+    (dotfiles / "settings.json").write_text(json.dumps(settings, indent=2) + "\n")
+    agent = fake_home / ".pi" / "agent"
+    agent.parent.mkdir(parents=True)
+    agent.symlink_to(dotfiles, target_is_directory=True)
+    source = tmp_path / "src"
+    source.mkdir()
+
+    assert loadout.main(["init", "global", str(source), "--harness", "pi", "--yes"]) == 0
+
+    written = json.loads((agent / "settings.json").read_text())
+    assert written == {"defaultModel": "qa-model", "packages": [], "lastChangelogVersion": "1.2.3"}
+    capsys.readouterr()
+    assert loadout.main(["check", "--global"]) == 0

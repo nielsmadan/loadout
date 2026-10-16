@@ -9,6 +9,8 @@ from typing import Any
 
 from . import migration_git
 from .errors import LoadoutError, UsageError
+from .manifest import manifest_path
+from .project import project_config_path
 
 EVENTS = ("pre-commit", "post-checkout", "post-merge")
 # Identity lives in this marker, never in the command the hook invokes, so renaming
@@ -188,8 +190,8 @@ def show_hooks(preview: dict[str, Any]) -> None:
 
 
 def _require_source(root: Path) -> None:
-    if not (root / "loadout.toml").is_file() and not (root / "loadout/config.toml").is_file():
-        raise LoadoutError(f"no Loadout source at {root}; select its root with --root")
+    if not manifest_path(root).is_file() and not project_config_path(root).is_file():
+        raise LoadoutError(f"no loadout source at {root}; select its root with --root")
 
 
 def install_hooks(

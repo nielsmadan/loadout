@@ -22,15 +22,15 @@ lost — losing state fails closed.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from .machine import machine_state_dir
+from .output import sha256
 
 VERSION = 1
 
@@ -88,15 +88,10 @@ class WrittenEntry:
     strips rather than deleting a file loadout does not own.
     """
 
-    kind: str
+    kind: Literal["text", "copied", "merged"]
     sha256: str | None = None
     norm_sha256: str | None = None
-    executable: bool = False
     owned: tuple[str, ...] = ()
-
-
-def _digest(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def written_state_path(root: Path, env: Mapping[str, str] | None = None) -> Path:
@@ -105,7 +100,7 @@ def written_state_path(root: Path, env: Mapping[str, str] | None = None) -> Path
     Keyed by a hash rather than the path itself so the name is filesystem-safe; the
     path is stored inside the file so it stays inspectable by hand.
     """
-    key = _digest(str(root.resolve()).encode())[:16]
+    key = sha256(str(root.resolve()).encode())[:16]
     return machine_state_dir(env) / "written" / f"{key}.json"
 
 
@@ -115,11 +110,17 @@ def read_written(root: Path, env: Mapping[str, str] | None = None) -> dict[Path,
     Absent, unreadable, malformed and version-bumped all mean the same thing to the
     caller: no baseline, behave as before the record existed.
     """
-    path = written_state_path(root, env)
+    return _entries(_document(written_state_path(root, env)))
+
+
+def _document(record: Path) -> object:
     try:
-        document = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
+        return json.loads(record.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def _entries(document: object) -> dict[Path, WrittenEntry]:
     if not isinstance(document, dict) or document.get("version") != VERSION:
         return {}
     entries = document.get("written")
@@ -133,7 +134,6 @@ def read_written(root: Path, env: Mapping[str, str] | None = None) -> dict[Path,
             kind=raw["kind"],
             sha256=raw.get("sha256"),
             norm_sha256=raw.get("norm_sha256"),
-            executable=bool(raw.get("executable", False)),
             owned=tuple(raw.get("owned", ())),
         )
     return out
@@ -148,9 +148,10 @@ def every_recorded_path(env: Mapping[str, str] | None = None) -> frozenset[Path]
         return frozenset()
     paths: set[Path] = set()
     for record in records:
-        root = _recorded_root(record)
-        if root is not None:
-            paths.update(read_written(root, env))
+        document = _document(record)
+        root = _root(document)
+        if root is not None and written_state_path(root, env) == record:
+            paths.update(_entries(document))
     return frozenset(paths)
 
 
@@ -166,7 +167,7 @@ def prune_vanished(env: Mapping[str, str] | None = None) -> None:
     except OSError:
         return
     for record in records:
-        root = _recorded_root(record)
+        root = _root(_document(record))
         if root is None or not _vanished(root):
             continue
         try:
@@ -175,11 +176,7 @@ def prune_vanished(env: Mapping[str, str] | None = None) -> None:
             continue
 
 
-def _recorded_root(record: Path) -> Path | None:
-    try:
-        document = json.loads(record.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
+def _root(document: object) -> Path | None:
     root = document.get("root") if isinstance(document, dict) else None
     return Path(root) if isinstance(root, str) and Path(root).is_absolute() else None
 
@@ -196,7 +193,6 @@ def _vanished(path: Path) -> bool:
 
 def record_written(
     root: Path,
-    profile: str,
     entries: Mapping[Path, WrittenEntry],
     env: Mapping[str, str] | None = None,
     *,
@@ -217,7 +213,6 @@ def record_written(
     document: dict[str, Any] = {
         "version": VERSION,
         "root": str(root.resolve()),
-        "profile": profile,
         "written": {
             str(dest): {
                 k: v
@@ -225,7 +220,6 @@ def record_written(
                     "kind": entry.kind,
                     "sha256": entry.sha256,
                     "norm_sha256": entry.norm_sha256,
-                    "executable": entry.executable or None,
                     "owned": list(entry.owned) or None,
                 }.items()
                 if v is not None
@@ -248,29 +242,27 @@ def record_written(
 
 
 def accepts_text(entry: WrittenEntry | None, path: Path, actual: str) -> bool:
-    return entry is not None and entry.norm_sha256 == _digest(normalise(path, actual).encode())
+    return entry is not None and entry.norm_sha256 == sha256(normalise(path, actual).encode())
 
 
 def accepts_bytes(entry: WrittenEntry | None, actual: bytes) -> bool:
-    return entry is not None and entry.sha256 == _digest(actual)
+    return entry is not None and entry.sha256 == sha256(actual)
 
 
 def text_entry(path: Path, content: str) -> WrittenEntry:
     return WrittenEntry(
         kind="text",
-        sha256=_digest(content.encode()),
-        norm_sha256=_digest(normalise(path, content).encode()),
+        sha256=sha256(content.encode()),
+        norm_sha256=sha256(normalise(path, content).encode()),
     )
 
 
-def frozen_entry(content: bytes, mode: int) -> WrittenEntry:
-    return WrittenEntry(kind="copied", sha256=_digest(content), executable=bool(mode & 0o111))
+def frozen_entry(content: bytes) -> WrittenEntry:
+    return WrittenEntry(kind="copied", sha256=sha256(content))
 
 
-def copied_entry(source: Path, prefix: bytes = b"", *, mode: int | None = None) -> WrittenEntry:
-    data = prefix + source.read_bytes()
-    actual_mode = source.stat().st_mode if mode is None else mode
-    return frozen_entry(data, actual_mode)
+def copied_entry(source: Path, prefix: bytes = b"") -> WrittenEntry:
+    return frozen_entry(prefix + source.read_bytes())
 
 
 def merged_entry(owned: Iterable[str]) -> WrittenEntry:

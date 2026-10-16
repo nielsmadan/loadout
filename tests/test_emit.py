@@ -3,7 +3,9 @@ from __future__ import annotations
 import stat
 from pathlib import Path
 
-from loadout.emit import atomic_write, check_all, render_all, write_all
+from loadout.emit import render_all
+from loadout.files import atomic_write, check_all
+from render_helpers import write_all
 
 
 def test_atomic_write_creates_file_with_content(tmp_path: Path) -> None:

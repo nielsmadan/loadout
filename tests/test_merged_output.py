@@ -4,8 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from loadout import emit
-from loadout.emit import Merged, check_all, write_all
+from loadout import emit, files
+from loadout.emit import Merged
+from loadout.files import check_all
+from render_helpers import write_all
 
 OWNED = frozenset({"model", "mcp_servers"})
 DOCUMENT = 'model = "gpt-5.6-sol"\n\n[mcp_servers.jina]\ndefault_tools_approval_mode = "approve"\n'
@@ -17,9 +19,12 @@ FOREIGN = '# hand-written\n[projects."/Users/me/ac"]\ntrust_level = "trusted"\n'
 def destination(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A Merged destination, stood up without a preset that uses one yet."""
     path = tmp_path / "config.toml"
-    monkeypatch.setattr(
-        emit, "render_all", lambda root, profile="default": {path: Merged(OWNED, DOCUMENT)}
-    )
+
+    def render(root: Path, profile: str = "default") -> dict[Path, Merged]:
+        return {path: Merged(OWNED, DOCUMENT)}
+
+    monkeypatch.setattr(emit, "render_all", render)
+    monkeypatch.setattr(files, "render_all", render)
     return path
 
 

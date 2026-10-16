@@ -143,6 +143,18 @@ def test_an_unrecognised_server_type_is_reported_and_dropped() -> None:
     assert extraction.notes[0].kind == "unrecognised"
 
 
+@pytest.mark.parametrize("name", ["claude-project-servers", "claude-servers"])
+def test_a_claude_entry_with_a_command_and_no_type_is_stdio(name: str) -> None:
+    """Claude Code reads an untyped entry with a command as stdio, in either file."""
+    document = {"mcpServers": {"docs": {"command": "npx", "args": ["docs-mcp"]}}}
+
+    extraction = extract_value(name, document)
+
+    assert extraction.value == {
+        "docs": Server(name="docs", transport="stdio", command="npx", args=("docs-mcp",))
+    }
+
+
 def test_extraction_does_not_alias_the_document() -> None:
     document = render_claude_project_servers(STDIO_WITH_ENV)
     extracted = extract_value("claude-project-servers", document).value

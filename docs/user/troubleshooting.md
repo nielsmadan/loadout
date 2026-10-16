@@ -72,11 +72,11 @@ A project-only setup does not require global configuration.
 If a machine configuration already exists, inspect its `source` path first.
 `loadout init global --registration replace` is for deliberately replacing that machine selection.
 
-## No targets declared after global initialisation
+## No targets declared
 
-The generated global starter file contains commented examples. Replace it with the
-[agent-block example](guides/global.md#choose-your-agents), then create the selected instruction
-fragments. A source must declare at least one output target.
+A manifest must declare at least one `[<agent>]` block. `init global` writes one for each harness
+it adopted; if they were removed, add one back as in the
+[agent-block example](guides/global.md#choose-your-agents).
 
 ## A fragment cannot be found
 

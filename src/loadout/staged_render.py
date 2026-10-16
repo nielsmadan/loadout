@@ -7,9 +7,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
 
-from . import emit, manifest, templates
+from . import emit, templates
 from .destinations import resolve_destination
 from .errors import LoadoutError
 from .manifest import (
@@ -84,9 +83,11 @@ class Snapshot:
                 self.dependency(base / raw)
         return parse_sources(entries, base)
 
+    def no_sources(self, entries: list[dict[str, object]], base: Path) -> tuple[Source, ...]:
+        return ()
+
     def destination(self, template: str, label: str) -> Path:
-        with patch.dict(os.environ, self.environment, clear=True):
-            actual = resolve_destination(template, label)
+        actual = resolve_destination(template, label, self.environment)
         return (
             self.tree / actual.relative_to(self.original)
             if actual.is_relative_to(self.original)
@@ -125,18 +126,20 @@ class Snapshot:
                     self.upstream(name)
         return {self.root / path for path in project_outputs(config)}
 
-    def global_ownership(self, profile: str) -> set[Path]:
+    def global_ownership(self, profile: str, *, render: bool) -> set[Path]:
         self.inside(manifest_path(self.root))
         if not manifest_path(self.root).is_file():
             return set()
-        config = load_profile(self.root, profile)
+        config = load_profile(
+            self.root, profile, sources=self.sources if render else self.no_sources
+        )
         owned = set()
         targets: tuple[InstructionTarget | PermissionTarget, ...] = (
             *config.targets,
             *config.permissions,
         )
         for target in targets:
-            if not emit._selected(target, profile):
+            if not emit.selected_target(target, profile):
                 continue
             if target.path is not None:
                 owned.add(self.root / str(target.path))
@@ -156,36 +159,24 @@ class Snapshot:
     def inspect(self, profile: str, *, render: bool) -> tuple[str, ...]:
         sys.addaudithook(self.audit)
         self.inside(self.root)
-        with (
-            patch.dict(
-                os.environ,
-                {"HOME": str(self.home), "XDG_CONFIG_HOME": str(self.home / ".config")},
-                clear=True,
-            ),
-            patch.object(manifest, "parse_sources", self.sources if render else lambda *_: ()),
-            patch.object(emit, "resolve_destination", self.destination),
-            patch.object(templates, "resolve_upstream_template", self.upstream),
-        ):
-            owned = self.project_ownership(render=render) | self.global_ownership(profile)
-            configured = (
-                project_config_path(self.root).is_file() or manifest_path(self.root).is_file()
-            )
-            if render and configured:
-                for path, output in emit.render_all(self.root, profile).items():
-                    owned.add(path)
-                    if isinstance(output, Copied):
-                        output.read_bytes()
-                        output.source.stat()
-                    elif isinstance(output, Merged):
-                        for record, expected in output.records:
-                            self.inside(record)
-                            if (
-                                not record.is_file()
-                                or record.read_text(encoding="utf-8") != expected
-                            ):
-                                raise LoadoutError(
-                                    f"staged ownership record differs from its producer: {record}; regenerate and stage the record with its source"
-                                )
+        owned = self.project_ownership(render=render) | self.global_ownership(
+            profile, render=render
+        )
+        configured = project_config_path(self.root).is_file() or manifest_path(self.root).is_file()
+        if render and configured:
+            context = emit.RenderContext(self.destination, self.upstream, self.sources)
+            for path, output in emit.render_all(self.root, profile, context).items():
+                owned.add(path)
+                if isinstance(output, Copied):
+                    output.read_bytes()
+                    output.source.stat()
+                elif isinstance(output, Merged):
+                    for record, expected in output.records:
+                        self.inside(record)
+                        if not record.is_file() or record.read_text(encoding="utf-8") != expected:
+                            raise LoadoutError(
+                                f"staged ownership record differs from its producer: {record}; regenerate and stage the record with its source"
+                            )
         return tuple(
             sorted(
                 str(path.relative_to(self.tree)) for path in owned if path.is_relative_to(self.tree)
@@ -203,6 +194,12 @@ def main() -> None:
             Path(request["relative"]),
             request["environment"],
             tuple(tree / path for path in request["gitlinks"]),
+        )
+        # This process exists only to render the snapshot: nothing it reads may come from
+        # the user's real configuration.
+        os.environ.clear()
+        os.environ.update(
+            {"HOME": str(snapshot.home), "XDG_CONFIG_HOME": str(snapshot.home / ".config")}
         )
         json.dump(snapshot.inspect(request["profile"], render=request["render"]), sys.stdout)
     except (LoadoutError, OSError, ValueError, RuntimeError) as error:

@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from .errors import LoadoutError
+from .manifest import MANIFEST_NAME
+from .project import PROJECT_CONFIG_NAME, PROJECT_DIR
 
 
 def git(root: Path, *arguments: str, data: bytes | None = None) -> bytes:
@@ -109,8 +111,8 @@ def _render_inputs(root: Path, relative: Path, entries: dict[str, Entry]) -> dic
     folder and the files at its root; a global source reads its own folder and any
     source it names outside it. Nothing else of the repository is written out."""
     base = PurePosixPath(relative.as_posix())
-    project = str(base / "loadout/config.toml") in entries
-    prefixes = [base / "loadout"] if project else [base, *_external_sources(root, base, entries)]
+    project = str(base / PROJECT_DIR / PROJECT_CONFIG_NAME) in entries
+    prefixes = [base / PROJECT_DIR] if project else [base, *_external_sources(root, base, entries)]
 
     def wanted(name: str) -> bool:
         path = PurePosixPath(name)
@@ -124,7 +126,7 @@ def _render_inputs(root: Path, relative: Path, entries: dict[str, Entry]) -> dic
 def _external_sources(
     root: Path, base: PurePosixPath, entries: dict[str, Entry]
 ) -> list[PurePosixPath]:
-    manifest = _read_blob(root, entries.get(str(base / "loadout.toml")))
+    manifest = _read_blob(root, entries.get(str(base / MANIFEST_NAME)))
     try:
         document = tomllib.loads(manifest.decode())
     except (UnicodeDecodeError, tomllib.TOMLDecodeError):
@@ -186,10 +188,10 @@ def check_staged(root: Path, profile: str = "default") -> int:
     staged = _entries(repository)
     head_ref = git(repository, "rev-parse", "--revs-only", "HEAD").decode().strip()
     head = _entries(repository, head_ref) if head_ref else {}
-    configs = {str(relative / "loadout.toml"), str(relative / "loadout/config.toml")}
+    configs = {str(relative / MANIFEST_NAME), str(relative / PROJECT_DIR / PROJECT_CONFIG_NAME)}
     if not configs.intersection(staged.keys() | head.keys()):
         raise LoadoutError(
-            f"no Loadout config in HEAD or the supplied index at {root}; "
+            f"no loadout config in HEAD or the supplied index at {root}; "
             "stage the source config or select its root with --root"
         )
     with tempfile.TemporaryDirectory(prefix="loadout-staged-") as directory:
@@ -209,8 +211,8 @@ def check_staged(root: Path, profile: str = "default") -> int:
             commands = "\n".join(f"  {path}" for path in sorted(changed))
             raise LoadoutError(
                 f"generated files are staged for addition or editing:\n{commands}\n"
-                "Edit and stage their Loadout sources. Unstage these output edits, or remove "
+                "Edit and stage their loadout sources. Unstage these output edits, or remove "
                 "generated paths from the index with git rm --cached -- <path>; keep the local copies."
             )
-    print("staged Loadout dependency snapshot is valid")
+    print("staged loadout dependency snapshot is valid")
     return 0

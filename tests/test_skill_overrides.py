@@ -5,7 +5,7 @@ import pytest
 
 import loadout
 import loadout.skill_installation as legacy
-from loadout.emit import write_all
+from render_helpers import write_all
 from test_cli import _global_skill_root, _write_machine_config
 from test_skill_installation import _bundle
 

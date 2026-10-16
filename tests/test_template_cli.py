@@ -205,7 +205,7 @@ def test_list_reports_a_modified_vendored_template(
     assert "vendored, modified" in capsys.readouterr().out
 
 
-def test_list_reports_a_declared_template_and_the_source_it_came_from(
+def test_list_reports_a_tracked_template_and_the_source_it_came_from(
     bare_project: Path,
     fake_home: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -216,7 +216,7 @@ def test_list_reports_a_declared_template_and_the_source_it_came_from(
     capsys.readouterr()
     assert main(["template", "list", "--root", str(bare_project)]) == 0
     out = capsys.readouterr().out
-    assert "declared" in out
+    assert "tracked" in out
     assert "ac" in out
 
 

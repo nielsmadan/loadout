@@ -97,6 +97,6 @@ left-out skill's folders as `unmanaged` until it is resolved.
 ## Later changes
 
 The same skill handles later configuration using the configuration reference.
-`loadout integrate skill install` installs this bundled skill into actual global skill source
-routes, deduplicating shared trees. It asks before source changes; `--yes` approves them. Status identifies every source and its
-agents. Reinstall updates unchanged copies; uninstall removes only owned, unchanged content.
+`loadout integrate skill install` vendors this bundled skill into the global source's
+`skills/loadout/` and syncs it to every configured agent. It asks before source changes; `--yes`
+approves them. Status identifies the source and its agents. Reinstall updates unchanged copies; uninstall removes only owned, unchanged content.

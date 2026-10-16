@@ -23,7 +23,7 @@ import tomlkit
 from .errors import LoadoutError
 from .harnesses import KNOWN_HARNESSES
 from .output import item_name
-from .skills import _TOP_LEVEL_KEY, apply_body, split_frontmatter
+from .skills import TOP_LEVEL_KEY, apply_body, split_frontmatter
 
 AGENTS_SUBDIR = "agents"
 
@@ -135,7 +135,7 @@ def _blocks(lines: list[str], label: str) -> dict[str, tuple[str, list[str]]]:
                 raise LoadoutError(f"{label}: indented line before any key: {line!r}")
             found[current][1].append(line)
             continue
-        match = _TOP_LEVEL_KEY.match(line)
+        match = TOP_LEVEL_KEY.match(line)
         if match is None:
             raise LoadoutError(f"{label}: unreadable frontmatter line {line!r}")
         current = match.group(1)
@@ -148,7 +148,7 @@ def _blocks(lines: list[str], label: str) -> dict[str, tuple[str, list[str]]]:
 def _harness_map(children: list[str], label: str, key: str) -> dict[str, str]:
     mapped: dict[str, str] = {}
     for line in children:
-        match = _TOP_LEVEL_KEY.match(line.strip())
+        match = TOP_LEVEL_KEY.match(line.strip())
         if match is None or match.group(1) not in KNOWN_HARNESSES:
             raise LoadoutError(
                 f"{label}: {key} maps harness names to values "
@@ -190,7 +190,7 @@ def parse_agent(path: Path) -> Agent:
         reserved = sorted(
             key
             for line in lines
-            if (match := _TOP_LEVEL_KEY.match(line)) and (key := match.group(1)) in SOURCE_KEYS
+            if (match := TOP_LEVEL_KEY.match(line)) and (key := match.group(1)) in SOURCE_KEYS
         )
         if reserved:
             raise LoadoutError(
@@ -329,9 +329,9 @@ def _render_codex(agent: Agent, body: str) -> str:
         document.add("model", model)
     effort, _ = effort_for(agent, "codex")
     if effort is not None:
-        document.add("model_reasoning_effort", effort)
+        document.add(EFFORT_KEY["codex"], effort)
     for line in agent.extra.get("codex", ()):
-        match = _TOP_LEVEL_KEY.match(line)
+        match = TOP_LEVEL_KEY.match(line)
         if match is None:
             raise LoadoutError(
                 f"agents/{agent.name}.md: codex's block takes `key: value` lines, got {line!r}"
@@ -415,3 +415,26 @@ def _extract_codex(text: str, stem: str) -> NativeAgent:
         effort=reverse.get(effort, effort) if effort is not None else None,
         extra=tuple(extra),
     )
+
+
+def source_agent(copies: list[tuple[str, NativeAgent]]) -> str:
+    """The source agent whose render gives each harness what its copy says."""
+    markdown = next((n for h, n in copies if h != "codex"), None)
+    primary = markdown or copies[0][1]
+    lines = [f"description: {yaml_string(primary.description)}"]
+    models = [(h, n.model) for h, n in copies if n.model is not None]
+    if models:
+        lines += ["model:", *(f"  {h}: {m}" for h, m in models)]
+    efforts = [(h, n.effort) for h, n in copies if n.effort is not None]
+    words = {e for _, e in efforts}
+    shared = next(iter(words)) if len(words) == 1 and len(efforts) == len(copies) else None
+    if shared in EFFORT_SCALE and all(shared in EFFORT_LEVELS.get(h, ()) for h, _ in copies):
+        lines.append(f"effort: {shared}")
+    elif efforts:
+        lines += ["effort:"] + [
+            f"  {h}: {EFFORT_SPELLING.get(h, {}).get(e, e)}" for h, e in efforts
+        ]
+    for harness, native in copies:
+        if native.extra:
+            lines += [f"{harness}:", *(f"  {line}" for line in native.extra)]
+    return "---\n" + "\n".join(lines) + "\n---\n" + primary.body

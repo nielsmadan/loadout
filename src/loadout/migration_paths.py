@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
 
-from .migration_models import RootMapping
+from .migration_models import Inventory, RootMapping
 
 
 def entry_path(path: Path) -> Path:
@@ -16,12 +17,19 @@ class DestinationLayout:
     mappings: tuple[RootMapping, ...]
     home: Path | None = None
 
-    def normalize(self, path: Path) -> Path:
+    @cached_property
+    def _boundaries(self) -> tuple[tuple[Path, Path], ...]:
         roots = (self.root, self.home) if self.home else (self.root,)
-        boundaries = tuple((root, root.resolve()) for root in roots)
-        destinations = tuple(
+        return tuple((root, root.resolve()) for root in roots)
+
+    @cached_property
+    def _destinations(self) -> tuple[tuple[Path, Path], ...]:
+        return tuple(
             (mapping.destination, entry_path(mapping.destination)) for mapping in self.mappings
         )
+
+    def normalize(self, path: Path) -> Path:
+        boundaries, destinations = self._boundaries, self._destinations
         # The deepest root wins, so a link above a harness root resolves rather than
         # surviving as an ancestor the transaction would have to replace.
         matches = tuple(
@@ -45,3 +53,8 @@ class DestinationLayout:
                 if resolved == canonical:
                     return canonical / path.relative_to(ancestor)
         return entry_path(path)
+
+
+def inventory_layout(inventory: Inventory) -> DestinationLayout:
+    home = dict(inventory.destination_environment).get("HOME")
+    return DestinationLayout(inventory.root, inventory.mappings, Path(home) if home else None)

@@ -7,9 +7,7 @@ A failure restores it straight away; a run killed part way leaves the marker, an
 
 from __future__ import annotations
 
-import base64
 import contextlib
-import hashlib
 import json
 import os
 import shutil
@@ -19,32 +17,36 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
-from .deployment import atomic_install
 from .errors import LoadoutError
 from .migration_git import git
-from .output import FrozenFile
+from .output import FrozenFile, atomic_install, sha256
 from .output import no_symlinks as _no_symlinks
 
-BACKUP_VERSION = 2
+BACKUP_VERSION = 3
 MANIFEST = "manifest.json"
 MARKER = "in-progress"
+IMAGES = "images"
+
+
+ImageKind = Literal["absent", "file", "directory", "symlink"]
+Phase = Literal["topology", "source", "retire", "registration", "ignore"]
 
 
 @dataclass(frozen=True)
 class Image:
-    kind: str = "absent"
+    kind: ImageKind = "absent"
     content: bytes = field(default=b"", repr=False)
     mode: int = 0
 
     def digest(self) -> str:
-        return hashlib.sha256(f"{self.kind}:{self.mode:o}:".encode() + self.content).hexdigest()
+        return sha256(f"{self.kind}:{self.mode:o}:".encode() + self.content)
 
     def shape(self) -> str:
         """What a planned write fixes ahead of time: the kind and the content, not the
         mode, which a co-owned file keeps from whatever is already there."""
-        return f"{self.kind}:{hashlib.sha256(self.content).hexdigest()}"
+        return f"{self.kind}:{sha256(self.content)}"
 
 
 @dataclass(frozen=True)
@@ -52,7 +54,7 @@ class Operation:
     path: Path
     before: Image
     after: Image
-    phase: str
+    phase: Phase
 
 
 def snapshot(path: Path) -> Image:
@@ -88,11 +90,15 @@ def install(path: Path, image: Image, boundary: Path | None = None) -> None:
         path.symlink_to(os.fsdecode(image.content))
 
 
-def backups_root(env: Mapping[str, str] | None = None) -> Path:
+def state_root(env: Mapping[str, str] | None = None) -> Path:
     environ = os.environ if env is None else env
     state = environ.get("XDG_STATE_HOME")
     base = Path(state) if state else Path(environ.get("HOME", "~")).expanduser() / ".local/state"
-    return (base / "loadout" / "backups").resolve()
+    return (base / "loadout").resolve()
+
+
+def backups_root(env: Mapping[str, str] | None = None) -> Path:
+    return state_root(env) / "backups"
 
 
 @dataclass(frozen=True)
@@ -117,11 +123,21 @@ class Backup:
 
     def images(self) -> dict[Path, Image]:
         return {
-            Path(entry["path"]): Image(
-                entry["kind"], base64.b64decode(entry["content"]), entry["mode"]
-            )
+            Path(entry["path"]): Image(entry["kind"], self._content(entry["sha256"]), entry["mode"])
             for entry in self.manifest()["entries"]
         }
+
+    def _content(self, digest: str) -> bytes:
+        if digest == EMPTY:
+            return b""
+        path = self.directory / IMAGES / digest
+        try:
+            content = path.read_bytes()
+        except OSError:
+            content = None
+        if content is None or sha256(content) != digest:
+            raise LoadoutError(f"backup image {path} is damaged or missing; nothing was restored")
+        return content
 
 
 def _write_manifest(backup: Backup, document: Mapping[str, Any]) -> None:
@@ -131,13 +147,25 @@ def _write_manifest(backup: Backup, document: Mapping[str, Any]) -> None:
     )
 
 
+EMPTY = sha256(b"")
+
+
 def _entry(path: Path, image: Image) -> dict[str, Any]:
     return {
         "path": str(path),
         "kind": image.kind,
         "mode": image.mode,
-        "content": base64.b64encode(image.content).decode(),
+        "sha256": sha256(image.content),
     }
+
+
+def _store_images(backup: Backup, images: Iterable[Image]) -> None:
+    """One file per distinct content, named by its digest."""
+    directory = backup.directory / IMAGES
+    directory.mkdir(mode=0o700)
+    contents = {sha256(i.content): i.content for i in images if i.content}
+    for digest, content in contents.items():
+        atomic_install(directory / digest, FrozenFile(content, 0o600))
 
 
 def _covering(paths: Iterable[Path]) -> tuple[Path, ...]:
@@ -178,10 +206,10 @@ def create_backup(
     covered = _covering(paths)
     captured = frozenset(covered)
     # Beneath a link init replaces, the path is the link target's entry, not ours.
-    entries = [
-        _entry(path, Image() if _beneath_link(path, captured) else _readable(path))
-        for path in covered
-    ]
+    images = {
+        path: Image() if _beneath_link(path, captured) else _readable(path) for path in covered
+    }
+    entries = [_entry(path, image) for path, image in images.items()]
     document = {
         "version": BACKUP_VERSION,
         **label,
@@ -209,6 +237,7 @@ def create_backup(
     backup = Backup(root / now.strftime("%Y%m%dT%H%M%S%fZ"))
     try:
         backup.directory.mkdir(mode=0o700)
+        _store_images(backup, images.values())
         _write_manifest(backup, document)
         # Last, so a marker always has a complete manifest beside it.
         (backup.directory / MARKER).write_text("")
@@ -542,6 +571,10 @@ def _spend(backup: Backup, document: Mapping[str, Any], kept: tuple[Path, ...]) 
     ]
     _write_manifest(backup, {**document, "entries": remaining})
     (backup.directory / MARKER).unlink(missing_ok=True)
+    needed = {entry["sha256"] for entry in remaining}
+    for image in (backup.directory / IMAGES).iterdir():
+        if image.name not in needed:
+            image.unlink()
 
 
 def snapshot_digest(path: Path) -> str:

@@ -102,10 +102,22 @@ def test_the_documented_example_adopts_and_names_what_it_drops() -> None:
         ('prefix_rule(pattern = ["rm"], decision = "forbidden", when = "always")\n', "when"),
         ('prefix_rule(pattern = ["rm"], decision = "deny")\n', "'deny'"),
         ('prefix_rule(["rm"], "forbidden")\n', "positional"),
-        ('network_rule(host = "example.com", protocol = "https", decision = "forbidden")\n', ""),
-        ('RM = ["rm"]\nprefix_rule(pattern = RM, decision = "forbidden")\n', ""),
+        (
+            'network_rule(host = "example.com", protocol = "https", decision = "forbidden")\n',
+            "only prefix_rule calls can be adopted: network_rule(",
+        ),
+        (
+            'RM = ["rm"]\nprefix_rule(pattern = RM, decision = "forbidden")\n',
+            'only prefix_rule calls can be adopted: RM = ["rm"]',
+        ),
         ('prefix_rule(pattern = ["rm"], decision = "forbidden"\n', "not valid"),
         ('prefix_rule(pattern = [], decision = "forbidden")\n', "pattern"),
+        ('prefix_rule(pattern = {["rm"]: 1}, decision = "forbidden")\n', "pattern"),
+        ('prefix_rule(pattern = ["rm"], decision = ["forbidden"])\n', "decision"),
+        (
+            f'prefix_rule(pattern = [{", ".join(['["a", "b"]'] * 20)}], decision = "forbidden")\n',
+            "1048576",
+        ),
     ],
     ids=[
         "unknown-parameter",
@@ -115,6 +127,9 @@ def test_the_documented_example_adopts_and_names_what_it_drops() -> None:
         "variable",
         "unparseable",
         "empty-pattern",
+        "unhashable-literal",
+        "unhashable-decision",
+        "expansion",
     ],
 )
 def test_a_rule_loadout_cannot_read_refuses_with_the_line_quoted(

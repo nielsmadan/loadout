@@ -6,10 +6,7 @@ from .rules import Decision, Rules, dedupe, strictest
 
 
 def _union(tiers: Sequence[Rules], attr: str) -> list[str]:
-    combined: list[str] = []
-    for tier in tiers:
-        combined.extend(getattr(tier, attr))
-    return dedupe(combined)
+    return dedupe([entry for tier in tiers for entry in getattr(tier, attr)])
 
 
 def _merge_default(tiers: Sequence[Rules]) -> Decision | None:
@@ -52,9 +49,8 @@ def merge_rules(*tiers: Rules) -> Rules:
 
     s, m = resolve(shell), resolve(mcp)
 
-    opencode_extra: dict[str, str] = {}
-    for tier in tiers:
-        opencode_extra.update(tier.opencode_extra)
+    # Later tiers win a clashing key, so the merge is built in tier order.
+    opencode_extra = {key: value for tier in tiers for key, value in tier.opencode_extra.items()}
 
     return Rules(
         allow=s["allow"],

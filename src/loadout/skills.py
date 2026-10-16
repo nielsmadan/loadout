@@ -14,7 +14,7 @@ import os
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePath
 
 from .errors import LoadoutError
 from .harnesses import KNOWN_HARNESSES
@@ -51,7 +51,7 @@ _OPEN_MARKER = re.compile(r"^::: *([a-z][a-z0-9 _-]*?) *$")
 _CLOSE_MARKER = re.compile(r"^::: *$")
 _FENCE = re.compile(r"^\s*(```|~~~)")
 _CONCEPT = re.compile(r":([a-z][a-z0-9-]*)\[([^\]]*)\]")
-_TOP_LEVEL_KEY = re.compile(r"^([A-Za-z][A-Za-z0-9_-]*):(.*)$")
+TOP_LEVEL_KEY = re.compile(r"^([A-Za-z][A-Za-z0-9_-]*):(.*)$")
 
 
 @dataclass(frozen=True)
@@ -89,10 +89,11 @@ class Skill:
     """Paths relative to supporting_root, sorted, excluding SKILL.md."""
 
 
-def _excluded(path: Path, relative: Path) -> bool:
+def excluded(relative: PurePath) -> bool:
+    """Build output and OS clutter, which no tree loadout copies carries."""
     if any(part in EXCLUDED_DIRECTORIES for part in relative.parts):
         return True
-    return path.name in EXCLUDED_NAMES or path.suffix in EXCLUDED_SUFFIXES
+    return relative.name in EXCLUDED_NAMES or relative.suffix in EXCLUDED_SUFFIXES
 
 
 def _supporting(root: Path, document: Path) -> tuple[Path, ...]:
@@ -106,8 +107,7 @@ def _supporting(root: Path, document: Path) -> tuple[Path, ...]:
         found.extend(
             here / name
             for name in files
-            if here / name != document
-            and not _excluded(here / name, (here / name).relative_to(root))
+            if here / name != document and not excluded((here / name).relative_to(root))
         )
     return tuple(sorted(path.relative_to(root) for path in found if path.is_file()))
 
@@ -175,13 +175,13 @@ def apply_frontmatter(lines: list[str], harness: str) -> list[str]:
     block_ranges: list[tuple[int, int]] = []
     index = 0
     while index < len(lines):
-        match = _TOP_LEVEL_KEY.match(lines[index])
+        match = TOP_LEVEL_KEY.match(lines[index])
         if match and match.group(1) in KNOWN_HARNESSES and not match.group(2).strip():
             start = index
             index += 1
             while index < len(lines) and (not lines[index].strip() or lines[index][:1].isspace()):
                 if match.group(1) == harness:
-                    child = _TOP_LEVEL_KEY.match(lines[index].strip())
+                    child = TOP_LEVEL_KEY.match(lines[index].strip())
                     if child:
                         overrides[child.group(1)] = child.group(2)
                 index += 1
@@ -195,7 +195,7 @@ def apply_frontmatter(lines: list[str], harness: str) -> list[str]:
     for position, line in enumerate(lines):
         if position in dropped:
             continue
-        match = _TOP_LEVEL_KEY.match(line)
+        match = TOP_LEVEL_KEY.match(line)
         if stripping and not match:
             continue
         stripping = False
@@ -211,7 +211,7 @@ def apply_frontmatter(lines: list[str], harness: str) -> list[str]:
     return result
 
 
-def apply_body(body: str, harness: str, skill: str) -> str:
+def apply_body(body: str, harness: str, label: str) -> str:
     """Resolve marked sections and inline concepts, leaving code fences alone.
 
     A marker wraps whole blocks and never sits inside one: markers inside a
@@ -235,20 +235,20 @@ def apply_body(body: str, harness: str, skill: str) -> str:
                 unknown = sorted(set(named) - KNOWN_HARNESSES)
                 if unknown:
                     raise LoadoutError(
-                        f"{skill}/SKILL.md: unknown harness(es) {', '.join(unknown)} in "
+                        f"{label}: unknown harness(es) {', '.join(unknown)} in "
                         f"a ::: marker (known: {', '.join(sorted(KNOWN_HARNESSES))})"
                     )
                 keeping.append(harness in named)
                 continue
             if _CLOSE_MARKER.match(line):
                 if not keeping:
-                    raise LoadoutError(f"{skill}/SKILL.md: ::: closes a section that never opened")
+                    raise LoadoutError(f"{label}: ::: closes a section that never opened")
                 keeping.pop()
                 continue
         if all(keeping):
             result.append(_expand_line(line, harness) if not in_fence else line)
     if keeping:
-        raise LoadoutError(f"{skill}/SKILL.md: a ::: section was opened and never closed")
+        raise LoadoutError(f"{label}: a ::: section was opened and never closed")
     return "\n".join(result)
 
 
@@ -274,7 +274,7 @@ def skill_agent(skill: Skill) -> str | None:
 
 def _shared_agent(lines: list[str]) -> str | None:
     for line in lines:
-        match = _TOP_LEVEL_KEY.match(line)
+        match = TOP_LEVEL_KEY.match(line)
         if match and match.group(1) == "agent" and match.group(2).strip():
             return match.group(2).strip().strip("\"'")
     return None
@@ -292,7 +292,7 @@ def check_skill_agents(skills: tuple[Skill, ...], agents: frozenset[str]) -> Non
 
 def _fork(lines: list[str]) -> list[str]:
     """Claude runs a skill in its named agent only when the skill forks."""
-    keys = [match.group(1) for line in lines if (match := _TOP_LEVEL_KEY.match(line))]
+    keys = [match.group(1) for line in lines if (match := TOP_LEVEL_KEY.match(line))]
     if "agent" not in keys or "context" in keys:
         return lines
     position = next(i for i, line in enumerate(lines) if line.startswith("agent:"))
@@ -303,7 +303,7 @@ def render_skill(skill: Skill, harness: str) -> str:
     text = skill.document.read_text(encoding="utf-8")
     frontmatter, body = split_frontmatter(text)
     banner = BANNER.format(name=skill.name)
-    resolved = apply_body(body, harness, skill.name)
+    resolved = apply_body(body, harness, f"{skill.name}/{SKILL_DOCUMENT}")
     if frontmatter is None:
         # No frontmatter to sit under, so the banner leads.
         return f"{banner}\n{resolved}"

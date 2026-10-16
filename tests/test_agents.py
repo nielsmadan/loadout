@@ -4,7 +4,7 @@ from pathlib import PurePosixPath
 
 import pytest
 
-from loadout.agents import GLOBAL_PRESET, agent_slices, known_agents
+from loadout.agents import GLOBAL_PRESET, agent_slices
 from loadout.manifest import resolve_destination
 from loadout.permissions.renderers import RENDERERS
 from loadout.project import PROJECT_PRESET
@@ -20,7 +20,7 @@ RELOCATION_VARIABLE = {
 
 def test_the_preset_covers_exactly_the_supported_agents() -> None:
     """antigravity was dropped (ADR 0012); nothing else has been added quietly."""
-    assert known_agents() == {"claude", "codex", "droid", "opencode", "pi"}
+    assert set(GLOBAL_PRESET) == {"claude", "codex", "droid", "opencode", "pi"}
 
 
 @pytest.mark.parametrize("agent", sorted(GLOBAL_PRESET))

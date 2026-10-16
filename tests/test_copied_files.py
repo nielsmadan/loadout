@@ -10,7 +10,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from loadout.emit import Copied, _copy_drifted, _executable, atomic_copy, describe_file
+from loadout.emit import Copied
+from loadout.files import _copy_drifted, _executable, describe_file, write_outputs
 
 
 def _make(path: Path, content: bytes, executable: bool = False) -> Path:
@@ -25,7 +26,7 @@ def test_copy_reproduces_bytes_exactly(tmp_path: Path) -> None:
     target = tmp_path / "out" / "asset.bin"
     target.parent.mkdir(parents=True)
 
-    atomic_copy(target, source)
+    write_outputs({target: Copied(source)})
 
     assert target.read_bytes() == b"\x00\x01\x02\xff\xfe"
 
@@ -35,7 +36,7 @@ def test_copy_preserves_the_exec_bit(tmp_path: Path) -> None:
     target = tmp_path / "out" / "run.py"
     target.parent.mkdir(parents=True)
 
-    atomic_copy(target, source)
+    write_outputs({target: Copied(source)})
 
     assert _executable(target)
 
@@ -45,7 +46,7 @@ def test_copy_leaves_a_plain_file_unexecutable(tmp_path: Path) -> None:
     target = tmp_path / "out" / "notes.md"
     target.parent.mkdir(parents=True)
 
-    atomic_copy(target, source)
+    write_outputs({target: Copied(source)})
 
     assert not _executable(target)
 
@@ -61,7 +62,7 @@ def test_copy_writes_through_a_symlink(tmp_path: Path) -> None:
     link.parent.mkdir(parents=True)
     link.symlink_to(real)
 
-    atomic_copy(link, source)
+    write_outputs({link: Copied(source)})
 
     assert link.is_symlink()
     assert real.read_bytes() == b"payload\n"

@@ -47,8 +47,10 @@ def test_a_rule_adoption_cannot_read_refuses_and_leaves_the_file(
 
     code, source = _init(fake_home, tmp_path, rules)
 
-    assert code != 0
-    assert "when" in capsys.readouterr().err
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "source-composition" in err
+    assert "prefix_rule parameter 'when' cannot be adopted" in err
     assert (fake_home / ".codex" / "rules" / "permissions.rules").read_text() == rules
     assert not (source / "permissions.toml").exists()
 

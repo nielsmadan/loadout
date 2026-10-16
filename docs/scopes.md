@@ -142,15 +142,15 @@ nobody needs given all-or-nothing adoption. Revisit only if that adoption model 
 
 Consequences:
 
-- `loadout init project --harness <name>` (repeatable) scaffolds both sources and adds the personal
-  source plus every generated output to `.gitignore`; a harness added later is a `harnesses` edit
-  in `loadout/config.toml`, and `sync` extends `.gitignore` the same way, and drops an entry
-  when it retires the output the entry names. A
+- `loadout init project --harness <name>` (repeatable) adopts the project's existing harness files
+  into `loadout/`, writes `config.toml` and `permissions.toml`, and adds every generated output to
+  `.gitignore`, untracking the ones it adopted; a harness added later is a `harnesses` edit in
+  `loadout/config.toml`, and `sync` extends `.gitignore` the same way, and drops an entry when it
+  retires the output the entry names. A
   committed `.gitignore` rather than `.git/info/exclude`, which is per-clone and silently fails
-  to apply on a fresh checkout. `init` warns when a tracked `CLAUDE.md`, `AGENTS.md` or
-  `GEMINI.md` exists and proceeds — that file is now something loadout generates as soon as an
-  `instructions` order is declared, so the note tells you to move its content into
-  `loadout/instructions/` first. A repo declaring no order generates neither document, which is
+  to apply on a fresh checkout. A tracked `CLAUDE.md` or `AGENTS.md` is adopted as an
+  instruction fragment and generated from then on; copies that disagree across harnesses stay in
+  place for `/loadout` to merge. A repo declaring no order generates neither document, which is
   what keeps a permissions-only adopter's hand-written `CLAUDE.md` its own.
 - **Per-entry ownership tracking still is not needed, but "loadout is the sole writer of every
   generated file" turned out to be false for two of the outputs.** `opencode.json` and

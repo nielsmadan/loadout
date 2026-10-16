@@ -5,9 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from loadout.emit import render_global, write_all
+from loadout.emit import render_global
 from loadout.errors import LoadoutError
 from loadout.manifest import load_manifest
+from render_helpers import write_all
 
 MANIFEST_WITH_DESTINATIONS = """
 [[source]]

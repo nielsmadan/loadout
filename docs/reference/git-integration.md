@@ -142,8 +142,7 @@ can be made again.
 ## Regeneration after Git events
 
 Post-checkout (branch changes only) and post-merge call normal guarded sync for the recorded
-source/profile. Native outputs use their previous private deployment receipt. External edits
-cause refusal; regeneration never supplies `--force`. After a failure, the diagnostic explicitly
+source/profile. External edits cause refusal; regeneration never supplies `--force`. After a failure, the diagnostic explicitly
 states that Git already completed and gives the sync command to retry after reconciling the
 reported conflict. A post-checkout failure can return nonzero after changing HEAD; Git merge can
 return zero despite a post-merge failure. Inspect the diagnostic and resulting Git state rather

@@ -8,9 +8,10 @@ import pytest
 
 from fixture_root import build_root
 from loadout.agents import GLOBAL_PRESET, SliceOutput
-from loadout.emit import Merged, render_global, write_all
+from loadout.emit import Merged, render_global
 from loadout.errors import LoadoutError
 from loadout.permissions.renderers import RENDERERS, JsonSpec, ValueSpec
+from render_helpers import write_all
 
 SOURCE = """
 [[source]]
@@ -121,7 +122,9 @@ def test_claude_mcp_writes_a_destination_rather_than_staging(tmp_path: Path) -> 
 
 def test_an_unknown_agent_is_rejected_with_the_known_ones(tmp_path: Path) -> None:
     root = build(tmp_path, "\n[claud]\n")
-    with pytest.raises(LoadoutError, match="unknown agent"):
+    with pytest.raises(
+        LoadoutError, match=r"unknown top-level key\(s\) claud .*harness tables: claude"
+    ):
         render_global(root)
 
 

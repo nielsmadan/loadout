@@ -97,8 +97,8 @@ Fresh project initialisation uses explicit `--harness` options, then the machine
 requires a selection. Global initialisation accepts `--harness` and automatically records its
 resolved harness list as the project default.
 
-Re-running project initialisation with the same harness set preserves its configuration and
-extends the generated paths in `.gitignore`.
+Re-running project initialisation on an initialised project reports it as already initialised
+and changes nothing; `loadout sync` keeps `.gitignore` covering the generated paths.
 
 ## Add a project harness
 
@@ -109,8 +109,8 @@ harnesses = ["claude", "opencode", "pi"]
 ```
 
 The accepted names are `claude`, `codex`, `droid`, `opencode`, and `pi`. `sync` writes the new
-harness's outputs and extends `.gitignore` to cover every generated path; entries are appended
-only, so removing a harness from the list leaves its entry in place.
+harness's outputs and extends `.gitignore` to cover every generated path. Removing a harness from
+the list retires its outputs on the next sync and drops their `.gitignore` entries.
 
 ## Templates
 

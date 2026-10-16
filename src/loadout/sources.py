@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from .agents import known_agents
+from .agents import DIRECTORY_SLICES
 from .errors import LoadoutError
+from .harnesses import KNOWN_HARNESSES
 
 # The seven kinds of agent configuration — see docs/reference/config.md — plus
 # templates, which is a bundle of them rather than an eighth kind.
@@ -47,7 +48,7 @@ def _parse_overrides(
         raise LoadoutError(f"{label} must be a table")
     parsed: list[tuple[str, tuple[str, ...]]] = []
     for category, names in raw.items():
-        if category not in {"skills", "agents", "module-config"}:
+        if category not in {*DIRECTORY_SLICES, "module-config"}:
             raise LoadoutError(f"{label}: unsupported category {category!r}")
         if category not in use:
             raise LoadoutError(f"{label}: {category!r} must participate in use")
@@ -61,10 +62,10 @@ def _parse_overrides(
                 or path.is_absolute()
                 or path == PurePosixPath(".")
                 or any(p in {"..", ".git", ".loadout-state"} for p in path.parts)
-                or (category in {"skills", "agents"} and len(path.parts) != 1)
+                or (category in DIRECTORY_SLICES and len(path.parts) != 1)
                 or (
                     category == "module-config"
-                    and (len(path.parts) <= 1 or path.parts[0] not in known_agents())
+                    and (len(path.parts) <= 1 or path.parts[0] not in KNOWN_HARNESSES)
                 )
             ):
                 raise LoadoutError(f"{label}.{category}: invalid item {item!r}")
@@ -102,6 +103,9 @@ def select_overrides(
                 )
             selected[name] = source
     return selected
+
+
+SourceParser = Callable[[list[dict[str, object]], Path], tuple["Source", ...]]
 
 
 def parse_sources(entries: list[dict[str, object]], base: Path) -> tuple[Source, ...]:

@@ -5,9 +5,8 @@ import sys
 import tempfile
 from pathlib import Path
 
-from .deployment import atomic_install, read_file
 from .errors import LoadoutError, UsageError
-from .output import FrozenFile
+from .output import FrozenFile, atomic_install, read_file
 from .project import ProjectConfig, load_project_config, project_config_path
 from .resolve import ResolvedItem
 from .template_catalog import load_catalog

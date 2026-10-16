@@ -112,7 +112,7 @@ def test_sync_rewrites_a_generated_claude_md_to_the_import(tmp_path: Path) -> No
     root = _synced_project(tmp_path / "p")
     full = f"{CLAUDE_IMPORT.split(chr(10))[0]}\n\n{CONTENT}"
     (root / "CLAUDE.md").write_text(full)
-    record_written(root, "default", {root / "CLAUDE.md": text_entry(root / "CLAUDE.md", full)})
+    record_written(root, {root / "CLAUDE.md": text_entry(root / "CLAUDE.md", full)})
 
     assert loadout.main(["sync", "--root", str(root)]) == 0
 

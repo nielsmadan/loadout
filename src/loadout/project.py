@@ -5,8 +5,9 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from .agents import SliceOutput
+from .agents import DROID_AGENTS_DIRECTORY, SliceOutput
 from .errors import LoadoutError
+from .gitignore import escape
 from .harnesses import KNOWN_HARNESSES
 from .skill_policy import SkillPolicy, parse_skill_policies
 
@@ -217,7 +218,7 @@ PROJECT_PRESET: dict[str, dict[str, SliceOutput]] = {
         "mcp": SliceOutput(renderer="droid-servers", output=".factory/mcp.json"),
         "instructions": SliceOutput(output="AGENTS.md"),
         "skills": SliceOutput(output=".factory/skills"),
-        "agents": SliceOutput(output=".factory/droids"),
+        "agents": SliceOutput(output=f".factory/{DROID_AGENTS_DIRECTORY}"),
     },
     "opencode": {
         "permissions": SliceOutput(
@@ -247,12 +248,6 @@ PROJECT_PRESET: dict[str, dict[str, SliceOutput]] = {
         # .pi/mcp.json too would hand Pi the same servers twice under two names.
     },
 }
-
-# A template contributes this as one unnamed block, the way it contributes
-# permissions.toml: a tier beneath the project, never a fragment the project has
-# to name. Adopting a template should bring its instructions without restating
-# them.
-TEMPLATE_INSTRUCTIONS = "instructions.md"
 
 
 def project_slices(harnesses: Iterable[str]) -> tuple[tuple[str, str, SliceOutput], ...]:
@@ -326,8 +321,8 @@ def gitignore_entries(root: Path, written: Iterable[Path]) -> tuple[str, ...]:
         relative = PurePosixPath(path.relative_to(root).as_posix())
         for directory in skill_dirs:
             if relative.is_relative_to(directory) and relative != directory:
-                return f"/{directory}/{relative.relative_to(directory).parts[0]}/"
-        return f"/{relative}"
+                return escape(f"/{directory}/{relative.relative_to(directory).parts[0]}/")
+        return escape(f"/{relative}")
 
     return tuple(dict.fromkeys(entry(path) for path in written if path.is_relative_to(root)))
 

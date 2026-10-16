@@ -80,7 +80,7 @@ fix it on disk and run init again. An incomplete preview exits 2 and changes not
 
 | code | when |
 |---|---|
-| `agents-required` | no harness was given and none has configuration at a known path |
+| `harnesses-required` | no harness was given and none has configuration at a known path |
 | `symlink-target`, `symlink-cycle` | a link at a read path is missing its target or loops |
 | `external-symlink` | in project scope, a harness root links outside the repository; its content would become committed source. There is no override: share it as a loadout template, or replace the link with a real copy (`cp -RL`) and run init again ([0026](../decisions/0026-a-project-root-linked-outside-the-repository-has-no-override.md)) |
 | `opencode-both-formats` | `opencode.json` and `opencode.jsonc` side by side: OpenCode reads both and merges them, the `.jsonc`'s keys winning; combine them into one file |
@@ -193,6 +193,9 @@ one spelling: beneath a harness root it replaces it stays at the harness path, a
 its parent is resolved, so a link above a harness root (written through, ADR 0023) is followed to
 where the file really is. Alongside each before-image the manifest keeps what init planned to
 write there and, as init goes, what it left; an `in-progress` marker is cleared on success.
+Each before-image's content is its own file under `images/`, named by its SHA-256, which the
+manifest records; restore checks every image against that digest before changing anything, and
+refuses with nothing restored if one is damaged or missing.
 
 Restore reverts only what is still init's: a path holding its before-image, what init planned, or
 what init left. Anything else is someone else's, stays as it is and is listed under `kept`, and the
@@ -239,9 +242,10 @@ A global harness root that is a symlink, such as `~/.claude` pointing into a dot
 adopted, and so are stow-style per-file links inside it. Adoption **de-links**
 them; see [0023](../decisions/0023-adoption-de-links-a-symlinked-deployment.md):
 
-- loadout's outputs become real files at the harness path, written as the link goes. A document
-  loadout shares with the harness, such as Codex's `config.toml`, keeps every key loadout does not
-  own, such as `model`;
+- loadout's outputs become real files at the harness path, each starting as the file it was and
+  then rendered the way `sync` renders it. A document loadout shares with the harness, such as
+  Codex's `config.toml` or Pi's `settings.json`, keeps every key loadout does not own, such as
+  `model` or `lastChangelogVersion`;
 - every entry loadout does not manage becomes a link back into the original target, so runtime
   state, credentials, commands and subagents keep working. A directory loadout writes nothing into,
   such as `commands/`, links back whole, so a file added to it later appears;

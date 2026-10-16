@@ -39,15 +39,18 @@ There is no template or project `extends`: verified in `template_catalog.py:_loa
 `project.py:load_project_config`, whose accepted key sets reject it. Catalogs reuse selected parts.
 `emit.py:render_all` renders global and project scopes separately and rejects output collisions.
 
-Native profiles select a complete artifact index. Different indexes can share content inputs:
+A profile extends another and states only what differs, so profiles share content inputs:
 
 ```toml
+# autonomous.toml
 extends = "default"
-artifacts = "routes/autonomous.toml"
+
+[claude]
+settings = ["claude", "claude-autonomous"]
 ```
 
-The selected index can compose the ordinary settings document with one autonomous overlay.
-The route metadata remains explicit; the shared content exists once.
+The profile composes the ordinary settings fragment with one autonomous overlay; the shared
+content exists once.
 
 ## Ownership and lifecycle
 
@@ -56,10 +59,9 @@ layer deleting a key does not surrender that part's claim: every input key remai
 Explicit `keys` constrain each input individually. This rule also governs partial runtime
 documents, so removal reaches the deployed document without touching foreign fields.
 
-Native receipts manage retirement. Skill and module selection changes the generated item set.
-The override operator does not introduce orphan removal of its own: outside native receipt
-scopes, `sync` retires what it no longer renders from the written record
-([0022](../decisions/0022-sync-retires-what-it-no-longer-renders.md)).
+Skill and module selection changes the generated item set. The override operator does not
+introduce orphan removal of its own: `sync` retires what it no longer renders from the written
+record ([0022](../decisions/0022-sync-retires-what-it-no-longer-renders.md)).
 
 Bundled-skill commands use the same declared skill winner as rendering. Uninstall removes the
 owned copy and its `loadout` override entry together, preserving other overrides and the manifest's
@@ -67,8 +69,6 @@ comments and mode. The earlier skill becomes active and sync deploys it. Inherit
 are changed in their declaring manifest, so every profile inheriting that list sees the removal.
 
 Source protection includes every inherited machine manifest used to resolve a declared template.
-Deployment retirement retains dependencies from both present scopes, including a scope with no
-artifacts or receipts of its own.
 
 See [templates](templates.md) and
 [ADR 0020](../decisions/0020-composition-uses-explicit-operators.md).

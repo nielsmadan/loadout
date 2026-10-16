@@ -9,7 +9,8 @@ from pathlib import Path
 import pytest
 
 import loadout
-from loadout.emit import collect_notices, render_global, render_project
+from loadout.emit import render_global, render_project
+from loadout.notices import collect_notices
 
 AGENT = (
     "---\ndescription: Reviews a diff.\nmodel:\n  claude: sonnet\neffort: max\n---\n\nReview it.\n"

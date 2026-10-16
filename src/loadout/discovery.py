@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import os
 import re
 import shlex
@@ -10,15 +9,18 @@ from collections.abc import Mapping
 from dataclasses import replace
 from itertools import pairwise
 from pathlib import Path
+from typing import Any
 
+from .agents import DROID_AGENTS_DIRECTORY
 from .errors import LoadoutError
 from .git_privacy import ignored_paths, tracked_paths
 from .harnesses import KNOWN_HARNESSES
-from .migration_models import Candidate, EntryState, Inventory, Issue, RootMapping
+from .manifest import manifest_path
+from .migration_models import Candidate, EntryState, Inventory, Issue, IssueCode, RootMapping
 from .migration_paths import DestinationLayout, entry_path
 from .native_documents import jsonc_to_json, parse_document
-from .output import ArtifactScope
-from .project import PROJECT_PRESET
+from .output import Scope, sha256
+from .project import PROJECT_PRESET, project_config_path
 
 GLOBAL_ROOTS = {
     "claude": ("CLAUDE_CONFIG_DIR", ".claude"),
@@ -26,6 +28,26 @@ GLOBAL_ROOTS = {
     "droid": ("FACTORY_HOME_OVERRIDE", ".factory"),
     "opencode": ("XDG_CONFIG_HOME", ".config"),
     "pi": ("PI_CODING_AGENT_DIR", ".pi/agent"),
+}
+# What the destinations depend on, captured at discovery and checked again before applying.
+DESTINATION_ENVIRONMENT = (
+    "HOME",
+    *(name for name, _ in GLOBAL_ROOTS.values()),
+    "OPENCODE_CONFIG",
+    "OPENCODE_CONFIG_DIR",
+)
+# The global document each harness also writes runtime state into, and that state's keys.
+# Claude's `.claude.json` is runtime state apart from `mcpServers`.
+RUNTIME_DOCUMENTS = {
+    "claude": ".claude.json",
+    "codex": "config.toml",
+    "droid": "settings.json",
+    "pi": "settings.json",
+}
+RUNTIME_KEYS = {
+    "codex": frozenset({"projects", "trust"}),
+    "droid": frozenset({"trustedFolders"}),
+    "pi": frozenset({"lastChangelogVersion"}),
 }
 PROJECT_ROOTS = {
     "claude": ".claude",
@@ -113,7 +135,7 @@ MANAGED_PATHS: dict[str, dict[str, tuple[str, ...]]] = {
             "hooks.json",
             "mcp.json",
             "skills/",
-            "droids/",
+            f"{DROID_AGENTS_DIRECTORY}/",
             "plugins/",
             *_MODULE_TREES,
         ),
@@ -143,14 +165,20 @@ MANAGED_PATHS: dict[str, dict[str, tuple[str, ...]]] = {
     "project": {
         "claude": ("settings.json", "mcp-permissions.json", "skills/", "agents/"),
         "codex": ("rules/", "agents/"),
-        "droid": ("settings.json", "hooks.json", "mcp.json", "skills/", "droids/"),
+        "droid": (
+            "settings.json",
+            "hooks.json",
+            "mcp.json",
+            "skills/",
+            f"{DROID_AGENTS_DIRECTORY}/",
+        ),
         "opencode": ("skills/", "agents/"),
         "pi": ("extensions/pi-permission-system/config.json", "skills/", "agents/"),
         "shared": ("skills/",),
     },
 }
 UNMANAGED_NAMES = frozenset({".DS_Store"})
-AGENT_DIRECTORIES = frozenset({"agents", "droids"})
+AGENT_DIRECTORIES = frozenset({"agents", DROID_AGENTS_DIRECTORY})
 PROJECT_WALK_EXCLUSIONS = frozenset(
     {
         ".git",
@@ -165,10 +193,6 @@ PROJECT_WALK_EXCLUSIONS = frozenset(
         "loadout",
     }
 )
-
-
-def digest(content: bytes) -> str:
-    return hashlib.sha256(content).hexdigest()
 
 
 def entry_state(path: Path, *, read: bool = True) -> EntryState:
@@ -190,12 +214,12 @@ def entry_state(path: Path, *, read: bool = True) -> EntryState:
             path,
             "directory",
             mode,
-            digest(entries) if entries is not None else None,
+            sha256(entries) if entries is not None else None,
             device=value.st_dev,
             inode=value.st_ino,
         )
     if stat.S_ISREG(value.st_mode):
-        return EntryState(path, "file", mode, digest(path.read_bytes()) if read else None)
+        return EntryState(path, "file", mode, sha256(path.read_bytes()) if read else None)
     return EntryState(path, "special", mode, device=value.st_dev, inode=value.st_ino)
 
 
@@ -284,13 +308,13 @@ def live_roots(home: Path, environ: Mapping[str, str]) -> tuple[RootMapping, ...
 def project_root(path: Path) -> Path:
     path = path.absolute()
     for parent in (path, *path.parents):
-        if (parent / "loadout/config.toml").is_file() or (parent / ".git").exists():
+        if project_config_path(parent).is_file() or (parent / ".git").exists():
             return parent
     return path
 
 
 def initialized_project_path(path: Path) -> Path | None:
-    config = project_root(path) / "loadout/config.toml"
+    config = project_config_path(project_root(path))
     return config if config.is_file() else None
 
 
@@ -516,7 +540,7 @@ def managed_paths(scope: str, mapping: RootMapping) -> tuple[str, ...] | None:
     """The allowlist for a root, or None for a file mapping, which names its one file."""
     if mapping.kind == "file":
         return None
-    key = "shared" if mapping.kind == "shared" else mapping.agents[0]
+    key = "shared" if mapping.kind == "shared" else mapping.harnesses[0]
     return MANAGED_PATHS[scope][key]
 
 
@@ -536,14 +560,14 @@ def _managed(relative: Path, entries: tuple[str, ...], *, directory: bool) -> bo
 
 def _agents_for(relative: Path, mapping: RootMapping) -> tuple[str, ...]:
     if mapping.kind != "shared":
-        return mapping.agents
+        return mapping.harnesses
     supported = {
         "skills": {"codex", "opencode", "pi"},
         "plugins": {"codex"},
         "mcp.json": {"pi"},
         "mcp": {"pi"},
     }
-    return tuple(a for a in mapping.agents if a in supported.get(relative.parts[0], set()))
+    return tuple(a for a in mapping.harnesses if a in supported.get(relative.parts[0], set()))
 
 
 class _InventoryBuilder:
@@ -593,7 +617,7 @@ class _InventoryBuilder:
             self._unresolved(
                 path,
                 destination,
-                mapping.agents,
+                mapping.harnesses,
                 "symlink-target",
                 "Resolve the missing or cyclic symlink target.",
             )
@@ -609,7 +633,7 @@ class _InventoryBuilder:
                 path,
                 canonical,
                 destination,
-                mapping.agents,
+                mapping.harnesses,
                 "runtime",
                 "runtime-private exclusion",
                 "Runtime, authentication or cache path; left in place.",
@@ -621,7 +645,7 @@ class _InventoryBuilder:
             self._unresolved(
                 path,
                 destination,
-                mapping.agents,
+                mapping.harnesses,
                 "external-symlink",
                 f"{path} links to {canonical}, outside the repository, so adopting it would copy "
                 "that content into committed project source. Share it as a loadout template "
@@ -634,7 +658,7 @@ class _InventoryBuilder:
             self._unresolved(
                 path,
                 destination,
-                mapping.agents,
+                mapping.harnesses,
                 "symlink-cycle",
                 "Resolve the cyclic directory mapping.",
             )
@@ -666,7 +690,7 @@ class _InventoryBuilder:
                 path,
                 canonical,
                 destination,
-                mapping.agents,
+                mapping.harnesses,
                 "support",
                 "retained dependency",
                 "Empty-directory tracking marker remains at its original path.",
@@ -725,7 +749,12 @@ class _InventoryBuilder:
         )
 
     def _unresolved(
-        self, path: Path, destination: Path | None, agents: tuple[str, ...], code: str, message: str
+        self,
+        path: Path,
+        destination: Path | None,
+        agents: tuple[str, ...],
+        code: IssueCode,
+        message: str,
     ) -> None:
         self.remember(path, read=False)
         self.candidates[path, destination] = Candidate(
@@ -816,20 +845,20 @@ def _instruction_mappings(
 def discover(
     root: Path,
     *,
-    scope: ArtifactScope | None = None,
-    agents: tuple[str, ...] = (),
+    scope: Scope | None = None,
+    harnesses: tuple[str, ...] = (),
     environ: Mapping[str, str] | None = None,
 ) -> Inventory:
     environment = dict(os.environ if environ is None else environ)
     if scope not in {None, "project", "global"}:
         raise LoadoutError("scope must be project or global")
-    if set(agents) - KNOWN_HARNESSES or len(agents) != len(set(agents)):
-        raise LoadoutError("agents must be distinct supported harness names")
+    if set(harnesses) - KNOWN_HARNESSES or len(harnesses) != len(set(harnesses)):
+        raise LoadoutError("harnesses must be distinct supported harness names")
     root = root.absolute() if scope == "global" else project_root(root)
     project = initialized_project_path(root) if scope != "global" else None
     existing = [
         *((("project", project),) if project is not None else ()),
-        ("global", root / "loadout.toml"),
+        ("global", manifest_path(root)),
         ("global", root / "loadout/loadout.toml"),
     ]
     selected = [(s, p) for s, p in existing if p.is_file() and (scope is None or scope == s)]
@@ -839,7 +868,7 @@ def discover(
             root,
             config.parent,
             "project" if inferred == "project" else "global",
-            agents,
+            harnesses,
             (),
             (),
             path_preconditions(config),
@@ -868,27 +897,27 @@ def discover(
         if scope == "global"
         else ()
     )
-    if not agents:
+    if not harnesses:
         evidence = (
             live if scope == "global" else _project_mappings(root, tuple(sorted(KNOWN_HARNESSES)))
         )
-        agents = tuple(
-            dict.fromkeys(a for m in evidence if _configuration_evidence(m) for a in m.agents)
+        harnesses = tuple(
+            dict.fromkeys(a for m in evidence if _configuration_evidence(m) for a in m.harnesses)
         )
-    if not agents:
+    if not harnesses:
         issues.append(
             Issue(
-                "agents-required",
+                "harnesses-required",
                 (root,),
                 "Select the configured harnesses; shared instructions and installed binaries do not establish membership.",
             )
         )
     automatic = (
-        tuple(replace(m, agents=tuple(a for a in m.agents if a in agents)) for m in live)
+        tuple(replace(m, harnesses=tuple(a for a in m.harnesses if a in harnesses)) for m in live)
         if scope == "global"
-        else _project_mappings(root, agents)
+        else _project_mappings(root, harnesses)
     )
-    selected_mappings = tuple(m for m in automatic if m.agents)
+    selected_mappings = tuple(m for m in automatic if m.harnesses)
     allowed = tuple(
         dict.fromkeys(
             (
@@ -915,7 +944,7 @@ def discover(
     for mapping in selected_mappings:
         builder.walk(mapping)
     if scope != "global":
-        for mapping in _instruction_mappings(builder, agents):
+        for mapping in _instruction_mappings(builder, harnesses):
             builder.walk(mapping)
     else:
         builder.remember(root)
@@ -923,7 +952,7 @@ def discover(
     ignored = ignored_paths(
         c.canonical or c.path for c in builder.candidates.values() if c.disposition == "migrated"
     )
-    published = _published_settings(builder, root, agents, scope)
+    published = _published_settings(builder, root, harnesses, scope)
     candidates = tuple(
         replace(c, private=False, personal=False, private_reason="")
         if c.path in published
@@ -942,30 +971,19 @@ def discover(
         root,
         source_root,
         scope,
-        agents,
+        harnesses,
         selected_mappings,
         candidates,
         tuple(builder.states.values()),
         (*issues, *builder.issues),
         destination_environment=tuple(
-            (name, environment[name])
-            for name in (
-                "HOME",
-                "CLAUDE_CONFIG_DIR",
-                "CODEX_HOME",
-                "FACTORY_HOME_OVERRIDE",
-                "XDG_CONFIG_HOME",
-                "PI_CODING_AGENT_DIR",
-                "OPENCODE_CONFIG",
-                "OPENCODE_CONFIG_DIR",
-            )
-            if environment.get(name)
+            (name, environment[name]) for name in DESTINATION_ENVIRONMENT if environment.get(name)
         ),
     )
 
 
 def _configuration_evidence(mapping: RootMapping) -> bool:
-    if mapping.kind == "shared" or len(mapping.agents) != 1:
+    if mapping.kind == "shared" or len(mapping.harnesses) != 1:
         return False
     if mapping.kind == "file":
         return mapping.source.is_file()
@@ -1007,27 +1025,30 @@ def _path_token(value: str) -> bool:
     return "/" in value and "://" not in value and not value.startswith(("-", "@", "npm:", "git:"))
 
 
+def authored_part(document: Mapping[str, Any], agent: str) -> dict[str, Any]:
+    """What a person wrote in a document `agent` also writes runtime state into."""
+    if agent == "claude":
+        return {key: value for key, value in document.items() if key == "mcpServers"}
+    return {
+        key: value
+        for key, value in document.items()
+        if key not in RUNTIME_KEYS.get(agent, frozenset())
+    }
+
+
 def _references(candidate: Candidate) -> tuple[str, ...]:
     if candidate.format in {"json", "toml"}:
         try:
             document = parse_document(candidate.content.decode(), candidate.format)
-            if candidate.document_name == ".claude.json" and "claude" in candidate.agents:
-                document = {key: value for key, value in document.items() if key == "mcpServers"}
-            elif candidate.document_name == "config.toml" and "codex" in candidate.agents:
-                document = {
-                    key: value
-                    for key, value in document.items()
-                    if key not in {"projects", "trust"}
-                }
-            elif candidate.document_name == "settings.json" and "pi" in candidate.agents:
-                document = {
-                    key: value for key, value in document.items() if key != "lastChangelogVersion"
-                }
-            elif candidate.document_name == "settings.json" and "droid" in candidate.agents:
-                document = {
-                    key: value for key, value in document.items() if key != "trustedFolders"
-                }
-            return _dependency_strings(document)
+            owner = next(
+                (
+                    a
+                    for a in candidate.harnesses
+                    if RUNTIME_DOCUMENTS.get(a) == candidate.document_name
+                ),
+                None,
+            )
+            return _dependency_strings(authored_part(document, owner) if owner else document)
         except (LoadoutError, UnicodeError):
             return ()
     if candidate.path.suffix not in {".sh", ".js", ".ts", ".mjs", ".cjs"}:
@@ -1041,7 +1062,7 @@ def _references(candidate: Candidate) -> tuple[str, ...]:
 
 
 def _dependencies(
-    builder: _InventoryBuilder, scope: ArtifactScope | None, environment: Mapping[str, str]
+    builder: _InventoryBuilder, scope: Scope | None, environment: Mapping[str, str]
 ) -> None:
     visited: set[tuple[Path, str]] = set()
     while True:
@@ -1063,20 +1084,14 @@ def _dependency(
     builder: _InventoryBuilder,
     candidate: Candidate,
     reference: str,
-    scope: ArtifactScope | None,
+    scope: Scope | None,
     environment: Mapping[str, str],
 ) -> None:
     expanded = reference.replace("${CLAUDE_PROJECT_DIR}", str(builder.root)).replace(
         "$CLAUDE_PROJECT_DIR", str(builder.root)
     )
     for name, value in environment.items():
-        if name in {
-            "HOME",
-            "CLAUDE_CONFIG_DIR",
-            "CODEX_HOME",
-            "XDG_CONFIG_HOME",
-            "PI_CODING_AGENT_DIR",
-        }:
+        if name == "HOME" or name in {variable for variable, _ in GLOBAL_ROOTS.values()}:
             expanded = expanded.replace("${" + name + "}", value).replace("$" + name, value)
     path = _home_path(expanded, Path(environment.get("HOME") or Path.home()))
     if "$" in expanded or any(character in expanded for character in "*?["):
@@ -1152,4 +1167,4 @@ def _dependency(
     if existing is None or existing.is_dir():
         return
     destination = deployed[targets.index(existing)]
-    builder.walk(RootMapping(existing, destination, candidate.agents, "file", "support"))
+    builder.walk(RootMapping(existing, destination, candidate.harnesses, "file", "support"))

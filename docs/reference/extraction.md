@@ -82,8 +82,9 @@ parsed, not matched line by line, and every statement ends one of three ways:
   one before it writes anything.
 - **refused:** anything else stops `init` with the file, the line and the statement quoted. That
   covers an unknown parameter or decision, a positional argument, a value that is not a literal, a
-  statement other than `prefix_rule` (`network_rule`, a variable), invalid syntax, and a rule the
-  renderer would write back differently: at global scope a token holding whitespace, a `*` or a
+  statement other than `prefix_rule` (`network_rule`, a variable), invalid syntax, a union whose
+  alternatives multiply to more than 1,024 entries, and a rule the renderer would write back
+  differently: at global scope a token holding whitespace, a `*` or a
   leading `=`. A rule that silently vanished could be a `forbidden` one, which would loosen the
   policy.
 

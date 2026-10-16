@@ -36,7 +36,7 @@ def test_unresolved_json_preview_does_not_mutate(tmp_path, capsys):
         == 2
     )
     data = json.loads(capsys.readouterr().out)
-    assert {i["code"] for i in data["issues"]} == {"agents-required"}
+    assert {i["code"] for i in data["issues"]} == {"harnesses-required"}
     assert list(tmp_path.iterdir()) == [tmp_path / "AGENTS.md"]
 
 
@@ -60,7 +60,7 @@ def test_project_init_uses_machine_harness_defaults(tmp_path, fake_home, capsys)
     machine.write_text(f'source = "{source}"\nharnesses = ["claude", "droid"]\n')
 
     assert loadout.main(["init", "project", "--root", str(tmp_path), "--dry-run", "--json"]) == 0
-    assert json.loads(capsys.readouterr().out)["agents"] == ["claude", "droid"]
+    assert json.loads(capsys.readouterr().out)["harnesses"] == ["claude", "droid"]
 
 
 def test_machine_harness_defaults_take_precedence_over_project_discovery(
@@ -69,7 +69,7 @@ def test_machine_harness_defaults_take_precedence_over_project_discovery(
     settings = tmp_path / ".claude/settings.json"
     settings.parent.mkdir(parents=True)
     settings.write_text("{}\n")
-    assert discover(tmp_path, scope="project").agents == ("claude",)
+    assert discover(tmp_path, scope="project").harnesses == ("claude",)
 
     source = fake_home / "global"
     source.mkdir()
@@ -78,7 +78,7 @@ def test_machine_harness_defaults_take_precedence_over_project_discovery(
     machine.write_text(f'source = "{source}"\nharnesses = ["droid"]\n')
 
     assert loadout.main(["init", "project", "--root", str(tmp_path), "--dry-run", "--json"]) == 0
-    assert json.loads(capsys.readouterr().out)["agents"] == ["droid"]
+    assert json.loads(capsys.readouterr().out)["harnesses"] == ["droid"]
 
 
 def test_stale_global_source_does_not_block_machine_harness_defaults(tmp_path, capsys):
@@ -87,7 +87,7 @@ def test_stale_global_source_does_not_block_machine_harness_defaults(tmp_path, c
     machine.write_text('source = "/nope/missing"\nharnesses = ["droid"]\n')
 
     assert loadout.main(["init", "project", "--root", str(tmp_path), "--dry-run", "--json"]) == 0
-    assert json.loads(capsys.readouterr().out)["agents"] == ["droid"]
+    assert json.loads(capsys.readouterr().out)["harnesses"] == ["droid"]
 
 
 def test_explicit_project_harnesses_override_machine_defaults(tmp_path, fake_home, capsys):
@@ -112,7 +112,7 @@ def test_explicit_project_harnesses_override_machine_defaults(tmp_path, fake_hom
         )
         == 0
     )
-    assert json.loads(capsys.readouterr().out)["agents"] == ["claude"]
+    assert json.loads(capsys.readouterr().out)["harnesses"] == ["claude"]
 
 
 def test_initialized_project_ignores_machine_harness_defaults(tmp_path, fake_home, capsys):
@@ -141,7 +141,7 @@ def test_initialized_project_ignores_machine_harness_defaults(tmp_path, fake_hom
 
     assert loadout.main(["init", "project", "--root", str(tmp_path), "--dry-run", "--json"]) == 0
     preview = json.loads(capsys.readouterr().out)
-    assert preview["agents"] == ["claude"]
+    assert preview["harnesses"] == ["claude"]
     assert preview["already_initialized"]
 
 
@@ -316,10 +316,9 @@ def test_preparation_error_keeps_json_parseable(tmp_path, capsys):
     assert str(missing) in captured.err
 
 
-def test_existing_mixed_manifest_includes_legacy_skill_membership(tmp_path, capsys):
-    (tmp_path / "artifacts.toml").write_text("artifact = []\n")
+def test_an_existing_skills_only_source_is_already_initialized(tmp_path, capsys):
     (tmp_path / "loadout.toml").write_text(
-        'artifacts = "artifacts.toml"\n[[source]]\nname = "skills"\npath = "."\nuse = ["skills"]\n\n[pi]\npermissions = false\nmcp = false\nmodule-config = false\n'
+        '[[source]]\nname = "skills"\npath = "."\nuse = ["skills"]\n\n[pi]\npermissions = false\nmcp = false\nmodule-config = false\n'
     )
     assert (
         loadout.main(
@@ -338,7 +337,7 @@ def test_existing_mixed_manifest_includes_legacy_skill_membership(tmp_path, caps
         == 0
     )
     preview = json.loads(capsys.readouterr().out)
-    assert preview["agents"] == ["pi"]
+    assert preview["harnesses"] == ["pi"]
     assert preview["already_initialized"]
 
 
@@ -638,3 +637,18 @@ def test_global_init_under_a_symlinked_home_prefix_adopts_and_registers(
     capsys.readouterr()
     assert loadout.main(["sync", "--global"]) == 0
     assert "Up to date." in capsys.readouterr().out
+
+
+def test_a_category_init_does_not_adopt_says_its_files_stay(tmp_path, capsys):
+    """Review 3.7: the readiness rows name no binding loadout no longer has."""
+    root = tmp_path / "p"
+    root.mkdir()
+    argv = ["init", "project", "--root", str(root), "--harness", "claude", "--dry-run", "--json"]
+
+    assert loadout.main(argv) == 0
+
+    rows = {c["category"]: c for c in json.loads(capsys.readouterr().out)["categories"]}
+    assert (rows["module-config"]["state"], rows["module-config"]["reason"]) == (
+        "not-adopted",
+        "No source slice adopts this category; existing files stay in place.",
+    )

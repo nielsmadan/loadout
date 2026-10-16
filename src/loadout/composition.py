@@ -25,8 +25,8 @@ def load_fragment(path: Path) -> str:
 
 def render(target: InstructionTarget, manifest: Manifest) -> str:
     swaps = dict(target.substitute)
-    blocks = [HEADER]
-    for name in target.fragments:
-        item = resolve_fragment(manifest.sources, swaps.get(name, name))
-        blocks.append(load_fragment(item.path))
-    return "\n\n".join(blocks) + "\n"
+    blocks = [
+        load_fragment(resolve_fragment(manifest.sources, swaps.get(name, name)).path)
+        for name in target.fragments
+    ]
+    return "\n\n".join([HEADER, *blocks]) + "\n"

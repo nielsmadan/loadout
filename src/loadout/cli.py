@@ -179,7 +179,7 @@ def build_parser() -> argparse.ArgumentParser:
     hook_event.add_argument("event", choices=EVENTS)
     hook_event.add_argument("git_arguments", nargs="*")
     hook_event.add_argument(
-        "--root", type=Path, default=Path.cwd(), help="Loadout source root the hook runs against"
+        "--root", type=Path, default=Path.cwd(), help="loadout source root the hook runs against"
     )
     hook_event.add_argument("--profile", default="default", help="active profile to render")
     subparsers.metavar = "{" + ",".join(n for n in subparsers.choices if n != "hook-event") + "}"
@@ -198,7 +198,7 @@ def _add_skill(parser: argparse.ArgumentParser) -> None:
         skill_sub.add_argument(
             "--profile",
             default=None,
-            help="global profile whose sources and configured agents to use",
+            help="global profile whose sources and configured harnesses to use",
         )
         skill_sub.add_argument(
             "--source",
@@ -365,8 +365,7 @@ def _dispatch_init(args: argparse.Namespace) -> int:
             InitOptions(
                 root=source,
                 scope="global",
-                source=source,
-                agents=tuple(args.harnesses or ()),
+                harnesses=tuple(args.harnesses or ()),
                 registration=args.registration,
                 dry_run=args.dry_run,
                 json=args.json,
@@ -377,7 +376,7 @@ def _dispatch_init(args: argparse.Namespace) -> int:
         InitOptions(
             root=args.root.expanduser().absolute(),
             scope="project",
-            agents=tuple(args.harnesses or ()),
+            harnesses=tuple(args.harnesses or ()),
             dry_run=args.dry_run,
             json=args.json,
             yes=args.yes,

@@ -6,15 +6,14 @@ import sys
 import tempfile
 import tomllib
 from collections.abc import Mapping
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TextIO
 
 import tomlkit
 
-from .commands import DIFF_LIMIT, RenderedChange, compare_with_disk, deploy, diff_lines
-from .deployment import DeploymentConflict
+from .commands import diff_lines, report_diff
 from .discovery import discover, initialized_project_path
 from .emit import render_all
 from .errors import LoadoutError, UsageError
@@ -44,6 +43,7 @@ from .migration_transaction import (
 )
 from .output import Merged, Output
 from .project import gitignore_entries
+from .sync import RenderedChange, compare_with_disk, deploy
 from .written import written_state_path
 
 
@@ -59,23 +59,22 @@ def _answer(prompt: str) -> str:
 
 
 def _plan(options: InitOptions) -> MigrationPlan:
-    selected = options.source or options.root
-    if not selected.is_dir():
+    if not options.root.is_dir():
         raise LoadoutError(
-            f"selected directory must exist: {selected}; create a dedicated project/source directory first"
+            f"selected directory must exist: {options.root}; create a dedicated project/source directory first"
         )
-    return plan_migration(discover(selected, scope=options.scope, agents=options.agents))
+    return plan_migration(discover(options.root, scope=options.scope, harnesses=options.harnesses))
 
 
 def _project_harness_defaults(options: InitOptions) -> InitOptions:
-    if options.scope != "project" or options.agents:
+    if options.scope != "project" or options.harnesses:
         return options
     if initialized_project_path(options.root) is not None:
         return options
     machine = load_machine_config(machine_config_path(), require_source=False)
     if machine is None or not machine.harnesses:
         return options
-    return replace(options, agents=machine.harnesses)
+    return replace(options, harnesses=machine.harnesses)
 
 
 def _resolve(options: InitOptions) -> tuple[InitOptions, MigrationPlan]:
@@ -83,14 +82,14 @@ def _resolve(options: InitOptions) -> tuple[InitOptions, MigrationPlan]:
     plan = _plan(options)
     if options.dry_run or options.json or not sys.stdin.isatty():
         return options, plan
-    if any(i.code == "agents-required" for i in plan.issues):
+    if any(i.code == "harnesses-required" for i in plan.issues):
         answer = _answer(
             "Configured harnesses (comma-separated: "
             f"{','.join(sorted(KNOWN_HARNESSES))}; empty cancels): "
         )
         if not answer:
             return options, plan
-        options = replace(options, agents=tuple(a.strip() for a in answer.split(",")))
+        options = replace(options, harnesses=tuple(a.strip() for a in answer.split(",")))
         plan = _plan(options)
     return options, plan
 
@@ -123,8 +122,8 @@ def _registration(
             except (ValueError, OSError):
                 pass
         if same:
-            return _updated_registration(path, existing_text or "", plan.inventory.agents), None
-        choice = options.registration
+            return _updated_registration(path, existing_text or "", plan.inventory.harnesses), None
+        choice: str | None = options.registration
         if choice is None and sys.stdin.isatty() and not (options.dry_run or options.json):
             choice = _answer(
                 f"Machine registration {path} differs. Replace or keep? [replace/keep] "
@@ -138,8 +137,8 @@ def _registration(
                 "Choose --registration replace or --registration keep; --yes does not choose ownership.",
             )
     registration: dict[str, object] = {"source": str(source)}
-    if plan.inventory.agents:
-        registration["harnesses"] = list(plan.inventory.agents)
+    if plan.inventory.harnesses:
+        registration["harnesses"] = list(plan.inventory.harnesses)
     return SourceWrite(path, tomlkit.dumps(registration).encode(), 0o600, True), None
 
 
@@ -173,55 +172,81 @@ def _link_above(path: Path, boundary: Path) -> Path | None:
     )
 
 
-def _show(
-    preview: dict[str, Any], *, as_json: bool, status: str = "preview", exit_code: int = 0
-) -> None:
+ACTION_LABELS = {
+    "retire": "Retire original",
+    "retain": "Keep in place",
+    "generated": "Becomes generated",
+}
+
+
+@dataclass(frozen=True)
+class Preview:
+    """What init shows before it changes anything: the plan, and once it is resolved,
+    the operations, the registration and the first render."""
+
+    plan: MigrationPlan
+    prepared: MigrationPreparation | None = None
+    registration: Path | None = None
+    render: tuple[RenderedChange, ...] = ()
+    notes: tuple[str, ...] = ()
+
+    def document(self) -> dict[str, Any]:
+        if self.prepared is None:
+            return self.plan.preview()
+        preview = self.prepared.preview()
+        return {
+            **preview,
+            "registration": str(self.registration) if self.registration else None,
+            "notes": [*preview["notes"], *self.notes],
+            "outputs": [{"path": str(c.path), "change": c.kind} for c in self.render],
+        }
+
+
+def _show(preview: Preview, *, as_json: bool, status: str = "preview", exit_code: int = 0) -> None:
     if as_json:
-        print(json.dumps({"status": status, "exit_code": exit_code, **preview}, indent=2))
+        print(
+            json.dumps({"status": status, "exit_code": exit_code, **preview.document()}, indent=2)
+        )
         return
+    plan, prepared = preview.plan, preview.prepared
+    inventory = plan.inventory
     print(
-        f"Scope: {preview['scope'] or 'unresolved'}; agents: {', '.join(preview['agents']) or 'unresolved'}"
+        f"Scope: {inventory.scope or 'unresolved'}; harnesses: {', '.join(inventory.harnesses) or 'unresolved'}"
     )
-    print(f"Source: {preview['source_root']}")
-    for note in preview["notes"]:
+    print(f"Source: {inventory.source_root}")
+    for note in (*plan.notes, *preview.notes):
         print(note)
-    if preview.get("source_repository"):
-        print(f"Create the source's Git repository: {preview['source_repository']}")
-    for path in preview.get("untrack_paths", ()):
-        print(f"Untrack (generated, now ignored): {path}")
-    for label, key in (("Write source", "source_writes"), ("Generate", "generated_writes")):
-        for entry in preview[key]:
-            print(f"{label}: {entry['path']}")
-    _show_private(preview["candidates"])
-    for original in preview["originals"]:
-        print(f"{original['action']}: {original['path']} ({original['reason']})")
-    for delinked in preview.get("delinked", ()):
-        print(f"Replace symlink: {delinked['link']} -> {delinked['target']}")
-    if preview.get("registration"):
-        print(f"Register global source: {preview['registration']}")
-    _show_render(preview.get("render", ()))
-    _show_unadopted(preview["unadopted"])
-    for issue in preview["issues"]:
-        print(f"{issue['code']}: {issue['message']}", file=sys.stderr)
-        for path in issue["paths"]:
-            print(f"  {path}", file=sys.stderr)
-
-
-def _show_private(candidates: list[dict[str, Any]]) -> None:
-    """Each original adopted privately, with what made it so, so a false positive is
-    visible before approval."""
-    for candidate in candidates:
-        if candidate["disposition"] == "migrated" and candidate["private"]:
-            reason = candidate["private_reason"]
-            print(f"Private (stays on this machine): {candidate['path']}: {reason}")
-
-
-def _show_unadopted(items: list[dict[str, Any]]) -> None:
-    for item in items:
-        print(f"Not adopted, conflicting copies of {item['kind']} {item['name']!r}:")
-        for original in item["originals"]:
-            print(f"  {original['path']} ({', '.join(original['harnesses'])})")
+    _show_changes(plan, prepared)
+    if preview.registration:
+        print(f"Register global source: {preview.registration}")
+    _show_render(preview.render)
+    for item in plan.unadopted:
+        print(f"Not adopted, conflicting copies of {item.kind} {item.name!r}:")
+        for path, harnesses in item.originals:
+            print(f"  {path} ({', '.join(harnesses)})")
         print("  Each copy stays in place; merge them into the source with /loadout.")
+    for issue in plan.issues:
+        print(f"{issue.code}: {issue.message}", file=sys.stderr)
+        for issue_path in issue.paths:
+            print(f"  {issue_path}", file=sys.stderr)
+
+
+def _show_changes(plan: MigrationPlan, prepared: MigrationPreparation | None) -> None:
+    if prepared is not None and prepared.new_repository:
+        print(f"Create the source's Git repository: {prepared.new_repository}")
+    for name in prepared.untracked if prepared is not None else ():
+        print(f"Untrack (generated, now ignored): {name}")
+    for write in plan.source_writes:
+        print(f"Write source: {write.path}")
+    for generated in plan.generated_writes:
+        print(f"Generate: {generated.path}")
+    for candidate in plan.inventory.candidates:
+        if candidate.disposition == "migrated" and candidate.private:
+            print(f"Private (stays on this machine): {candidate.path}: {candidate.private_reason}")
+    for original in plan.originals:
+        print(f"{ACTION_LABELS[original.action]}: {original.path} ({original.reason})")
+    for delinked in prepared.delinked() if prepared is not None else ():
+        print(f"Replace symlink: {delinked.link} -> {delinked.target}")
 
 
 def _show_render(changes: tuple[RenderedChange, ...]) -> None:
@@ -231,9 +256,8 @@ def _show_render(changes: tuple[RenderedChange, ...]) -> None:
     if updates:
         print(f"Render changes {len(updates)} existing file(s); applying overwrites them:")
         for change in updates:
-            sys.stdout.writelines(
-                diff_lines(str(change.path), change.actual, change.wanted, context=1)[:DIFF_LIMIT]
-            )
+            lines = diff_lines(str(change.path), change.actual, change.wanted, context=1)
+            report_diff(lines, sys.stdout)
     else:
         print("Render: loadout reproduces your setup exactly.")
     for change in changes:
@@ -306,11 +330,7 @@ def _first_sync(
             file=sys.stderr,
         )
         return 1
-    try:
-        written, _ = deploy(root, profile, outputs)
-    except DeploymentConflict as error:
-        print(f"loadout: the first render was not written: {error}", file=sys.stderr)
-        return 1
+    written, _ = deploy(root, outputs)
     if not as_json:
         print(f"Rendered {len(written)} generated file(s).")
     return 0
@@ -323,7 +343,7 @@ def delinked_notice(delinked: Delinked) -> str:
             f"written by loadout; {delinked.target} is no longer used."
         )
     notice = (
-        f"{delinked.link} was a symlink into {delinked.target}. Loadout's files are now real "
+        f"{delinked.link} was a symlink into {delinked.target}. loadout's files are now real "
         f"files here; everything else still links into {delinked.target}."
     )
     if delinked.superseded:
@@ -412,7 +432,7 @@ def _run_init(options: InitOptions) -> int:
     if issue:
         plan = replace(plan, issues=(*plan.issues, issue))
     if not plan.complete:
-        _show(plan.preview(), as_json=options.json, status="incomplete", exit_code=2)
+        _show(Preview(plan), as_json=options.json, status="incomplete", exit_code=2)
         return 2
     profile = _render_profile(plan)
     render = () if plan.already_initialized else planned_render(plan, profile)
@@ -432,7 +452,7 @@ def _run_init(options: InitOptions) -> int:
             None,
             as_json=options.json,
         )
-        return _after_migration(plan, profile, render, already=True, as_json=options.json)
+        return _after_migration(plan, already=True, as_json=options.json)
     return _apply(options, prepared, profile, render)
 
 
@@ -443,13 +463,13 @@ def _preview(
     render: tuple[RenderedChange, ...],
 ) -> int | None:
     """Show the plan and get approval; an exit code when init stops here."""
-    plan = prepared.plan
-    preview = {**prepared.preview(), "registration": str(machine.path) if machine else None}
-    preview["notes"] = [*preview["notes"], *written_through(plan, machine)]
-    if options.json:
-        preview["outputs"] = [{"path": str(c.path), "change": c.kind} for c in render]
-    else:
-        preview["render"] = render
+    preview = Preview(
+        prepared.plan,
+        prepared,
+        machine.path if machine else None,
+        render,
+        tuple(written_through(prepared.plan, machine)),
+    )
     if options.dry_run or not options.json:
         _show(preview, as_json=options.json)
     if options.dry_run:
@@ -512,22 +532,16 @@ def _apply(
         return _failed(backup, "the first render was not written", as_json=options.json)
     complete(backup)
     _result(result, delinked, plan.unadopted, backup, as_json=options.json)
-    return _after_migration(
-        plan, profile, render, already=plan.already_initialized, as_json=options.json
-    )
+    return _after_migration(plan, already=plan.already_initialized, as_json=options.json)
 
 
 def _touched(prepared: MigrationPreparation, render: tuple[RenderedChange, ...]) -> list[Path]:
-    """What applying and the first render can change: the operations, the rendered outputs,
-    the render root's deployment state and its write record, each in its one spelling."""
-    plan = prepared.plan
-    root = _render_root(plan).absolute()
-    state = plan.inventory.source_root / ".loadout-state"
+    """What applying and the first render can change: the operations, the rendered outputs
+    and the render root's write record, each in its one spelling."""
+    root = _render_root(prepared.plan).absolute()
     paths = (
         *prepared.touched(),
         *(change.path for change in render),
-        state,
-        *(state / name for name in (".gitignore", "project.json", "global.json")),
         written_state_path(root),
     )
     return list(dict.fromkeys(prepared.canonical(path) for path in paths))
@@ -586,14 +600,7 @@ def _print_kept(restored: Restored, stream: TextIO) -> None:
         )
 
 
-def _after_migration(
-    plan: MigrationPlan,
-    profile: str,
-    render: tuple[RenderedChange, ...],
-    *,
-    already: bool,
-    as_json: bool,
-) -> int:
+def _after_migration(plan: MigrationPlan, *, already: bool, as_json: bool) -> int:
     if not already and not as_json:
         print(_hook_hint(plan))
         if plan.inventory.scope == "global":

@@ -168,3 +168,16 @@ class TestCli:
             check=True,
         )
         assert result.stdout.split() == ["--json"]
+
+
+@pytest.mark.parametrize("shell", ["zsh", "fish"])
+def test_the_script_parses_in_its_own_shell(shell: str, tmp_path: Path) -> None:
+    """Review 5.13: a shell that is not installed skips rather than passes."""
+    if shutil.which(shell) is None:
+        pytest.skip(f"needs {shell}")
+    script = tmp_path / f"loadout.{shell}"
+    script.write_text(render(shell, build_parser()))
+
+    result = subprocess.run([shell, "-n", str(script)], capture_output=True, text=True, check=False)
+
+    assert (result.returncode, result.stderr) == (0, "")

@@ -82,7 +82,7 @@ def ordered(value):
 def expected_outputs(preview: dict) -> dict:
     generated = {entry["path"]: entry for entry in preview["generated_writes"]}
     result = {}
-    output_free = {entry["path"] for entry in preview.get("required_owned_absences", [])}
+    output_free: set[str] = set()
     for candidate in preview["candidates"]:
         destination = candidate["destination"]
         if candidate["disposition"] != "migrated":
@@ -91,7 +91,7 @@ def expected_outputs(preview: dict) -> dict:
         assert destination and path.is_file(), ("missing inventoried original", path)
         format_name = candidate["format"]
         name = Path(destination).name
-        agents = candidate["agents"]
+        agents = candidate["harnesses"]
         partial = format_name in {"json", "toml"} and (
             (name == ".claude.json" and "claude" in agents)
             or (name == "config.toml" and "codex" in agents)
@@ -193,8 +193,6 @@ def reconstruction(root: Path, home: Path, preview: dict, expected: dict, logs: 
     assert actual_paths == {relocate(path) for path in public}, (
         "public reconstruction output inventory differs"
     )
-    for path in preview["required_absences"]:
-        assert not relocate(path).exists(), path
     result["source"] = (
         "actual Git index blobs; Git 100644/100755 modes; no originals, receipts, registration or private files"
     )
@@ -227,7 +225,7 @@ def reconstruction(root: Path, home: Path, preview: dict, expected: dict, logs: 
 
 
 def lifecycle(root: Path, source: Path, preview: dict, env: dict, logs: Path) -> dict:
-    agent = next(agent for agent in preview["agents"] if "skills" in GLOBAL_PRESET[agent])
+    agent = next(agent for agent in preview["harnesses"] if "skills" in GLOBAL_PRESET[agent])
     target_source = root / "loadout/skills/corpus-lifecycle.md"
     if preview["scope"] == "project":
         spec = PROJECT_PRESET[agent]["skills"]
@@ -317,7 +315,7 @@ def adopt(case: dict, root: Path, preview: dict, env: dict, logs: Path) -> dict:
             "ordered_sha256": digest(json.dumps(allow).encode()),
             "full_list_equal": True,
         }
-    if any("skills" in GLOBAL_PRESET[agent] for agent in preview["agents"]):
+    if any("skills" in GLOBAL_PRESET[agent] for agent in preview["harnesses"]):
         result["lifecycle"] = lifecycle(root, source, preview, env, logs)
     if case["case"] == "synthetic-global":
         result["example"] = {

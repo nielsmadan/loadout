@@ -16,13 +16,13 @@ from pathlib import Path
 import tomlkit
 
 from .bundled_skill import SKILL_NAME
-from .deployment import atomic_install, read_file
 from .emit import Merged, declared_profiles, render_global
 from .errors import LoadoutError
 from .manifest import Manifest, load_profile, resolve_destination
-from .output import FrozenFile
+from .output import FrozenFile, atomic_install, read_file
 from .skills import discover_skills
 from .sources import select_overrides
+from .sync import unaccepted_outputs
 from .templates import copy_tree, tree_hash
 
 OWNER_MARKER = ".loadout-bundle.toml"
@@ -45,7 +45,6 @@ class SkillSourceLocation:
     source: str
     path: Path
     state: SourceSkillState
-    recorded_hash: str | None
     bundle_hash: str
 
 
@@ -140,8 +139,8 @@ def inspect_skill_source(
 
     path = selected.path / "skills" / SKILL_NAME
     bundle_hash = tree_hash(bundle)
-    state, recorded = _classify(path, bundle_hash)
-    return SkillSourceLocation(selected.name, path, state, recorded, bundle_hash)
+    state, _ = _classify(path, bundle_hash)
+    return SkillSourceLocation(selected.name, path, state, bundle_hash)
 
 
 def skill_override_removals(
@@ -180,7 +179,7 @@ def skill_override_removals(
 
 def configured_skill_agents(root: Path, profile: str) -> tuple[str, ...]:
     manifest = _load_skill_profile(root, profile)
-    return tuple(sorted({target.agent for target in manifest.skills}))
+    return tuple(sorted({target.harness for target in manifest.skills}))
 
 
 def _write_marker(path: Path, digest: str) -> None:
@@ -296,11 +295,9 @@ def _accepted_outputs(root: Path, profile: str) -> dict[Path, bytes]:
     """The generated copies of the bundled skill, each as it is now, once sync's guard
     accepts every one of them as loadout's own (ADR 0022): what the source renders, what
     was committed, or what sync last wrote."""
-    from .commands import unaccepted_outputs  # noqa: PLC0415 - commands imports this module
-
     manifest = _load_skill_profile(root, profile)
     directories = tuple(
-        resolve_destination(str(destination), f"{target.agent}.skills") / SKILL_NAME
+        resolve_destination(str(destination), f"{target.harness}.skills") / SKILL_NAME
         for target in manifest.skills
         for destination in target.destinations
     )
@@ -310,7 +307,7 @@ def _accepted_outputs(root: Path, profile: str) -> dict[Path, bytes]:
             raise LoadoutError(f"skill output {path} unexpectedly requires a merged document")
     refused = [
         entry.path
-        for entry in unaccepted_outputs(root, outputs, profile)
+        for entry in unaccepted_outputs(root, outputs)
         if any(entry.path.is_relative_to(directory) for directory in directories)
     ]
     if refused:

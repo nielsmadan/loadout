@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Mapping
 from pathlib import Path
 
 from .errors import LoadoutError
@@ -9,7 +10,7 @@ from .errors import LoadoutError
 _ENV_REFERENCE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
 
 
-def _expand_env(template: str, label: str) -> str:
+def _expand_env(template: str, label: str, environ: Mapping[str, str]) -> str:
     """Substitute `${VAR}` and `${VAR:-fallback}`.
 
     Which variable a harness reads is recorded in docs/reference/, never here.
@@ -19,7 +20,7 @@ def _expand_env(template: str, label: str) -> str:
 
     def substitute(match: re.Match[str]) -> str:
         name, fallback = match.group(1), match.group(2)
-        value = os.environ.get(name)
+        value = environ.get(name)
         if value:
             return value
         if fallback:
@@ -43,16 +44,26 @@ def _expand_env(template: str, label: str) -> str:
     return expanded
 
 
-def resolve_destination(template: str, label: str) -> Path:
+def _expand_home(expanded: str, environ: Mapping[str, str]) -> Path:
+    home = environ.get("HOME")
+    if home and (expanded == "~" or expanded.startswith("~/")):
+        return Path(home + expanded[1:])
+    return Path(expanded).expanduser()
+
+
+def resolve_destination(
+    template: str, label: str, environ: Mapping[str, str] | None = None
+) -> Path:
     """Resolve a destination template to the machine path `sync` will write.
 
     Deferred to render time rather than parse time for two reasons: a target the
     active profile does not select must not be able to fail the run over a variable
     this machine has no reason to set, and `~` resolves here too, so the checks
     below see the whole path rather than half of one."""
-    expanded = _expand_env(template, label)
+    environ = os.environ if environ is None else environ
+    expanded = _expand_env(template, label, environ)
     try:
-        path = Path(expanded).expanduser()
+        path = _expand_home(expanded, environ)
     except RuntimeError as error:
         raise LoadoutError(f"{label}: destination {template!r}: {error}") from error
     if not path.is_absolute() or ".." in path.parts:

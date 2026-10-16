@@ -14,8 +14,10 @@ from typing import Any
 
 import pytest
 
-from loadout.emit import Merged, check_all, render_global, write_all
+from loadout.emit import Merged, render_global
 from loadout.errors import LoadoutError
+from loadout.files import check_all
+from render_helpers import write_all
 
 FRAGMENT: dict[str, Any] = {
     "marketplaces": {"nolabs-ai": {"source_type": "local", "source": "/marketplaces/nolabs-ai"}},

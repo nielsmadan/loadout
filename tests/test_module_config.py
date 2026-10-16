@@ -14,8 +14,9 @@ from pathlib import Path
 
 import pytest
 
-from loadout.emit import Copied, render_global, write_all
+from loadout.emit import Copied, render_global
 from loadout.errors import LoadoutError
+from render_helpers import write_all
 
 pytestmark = pytest.mark.integration
 

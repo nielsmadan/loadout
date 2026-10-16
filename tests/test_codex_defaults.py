@@ -7,9 +7,11 @@ from pathlib import Path
 import pytest
 
 import loadout
-from loadout.emit import check_all, collect_notices, write_all
 from loadout.errors import LoadoutError
+from loadout.files import check_all
+from loadout.notices import collect_notices
 from loadout.record import read_record, render_record
+from render_helpers import write_all
 
 pytestmark = pytest.mark.integration
 

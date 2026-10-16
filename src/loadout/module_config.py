@@ -18,15 +18,9 @@ from __future__ import annotations
 
 from pathlib import Path, PurePosixPath
 
-from .skills import EXCLUDED_DIRECTORIES, EXCLUDED_NAMES, EXCLUDED_SUFFIXES
+from .skills import excluded
 
 MODULE_CONFIG_SUBDIR = "module-config"
-
-
-def _excluded(path: Path, relative: PurePosixPath) -> bool:
-    if any(part in EXCLUDED_DIRECTORIES for part in relative.parts):
-        return True
-    return path.name in EXCLUDED_NAMES or path.suffix in EXCLUDED_SUFFIXES
 
 
 def discover_module_config(agent_root: Path) -> tuple[PurePosixPath, ...]:
@@ -42,7 +36,7 @@ def discover_module_config(agent_root: Path) -> tuple[PurePosixPath, ...]:
         if not item.is_file():
             continue
         relative = PurePosixPath(item.relative_to(agent_root).as_posix())
-        if _excluded(item, relative):
+        if excluded(relative):
             continue
         found.append(relative)
     return tuple(found)
