@@ -1,9 +1,10 @@
-"""Reading a file whole and replacing one atomically: the one way loadout writes a file
+"""Reading a file whole and replacing one atomically: the one way loadout replaces a file
 (review 3, batch 4.4), kept apart from the output types (review 4, batch 3.5)."""
 
 from __future__ import annotations
 
 import os
+import re
 import stat
 import tempfile
 from collections.abc import Callable
@@ -28,8 +29,16 @@ def read_file(path: Path) -> FrozenFile | None:
     return FrozenFile(path.read_bytes(), stat.S_IMODE(metadata.st_mode))
 
 
-# The name of a write in progress, which a kill before its rename leaves behind.
-TEMPORARY_PREFIX = ".loadout-"
+# The name of a write in progress, which a kill before its rename leaves behind: this
+# prefix and `mkstemp`'s eight random characters, a shape no file of the user's has by
+# chance (review 5, batch 1.1).
+TEMPORARY_PREFIX = ".loadout-tmp-"
+_TEMPORARY_NAME = re.compile(rf"{re.escape(TEMPORARY_PREFIX)}[a-z0-9_]{{8}}")
+
+
+def temporary_name(name: str) -> bool:
+    """Whether `name` is one this module gives a write in progress."""
+    return _TEMPORARY_NAME.fullmatch(name) is not None
 
 
 def replace_atomically(
@@ -40,7 +49,7 @@ def replace_atomically(
     durable: bool = False,
     before_rename: Callable[[], None] = lambda: None,
 ) -> None:
-    """The one atomic writer (review 3, batch 4.4): `fill` writes a file beside `path`,
+    """The one way a file is replaced (review 3, batch 4.4): `fill` writes a file beside `path`,
     which is renamed over it, so a kill never leaves `path` torn. The mode is set before
     the rename, so an executable never appears without its bit."""
     descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix=TEMPORARY_PREFIX)

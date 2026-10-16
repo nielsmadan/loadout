@@ -45,6 +45,9 @@ VENDORED = "(vendored)"
 
 # A `templates/` directory's shared-part collections, never templates themselves.
 PART_DIRECTORIES = frozenset({"instructions", "permissions", "mcp", "skills"})
+# A directory template's own source documents: an empty one parses as a catalog, which
+# it is not (review 5, batch 3.3).
+SOURCE_DOCUMENTS = frozenset({"permissions.toml", "mcp.toml"})
 
 
 def vendored_root(root: Path) -> Path:
@@ -77,7 +80,11 @@ def vendored_names(root: Path) -> tuple[str, ...]:
         if entry.is_dir():
             qualified = []
             for child in sorted(entry.iterdir()):
-                if child.is_file() and child.suffix == ".toml":
+                if (
+                    child.is_file()
+                    and child.suffix == ".toml"
+                    and child.name not in SOURCE_DOCUMENTS
+                ):
                     try:
                         load_catalog(child)
                     except LoadoutError:
@@ -155,7 +162,7 @@ def resolve_template(
     """
     local = vendored_path(root, name)
     if local.exists():
-        return ResolvedItem(name=name, source=VENDORED, path=local)
+        return ResolvedItem(name=name, source=VENDORED, path=local, kind="vendored")
 
     try:
         return (upstream or resolve_upstream_template)(name)
@@ -243,7 +250,7 @@ def resolve_upstream_template(name: str) -> ResolvedItem:
 def _bundled_template(name: str, path: Path) -> ResolvedItem:
     if not (path / "instructions.md").is_file():
         raise LoadoutError(f"bundled template missing at {path}; reinstall the loadout package")
-    return ResolvedItem(name=name, source=BUNDLED, path=path)
+    return ResolvedItem(name=name, source=BUNDLED, path=path, kind="bundled")
 
 
 def declare(root: Path, name: str) -> bool:

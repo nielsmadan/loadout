@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
+import pytest
+
+import loadout
 from loadout.unmanaged import _holding
 
 
@@ -24,3 +28,32 @@ def test_a_path_whose_parent_is_already_found_still_adds_its_own_folder() -> Non
     paths = [Path("/h/a/x"), Path("/h/a/b/c/y")]
 
     assert _holding(paths) == {"/h", "/h/a", "/h/a/b", "/h/a/b/c"}
+
+
+@pytest.mark.integration
+def test_sync_and_check_name_a_retired_skill_s_leftovers_alike(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    """Review 5, batch 2.6: sync scanned with the record from before it retired the skill,
+    so it named the file inside and check, the folder."""
+    root = tmp_path / "p"
+    for name in ("x", "y"):
+        (root / f"loadout/skills/{name}").mkdir(parents=True)
+        (root / f"loadout/skills/{name}/SKILL.md").write_text(
+            f"---\nname: {name}\ndescription: d\n---\n{name}\n"
+        )
+    (root / "loadout/config.toml").write_text('harnesses = ["claude"]\n')
+    assert loadout.main(["sync", "--root", str(root)]) == 0
+    (root / ".claude/skills/x/notes.txt").write_text("mine\n")
+    shutil.rmtree(root / "loadout/skills/x")
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--root", str(root)]) == 0
+    warned = [line.split(" is ")[0] for line in capsys.readouterr().err.splitlines()]
+    assert loadout.main(["check", "--root", str(root)]) == 1
+    drifted = [line for line in capsys.readouterr().err.splitlines() if line.startswith("DRIFT")]
+
+    assert (warned, drifted) == (
+        ["WARNING: .claude/skills/x"],
+        ["DRIFT (unmanaged): .claude/skills/x"],
+    )

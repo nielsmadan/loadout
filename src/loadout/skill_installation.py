@@ -24,7 +24,8 @@ from .manifest import Manifest, load_profile
 from .output import FrozenFile, Merged
 from .skills import discover_skills
 from .sources import select_overrides
-from .sync import sync_state, unaccepted_outputs
+from .state import sync_state
+from .sync import unaccepted_outputs
 from .templates import copy_tree, tree_hash
 
 OWNER_MARKER = ".loadout-bundle.toml"
@@ -314,7 +315,9 @@ def _accepted_outputs(root: Path, profile: str) -> dict[Path, bytes]:
     ]
     if refused:
         raise LoadoutError(
-            f"{refused[0].path} was modified outside loadout ({refused[0].kind}); no changes made"
+            f"{refused[0].path} was modified outside loadout ({refused[0].kind}); no changes "
+            "made. Port the edit into the source with /loadout, or discard it with "
+            "`loadout sync --force`, then uninstall again"
         )
     return {
         path: path.read_bytes()

@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from loadout import staged
+from loadout import git_runner
 from loadout.errors import LoadoutError
-from loadout.staged import Entry, _snapshot
+from loadout.git_tree import Entry, write_snapshot
 
 OID = "a" * 40
 
@@ -31,13 +31,13 @@ class _Process:
 
 
 def _fake(monkeypatch: pytest.MonkeyPatch, reply: bytes, code: int = 0) -> None:
-    monkeypatch.setattr(staged.git_runner, "start", lambda *args, **kwargs: _Process(reply, code))
+    monkeypatch.setattr(git_runner, "start", lambda *args, **kwargs: _Process(reply, code))
 
 
 def test_a_whole_blob_is_written(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _fake(monkeypatch, f"{OID} blob 6\n".encode() + b"Rules\n\n")
 
-    _snapshot(tmp_path, tmp_path / "out", {"x.md": Entry("100644", OID)})
+    write_snapshot(tmp_path, tmp_path / "out", {"x.md": Entry("100644", OID)})
 
     assert (tmp_path / "out/x.md").read_bytes() == b"Rules\n"
 
@@ -46,14 +46,14 @@ def test_a_truncated_blob_is_refused(tmp_path: Path, monkeypatch: pytest.MonkeyP
     _fake(monkeypatch, f"{OID} blob 10\n".encode() + b"Rul")
 
     with pytest.raises(LoadoutError, match=r"cannot read staged blob: x\.md"):
-        _snapshot(tmp_path, tmp_path / "out", {"x.md": Entry("100644", OID)})
+        write_snapshot(tmp_path, tmp_path / "out", {"x.md": Entry("100644", OID)})
 
 
 def test_a_failed_cat_file_is_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _fake(monkeypatch, f"{OID} blob 6\n".encode() + b"Rules\n\n", code=128)
 
     with pytest.raises(LoadoutError, match="git cat-file exited 128"):
-        _snapshot(tmp_path, tmp_path / "out", {"x.md": Entry("100644", OID)})
+        write_snapshot(tmp_path, tmp_path / "out", {"x.md": Entry("100644", OID)})
 
 
 def test_a_reply_cut_before_its_separator_is_refused(
@@ -62,7 +62,7 @@ def test_a_reply_cut_before_its_separator_is_refused(
     _fake(monkeypatch, f"{OID} blob 6\n".encode() + b"Rules\n")
 
     with pytest.raises(LoadoutError, match=r"cannot read staged blob: x\.md"):
-        _snapshot(tmp_path, tmp_path / "out", {"x.md": Entry("100644", OID)})
+        write_snapshot(tmp_path, tmp_path / "out", {"x.md": Entry("100644", OID)})
 
 
 class _Finishing(_Process):
@@ -85,8 +85,8 @@ def test_a_cat_file_still_finishing_is_waited_for_not_killed(
     """Review 4, batch 2.11: a kill after the last reply turned a whole snapshot into a
     failure whenever the writer had not yet closed git's input."""
     process = _Finishing(f"{OID} blob 6\n".encode() + b"Rules\n\n")
-    monkeypatch.setattr(staged.git_runner, "start", lambda *args, **kwargs: process)
+    monkeypatch.setattr(git_runner, "start", lambda *args, **kwargs: process)
 
-    _snapshot(tmp_path, tmp_path / "out", {"x.md": Entry("100644", OID)})
+    write_snapshot(tmp_path, tmp_path / "out", {"x.md": Entry("100644", OID)})
 
     assert ((tmp_path / "out/x.md").read_bytes(), process.code) == (b"Rules\n", 0)

@@ -221,7 +221,11 @@ def test_existing_source_registration_is_an_explicit_transaction(tmp_path, capsy
     capsys.readouterr()
     args = ["init", "global", str(tmp_path), "--yes", "--json"]
     assert loadout.main(args) == 2
-    assert json.loads(capsys.readouterr().out)["issues"][0]["code"] == "registration-conflict"
+    issue = json.loads(capsys.readouterr().out)["issues"][0]
+    assert (issue["code"], issue["message"]) == (
+        "registration-conflict",
+        "Choose --registration replace or --registration keep; --yes does not choose ownership.",
+    )
     assert loadout.main([*args, "--registration", "keep"]) == 0
     assert machine.read_text() == 'source = "/different"\n'
     capsys.readouterr()
@@ -727,3 +731,30 @@ def test_init_project_at_a_registered_dual_scope_root_renders_the_project_alone(
 
     assert (root / "loadout/permissions.toml").is_file()
     assert sorted(path.name for path in fake_home.iterdir()) == [".config", ".local"]
+
+
+def test_a_registration_conflict_offers_keep_only_for_an_initialized_source(
+    tmp_path, fake_home, capsys
+):
+    """Review 5, batch 4.2: keeping another registration leaves a new source nothing it may
+    render, so `--registration keep` always failed there."""
+    (fake_home / ".claude").mkdir()
+    (fake_home / ".claude/CLAUDE.md").write_text("# Me\n")
+    machine = fake_home / ".config/loadout/config.toml"
+    machine.parent.mkdir(parents=True)
+    machine.write_text('source = "/different"\n')
+    source = tmp_path / "new"
+    source.mkdir()
+    capsys.readouterr()
+
+    assert (
+        loadout.main(["init", "global", str(source), "--harness", "claude", "--yes", "--json"]) == 2
+    )
+
+    messages = [issue["message"] for issue in json.loads(capsys.readouterr().out)["issues"]]
+    assert messages == [
+        (
+            "Run init with --registration replace to register this source; --yes does not "
+            "choose ownership."
+        )
+    ]

@@ -21,6 +21,9 @@ def diff_lines(rel: str, actual: str, expected: str, context: int) -> list[str]:
     either side holds is redacted here, so no diff loadout prints, on a terminal or in a
     file, can repeat one (review 4, batch 1.2)."""
     shown = redacted_pair(actual, expected, PurePath(rel).suffix[1:])
+    if shown[0] == shown[1] and actual != expected:
+        # An empty diff would read as nothing to port (review 5, batch 1.3).
+        return [f"{rel}: differs only inside a redacted value\n"]
     lines: list[str] = []
     for line in difflib.unified_diff(
         shown[0].splitlines(keepends=True),

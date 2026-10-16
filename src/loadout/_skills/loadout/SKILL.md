@@ -46,7 +46,9 @@ Edit the declared source for each configured consumer. Generated harness files a
   or `check` reports `hand-edited`, `owned-key`, `owned-key-removed`, `unknown`, `unmanaged`,
   `unmanaged-link` or `unparsable`, follow
   “Porting a change made outside loadout” in [configuration routing](references/configuration.md).
-  Run `sync --force` only after showing the diff and getting the user's approval.
+  Run `sync --force` only after showing the diff and getting the user's approval. A secret in a
+  diff prints as `<redacted>`; never port that placeholder into the source, or `--force` writes it
+  over the real token. Read the real value from the file, or move it to an environment variable.
 - An init that lists `unadopted` items left copies that disagree across harnesses in place. Merge
   them by “Resolving conflicting copies at init” in [onboarding](references/onboarding.md).
 - An init that lists `secrets` adopted them into the source as they were. Say the source's remote

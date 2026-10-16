@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import shlex
 import tomllib
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -48,10 +48,17 @@ def machine_config_path(env: Mapping[str, str] | None = None) -> Path:
     return config_dir(env) / MACHINE_CONFIG_NAME
 
 
-def _read_config(path: Path) -> dict[str, object]:
+def _read_config(path: Path) -> dict[str, object] | None:
+    """The machine config's table, or None when there is none. Its absence is the only
+    thing asked of the file system outside the read, since asking can fail too: a folder
+    that cannot be listed (review 5, batch 2.2)."""
     try:
         with path.open("rb") as handle:
             return tomllib.load(handle)
+    except (FileNotFoundError, IsADirectoryError, NotADirectoryError):
+        return None
+    except UnicodeDecodeError as error:
+        raise LoadoutError(f"{path}: not UTF-8: {error.reason}") from error
     except tomllib.TOMLDecodeError as error:
         raise LoadoutError(f"{path}: invalid TOML: {error}") from error
     except OSError as error:
@@ -60,9 +67,9 @@ def _read_config(path: Path) -> dict[str, object]:
 
 
 def load_machine_config(path: Path, *, require_source: bool = True) -> MachineConfig | None:
-    if not path.is_file():
-        return None
     data = _read_config(path)
+    if data is None:
+        return None
 
     unknown = sorted(set(data) - {"source", "profile", "harnesses"})
     if unknown:
@@ -113,7 +120,9 @@ def resolve_profile(root: Path, explicit: str | None = None, *, lenient: bool = 
 
     An unreadable machine config is an error at a global source, whose profile it may
     name; falling back there renders `default` and retires the profile's outputs. A
-    project, or a hook (`lenient`), falls back to `default`, where that is harmless."""
+    project falls back to `default`, where that is harmless. A hook (`lenient`) resolves
+    `default` at a global source too, so the error reaches it from the registration gate
+    instead, where it can say git has already finished (review 5, batch 4.3)."""
     if explicit:
         return explicit
     try:
@@ -148,6 +157,16 @@ class Registration:
     error: LoadoutError | None = None
 
 
+def fixed(found: Registration) -> Callable[[], Registration]:
+    """A registration already read, as a render context asks for one."""
+    return lambda: found
+
+
+def registered_at(source: Path | None) -> Callable[[], Registration]:
+    """A render context's registration naming `source`, such as a scratch copy."""
+    return fixed(Registration(source))
+
+
 def registration() -> Registration:
     try:
         config = load_machine_config(machine_config_path(), require_source=False)
@@ -172,9 +191,3 @@ def unregistered(root: Path, found: Registration) -> LoadoutError:
         f"{held}'s registered source is {found.source}; to make this folder the one, run "
         f"`{command} --registration replace`"
     )
-
-
-def registered_source() -> Path | None:
-    """This machine's registered global source; None when there is no readable machine
-    config, so a missing or broken one registers nothing (ADR 0031)."""
-    return registration().source

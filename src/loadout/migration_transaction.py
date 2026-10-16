@@ -16,7 +16,7 @@ from .migration_models import EntryState, MigrationPlan, SourceWrite
 from .migration_paths import DestinationLayout, inventory_layout
 from .migration_validation import validate_plan
 from .output import entry_path
-from .surgery import apply
+from .surgery import DocumentFormat, apply
 
 
 @dataclass(frozen=True)
@@ -237,8 +237,9 @@ def _rendered_paths(plan: MigrationPlan) -> tuple[Path, ...]:
             actual = snapshot(output.path.resolve())
             if actual.kind not in {"file", "absent"}:
                 raise LoadoutError(f"partial destination must be a document: {path}")
+            shape: DocumentFormat = "json" if output.format == "json" else "toml"
             if actual.kind == "absent" and not apply(
-                output.format, "", frozenset(output.owned), output.content.decode()
+                "", frozenset(output.owned), output.content.decode(), format_name=shape
             ):
                 continue
         result.append(path)

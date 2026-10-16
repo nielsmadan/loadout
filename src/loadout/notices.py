@@ -304,7 +304,7 @@ def _known_marketplaces(
     try:
         path = resolve_destination(CLAUDE_MARKETPLACES, "plugins.known_marketplaces", environ)
         registry = json.loads(path.read_text(encoding="utf-8"))
-    except (LoadoutError, OSError, json.JSONDecodeError):
+    except (LoadoutError, OSError, json.JSONDecodeError, UnicodeDecodeError):
         # A machine that has never registered one is the bootstrap case, not an
         # error: the report exists to say what to run.
         return frozenset()

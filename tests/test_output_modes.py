@@ -10,7 +10,8 @@ from pathlib import Path
 import pytest
 
 import loadout
-from loadout.files import atomic_write, text_mode
+from loadout import files
+from loadout.files import atomic_write, text_mode, write_outputs
 from registration import register
 
 TOKEN = "ghp_" + "a1B2" * 9
@@ -88,3 +89,21 @@ def test_sync_writes_outputs_readable_and_keeps_a_chmod(
 
     assert (created, output.stat().st_mode & 0o777) == (0o644, 0o640)
     assert output.read_text().endswith("Changed.\n")
+
+
+def test_writing_many_outputs_reads_the_umask_once(
+    tmp_path: Path, umask_022: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review 5, batch 3.3: reading the umask sets it, and was done for every file."""
+    reads: list[int] = []
+    real = files.process_umask
+
+    def counting() -> int:
+        reads.append(1)
+        return real()
+
+    monkeypatch.setattr(files, "process_umask", counting)
+
+    write_outputs({tmp_path / f"out{index}.md": f"{index}\n" for index in range(5)})
+
+    assert (len(reads), (tmp_path / "out3.md").stat().st_mode & 0o777) == (1, 0o644)

@@ -18,7 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .atomic import TEMPORARY_PREFIX, atomic_install
+from .atomic import atomic_install, temporary_name
 from .containment import first_link
 from .errors import LoadoutError
 from .machine import state_dir
@@ -490,8 +490,10 @@ def restore(backup: Backup) -> Restored:
     for unit in disposable:
         shutil.rmtree(unit)
     # A write killed at its rename leaves its temporary file beside the path, in a folder
-    # that may have been there before init (review 4, batch 2.6).
-    for folder in sorted({path.parent for path in restorable}):
+    # that may have been there before init (review 4, batch 2.6); the write record is
+    # restored apart from the rest, so its folder is named on its own.
+    beside = {*restorable, *(record for record in records if _reachable(record))}
+    for folder in sorted({path.parent for path in beside}):
         _drop_interrupted_writes(folder)
     removed, unremoved = _remove_created(plan, restorable, records)
     put_back, not_put_back = _put_back(plan, restorable)
@@ -567,7 +569,6 @@ def _remove_created(
         if restorable[path].kind != "absent" or _current(path) == Image():
             continue
         if path.is_dir() and not path.is_symlink():
-            _drop_interrupted_writes(path)
             try:
                 path.rmdir()
                 removed.append(path)
@@ -581,20 +582,14 @@ def _remove_created(
     return removed, kept
 
 
-# What a write killed between its temporary file and the rename over the target leaves.
-INTERRUPTED_WRITE = TEMPORARY_PREFIX
-
-
 def _drop_interrupted_writes(folder: Path) -> None:
-    """A folder init created holds no file of anyone else's under loadout's temporary
-    name, so one there is a write of loadout's that a kill cut short (review 3, 2.4)."""
+    """Remove each write of loadout's a kill cut short in `folder`, which holds a path in
+    the backup: a regular file named exactly as `atomic` names a write in progress. Any
+    other file, `.loadout-notes.md` or a skill's `.loadout-bundle.toml` among them, is
+    someone else's and stays (review 5, batch 1.1)."""
     with contextlib.suppress(OSError):
         for entry in folder.iterdir():
-            if (
-                entry.name.startswith(INTERRUPTED_WRITE)
-                and entry.is_file()
-                and not entry.is_symlink()
-            ):
+            if temporary_name(entry.name) and entry.is_file() and not entry.is_symlink():
                 entry.unlink()
 
 

@@ -3,18 +3,23 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from .errors import LoadoutError
 from .sources import Source
 
+SourceKind = Literal["source", "bundled", "vendored"]
+
 
 @dataclass(frozen=True)
 class ResolvedItem:
-    """A named item, the source it came from, and where it lives on disk."""
+    """A named item, the source it came from, and where it lives on disk. `kind` tells a
+    vendored or bundled template from a source's own item, which `source` only spells."""
 
     name: str
     source: str
     path: Path
+    kind: SourceKind = "source"
 
 
 @dataclass(frozen=True)

@@ -7,7 +7,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .composition import HEADER, load_fragment, render
-from .containment import read_through, refuse_escaping, refuse_external_links
+from .containment import is_read_through, refuse_escaping, refuse_external_links
 from .destinations import resolve_destination
 from .documents import merge_documents
 from .errors import LoadoutError
@@ -76,6 +76,7 @@ from .surgery import concat_documents
 from .template_catalog import Catalog, contribution_paths, load_catalogs
 from .templates import resolve_template, resolve_upstream_template
 from .toml_paths import overlapping_keys
+from .worktrees import linked_worktree_source
 
 PERMISSIONS_SOURCE = "permissions.toml"
 PROJECT_LOCAL_SOURCE = "permissions.local.toml"
@@ -94,19 +95,40 @@ class RenderContext:
     registration: Callable[[], Registration] = registration
 
 
-def refuse_unregistered_global(
-    root: Path, context: RenderContext | None = None, *, held: bool | None = None
-) -> None:
+def refuse_unregistered_global(root: Path, context: RenderContext | None = None) -> None:
     """Global scope writes anywhere under HOME, so it renders only from the source this
     machine registered; a cloned or PR-added `loadout.toml` stops here, before any of it
-    is read (ADR 0031). `held` says whether the manifest is in the snapshot a caller
-    renders, such as the index, in place of the disk (review 4, batch 2.3)."""
-    present = manifest_path(root).is_file() if held is None else held
-    if not present:
+    is read (ADR 0031)."""
+    refuse_unregistered_manifest(root, held=manifest_path(root).is_file(), context=context)
+
+
+def refuse_unregistered_manifest(
+    root: Path,
+    *,
+    held: bool,
+    context: RenderContext | None = None,
+    staged_as: str | None = None,
+) -> None:
+    """As `refuse_unregistered_global`, where `held` says whether the manifest is in the
+    snapshot a caller renders, such as the index, in place of the disk (review 4, 2.3).
+    The remedy fits the cause (review 5, batch 4.1): a linked worktree of the registered
+    source runs there, and a manifest only the index holds, `staged_as`, is unstaged."""
+    if not held:
         return
     found = (context or RenderContext()).registration()
-    if not is_registered(root, found.source):
-        raise unregistered(root, found)
+    if is_registered(root, found.source):
+        return
+    if (source := linked_worktree_source(root, found)) is not None:
+        raise LoadoutError(
+            f"{root} is a linked worktree of the registered source {source}; run this from {source}"
+        )
+    if staged_as is not None and found.error is None:
+        raise LoadoutError(
+            f"{root}: the index holds a global setup ({staged_as}), but this folder is not "
+            f"this machine's registered source; if it should not carry one, unstage it with "
+            f"`git rm --cached -- {staged_as}`"
+        )
+    raise unregistered(root, found)
 
 
 @dataclass(frozen=True)
@@ -157,7 +179,7 @@ def _load_base(path: Path) -> dict[str, Any]:
         raise LoadoutError(f"base document not found: {path}")
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as error:
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
         raise LoadoutError(f"{path}: invalid JSON: {error}") from error
     if not isinstance(document, dict):
         raise LoadoutError(f"{path}: base document must be a JSON object")
@@ -178,7 +200,7 @@ def _load_existing(path: Path) -> dict[str, Any]:
         return {}
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as error:
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
         raise LoadoutError(
             f"{path}: invalid JSON: {error}. This is a generated file; delete it and "
             f"re-run `loadout sync`."
@@ -196,7 +218,7 @@ def _preserved(path: Path, keys: tuple[str, ...]) -> dict[str, Any]:
         return {}
     try:
         existing = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as error:
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
         raise LoadoutError(f"{path}: invalid JSON: {error}") from error
     if not isinstance(existing, dict):
         raise LoadoutError(f"{path}: existing output must be a JSON object")
@@ -922,8 +944,14 @@ def render_all(
     return outputs
 
 
-def render_project(root: Path, context: RenderContext | None = None) -> dict[Path, Output]:
+def refuse_project_inputs(root: Path) -> None:
+    """Refuse a project whose inputs sync would not read: a `loadout/` that is a link, or
+    a link out of it. Init asks the same question of a source it would adopt as it is."""
     refuse_external_links(root, EXCLUDED_DIRECTORIES)
+
+
+def render_project(root: Path, context: RenderContext | None = None) -> dict[Path, Output]:
+    refuse_project_inputs(root)
     config = load_project_config(project_config_path(root))
     # Before any output is read: a shared document's keys loadout does not own are read
     # from disk, and parsing a linked one would tell what its target holds.
@@ -1212,7 +1240,7 @@ CLAUDE_IMPORT = f"{HEADER}\n\n@AGENTS.md\n"
 def _imports_agents(root: Path, config: ProjectConfig) -> bool:
     """A CLAUDE.md linked to AGENTS.md is that document; writing the stub through
     the link would replace the content."""
-    linked = read_through(root, PurePosixPath("CLAUDE.md"))
+    linked = is_read_through(root, PurePosixPath("CLAUDE.md"))
     return set(config.harnesses) != {"claude"} and not linked
 
 

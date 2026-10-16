@@ -675,20 +675,15 @@ def test_a_shared_document_is_planned_with_the_keys_loadout_owns(
     ]
 
 
-def test_planning_originals_scales_with_the_number_of_skills(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Review 3, batch 3.1: each original was matched against every destination, so 200
-    skills spent 25 s here. 300 now take about a tenth of a second; the bound leaves room
-    for a slow machine and still fails the quadratic walk many times over."""
-    for index in range(300):
-        write(tmp_path, f".claude/skills/s{index}/run.sh", "true\n")
+def _time_planning_originals(root: Path, skills: int, monkeypatch: pytest.MonkeyPatch) -> float:
+    for index in range(skills):
+        write(root, f".claude/skills/s{index}/run.sh", "true\n")
         write(
-            tmp_path,
+            root,
             f".claude/skills/s{index}/SKILL.md",
             f"---\nname: s{index}\ndescription: d\n---\nX\n",
         )
-    inventory = discover(tmp_path, scope="project", harnesses=("claude",))
+    inventory = discover(root, scope="project", harnesses=("claude",))
     original = migration_module._original_entries
     spent: list[float] = []
 
@@ -699,7 +694,21 @@ def test_planning_originals_scales_with_the_number_of_skills(
         return result
 
     monkeypatch.setattr(migration_module, "_original_entries", timed)
+    # The best of two: one slow run under load says nothing about the shape.
     plan_migration(inventory)
+    plan_migration(inventory)
+    monkeypatch.setattr(migration_module, "_original_entries", original)
+    return min(spent)
 
-    assert len(spent) == 1
-    assert spent[0] < 0.5
+
+def test_planning_originals_scales_with_the_number_of_skills(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review 3, batch 3.1: each original was matched against every destination, so 200
+    skills spent 25 s here. Measured against itself rather than a fixed bound, which
+    failed under load (review 5, batch 5.7): four times the skills cost about four times
+    as long when linear, and sixteen when quadratic."""
+    small = _time_planning_originals(tmp_path / "small", 100, monkeypatch)
+    large = _time_planning_originals(tmp_path / "large", 400, monkeypatch)
+
+    assert large < small * 9

@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 import loadout
+from loadout.machine import registration
 from loadout.worktrees import linked_worktree_source
 from registration import register
 
@@ -110,4 +111,32 @@ def test_another_folder_of_the_source_s_own_worktree_is_not_a_linked_worktree(
     source, _ = _worktree(tmp_path)
     (source / "project").mkdir()
 
-    assert linked_worktree_source(source / "project") is None
+    assert linked_worktree_source(source / "project", registration()) is None
+
+
+@pytest.mark.parametrize("command", ["check", "sync"])
+def test_a_command_in_a_linked_worktree_says_to_run_it_at_the_source(
+    tmp_path: Path, fake_home: Path, capsys, command: str
+) -> None:
+    """Review 5, batch 4.1: it advised `--registration replace`, which would move the
+    registration to the worktree."""
+    source, worktree = _worktree(tmp_path)
+    capsys.readouterr()
+
+    assert loadout.main([command, "--root", str(worktree)]) == 3
+
+    assert capsys.readouterr().err == (
+        f"loadout: {worktree} is a linked worktree of the registered source {source}; "
+        f"run this from {source}\n"
+    )
+
+
+def test_git_hooks_install_works_from_a_linked_worktree(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    """The hooks folder is the source's too, and the hook finds its worktree when it runs."""
+    source, worktree = _worktree(tmp_path)
+
+    assert loadout.main(["integrate", "git-hooks", "install", "--root", str(worktree)]) == 0
+
+    assert (source / ".git/hooks/pre-commit").is_file()

@@ -121,8 +121,8 @@ The effective hooks directory is classified by why it is or is not this checkout
 | `shared` | repository-local but common to other worktrees | a marked hook is removed, with a notice |
 
 `install` writes a shared directory as it would a local one, since the generated script finds
-its worktree's top level when it runs, and refuses an external one with the commands to add by
-hand. `.git/hooks` is common to every worktree, so adding a worktree after installation turns the
+its worktree's top level when it runs. To an external one it writes nothing and exits 0,
+printing each command to add by hand, guarded by this repository. `.git/hooks` is common to every worktree, so adding a worktree after installation turns the
 directory shared without anything touching the hooks in it.
 
 `uninstall` requires `--yes` when input is not interactive.
@@ -130,7 +130,9 @@ directory shared without anything touching the hooks in it.
 Preserved hooks get exact integration commands. Set `repo=$(git rev-parse --show-toplevel)` in the
 existing hook, then add the printed command at the appropriate point in its flow. Pass the Git
 event's arguments through, and propagate a pre-commit failure. Loadout does not replace a hook
-manager or install a dispatcher over an existing script.
+manager or install a dispatcher over an existing script. A hooks directory outside the
+repository, such as a global `core.hooksPath`, may run in every repository on the machine, so
+install prints each command guarded by this one (`[ "$repo" = <repository> ] && …`).
 
 Installed scripts invoke `loadout` on PATH and contain no interpreter or checkout-specific
 absolute paths. Install the package on each machine and explicitly run
@@ -141,6 +143,10 @@ leaves the repository, in that window is written to by nothing, and installation
 integration decision can be made again.
 
 ## Regeneration after Git events
+
+A branch with nothing of loadout's on it, one from before adoption or one without the source
+folder, is no failure: when the `--root` folder holds no loadout config, and for a commit neither
+the index nor HEAD holds one either, each hook prints one line saying so and exits 0.
 
 Post-checkout (branch changes only) and post-merge call normal guarded sync for the recorded
 source and the profile resolved at that moment. External edits cause refusal; regeneration never supplies `--force`. After a failure, the diagnostic explicitly
@@ -159,7 +165,10 @@ registered source itself. The registration gate in `check --staged` asks the ind
 `git rm --cached loadout.toml` passes even with the file still on disk. The pre-commit
 `check --staged` still runs in a worktree: it renders
 only into its own sandbox, so it validates the worktree's snapshot without the registration gate.
-A worktree of any other repository, or a clone, is refused like any other unregistered folder.
+A worktree of any other repository, or a clone, is refused like any other unregistered folder. `check` and `sync` run in a linked worktree of the registered source refuse it by saying so,
+with the source to run them from, never by advising a new registration; `integrate git-hooks
+install` works there, since the hooks are the source's. A `check --staged` that refuses a manifest
+only the index holds advises unstaging it with `git rm --cached`.
 Git exports `GIT_DIR` and its other repository-local variables to the hooks it runs, and a git
 started from a hook would inherit them and answer for the hook's repository whatever folder it
 was pointed at. Every git loadout starts drops them first (`git rev-parse --local-env-vars`

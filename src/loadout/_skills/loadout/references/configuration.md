@@ -233,6 +233,12 @@ flags these changes; it does not merge them.
    `source-changed`, `missing` and `orphaned` need only a sync.
 2. Read the change. `loadout check` without `--json` prints each diff: `-` lines exist only on
    disk, `+` lines only in the source. For an `unmanaged` path, read the file or folder itself.
+   A secret prints as `<redacted>`, and a diff that reads `differs only inside a redacted value`
+   has nothing else to show. Never port `<redacted>`: it is a placeholder, and a sync that wrote
+   it would overwrite the real token. Read the real value from the file on disk, or better, move
+   it into an environment variable (`auth_env_var = "<NAME>"` for a server's token, or
+   `${NAME}` where the harness reads one), as “Secrets in the adopted source” in
+   [onboarding](onboarding.md) describes, and never print the value back to the user.
 3. Port each change into the source that owns it:
    - a global harness file goes to the global source, a project file to the project source, and a
      project `*.local*` file to the personal tier;
@@ -249,4 +255,5 @@ flags these changes; it does not merge them.
    the source or restore it; do not decide.
 6. Delete an `unmanaged` file or folder once its content is in the source.
 7. Sync. When the harness copy still differs from the new render, sync refuses; show that diff,
-   and run `sync --force` only after the user approves discarding it.
+   and run `sync --force` only after the user approves discarding it. Before `--force`, confirm
+   that no `<redacted>` reached the source: `grep -rn '<redacted>'` over it must find nothing.

@@ -501,6 +501,34 @@ def test_a_run_killed_after_untracking_restores_the_index(tmp_path: Path, capsys
     assert _git(root, "diff", "--cached", "--name-only").stdout == ""
 
 
+def test_a_run_killed_after_untracking_keeps_what_the_user_staged_since(
+    tmp_path: Path, capsys
+) -> None:
+    """Review 5, batch 5.3: an index the user changed after the kill is kept whole rather
+    than reset, so what they staged stays staged."""
+    root = _project(tmp_path / "p")
+    untrack = migration_git.untrack
+
+    def untrack_then_die(*args: object) -> None:
+        untrack(*args)  # type: ignore[arg-type]
+        raise RuntimeError("killed after untracking")
+
+    with pytest.MonkeyPatch.context() as patch:
+        _killed(patch)
+        patch.setattr(migration_git, "untrack", untrack_then_die)
+        assert _init_project(root, "--yes") == 1
+    _write(root / "notes.md", "mine\n")
+    _git(root, "add", "notes.md")
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 1
+
+    # The index is someone else's again, so it stays as the user left it, and says why.
+    index = root / ".git/index"
+    assert json.loads(capsys.readouterr().out)["reasons"] == {str(index): "changed since init"}
+    assert "A  notes.md" in _git(root, "status", "--short").stdout.splitlines()
+
+
 def test_a_run_killed_after_git_init_removes_the_new_repository(
     tmp_path: Path, fake_home: Path, capsys
 ) -> None:
@@ -1390,7 +1418,7 @@ def test_a_write_killed_mid_record_does_not_block_the_restore(tmp_path: Path, ca
     root = _project(tmp_path / "p")
     assert _init_project(root, "--yes") == 0
     folder = written_state_path(root).parent
-    (folder / ".loadout-k1ll3d").write_text('{"half": ')
+    (folder / ".loadout-tmp-k1ll3d0_").write_text('{"half": ')
     capsys.readouterr()
 
     assert loadout.main(["init", "restore", "--yes", "--json"]) == 0
@@ -1650,12 +1678,12 @@ def test_a_write_killed_beside_an_existing_file_leaves_no_temporary_after_restor
     over a file that was already there left its temporary file beside it."""
     root = _project(tmp_path / "p")
     assert _init_project(root, "--yes") == 0
-    (root / ".loadout-k1ll3d").write_text("half")
+    (root / ".loadout-tmp-k1ll3d0_").write_text("half")
     capsys.readouterr()
 
     assert loadout.main(["init", "restore", "--yes", "--json"]) == 0
 
-    assert sorted(path.name for path in root.iterdir() if path.name.startswith(".loadout-")) == []
+    assert not (root / ".loadout-tmp-k1ll3d0_").exists()
     assert (root / "CLAUDE.md").is_file()
 
 
@@ -1696,10 +1724,49 @@ def test_a_link_named_like_an_interrupted_write_is_never_removed(tmp_path: Path,
     assert _init_project(root, "--yes") == 0
     folder = written_state_path(root).parent
     mine = _write(tmp_path / "mine.txt", "mine\n")
-    link = folder / ".loadout-link"
+    link = folder / ".loadout-tmp-l1nkl1nk"
     link.symlink_to(mine)
     capsys.readouterr()
 
     assert loadout.main(["init", "restore", "--yes", "--json"]) == 1
 
     assert (link.readlink(), mine.read_text()) == (mine, "mine\n")
+
+
+def test_restore_never_removes_a_user_s_file_named_like_loadout_s(tmp_path: Path, capsys) -> None:
+    """Review 5, batch 1.1: every `.loadout-*` file beside a restored path was deleted, a
+    committed `.loadout-notes.md` included. Only the exact shape of loadout's own
+    temporary file, beside a path in the backup, is swept."""
+    root = _project(tmp_path / "p", repository=False)
+    kept = {
+        root / ".loadout-notes.md": "notes\n",
+        root / ".claude/.loadout-mine": "mine\n",
+        root / ".loadout-tmp-notes.md": "not loadout's shape\n",
+        root / "docs/.loadout-tmp-abcdefgh": "no backed-up path beside it\n",
+    }
+    for path, content in kept.items():
+        _write(path, content)
+    _git(root, "init", "-q")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-qm", "base")
+    assert _init_project(root, "--yes") == 0
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 0
+
+    assert {path: path.read_text() for path in kept} == kept
+
+
+def test_restore_never_removes_a_file_named_like_loadout_s_in_home(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    """Review 5, batch 1.1: the home folder is beside `~/.claude.json`, so its
+    `.loadout-*` files went too."""
+    mine = _write(fake_home / ".loadout-notes.md", "notes\n")
+    _write(fake_home / ".claude.json", json.dumps({"numStartups": 1}))
+    _global_source(tmp_path / "source", fake_home)
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 0
+
+    assert mine.read_text() == "notes\n"

@@ -176,7 +176,10 @@ def test_uninstall_refuses_a_modified_generated_output(tmp_path: Path, fake_home
     output = fake_home / ".claude" / "skills" / "loadout" / "SKILL.md"
     output.write_text("my output edit\n", encoding="utf-8")
     location = inspect_skill_source(root, "default", bundle)
-    with pytest.raises(LoadoutError, match=r"modified outside loadout \(hand-edited\)"):
+    with pytest.raises(
+        LoadoutError,
+        match=r"\(hand-edited\); no changes made\. Port the edit .* `loadout sync --force`",
+    ):
         uninstall_skill_source(location, root=root, profile="default")
     assert location.path.is_dir()
     assert output.read_text(encoding="utf-8") == "my output edit\n"

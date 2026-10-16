@@ -226,10 +226,10 @@ without it is refused.
 
 | Code | Meaning |
 | --- | --- |
-| `0` | Success, including a clean check |
-| `1` | Generated-file drift or a refused safe update |
-| `2` | Invalid command-line usage |
-| `3` | Source, configuration, or resolution error |
+| `0` | Success: nothing to do, or a check that found no differences |
+| `1` | Drift, a refused safe update, an init that failed and restored itself, or a restore that kept paths |
+| `2` | Invalid command-line usage, unresolved init choices, missing noninteractive approval, or an interrupted init found by the next one |
+| `3` | Source, configuration, or resolution error: missing or invalid input, an unsafe destination, or an ownership collision |
 | `4` | Unexpected internal error, with a traceback |
 
 A modified vendored template is a source change. `check` can report it without failing solely

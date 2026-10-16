@@ -37,7 +37,7 @@ def _committed(root: Path) -> Path:
 def test_a_dual_scope_root_s_global_output_matching_the_commit_is_accepted(
     tmp_path: Path, fake_home: Path, capsys
 ) -> None:
-    """Only `loadout/` was archived, so with no record a global output the commit
+    """Only `loadout/` was read from the commit, so with no record a global output the commit
     accounts for was refused as `unknown`."""
     root = tmp_path / "repo"
     _write(
@@ -61,7 +61,7 @@ def test_a_dual_scope_root_s_global_output_matching_the_commit_is_accepted(
 def test_a_global_source_s_baseline_holds_only_what_its_render_reads(
     tmp_path: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The whole repository was archived: 20 s on 64k files for one refusal."""
+    """The whole repository was written out: 20 s on 64k files for one refusal."""
     root = tmp_path / "repo"
     _write(
         root,
@@ -74,13 +74,13 @@ def test_a_global_source_s_baseline_holds_only_what_its_render_reads(
     )
     source = register(_committed(root) / "config")
     written: list[str] = []
-    real = sync._snapshot
+    real = sync.write_snapshot
 
     def recording(repository: Path, destination: Path, entries: dict) -> None:
         written.extend(entries)
         real(repository, destination, entries)
 
-    monkeypatch.setattr(sync, "_snapshot", recording)
+    monkeypatch.setattr(sync, "write_snapshot", recording)
 
     variants = sync._committed_variants(sync.sync_state(source), ["default"], RenderContext())
 

@@ -21,11 +21,11 @@ from .errors import LoadoutError, UsageError
 from .harnesses import KNOWN_HARNESSES
 from .init_options import InitOptions
 from .machine import (
-    Registration,
     is_registered,
     load_machine_config,
     machine_config_path,
-    registered_source,
+    registered_at,
+    registration,
     resolve_profile,
 )
 from .migration import plan_migration
@@ -55,7 +55,8 @@ from .migration_transaction import (
 )
 from .output import Merged, Output
 from .project import PROJECT_DIR, gitignore_entries
-from .sync import RenderedChange, compare_with_disk, deploy, sync_state
+from .state import sync_state
+from .sync import RenderedChange, compare_with_disk, deploy
 from .written import written_state_path
 
 
@@ -135,18 +136,23 @@ def _registration(
                 pass
         if same:
             return _updated_registration(path, existing_text or "", plan.inventory.harnesses), None
+        # Keeping another registration leaves a source init is creating nothing it may
+        # render, so it is offered only for one already initialized (review 5, 4.2).
+        keepable = plan.already_initialized
+        choices = "replace/keep" if keepable else "replace"
         choice: str | None = options.registration
         if choice is None and sys.stdin.isatty() and not (options.dry_run or options.json):
-            choice = _answer(
-                f"Machine registration {path} differs. Replace or keep? [replace/keep] "
-            )
+            choice = _answer(f"Machine registration {path} differs. Replace it? [{choices}] ")
         if choice == "keep":
             return None, None
         if choice != "replace":
+            advice = (
+                "Choose --registration replace or --registration keep"
+                if keepable
+                else "Run init with --registration replace to register this source"
+            )
             return None, Issue(
-                "registration-conflict",
-                (path,),
-                "Choose --registration replace or --registration keep; --yes does not choose ownership.",
+                "registration-conflict", (path,), f"{advice}; --yes does not choose ownership."
             )
     registration: dict[str, object] = {"source": str(source)}
     if plan.inventory.harnesses:
@@ -158,12 +164,13 @@ def _refuse_unregistered_render(plan: MigrationPlan, machine: SourceWrite | None
     """The first sync renders global scope, which only the registered source may do, so
     keeping another registration leaves init nothing it can render (ADR 0031)."""
     source = plan.inventory.source_root
-    if (
-        plan.inventory.scope == "global"
-        and not plan.already_initialized
-        and machine is None
-        and not is_registered(source, registered_source())
-    ):
+    if plan.inventory.scope != "global" or plan.already_initialized or machine is not None:
+        return
+    found = registration()
+    # A machine config that does not load is the answer, not an unregistered source.
+    if found.error is not None:
+        raise found.error
+    if not is_registered(source, found.source):
         raise LoadoutError(
             f"{source} would not be this machine's registered source, and only that source "
             "renders global scope; nothing was changed. Run init with --registration replace "
@@ -347,7 +354,7 @@ def _planned_render(
         path.write_bytes(write.content)
         path.chmod(write.mode)
     # init registers the source it plans, so its scratch copy may render global scope.
-    context = RenderContext(registration=lambda: Registration(scratch))
+    context = RenderContext(registration=registered_at(scratch))
     rendered = list(_render(plan, scratch, profile, context))
     if plan.inventory.scope == "project":
         # Before an original is copied in: a link in the project would be read through.

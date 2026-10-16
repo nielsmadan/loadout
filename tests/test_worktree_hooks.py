@@ -26,11 +26,13 @@ def _loadout_on_path(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    # Bounded: a hook that hangs fails the test rather than the run (review 5, batch 5.9).
     return subprocess.run(
         ["git", "-C", str(root), "-c", "user.email=t@e", "-c", "user.name=t", *args],
         capture_output=True,
         text=True,
         check=False,
+        timeout=120,
     )
 
 
@@ -82,7 +84,7 @@ def test_an_unrelated_project_s_worktree_syncs_and_commits(tmp_path: Path) -> No
     assert _git(worktree, "add", "loadout.toml", "instructions").returncode == 0
     committed = _git(worktree, "commit", "-qm", "pr")
     assert committed.returncode != 0
-    assert "this machine's registered source is" in committed.stderr
+    assert "unstage it with `git rm --cached -- loadout.toml`" in committed.stderr
 
 
 def test_a_worktree_of_the_default_layout_commits(tmp_path: Path) -> None:
@@ -130,3 +132,19 @@ def test_a_registered_source_that_is_a_worktree_syncs_from_its_own_hooks(
     assert _git(main, "add", "-A").returncode == 0
     committed = _git(main, "commit", "-qm", "change")
     assert committed.returncode == 0, committed.stderr
+
+
+@pytest.mark.parametrize("how", [["-a"], ["-o", "loadout.toml"]])
+def test_a_commit_of_the_index_git_builds_is_the_one_checked(
+    tmp_path: Path, how: list[str]
+) -> None:
+    """Review 5, batch 5.1: `commit -a` and `commit -o` hand the hook an index of their
+    own in GIT_INDEX_FILE; reading the repository's index instead let a broken manifest in."""
+    source = register(_committed(_global_source(tmp_path / "source", "~/out.md")))
+    _hooks(source)
+    (source / "loadout.toml").write_text("not [toml\n")
+
+    committed = _git(source, "commit", "-qm", "broken", *how)
+
+    assert committed.returncode != 0
+    assert "loadout.toml" in committed.stderr

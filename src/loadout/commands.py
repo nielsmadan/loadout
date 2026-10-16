@@ -10,10 +10,10 @@ from typing import Literal
 from .atomic import atomic_install
 from .bundled_skill import bundled_skill_path
 from .diffs import diff_lines, report_diff
-from .emit import refuse_unregistered_global, render_all
+from .emit import RenderContext, refuse_unregistered_global, render_all
 from .errors import LoadoutError, UsageError
 from .files import DriftKind, refuse_unparsable
-from .machine import state_dir
+from .machine import fixed, registration, state_dir
 from .notices import collect_notices
 from .output import FrozenFile, Output, digests, output_record_paths
 from .project import (
@@ -30,19 +30,18 @@ from .skill_installation import (
     install_skill_source,
     uninstall_skill_source,
 )
+from .state import sync_state
 from .sync import (
     classified_drift,
     deploy,
     newly_managed,
     refuse_unparsable_orphans,
     retire_orphans,
-    sync_state,
     unaccepted_outputs,
 )
 from .template_discover import available_templates
 from .template_vendor import vendor_catalog
 from .templates import (
-    VENDORED,
     contained,
     copy_tree,
     declare,
@@ -196,11 +195,13 @@ def _write_full_diff(lines: list[str]) -> Path | None:
 
 def cmd_sync(root: Path, profile: str, force: bool = False) -> int:
     root = root.absolute()
-    refuse_unregistered_global(root)
+    # One read of the registration decides the gate, the render and the guard.
+    context = RenderContext(registration=fixed(registration()))
+    refuse_unregistered_global(root, context)
     prune_vanished()
     # Rendered once and reused for the guard, the write and the record, so what is
     # recorded is provably what was written rather than a third render of it.
-    outputs = render_all(root, profile)
+    outputs = render_all(root, profile, context)
     # The root as sync finds it, before writing anything.
     before = sync_state(root)
     refuse_unparsable_orphans(before, outputs)
@@ -208,7 +209,7 @@ def cmd_sync(root: Path, profile: str, force: bool = False) -> int:
     sources = digests()
     if not force:
         refuse_unparsable(outputs)
-        modified = unaccepted_outputs(before, outputs, sources)
+        modified = unaccepted_outputs(before, outputs, sources, context)
         if modified:
             full: list[str] = []
             truncated = False
@@ -255,7 +256,9 @@ def cmd_sync(root: Path, profile: str, force: bool = False) -> int:
     _report_notices(root, profile)
     # Reported, never stopped on: sync overwrites nothing there, so stopping would
     # only block the outputs it does own.
-    for path in unmanaged_entries(before, outputs, profile):
+    # The state as sync left it: the record from before names what was just retired
+    # (review 5, batch 2.6).
+    for path in unmanaged_entries(sync_state(root), outputs, profile):
         advice = UNMANAGED_LINK_ADVICE if path.is_symlink() else UNMANAGED_ADVICE
         print(f"WARNING: {_display(path, root)} is {advice}", file=sys.stderr)
     return 0
@@ -317,7 +320,7 @@ DRIFT_ADVICE: dict[DriftKind, str] = {
 
 
 def _check_json(root: Path, profile: str) -> int:
-    drift = classified_drift(root, profile)
+    drift = classified_drift(root, profile, RenderContext(registration=fixed(registration())))
     notes = _check_notes(root, profile)
     code = 1 if drift else 0
     result = {
@@ -336,7 +339,7 @@ def cmd_check(root: Path, profile: str, *, as_json: bool = False) -> int:
     # `check` used to end every drift with "run `loadout sync`" even where sync was
     # about to refuse, sending the reader in a circle and teaching them --force. Ask
     # the guard the same question sync will, and say which answer applies.
-    drift = classified_drift(root, profile)
+    drift = classified_drift(root, profile, RenderContext(registration=fixed(registration())))
     for note in _check_notes(root, profile):
         print(f"note: {note}")
     if not drift:
@@ -381,7 +384,7 @@ def cmd_template_list(root: Path) -> int:
             print(f"{name}: unresolved")
             print(f"    {error}")
             continue
-        if found.source == VENDORED:
+        if found.kind == "vendored":
             print(f"{name}: vendored, {_vendored_state(root, name, config.vendored_hash(name))}")
         else:
             print(f"{name}: tracked, from source {found.source}")
@@ -462,7 +465,7 @@ def _choose_template(root: Path) -> str:
     print("Available templates:")
     for index, option in enumerate(options, 1):
         # `(bundled)` and `(vendored)` come parenthesised; a source's name does not.
-        label = option.source if option.source.startswith("(") else f"({option.source})"
+        label = option.source if option.kind != "source" else f"({option.source})"
         print(f"  {index}. {option.name}  {label}")
     span = f"1-{len(options)}"
     try:

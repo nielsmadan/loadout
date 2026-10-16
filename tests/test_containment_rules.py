@@ -18,9 +18,13 @@ from loadout.containment import (
     refuse_external_links,
     within,
 )
-from loadout.emit import RenderContext, refuse_unregistered_global, render_all
+from loadout.emit import (
+    RenderContext,
+    refuse_unregistered_manifest,
+    render_all,
+)
 from loadout.errors import LoadoutError
-from loadout.machine import Registration, resolve_profile
+from loadout.machine import registered_at, resolve_profile
 from loadout.notices import collect_notices
 from registration import register
 
@@ -279,14 +283,14 @@ def test_the_registered_source_renders_through_a_link(tmp_path: Path, fake_home:
 def test_a_render_context_names_the_root_it_may_render(tmp_path: Path, fake_home: Path) -> None:
     source = _global_source(tmp_path / "source")
 
-    outputs = render_all(source, context=RenderContext(registration=lambda: Registration(source)))
+    outputs = render_all(source, context=RenderContext(registration=registered_at(source)))
 
     assert list(outputs) == [fake_home / "mine.md"]
 
 
 def test_a_manifest_not_on_disk_is_refused_when_held(tmp_path: Path) -> None:
     with pytest.raises(LoadoutError, match="this folder holds a global setup"):
-        refuse_unregistered_global(tmp_path, held=True)
+        refuse_unregistered_manifest(tmp_path, held=True)
 
 
 def test_notices_refuse_an_unregistered_global_source(tmp_path: Path) -> None:
@@ -397,7 +401,7 @@ def test_within_compares_whole_path_segments(tmp_path: Path) -> None:
 
 
 def test_in_git_dir_names_the_git_dir_in_any_case(tmp_path: Path) -> None:
-    assert [in_git_dir(tmp_path / name, tmp_path) for name in (".git/config", ".GIT", "git/x")] == [
+    assert [in_git_dir(tmp_path, tmp_path / name) for name in (".git/config", ".GIT", "git/x")] == [
         True,
         True,
         False,

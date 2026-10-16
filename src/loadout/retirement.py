@@ -18,12 +18,11 @@ from .files import (
     document_format,
     read_document,
     shown_document,
-    unparsable_as,
 )
 from .output import Output
 from .skills import SKILL_DOCUMENT
 from .surgery import EMPTY, apply
-from .written import WrittenEntry
+from .written import WrittenEntry, owned_values
 
 
 def orphaned(
@@ -35,7 +34,7 @@ def orphaned(
 def stripped(path: Path, entry: WrittenEntry, existing: str) -> str:
     """The shared file without the keys loadout recorded writing, and nothing else."""
     format_name = document_format(path)
-    return apply(format_name, existing, frozenset(entry.owned), EMPTY[format_name])
+    return apply(existing, frozenset(entry.owned), EMPTY[format_name], format_name=format_name)
 
 
 def orphan_drift(orphans: Mapping[Path, WrittenEntry]) -> list[Drift]:
@@ -50,7 +49,12 @@ def orphan_drift(orphans: Mapping[Path, WrittenEntry]) -> list[Drift]:
             continue
         if entry.kind == "merged":
             existing = read_document(path)
-            if existing is None or unparsable_as(path, document_format(path), entry.owned):
+            held = (
+                None
+                if existing is None
+                else owned_values(existing, entry.owned, document_format(path))
+            )
+            if existing is None or held is None:
                 # Retiring strips keys, never the document, so no diff says what it does.
                 drift.append(Drift(path=path, actual="", expected="", kind="unparsable"))
                 continue

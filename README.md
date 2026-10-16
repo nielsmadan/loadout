@@ -117,7 +117,8 @@ For a file it shares with a harness, deleting it makes the guard stricter, as de
 any root that no longer exists; a root it cannot examine, such as one a sandbox hides, keeps its
 record. `check` never changes machine state.
 
-The guard does not need git. Outside a repository, or before the first commit, the working
+The guard does not need git, nor git on PATH; `check --staged`, which reads the index, exits 3
+and names git when it cannot run it. Outside a repository, or before the first commit, the working
 source and the record are the baseline: an unsynced source edit leaves the output matching what
 was recorded, while a hand edit does not. On the very first `sync`, with neither a commit nor a
 record, a file that does not match the working source is refused until you pass `--force`.
@@ -245,7 +246,9 @@ config's `profile` when the root is the registered global source, whether named 
 by `--root`, by a git hook or by init; otherwise `default`. So a manual sync and a hook-run sync of
 the global source render the same profile, and neither retires the other's outputs. A machine
 config that cannot be read stops a run at a global source rather than fall back to `default`,
-which would retire the profile's outputs; a project and a git hook still fall back.
+which would retire the profile's outputs; a git hook there stops too, after git has finished,
+and says what to run once the config is fixed. A project, hooks included, falls back to
+`default`.
 
 ## `loadout.toml`
 

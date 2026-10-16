@@ -4,7 +4,6 @@ and retiring what is no longer rendered."""
 from __future__ import annotations
 
 import functools
-import os
 import tempfile
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
@@ -33,8 +32,9 @@ from .files import (
     unparsable_as,
     write_outputs,
 )
+from .git_tree import render_inputs, tree_entries, write_snapshot
 from .gitignore import append_lines, remove_lines, require_plain_gitignore
-from .machine import Registration, is_registered
+from .machine import is_registered, registered_at
 from .output import (
     Copied,
     FrozenFile,
@@ -45,9 +45,9 @@ from .output import (
     output_record_paths,
     sha256,
 )
-from .project import gitignore_entries, project_config_path
+from .project import gitignore_entries
 from .retirement import orphan_drift, orphaned, retire, stripped
-from .staged import _entries, _render_inputs, _snapshot
+from .state import SyncState, sync_state
 from .unmanaged import describe_unmanaged, unmanaged_entries
 from .written import (
     ABSENT,
@@ -62,7 +62,6 @@ from .written import (
     normalise,
     owned_hashes,
     owned_values,
-    read_written,
     record_written,
     text_entry,
 )
@@ -100,37 +99,24 @@ def _rebased(path: Path, source_root: Path, rebase_to: Path) -> Path:
         return path  # a destination outside the root renders to the same path
 
 
-@dataclass(frozen=True)
-class SyncState:
-    """One root as a command finds it: whether it holds a project, and what sync last
-    wrote there. Read once and passed down, rather than probed again by every step
-    (review 3, batch 4.4)."""
-
-    root: Path
-    project: bool
-    written: Mapping[Path, WrittenEntry]
-
-
-def sync_state(root: Path) -> SyncState:
-    return SyncState(root, project_config_path(root).is_file(), read_written(root))
-
-
 def _committed_variants(
     state: SyncState, profiles: Iterable[str], context: RenderContext
 ) -> dict[Path, set[str]]:
     root = state.root
-    top = git_runner.run(root, "rev-parse", "--show-toplevel")
-    if top.returncode != 0:
+    try:
+        repository = git_runner.toplevel(root)
+    except LoadoutError:
         return {}
-    repository = Path(os.fsdecode(top.stdout).strip()).resolve()
+    if repository is None:
+        return {}
     relative = root.resolve().relative_to(repository)
     with tempfile.TemporaryDirectory() as tmp_dir:
         tree = Path(tmp_dir) / "head"
         # What the render reads and nothing else, as `check --staged` writes it out: the
         # whole repository cost 20 s on 64k files (review 4, batch 2.4).
         try:
-            entries = _entries(repository, "HEAD")
-            _snapshot(repository, tree, _render_inputs(repository, relative, entries))
+            entries = tree_entries(repository, "HEAD")
+            write_snapshot(repository, tree, render_inputs(repository, relative, entries))
         except (LoadoutError, OSError):
             return {}
         # The committed tree of the registered source is that source at HEAD.
@@ -138,7 +124,7 @@ def _committed_variants(
         if not committed.is_dir():
             return {}
         if is_registered(root, context.registration().source):
-            context = replace(context, registration=lambda: Registration(committed))
+            context = replace(context, registration=registered_at(committed))
         return _render_variants(committed, profiles, root, context)
 
 
@@ -181,13 +167,13 @@ def _unaccepted_owned(
     per-key entry, none at all or one from before per-key hashes, nothing is newly
     managed: a value on disk no variant explains is refused as `unknown` (review 3, 1.2)."""
     keys = expected.guarded
-    text = read_document(path, newline=None)
-    disk = None if text is None else owned_hashes(text, keys, expected.format)
-    want = owned_hashes(expected.document, keys, expected.format) or {}
-    if text is None or disk is None:
+    found = _disk_hashes(path, keys, expected.format)
+    if found is None:
         # Unparsable, its own kind: sync refuses it before the guard runs, and check
         # names it as that whatever the guard says (review 4, batch 4.2).
         return None
+    text, disk = found
+    want = owned_hashes(expected.document, keys, expected.format) or {}
     recorded = dict(entry.owned_sha256) if entry is not None else {}
     unexplained = _unexplained(keys, disk, want, recorded, lambda: acceptable().get(path, set()))
     if not unexplained:
@@ -200,6 +186,16 @@ def _unaccepted_owned(
         actual=text,
         expected=applied_document(path, expected),
     )
+
+
+def _disk_hashes(
+    path: Path, keys: Iterable[str], format_name: str
+) -> tuple[str, dict[str, str]] | None:
+    """A shared document's text and the hash of each of `keys` in it, or None when it
+    does not parse, which is its own kind (review 5, batch 3.3)."""
+    text = read_document(path, newline=None)
+    hashes = None if text is None else owned_hashes(text, keys, format_name)
+    return None if text is None or hashes is None else (text, hashes)
 
 
 def _unexplained(
@@ -277,7 +273,10 @@ def _in_project(root: Path, paths: Iterable[Path]) -> list[Path]:
 
 
 def unaccepted_outputs(
-    state: SyncState, outputs: Mapping[Path, Output], sources: Callable[[Path], str] | None = None
+    state: SyncState,
+    outputs: Mapping[Path, Output],
+    sources: Callable[[Path], str] | None = None,
+    context: RenderContext | None = None,
 ) -> list[Unaccepted]:
     """Files matching no output loadout itself could have written.
 
@@ -296,7 +295,8 @@ def unaccepted_outputs(
     # The third variant, and the only one that knows about a source state which was
     # never committed and has since moved on. See written.py and ADR 0019.
     root = state.root
-    context = RenderContext()
+    # The command's, so the registration it read decides here too (review 5, batch 3.3).
+    context = context or RenderContext()
     written = state.written
     orphans = orphaned(written, outputs)
     refuse_unsafe_orphans(state, orphans, outputs)
@@ -445,12 +445,11 @@ def _unaccepted_merged_orphan(
     A key owned only to be evicted has no hash and is stripped whatever it holds, as a
     live sync strips it (review 4, batch 2.1)."""
     recorded = dict(entry.owned_sha256)
-    keys = frozenset(recorded) & frozenset(entry.owned) if recorded else frozenset(entry.owned)
-    format_name = document_format(path)
-    text = read_document(path, newline=None)
-    disk = None if text is None else owned_hashes(text, keys, format_name)
-    if text is None or disk is None:
+    keys = entry.guarded
+    found = _disk_hashes(path, keys, document_format(path))
+    if found is None:
         return None
+    text, disk = found
     # Retiring wants every key gone.
     unexplained = _unexplained(keys, disk, {}, recorded, lambda: acceptable().get(path, set()))
     if not unexplained:
@@ -468,8 +467,9 @@ def refuse_unparsable_orphans(state: SyncState, outputs: Mapping[Path, Output]) 
     """Retiring a shared document strips loadout's keys from it, which one that no longer
     parses cannot have done to it, forced or not."""
     for path, entry in sorted(orphaned(state.written, outputs).items()):
-        if entry.kind == "merged" and unparsable_as(path, document_format(path), entry.owned):
-            raise UnparsableDocument(path, document_format(path), orphaned=True)
+        format_name = document_format(path)
+        if entry.kind == "merged" and unparsable_as(path, format_name, entry.owned):
+            raise UnparsableDocument(path, format_name, orphaned=True)
 
 
 def retire_orphans(state: SyncState, outputs: Mapping[Path, Output]) -> tuple[list[Path], int]:
@@ -608,18 +608,18 @@ def _entries_for(
     return entries
 
 
-def classified_drift(root: Path, profile: str) -> list[Drift]:
+def classified_drift(root: Path, profile: str, context: RenderContext | None = None) -> list[Drift]:
     """Every drifted path, retirements included, with its kind from the guard's verdict.
 
     A merged output the guard refuses has an edited owned key. An orphan the guard
     accepts is orphaned; one it refuses is hand-edited, because sync will refuse it.
     """
-    outputs = render_all(root, profile)
+    outputs = render_all(root, profile, context)
     state = sync_state(root)
     orphans = orphaned(state.written, outputs)
     # First, since it refuses an unsafe orphan before any orphan is read, as the reads
     # below would.
-    verdicts = {u.path: u.kind for u in unaccepted_outputs(state, outputs)}
+    verdicts = {u.path: u.kind for u in unaccepted_outputs(state, outputs, context=context)}
     drift = check_all(outputs)
     drift += orphan_drift(orphans)
     found = unmanaged_entries(state, outputs, profile)

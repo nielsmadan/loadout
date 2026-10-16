@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import pytest
 
-from loadout.bundled_templates import BUNDLED
+from loadout.bundled_templates import BUNDLED, bundled_template
 from loadout.errors import LoadoutError
 from loadout.project import PROJECT_DIR, load_project_config, project_config_path
 from loadout.resolve import ResolvedItem, Slice, resolve_item
@@ -20,6 +21,7 @@ from loadout.templates import (
     resolve_template,
     template_files,
     tree_hash,
+    vendored_names,
     vendored_path,
 )
 
@@ -405,3 +407,15 @@ def test_a_template_not_found_lists_what_its_own_resolver_offered(
         resolve_template("web", tmp_path, upstream=upstream)
 
     assert "Available: backend, frontend, staged-only." in str(raised.value)
+
+
+def test_a_vendored_starter_s_own_documents_are_no_catalogs(tmp_path: Path) -> None:
+    """Review 5, batch 3.3: a starter ships an empty `mcp.toml` and `permissions.toml`,
+    which parse as catalogs, so bare `template add` offered `frontend/mcp` and picking it
+    said "ambiguous"."""
+    root = tmp_path / "p"
+    (root / "loadout").mkdir(parents=True)
+    (root / "loadout/config.toml").write_text('harnesses = ["claude"]\n')
+    shutil.copytree(bundled_template("frontend"), root / "loadout/templates/frontend")
+
+    assert vendored_names(root) == ("frontend",)

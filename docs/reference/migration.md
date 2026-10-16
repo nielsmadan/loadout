@@ -175,11 +175,17 @@ was found, never the value, and the preview's render diff shows each such value 
 no printed diff can skip it, and it reads the whole of both texts, whatever their size or bytes,
 since a diff shows them in full. Each secret is replaced where it lies: a PEM key from its BEGIN
 line to its END line, a token by its shape, a label's value to its closing quote or, unquoted, to
-the end of its line (`password: horse battery staple` shows as `password: <redacted>`), with a
-one-word scheme after an authorization label (`Token`, `Digest`, `ApiKey`) left in view, and a
-value a JSON or TOML document flags at the string literal holding it, however it is escaped. A
-value of eight characters or more is also replaced where the other side shows it bare, but only
-as a whole word, never inside another. One vocabulary names a secret wherever it sits
+the end of its line (`password: horse battery staple` shows as `password: <redacted>`), a YAML
+block scalar (`password: |`) through its indented body, with a one-word scheme after an
+authorization label (`Token`, `Digest`, `ApiKey`) left in view, and a value a JSON or TOML
+document flags at the string literal holding it, however it is escaped. A flagged value is
+always replaced where it was flagged, a flag's value inside a longer string such as
+`"command": "srv --api-key=…"` included. One of six characters or more is also replaced wherever
+it occurs on either side as a whole word, never inside another: on a command line, in a
+multi-line TOML string, or bare on the other side. A shorter one is replaced only where it was
+flagged, so `secret: word` leaves every other `word` in view. When the two sides
+differ only inside a redacted value, the diff is one line saying so, rather than empty: a port
+must read the real value from the file, never copy `<redacted>`. One vocabulary names a secret wherever it sits
 (`SECRET_NAMES` in `credentials.py`): a key, a flag or a `name = value` label whose last words are
 token, API key, secret, password, passphrase, pass, credential(s), authorization, auth, access
 key, private key, secret key, client secret, signing key or PAT, or a provider's name followed by
@@ -231,8 +237,11 @@ refuses with nothing restored if one is damaged or missing.
 Restore reverts only what is still init's: a path holding its before-image, what init planned, or
 what init left. A file that existed before init and has since been deleted counts too: putting it
 back overwrites nothing. Anything else is someone else's, stays as it is and is listed under
-`kept`, and the exit code is then 1. A folder init created goes once empty; a `.loadout-*` file
-in it, which a write killed before its rename leaves, counts as init's, and a folder that stays
+`kept`, and the exit code is then 1. A folder init created goes once empty. A write killed
+before its rename leaves a temporary file beside its target, named `.loadout-tmp-` and eight
+random characters; restore removes a file of exactly that shape, and only beside a path in the
+backup, so any other file, a `.loadout-notes.md` or a skill's `.loadout-bundle.toml`, is someone
+else's and stays. A folder that stays
 names what keeps it, or says it holds only the write record restore kept. A path that held
 something before init stays listed, and its
 before-image stays in the backup, until a restore has put it back. A directory init created is removed only once empty. A link init replaced with

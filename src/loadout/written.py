@@ -99,6 +99,14 @@ class WrittenEntry:
     owned: tuple[str, ...] = ()
     owned_sha256: tuple[tuple[str, str], ...] = ()
 
+    @property
+    def guarded(self) -> frozenset[str]:
+        """The owned keys an edit can touch: those with a hash, or every one when the
+        entry predates per-key hashes; an evicted key has none and is stripped whatever
+        it holds (review 4, batch 2.1)."""
+        hashed = frozenset(key for key, _ in self.owned_sha256)
+        return hashed & frozenset(self.owned) if hashed else frozenset(self.owned)
+
 
 def written_state_path(root: Path, env: Mapping[str, str] | None = None) -> Path:
     """One record per root, named by the root's resolved path.
@@ -165,11 +173,12 @@ def every_recorded_path(
     within: Iterable[Path],
     env: Mapping[str, str] | None = None,
     *,
-    known: tuple[Path, Mapping[Path, WrittenEntry]] | None = None,
+    known_root: Path | None = None,
+    known: Mapping[Path, WrittenEntry] | None = None,
 ) -> frozenset[Path]:
     """Every destination inside `within` that any root's record names, so one root never
     mistakes another's output there for a file loadout did not write. Only those names
-    become paths: the rest of a record is never scanned. `known` is one root's record
+    become paths: the rest of a record is never scanned. `known` is `known_root`'s record
     already read, which is used rather than read again."""
     prefixes = tuple(f"{folder}{os.sep}" for folder in within)
     if not prefixes:
@@ -179,9 +188,8 @@ def every_recorded_path(
     except OSError:
         return frozenset()
     paths: set[Path] = set()
-    skipped = written_state_path(known[0], env) if known is not None else None
-    if known is not None:
-        paths.update(path for path in known[1] if str(path).startswith(prefixes))
+    skipped = written_state_path(known_root, env) if known_root is not None else None
+    paths.update(path for path in (known or {}) if str(path).startswith(prefixes))
     for record in records:
         if record == skipped:
             continue

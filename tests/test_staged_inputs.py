@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from loadout import staged
-from loadout.staged import _entries, _render_inputs
+from loadout import git_runner, staged
+from loadout.git_tree import Entry, render_inputs, tree_entries
 from loadout.staged_render import Snapshot
 from registration import register
 
@@ -37,7 +37,7 @@ def test_a_project_reads_its_loadout_folder_and_root_files(tmp_path: Path) -> No
         },
     )
 
-    inputs = _render_inputs(root, Path("."), _entries(root))
+    inputs = render_inputs(root, Path("."), tree_entries(root))
 
     assert sorted(inputs) == ["CLAUDE.md", "loadout/config.toml", "loadout/skills/s/SKILL.md"]
 
@@ -53,7 +53,7 @@ def test_a_global_source_reads_its_folder_and_named_sources_outside_it(tmp_path:
         },
     )
 
-    inputs = _render_inputs(root, Path("config"), _entries(root))
+    inputs = render_inputs(root, Path("config"), tree_entries(root))
 
     # `config/skills` is no source's, so no render reads it.
     assert sorted(inputs) == ["config/loadout.toml", "shared/permissions.toml"]
@@ -77,7 +77,7 @@ def test_a_root_level_global_source_reads_only_what_its_sources_use(tmp_path: Pa
         },
     )
 
-    inputs = _render_inputs(root, Path("."), _entries(root))
+    inputs = render_inputs(root, Path("."), tree_entries(root))
 
     assert sorted(inputs) == [
         "extra/mcp.toml",
@@ -110,13 +110,15 @@ def test_the_head_snapshot_holds_only_what_ownership_reads(
         check=True,
     )
     written: dict[str, list[str]] = {}
-    snapshot = staged._snapshot
+    snapshot = staged.write_snapshot
 
-    def recording(repository: Path, destination: Path, entries: dict[str, staged.Entry]) -> None:
+    def recording(
+        repository: Path, destination: Path, entries: dict[str, Entry], **kwargs: bool
+    ) -> None:
         written[destination.name] = sorted(entries)
-        snapshot(repository, destination, entries)
+        snapshot(repository, destination, entries, **kwargs)
 
-    monkeypatch.setattr(staged, "_snapshot", recording)
+    monkeypatch.setattr(staged, "write_snapshot", recording)
 
     assert staged.check_staged(root, "work") == 0
 
@@ -162,7 +164,7 @@ def test_a_link_above_a_source_folder_brings_only_what_it_names(tmp_path: Path) 
     _link(tmp_path, "lib", "real")
     root = _repository(tmp_path, {})
 
-    inputs = _render_inputs(root, Path("config"), _entries(root))
+    inputs = render_inputs(root, Path("config"), tree_entries(root))
 
     assert sorted(inputs) == [
         "config/loadout.toml",
@@ -186,7 +188,7 @@ def test_links_are_followed_through_the_folders_they_reach(tmp_path: Path) -> No
     _link(tmp_path, "third/vendor/instr/y.md", "../../../shared/y.md")
     root = _repository(tmp_path, {})
 
-    inputs = _render_inputs(root, Path("config"), _entries(root))
+    inputs = render_inputs(root, Path("config"), tree_entries(root))
 
     assert sorted(inputs) == [
         "config/loadout.toml",
@@ -196,3 +198,36 @@ def test_links_are_followed_through_the_folders_they_reach(tmp_path: Path) -> No
         "third/vendor/instr/y.md",
         "vendor",
     ]
+
+
+def test_every_link_target_is_read_in_one_git_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review 5, batch 3.1: one `cat-file blob` per link was most of 15 s for 200 links."""
+    for index in range(20):
+        (tmp_path / f"shared/s{index}").mkdir(parents=True)
+        (tmp_path / f"shared/s{index}/SKILL.md").write_text("s\n")
+        (tmp_path / "skills").mkdir(exist_ok=True)
+        (tmp_path / f"skills/s{index}").symlink_to(f"../shared/s{index}")
+    (tmp_path / "loadout.toml").write_text('[[source]]\nname = "s"\npath = "."\n')
+    root = _repository(tmp_path, {})
+    entries = tree_entries(root)
+    started: list[tuple[str, ...]] = []
+    ran: list[tuple[str, ...]] = []
+    real_start, real_run = git_runner.start, git_runner.run
+
+    def start(path: Path, *arguments: str, **kwargs: bool) -> object:
+        started.append(arguments)
+        return real_start(path, *arguments, **kwargs)
+
+    def run(path: Path, *arguments: str, **kwargs: object) -> object:
+        ran.append(arguments)
+        return real_run(path, *arguments, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(git_runner, "start", start)
+    monkeypatch.setattr(git_runner, "run", run)
+
+    inputs = render_inputs(root, Path("."), entries)
+
+    assert (started, ran) == ([("cat-file", "--batch")], [])
+    assert sum(1 for name in inputs if name.endswith("SKILL.md")) == 20

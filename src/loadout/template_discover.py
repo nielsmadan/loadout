@@ -13,6 +13,7 @@ from pathlib import Path
 
 from .bundled_templates import BUNDLED, STARTERS
 from .errors import LoadoutError
+from .resolve import SourceKind
 from .templates import VENDORED, declared_sources, source_template_names, vendored_names
 
 
@@ -20,6 +21,7 @@ from .templates import VENDORED, declared_sources, source_template_names, vendor
 class AvailableTemplate:
     name: str
     source: str
+    kind: SourceKind = "source"
 
 
 def available_templates(root: Path) -> tuple[AvailableTemplate, ...]:
@@ -31,7 +33,7 @@ def available_templates(root: Path) -> tuple[AvailableTemplate, ...]:
     options: list[AvailableTemplate] = []
     seen: set[str] = set()
     for name in vendored_names(root):
-        options.append(AvailableTemplate(name, VENDORED))
+        options.append(AvailableTemplate(name, VENDORED, "vendored"))
         seen.add(name)
     try:
         declared = declared_sources()
@@ -44,5 +46,7 @@ def available_templates(root: Path) -> tuple[AvailableTemplate, ...]:
                 continue
             options.append(AvailableTemplate(name, source.name))
             seen.add(name)
-    options += [AvailableTemplate(name, BUNDLED) for name in STARTERS if name not in seen]
+    options += [
+        AvailableTemplate(name, BUNDLED, "bundled") for name in STARTERS if name not in seen
+    ]
     return tuple(options)

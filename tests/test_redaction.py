@@ -156,3 +156,98 @@ def test_a_value_inside_one_already_replaced_is_not_replaced_again() -> None:
     assert redact("x horse battery staple\n", ["horse battery staple", "battery staple"]) == (
         "x <redacted>\n"
     )
+
+
+KEY = "FAKE" + "abcdef1234567890"
+
+
+def _diff(rel: str, actual: str, expected: str = "") -> str:
+    return "".join(diff_lines(rel, actual, expected, context=1))
+
+
+@pytest.mark.parametrize(
+    ("rel", "text", "shown"),
+    [
+        (
+            "claude.json",
+            f'{{"mcpServers": {{"s": {{"command": "srv --api-key={KEY}"}}}}}}\n',
+            "--api-key=<redacted>",
+        ),
+        ("config.toml", f'command = "y --api-key={KEY}"\n', "--api-key=<redacted>"),
+        (
+            "config.toml",
+            f'[mcp_servers.s.env]\nTOKEN = """\n{KEY}\nsecond-line-of-it\n"""\n',
+            '-<redacted>"""\n',
+        ),
+        (
+            "notes.yaml",
+            f"password: |\n  {KEY}\n  second line\nnext: x\n",
+            "-password: <redacted>\n-next: x\n",
+        ),
+        (
+            "claude.json",
+            '{"mcpServers": {"s": {"command": "srv --api-key=FAKE\\\\abcdef1234567890"}}}\n',
+            "--api-key=<redacted>",
+        ),
+    ],
+    ids=["json command", "toml command", "toml multi-line", "yaml block", "json escaped"],
+)
+def test_a_flagged_value_is_redacted_wherever_it_sits(rel: str, text: str, shown: str) -> None:
+    """Review 5, batch 1.2: inside a longer string, a command line or a multi-line string,
+    the value printed in clear."""
+    printed = _diff(rel, text)
+
+    assert shown in printed
+    assert "abcdef1234567890" not in printed
+    assert "second" not in printed
+
+
+def test_sides_that_differ_only_inside_a_redacted_value_say_so() -> None:
+    """Review 5, batch 1.3: both sides redacted alike, so the diff came out empty and the
+    abort showed nothing to port."""
+    lines = diff_lines(
+        "claude.json",
+        '{"Authorization": "Bearer AAAAAAAAAAAAAAAA1"}\n',
+        '{"Authorization": "Bearer BBBBBBBBBBBBBBBB2"}\n',
+        context=1,
+    )
+
+    assert lines == ["claude.json: differs only inside a redacted value\n"]
+
+
+def test_a_short_labelled_value_is_redacted_where_it_sits_and_nowhere_else() -> None:
+    """Ruling on review 5, batch 1: a value under six characters is redacted at the place
+    it was flagged, and an unrelated `word` elsewhere stays visible."""
+    assert _shown("secret: word\nthe word stays\n") == "secret: <redacted>\nthe word stays\n"
+
+
+def test_a_short_flagged_value_in_a_command_is_redacted_where_it_sits() -> None:
+    text = '{"command": "srv --api-key=ab12c", "note": "ab12c is a build"}\n'
+
+    assert _shown(text, "json") == (
+        '{"command": "srv --api-key=<redacted>", "note": "ab12c is a build"}\n'
+    )
+
+
+def test_a_value_of_six_characters_is_carried_to_the_other_side() -> None:
+    assert redacted_pair("password: abc123\n", "abc123 is used here\n") == (
+        "password: <redacted>\n",
+        "<redacted> is used here\n",
+    )
+
+
+def test_a_token_inside_a_hyphenated_word_is_redacted_by_its_shape() -> None:
+    """Review 5, batch 5.4: no whole-word carry reaches it, so only its shape does."""
+    assert _shown(f"x-{TOKEN}-y\n") == "x-<redacted>-y\n"
+
+
+def test_a_short_env_value_is_redacted_by_where_it_sits() -> None:
+    """Too short to carry, and labelled by nothing secret: only the parsed `env` map
+    flags it."""
+    assert _shown('{"env": {"DATABASE": "hunt2"}}\n', "json") == (
+        '{"env": {"DATABASE": "<redacted>"}}\n'
+    )
+
+
+def test_an_unquoted_value_s_trailing_spaces_stay_outside_the_redaction() -> None:
+    assert _shown("password: horse battery   \nnext\n") == "password: <redacted>   \nnext\n"

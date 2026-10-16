@@ -22,6 +22,14 @@ REFUSAL = (
 )
 
 
+def _staged_refusal(root: Path, name: str) -> str:
+    return (
+        f"loadout: {root}: the index holds a global setup ({name}), but this folder is not "
+        "this machine's registered source; if it should not carry one, unstage it with "
+        f"`git rm --cached -- {name}`\n"
+    )
+
+
 def _no_source(root: Path) -> str:
     return (
         f"loadout: {root}: this folder holds a global setup (loadout.toml), but this machine has "
@@ -140,7 +148,8 @@ def test_a_staged_global_setup_in_a_project_is_refused(tmp_path: Path, capsys) -
 
     assert loadout.main(["check", "--staged", "--root", str(project)]) == 3
 
-    assert REFUSAL in capsys.readouterr().err
+    # Only the index holds it, so unstaging is the remedy (review 5, batch 4.1).
+    assert capsys.readouterr().err == _staged_refusal(project, "loadout.toml")
 
 
 def test_init_project_refuses_a_folder_holding_a_global_setup(tmp_path: Path, capsys) -> None:
@@ -213,7 +222,7 @@ def test_a_case_variant_staged_manifest_is_refused(tmp_path: Path, capsys, name:
 
     assert loadout.main(["check", "--staged", "--root", str(project)]) == 3
 
-    assert capsys.readouterr().err == _no_source(project)
+    assert capsys.readouterr().err == _staged_refusal(project, name)
 
 
 @pytest.mark.parametrize(("registered", "code"), [(False, 1), (True, 0)])
@@ -348,3 +357,23 @@ def test_template_commands_refuse_an_unregistered_dual_scope_root(tmp_path: Path
     assert loadout.main(["template", "list", "--root", str(project)]) == 3
 
     assert capsys.readouterr().err == _no_source(project)
+
+
+def test_init_keeping_a_registration_names_a_machine_config_that_does_not_load(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    """Review 5, batch 3.3: an unreadable config read as no registration, so init said
+    the source would not be the registered one."""
+    (fake_home / ".claude").mkdir()
+    (fake_home / ".claude/CLAUDE.md").write_text("# Me\n")
+    machine = fake_home / ".config/loadout/config.toml"
+    machine.parent.mkdir(parents=True)
+    machine.write_text("not [toml\n")
+    source = tmp_path / "src"
+    source.mkdir()
+    capsys.readouterr()
+
+    argv = ["init", "global", str(source), "--harness", "claude", "--yes", "--registration", "keep"]
+    assert loadout.main(argv) == 3
+
+    assert capsys.readouterr().err.startswith(f"loadout: {machine}: invalid TOML:")

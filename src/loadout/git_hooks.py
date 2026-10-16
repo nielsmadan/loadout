@@ -7,13 +7,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from . import migration_git
+from . import git_runner
 from .atomic import atomic_install
 from .emit import refuse_unregistered_global
 from .errors import LoadoutError, UsageError
+from .machine import registration
 from .manifest import manifest_path
 from .output import FrozenFile
 from .project import project_config_path
+from .worktrees import linked_worktree_source
 
 EVENTS = ("pre-commit", "post-checkout", "post-merge")
 # Identity lives in this marker, never in the command the hook invokes, so renaming
@@ -56,9 +58,9 @@ def hook_content(event: str, source: Path) -> bytes:
 
 
 def hooks_directory(repository: Path) -> Path:
-    raw = migration_git.git(
+    raw = git_runner.output(
         repository, "rev-parse", "--path-format=absolute", "--git-path", "hooks"
-    ).stdout
+    )
     return (repository / os.fsdecode(raw).strip()).absolute()
 
 
@@ -69,12 +71,10 @@ def _repository_storage(repository: Path) -> list[Path]:
     root, so containment in `repository` alone cannot tell shared from external.
     """
     paths = []
-    common = migration_git.git(
-        repository, "rev-parse", "--path-format=absolute", "--git-common-dir", check=False
-    )
+    common = git_runner.run(repository, "rev-parse", "--path-format=absolute", "--git-common-dir")
     if common.returncode == 0:
         paths.append((repository / os.fsdecode(common.stdout).strip()).resolve())
-    entries = migration_git.git(repository, "worktree", "list", "--porcelain", "-z", check=False)
+    entries = git_runner.run(repository, "worktree", "list", "--porcelain", "-z")
     if entries.returncode == 0:
         for entry in entries.stdout.split(b"\0"):
             if entry.startswith(b"worktree "):
@@ -83,7 +83,7 @@ def _repository_storage(repository: Path) -> list[Path]:
 
 
 Placement = Literal["local", "shared", "external"]
-HookStatus = Literal["install", "managed", "update", "stale", "occupied", "external"]
+HookStatus = Literal["install", "managed", "update", "stale", "occupied"]
 
 
 def placement(repository: Path, directory: Path) -> Placement:
@@ -105,7 +105,7 @@ def placement(repository: Path, directory: Path) -> Placement:
         if path.is_relative_to(repository)
     ):
         return "external"
-    entries = migration_git.git(repository, "worktree", "list", "--porcelain", "-z").stdout
+    entries = git_runner.output(repository, "worktree", "list", "--porcelain", "-z")
     for entry in entries.split(b"\0"):
         if not entry.startswith(b"worktree "):
             continue
@@ -154,7 +154,7 @@ def plan_hooks(root: Path, *, regenerate: bool = False) -> HookPlan:
     while not probe.is_dir():
         probe = probe.parent
     repository = Path(
-        os.fsdecode(migration_git.git(probe, "rev-parse", "--show-toplevel").stdout).strip()
+        os.fsdecode(git_runner.output(probe, "rev-parse", "--show-toplevel")).strip()
     ).resolve()
     source = root.relative_to(repository)
     directory = hooks_directory(repository)
@@ -165,9 +165,7 @@ def plan_hooks(root: Path, *, regenerate: bool = False) -> HookPlan:
         content = hook_content(event, source)
         owned = written_by_loadout(path, source)
         status: HookStatus
-        if where == "external":
-            status = where
-        elif path.exists() or path.is_symlink():
+        if path.exists() or path.is_symlink():
             if not owned:
                 status = "occupied"
             elif path.read_bytes() == content and path.stat().st_mode & stat.S_IXUSR:
@@ -187,13 +185,25 @@ def show_hooks(preview: dict[str, Any]) -> None:
             "repository; the hooks installed there run in each of them."
         )
     elif preview["placement"] == "external":
+        # A global core.hooksPath runs in every repository on the machine, so an unguarded
+        # command would check every other one's commits (review 5, batch 2.4).
         print(
             f"Hooks directory {preview['directory']} is outside this repository; loadout "
-            "writes no hooks there. Add each command below to the hook for its event there."
+            "writes no hooks there. It may be shared by other repositories, so add each "
+            "command below to the hook for its event there, guarded by this repository."
         )
     for hook in preview["hooks"]:
         print(f"Git hook {hook['event']}: {hook['status']} ({hook['path']})")
-        if hook["status"] == "stale":
+        # Where a hook stands is the placement's to say first: loadout writes nothing to
+        # a directory outside the repository, whatever is there (review 5, batch 3.3).
+        if preview["placement"] == "external":
+            guard = f'[ "$repo" = {shlex.quote(preview["repository"])} ] && '
+            print(
+                "After setting repo=$(git rev-parse --show-toplevel), add:\n  "
+                + guard
+                + hook["command"]
+            )
+        elif hook["status"] == "stale":
             print("Written by loadout and out of date; `--regenerate` rewrites it.")
         elif hook["status"] not in {"install", "managed", "update"}:
             print(
@@ -209,11 +219,13 @@ def _require_source(root: Path) -> None:
 
 def install_hooks(root: Path, *, regenerate: bool = False, dry_run: bool = False) -> int:
     _require_source(root)
-    # Hooks for a global setup that may not render would refuse every commit after this.
-    refuse_unregistered_global(root)
+    # Hooks for a global setup that may not render would refuse every commit after this;
+    # a linked worktree's hooks are its source's, which does render (review 5, batch 4.1).
+    if linked_worktree_source(root, registration()) is None:
+        refuse_unregistered_global(root)
     plan = plan_hooks(root, regenerate=regenerate)
     show_hooks(plan.preview())
-    if dry_run:
+    if dry_run or plan.placement == "external":
         return 0
     for hook in plan.hooks:
         if hook.status not in {"install", "update"}:
@@ -266,13 +278,7 @@ def status_hooks(root: Path) -> int:
     elif plan.placement == "shared":
         print("  shared with other worktrees of this repository")
     for hook in plan.hooks:
-        if hook.status == "external":
-            state = "installed by loadout" if hook.owned else _STATE["install"]
-            if not hook.owned and (hook.path.exists() or hook.path.is_symlink()):
-                state = _STATE["occupied"]
-        else:
-            state = _STATE[hook.status]
-        print(f"  {hook.event}: {state}")
+        print(f"  {hook.event}: {_STATE[hook.status]}")
     return 0
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import Literal
 
 from .errors import LoadoutError
 from .toml_paths import apply_paths, sections
@@ -58,9 +59,12 @@ def apply_json(existing: str, owned: frozenset[str], document: str) -> str:
 
 
 # What a shared document holds of loadout's when loadout writes nothing into it.
-EMPTY = {"json": "{}", "toml": ""}
+DocumentFormat = Literal["json", "toml"]
+EMPTY: dict[DocumentFormat, str] = {"json": "{}", "toml": ""}
 
 
-def apply(format_name: str, existing: str, owned: frozenset[str], document: str) -> str:
+def apply(
+    existing: str, owned: frozenset[str], document: str, *, format_name: DocumentFormat
+) -> str:
     """`existing` with loadout's `owned` keys set as `document` has them, in its format."""
     return (apply_json if format_name == "json" else apply_toml)(existing, owned, document)

@@ -10,7 +10,6 @@ from __future__ import annotations
 import os
 from collections.abc import Iterable, Mapping
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING
 
 from .containment import first_link, protected
 from .destinations import resolve_destination
@@ -19,10 +18,8 @@ from .manifest import load_profile, manifest_path
 from .output import Output
 from .project import PROJECT_PRESET, load_project_config, project_config_path
 from .runtime_paths import RUNTIME_DIRECTORIES, RUNTIME_FILES, UNMANAGED_NAMES
+from .state import SyncState
 from .written import every_recorded_path
-
-if TYPE_CHECKING:
-    from .sync import SyncState
 
 WHOLE_FOLDER_RENDERERS = frozenset({"codex", "codex-project"})
 
@@ -110,7 +107,9 @@ def unmanaged_entries(
     """Each file, or whole folder, in a managed folder that no output and no root's
     record of what it wrote accounts for. This root's record is the one `state` read."""
     folders, links = managed_folders(state.root, profile, project=state.project)
-    accounted = frozenset(outputs) | every_recorded_path(folders, known=(state.root, state.written))
+    accounted = frozenset(outputs) | every_recorded_path(
+        folders, known_root=state.root, known=state.written
+    )
     return [*links, *_scan(folders, accounted)]
 
 

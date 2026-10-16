@@ -9,14 +9,14 @@ from typing import get_args
 
 import pytest
 
-from loadout import staged, sync, written
+from loadout import machine, sync, written
 from loadout.commands import DRIFT_ADVICE, _abort_sentences, cmd_sync
 from loadout.emit import RenderContext, refuse_unregistered_global
 from loadout.errors import LoadoutError
 from loadout.files import DriftKind, UnparsableDocument, refuse_unparsable
-from loadout.machine import Registration, registered_source, unregistered
+from loadout.git_tree import Entry, and_above, select_inputs
+from loadout.machine import Registration, registered_at, registration, unregistered
 from loadout.output import Merged
-from loadout.staged import Entry, _render_inputs
 from loadout.written import (
     every_recorded_path,
     merged_entry,
@@ -89,17 +89,14 @@ def test_an_unreadable_machine_config_registers_nothing(tmp_path: Path, fake_hom
     machine = fake_home / ".config/loadout/config.toml"
     machine.write_text(machine.read_text() + 'profle = "x"\n')
 
-    assert registered_source() is None
+    assert registration().source is None
 
 
-def test_the_staged_snapshot_holds_only_what_the_declared_sources_use(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_the_staged_snapshot_holds_only_what_the_declared_sources_use() -> None:
     blobs = {
         "m": b'[[source]]\nname = "s"\npath = "."\nuse = ["skills"]\n',
         "p": b'[[source]]\nname = "e"\npath = "extra"\nuse = ["instructions"]\n',
     }
-    monkeypatch.setattr(staged, "_read_blob", lambda root, entry: blobs.get(entry.oid, b""))
     names = {
         "loadout.toml": "m",
         "work.toml": "p",
@@ -111,7 +108,7 @@ def test_the_staged_snapshot_holds_only_what_the_declared_sources_use(
     }
     entries = {name: Entry("100644", oid) for name, oid in names.items()}
 
-    inputs = _render_inputs(Path("/repo"), Path("."), entries)
+    inputs = select_inputs(Path("."), entries, blobs)
 
     assert sorted(inputs) == [
         "extra/instructions/i.md",
@@ -142,14 +139,14 @@ def test_the_refusal_names_the_registration_that_decided_it(
     root.mkdir()
     (root / "loadout.toml").write_text('[[source]]\nname = "s"\npath = "."\n')
     other = tmp_path / "other"
-    context = RenderContext(registration=lambda: Registration(other))
+    context = RenderContext(registration=registered_at(other))
 
     with pytest.raises(LoadoutError, match=f"registered source is {other}; to make this folder"):
         refuse_unregistered_global(root, context)
 
 
 def test_a_staged_entry_is_checked_with_every_folder_above_it() -> None:
-    assert staged._and_above(".claude/skills/x/SKILL.md") == [
+    assert and_above(".claude/skills/x/SKILL.md") == [
         ".claude/skills/x/SKILL.md",
         ".claude/skills/x",
         ".claude/skills",
@@ -178,7 +175,7 @@ def test_every_recorded_path_uses_the_record_already_read(
     monkeypatch.setattr(written, "_document", counting)
     known = {folder / "c/SKILL.md": text_entry(folder / "c/SKILL.md", "x")}
 
-    found = every_recorded_path([folder], known=(mine, known))
+    found = every_recorded_path([folder], known_root=mine, known=known)
 
     assert sorted(found) == [folder / "b/SKILL.md", folder / "c/SKILL.md"]
     assert read == [written_state_path(theirs)]
@@ -291,3 +288,30 @@ def test_a_key_the_record_never_covered_is_newly_managed(tmp_path: Path, fake_ho
     outputs = {path: Merged(frozenset({"mcpServers", "theme"}), document, format="json")}
 
     assert sync.newly_managed(state, outputs) == [(path, "theme", '"dark"')]
+
+
+def test_a_refused_sync_reads_the_machine_config_once(
+    tmp_path: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review 5, batch 3.3: the gate, the render and the guard each read it."""
+    (tmp_path / "source").mkdir()
+    root = register(tmp_path / "source")
+    (root / "instructions").mkdir()
+    (root / "instructions/x.md").write_text("Rules.\n")
+    (root / "loadout.toml").write_text(
+        '[[source]]\nname = "s"\npath = "."\n\n'
+        '[instructions.mine]\ndestinations = ["~/out.md"]\norder = ["x"]\n'
+    )
+    assert cmd_sync(root, "default") == 0
+    (fake_home / "out.md").write_text("Hand-written.\n")
+    reads: list[Path] = []
+    real = machine.load_machine_config
+
+    def counting(path: Path, **kwargs: bool) -> object:
+        reads.append(path)
+        return real(path, **kwargs)
+
+    monkeypatch.setattr(machine, "load_machine_config", counting)
+
+    assert cmd_sync(root, "default") == 1
+    assert len(reads) == 1

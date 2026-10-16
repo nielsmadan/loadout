@@ -14,7 +14,7 @@ from .atomic import replace_atomically
 from .credentials import credential_material
 from .errors import LoadoutError
 from .output import Copied, FrozenFile, Merged, Output, file_sha256, sha256
-from .surgery import apply
+from .surgery import DocumentFormat, apply
 from .written import owned_values
 
 # What the guard refuses an output for, so sync and check name a refusal alike.
@@ -77,10 +77,13 @@ def process_umask() -> int:
     return mask
 
 
-def atomic_write(path: Path, content: str) -> None:
+def atomic_write(path: Path, content: str, umask: int | None = None) -> None:
+    """`umask` is one a caller writing many files read once: reading it sets it, and
+    did so for every file (review 5, batch 3.3)."""
     target = _target(path)
     data = content.encode("utf-8")
-    mode = text_mode(_existing_mode(target), data, target.suffix[1:], process_umask())
+    mask = process_umask() if umask is None else umask
+    mode = text_mode(_existing_mode(target), data, target.suffix[1:], mask)
     replace_atomically(target, lambda handle: handle.write(data), mode=mode)
 
 
@@ -92,6 +95,7 @@ def write_outputs(
     for path, content in outputs.items():
         frozen.update(_frozen(path, content))
     written: list[Path] = []
+    umask = process_umask()
     for path, frozen_content in frozen.items():
         if _unchanged(path, frozen_content, sources):
             continue
@@ -102,7 +106,7 @@ def write_outputs(
             case Copied():
                 _atomic_stream_copy(path, frozen_content)
             case str():
-                atomic_write(path, frozen_content)
+                atomic_write(path, frozen_content, umask)
             case _:
                 assert_never(frozen_content)
         written.append(path)
@@ -263,7 +267,7 @@ class UnparsableDocument(LoadoutError):
         )
 
 
-def document_format(path: Path) -> str:
+def document_format(path: Path) -> DocumentFormat:
     """The format of a shared document loadout recorded writing, by its name."""
     return "json" if path.suffix == ".json" else "toml"
 
@@ -321,8 +325,9 @@ def applied_document(path: Path, merged: Merged, *, replace_unparsable: bool = F
     the renderer that produced `merged` never did (ADR 0001). A document that does not
     parse has nothing to preserve, so it is replaced only when asked to be."""
     existing = read_document(path) if path.is_file() else ""
-    if existing is None or unparsable(path, merged):
+    # The text just read, not a second read of the file (review 5, batch 3.3).
+    if existing is None or owned_values(existing, merged.owned, merged.format) is None:
         if not replace_unparsable:
             raise UnparsableDocument(path, merged.format)
         existing = ""
-    return apply(merged.format, existing, merged.owned, merged.document)
+    return apply(existing, merged.owned, merged.document, format_name=merged.format)

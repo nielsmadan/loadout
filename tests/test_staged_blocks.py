@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -19,7 +20,8 @@ INSTRUCTIONS = '[instructions.mine]\ndestinations = ["~/out.md"]\norder = ["x"]\
 
 
 def _git(root: Path, *args: str) -> None:
-    subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
+    # Bounded, so a git that hangs fails the test rather than the run (review 5, 5.9).
+    subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True, timeout=120)
 
 
 def _write(root: Path, files: dict[str, str]) -> None:
@@ -175,3 +177,48 @@ def test_check_staged_reads_the_machine_config_once(
 
     assert check_staged(root) == 0
     assert len(reads) == 1
+
+
+def test_a_link_resolving_through_itself_ends_rather_than_looping(tmp_path: Path) -> None:
+    """Review 5, batch 2.5: `loadout/lp -> lp/b` with a source at `lp/src` looped forever.
+    In a child, so a regression fails rather than hangs."""
+    repo = tmp_path / "repo"
+    (repo / "loadout").mkdir(parents=True)
+    (repo / "loadout/loadout.toml").write_text('[[source]]\nname = "s"\npath = "lp/src"\n')
+    (repo / "loadout/lp").symlink_to("lp/b")
+    _staged(repo)
+    register(repo / "loadout")
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "loadout", "check", "--staged", "--root", str(repo / "loadout")],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail("check --staged did not finish within 60 s")
+
+    assert result.returncode == 3, result.stderr
+
+
+def test_a_staged_manifest_in_another_case_is_advised_out_of_the_index(
+    tmp_path: Path, capsys
+) -> None:
+    """Review 5, batch 4.1: the refusal advised registering the project as a global source."""
+    root = tmp_path / "repo"
+    _write(
+        root,
+        {
+            "Loadout.toml": '[[source]]\nname = "s"\npath = "."\n',
+            "loadout/config.toml": 'harnesses = ["codex"]\n',
+        },
+    )
+    _staged(root)
+    capsys.readouterr()
+
+    assert loadout.main(["check", "--staged", "--root", str(root)]) == 3
+
+    err = capsys.readouterr().err
+    assert "unstage it with `git rm --cached -- Loadout.toml`" in err
+    assert "--registration" not in err

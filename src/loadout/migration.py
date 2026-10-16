@@ -10,7 +10,7 @@ from typing import Any, Literal
 import tomlkit
 
 from .composition import HEADER
-from .containment import PROJECT_DIR, refuse_external_links
+from .containment import PROJECT_DIR
 from .credentials import credential_material
 from .discovery import (
     PROJECT_ROOTS,
@@ -18,7 +18,7 @@ from .discovery import (
     authored_part,
     path_preconditions,
 )
-from .emit import PROJECT_SETTINGS_DIR, project_owned_keys
+from .emit import PROJECT_SETTINGS_DIR, project_owned_keys, refuse_project_inputs
 from .errors import LoadoutError
 from .extract import extract, extract_codex_plugins, extract_codex_servers, extract_value
 from .harnesses import DIRECTORY_SLICES, GLOBAL_PRESET, KNOWN_HARNESSES
@@ -45,7 +45,7 @@ from .permissions.merge import merge_rules
 from .permissions.rules import Rules
 from .project import PROJECT_CONFIG_NAME, PROJECT_PRESET, load_project_config
 from .servers import serialize_servers
-from .skills import EXCLUDED_DIRECTORIES, SKILL_DOCUMENT
+from .skills import SKILL_DOCUMENT
 from .subagents import NativeAgent, agent_file_name, extract_agent, source_agent
 
 CODEX_RULES_OUTPUT = Path(PROJECT_PRESET["codex"]["permissions"].output or "").name
@@ -1038,7 +1038,7 @@ def _initialized(inventory: Inventory) -> MigrationPlan:
     if inventory.scope == "project":
         # What sync refuses to read is no source adopted as it is (review 4, batch 2.7).
         try:
-            refuse_external_links(inventory.root, EXCLUDED_DIRECTORIES)
+            refuse_project_inputs(inventory.root)
         except LoadoutError as error:
             return MigrationPlan(
                 inventory,

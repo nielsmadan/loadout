@@ -65,7 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
             "--root",
             type=Path,
             default=Path.cwd(),
-            help="repository root holding loadout.toml (default: cwd)",
+            help="source root: the folder holding loadout.toml, or a project root holding loadout/ (default: cwd)",
         )
         if allow_global:
             target.add_argument(
@@ -260,7 +260,7 @@ def _add_git_hooks(parser: argparse.ArgumentParser) -> None:
             "--root",
             type=Path,
             default=Path.cwd(),
-            help="repository root holding loadout.toml (default: cwd)",
+            help="source root: the folder holding loadout.toml, or a project root holding loadout/ (default: cwd)",
         )
 
 
@@ -341,7 +341,7 @@ def _add_init_project(parser: argparse.ArgumentParser) -> None:
         "--root",
         type=Path,
         default=Path.cwd(),
-        help="repository root holding loadout.toml (default: cwd)",
+        help="source root: the folder holding loadout.toml, or a project root holding loadout/ (default: cwd)",
     )
     _add_init_choices(parser)
 

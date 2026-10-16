@@ -26,7 +26,7 @@ PROTECTED = frozenset({".git", PROJECT_DIR})
 READ_THROUGH = frozenset({(PurePosixPath("CLAUDE.md"), PurePosixPath("AGENTS.md"))})
 
 
-def read_through(root: Path, relative: PurePosixPath) -> bool:
+def is_read_through(root: Path, relative: PurePosixPath) -> bool:
     """Whether `relative` is a link to the output a harness reads through it."""
     leaf = root / Path(relative)
     return leaf.is_symlink() and any(
@@ -56,8 +56,8 @@ def protected(relative: PurePosixPath) -> str | None:
     return first if first is not None and first.casefold() in PROTECTED else None
 
 
-def in_git_dir(path: Path, boundary: Path) -> bool:
-    """Whether `path` lies in the repository's git dir, `boundary` being its root."""
+def in_git_dir(boundary: Path, path: Path) -> bool:
+    """Whether `path` lies in the git dir of the repository rooted at `boundary`."""
     relative = within(boundary, path, boundary)
     return relative is not None and (protected(relative) or "").casefold() == ".git"
 
@@ -216,7 +216,7 @@ def _landing(target: Path, boundary: Path) -> str:
     if relative is None:
         return ", outside the project"
     # The git dir holds credentials and runs hooks.
-    if relative.parts and relative.parts[0].casefold() == ".git":
+    if in_git_dir(boundary, target):
         return ", into .git"
     return f", out of {PROJECT_DIR}/"
 

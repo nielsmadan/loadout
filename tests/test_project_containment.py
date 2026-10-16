@@ -797,3 +797,18 @@ def test_the_input_walk_resolves_links_alone(
 
     # The root, for the boundary, and the one link: nothing else needs resolving.
     assert resolved == [root, docs / "elsewhere"]
+
+
+def test_a_link_into_the_git_dir_is_named_as_one(tmp_path: Path, capsys) -> None:
+    """The refusal says where the link lands: the git dir, which holds credentials."""
+    root = _plain_project(tmp_path / "p")
+    (root / ".git").mkdir()
+    (root / ".git/config").write_text("[core]\n")
+    (root / "loadout/skills/s").mkdir(parents=True)
+    (root / "loadout/skills/s/SKILL.md").write_text(SKILL)
+    link = root / "loadout/skills/s/config"
+    link.symlink_to("../../../.git/config")
+
+    assert loadout.main(["sync", "--root", str(root)]) == 3
+
+    assert f"{link} -> {(root / '.git/config').resolve()}, into .git" in capsys.readouterr().err

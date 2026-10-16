@@ -11,7 +11,13 @@ import loadout
 from loadout.emit import render_all
 from loadout.errors import LoadoutError
 from loadout.files import check_all
-from loadout.git_hooks import hook_content, install_hooks, plan_hooks, uninstall_hooks
+from loadout.git_hooks import (
+    hook_content,
+    install_hooks,
+    plan_hooks,
+    status_hooks,
+    uninstall_hooks,
+)
 from loadout.machine import machine_config_path, resolve_profile
 from loadout.staged import check_staged
 from registration import register
@@ -261,7 +267,9 @@ def test_staged_ownership_selects_profile_before_resolving_destinations(repo, mo
     assert "other.md" in str(error.value)
 
 
-def test_hook_installation_preserves_occupied_shared_and_other_source_hooks(repo, tmp_path_factory):
+def test_hook_installation_preserves_occupied_external_and_other_source_hooks(
+    repo, tmp_path_factory
+):
     _project(repo)
     _commit(repo, "loadout")
     custom = repo / "custom-hooks"
@@ -280,11 +288,11 @@ def test_hook_installation_preserves_occupied_shared_and_other_source_hooks(repo
     hook.write_text("#!/bin/sh\nexit 0\n")
     install_hooks(repo)
     assert hook.read_text() == "#!/bin/sh\nexit 0\n"
-    shared = tmp_path_factory.mktemp("shared-hooks")
-    _git(repo, "config", "core.hooksPath", str(shared))
-    assert plan_hooks(repo).hooks[0].status == "external"
+    outside = tmp_path_factory.mktemp("external-hooks")
+    _git(repo, "config", "core.hooksPath", str(outside))
+    assert plan_hooks(repo).placement == "external"
     install_hooks(repo)
-    assert list(shared.iterdir()) == []
+    assert list(outside.iterdir()) == []
 
 
 @pytest.mark.parametrize("custom", [False, True])
@@ -312,6 +320,8 @@ def test_install_writes_a_hooks_directory_shared_with_linked_worktrees(
     assert f"Hooks directory {directory} is shared by every worktree of this repository" in out
     assert (directory / "pre-commit").read_bytes() == main_plan.hooks[0].content
     assert [plan_hooks(r).hooks[0].status for r in (repo, linked)] == ["managed", "managed"]
+    assert status_hooks(repo) == 0
+    assert "  shared with other worktrees of this repository\n" in capsys.readouterr().out
 
 
 def test_a_worktree_specific_hooks_path_is_this_worktree_s_alone(repo, tmp_path_factory):
@@ -436,7 +446,7 @@ def test_uninstall_refuses_a_hooks_directory_outside_the_repository(repo, tmp_pa
     (outside / "pre-commit").write_text("#!/bin/sh\nexit 0\n")
     _git(repo, "config", "core.hooksPath", str(outside))
 
-    assert plan_hooks(repo).hooks[0].status == "external"
+    assert plan_hooks(repo).placement == "external"
     with pytest.raises(LoadoutError, match="outside this repository"):
         uninstall_hooks(repo, yes=True)
     assert (outside / "pre-commit").read_text() == "#!/bin/sh\nexit 0\n"
@@ -543,8 +553,8 @@ def test_a_snapshot_of_five_thousand_entries_completes(repo, tmp_path):
     _git(repo, "add", ".")
     snapshot = tmp_path / "snapshot"
     script = (
-        "import sys; from pathlib import Path; from loadout.staged import _entries, _snapshot; "
-        "root = Path(sys.argv[1]); _snapshot(root, Path(sys.argv[2]), _entries(root))"
+        "import sys; from pathlib import Path; from loadout.git_tree import tree_entries, write_snapshot; "
+        "root = Path(sys.argv[1]); write_snapshot(root, Path(sys.argv[2]), tree_entries(root))"
     )
 
     subprocess.run(
@@ -623,3 +633,22 @@ def test_a_plain_install_reports_an_old_loadout_hook_as_stale_and_leaves_it(repo
     assert f"Git hook pre-commit: stale ({hook})" in out
     assert "Written by loadout and out of date; `--regenerate` rewrites it." in out
     assert hook.read_bytes() == old
+
+
+def test_install_into_an_external_directory_guards_each_command_by_repository(
+    repo, tmp_path_factory, capsys
+):
+    """Review 5, batch 2.4: a global core.hooksPath runs in every repository, and the
+    unguarded command blocked commits in all the others."""
+    _project(repo)
+    _commit(repo, "loadout")
+    outside = tmp_path_factory.mktemp("global-hooks")
+    _git(repo, "config", "core.hooksPath", str(outside))
+
+    install_hooks(repo)
+
+    out = capsys.readouterr().out
+    assert "It may be shared by other repositories" in out
+    plan = plan_hooks(repo)
+    assert f'[ "$repo" = {plan.repository} ] && {plan.hooks[0].command}' in out
+    assert list(outside.iterdir()) == []

@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 
 from . import git_runner
-from .machine import Registration, is_registered, registration
+from .machine import Registration, is_registered
 
 
 def _worktree(path: Path) -> tuple[Path, Path] | None:
@@ -25,11 +25,13 @@ def _worktree(path: Path) -> tuple[Path, Path] | None:
             return None
 
 
-def linked_worktree_source(root: Path, found: Registration | None = None) -> Path | None:
+def linked_worktree_source(root: Path, found: Registration) -> Path | None:
     """The registered source, when `root` is in another worktree of its repository:
     the same repository, a different worktree, whichever of the two is the main one.
     `found` is a registration already read, so a caller decides from one read."""
-    source = (found or registration()).source
+    source = found.source
+    # The source itself is answered without asking git twice; the top-level comparison
+    # below would answer it the same way (review 5, batch 5.10).
     if source is None or is_registered(root, source) or not root.is_dir() or not source.is_dir():
         return None
     here, there = _worktree(root), _worktree(source)

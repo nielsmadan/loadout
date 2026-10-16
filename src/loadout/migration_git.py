@@ -38,12 +38,7 @@ def literal(path: str) -> str:
 
 def repository(path: Path) -> Path | None:
     """The work tree enclosing `path`, or None outside any repository."""
-    probe = git(path, "rev-parse", "--show-toplevel", check=False)
-    if probe.returncode:
-        if b"not a git repository" in probe.stderr:
-            return None
-        raise LoadoutError(f"cannot inspect Git repository: {path}")
-    return Path(os.fsdecode(probe.stdout).strip()).resolve()
+    return git_runner.toplevel(path)
 
 
 def index_path(root: Path) -> Path:

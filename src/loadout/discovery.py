@@ -493,7 +493,7 @@ class _InventoryBuilder:
             )
         if not path.is_symlink():
             return None
-        if in_git_dir(canonical, self.allowed[0]):
+        if in_git_dir(self.allowed[0], canonical):
             return "git-link", (
                 f"{path} links to {canonical}, inside the repository's .git, which holds "
                 "credentials and runs hooks; remove the link, then run init again."
