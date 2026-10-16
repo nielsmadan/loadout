@@ -69,17 +69,17 @@ def _ignored(relative: Path) -> bool:
     )
 
 
-def _unaccounted(entry: Path, folder: Path, accounted: frozenset[Path]) -> list[Path]:
+def _unaccounted(
+    entry: Path, folder: Path, accounted: frozenset[Path], holding: frozenset[Path]
+) -> list[Path]:
     if _ignored(entry.relative_to(folder)) or entry in accounted:
         return []
-    if entry.is_symlink() or not entry.is_dir():
-        return [entry]
-    if not any(path.is_relative_to(entry) for path in accounted):
+    if entry.is_symlink() or not entry.is_dir() or entry not in holding:
         return [entry]
     return [
         found
         for child in sorted(entry.iterdir())
-        for found in _unaccounted(child, folder, accounted)
+        for found in _unaccounted(child, folder, accounted, holding)
     ]
 
 
@@ -93,12 +93,14 @@ def unmanaged_entries(
 
 
 def _scan(folders: Iterable[Path], accounted: frozenset[Path]) -> list[Path]:
+    # Every directory that holds an accounted path, so a lookup replaces a scan of them all.
+    holding = frozenset(parent for path in accounted for parent in path.parents)
     return [
         found
         for folder in folders
         if folder.is_dir()
         for entry in sorted(folder.iterdir())
-        for found in _unaccounted(entry, folder, accounted)
+        for found in _unaccounted(entry, folder, accounted, holding)
     ]
 
 

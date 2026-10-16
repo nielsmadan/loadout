@@ -32,9 +32,11 @@ validated, so a staged migration from an absolute or external source to a relati
 source can pass. HEAD config and artifact declarations still come from its isolated tree and
 continue to protect retired outputs.
 
-The entire index and HEAD trees are materialized from Git blobs, so partially staged content and
-staged deletions are independent of the working tree. This currently reads all repository blobs;
-large unrelated assets therefore increase validation time and temporary disk/memory use.
+The index and HEAD trees are materialized from Git blobs, so partially staged content and
+staged deletions are independent of the working tree. Only what a render can read is written out,
+streamed one blob at a time: a project's `loadout/` folder and the files at its root, or a global
+source's folder and any source it names outside it. Large unrelated assets elsewhere in the
+repository are listed by path, which is all the staged-output comparison needs, and never read.
 Renderers run in a fresh process with isolated global destinations and a read boundary around
 the snapshot. Repository scripts and skill programs are read as data and never executed.
 The [2026-09-06 corpus run](../tests/init-corpus/runs/2026-09-06-migration.md) measured a

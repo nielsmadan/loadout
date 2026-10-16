@@ -17,7 +17,7 @@ import tomlkit
 
 from .bundled_skill import SKILL_NAME
 from .deployment import atomic_install, read_file
-from .emit import Copied, Merged, declared_profiles, render_global
+from .emit import Merged, declared_profiles, render_global
 from .errors import LoadoutError
 from .manifest import Manifest, load_profile, resolve_destination
 from .output import FrozenFile
@@ -47,12 +47,6 @@ class SkillSourceLocation:
     state: SourceSkillState
     recorded_hash: str | None
     bundle_hash: str
-
-
-@dataclass(frozen=True)
-class _ExpectedOutput:
-    content: bytes
-    executable: bool | None
 
 
 @dataclass(frozen=True)
@@ -298,7 +292,12 @@ def install_skill_source(location: SkillSourceLocation, bundle: Path) -> bool:
                 quarantine_root.rmdir()
 
 
-def _skill_outputs(root: Path, profile: str) -> dict[Path, _ExpectedOutput]:
+def _accepted_outputs(root: Path, profile: str) -> dict[Path, bytes]:
+    """The generated copies of the bundled skill, each as it is now, once sync's guard
+    accepts every one of them as loadout's own (ADR 0022): what the source renders, what
+    was committed, or what sync last wrote."""
+    from .commands import unaccepted_outputs  # noqa: PLC0415 - commands imports this module
+
     manifest = _load_skill_profile(root, profile)
     directories = tuple(
         resolve_destination(str(destination), f"{target.agent}.skills") / SKILL_NAME
@@ -306,36 +305,24 @@ def _skill_outputs(root: Path, profile: str) -> dict[Path, _ExpectedOutput]:
         for destination in target.destinations
     )
     outputs = render_global(root, profile)
-    selected: dict[Path, _ExpectedOutput] = {}
     for path, output in outputs.items():
-        if any(path.is_relative_to(directory) for directory in directories):
-            if isinstance(output, FrozenFile):
-                selected[path] = _ExpectedOutput(output.content, bool(output.mode & 0o111))
-            elif isinstance(output, Copied):
-                selected[path] = _ExpectedOutput(
-                    output.read_bytes(), bool(output.file_mode() & 0o111)
-                )
-            elif isinstance(output, Merged):
-                raise LoadoutError(f"skill output {path} unexpectedly requires a merged document")
-            else:
-                selected[path] = _ExpectedOutput(output.encode("utf-8"), None)
-    return selected
-
-
-def _matches_output(path: Path, expected: _ExpectedOutput) -> bool:
-    if path.is_symlink() or not path.is_file():
-        return False
-    if path.read_bytes() != expected.content:
-        return False
-    return expected.executable is None or bool(path.stat().st_mode & 0o111) == expected.executable
-
-
-def _validate_outputs(outputs: dict[Path, _ExpectedOutput]) -> None:
-    for path, expected in outputs.items():
-        if not _entry_exists(path):
-            continue
-        if not _matches_output(path, expected):
-            raise LoadoutError(f"{path} was modified outside loadout; no changes made")
+        if isinstance(output, Merged) and any(path.is_relative_to(d) for d in directories):
+            raise LoadoutError(f"skill output {path} unexpectedly requires a merged document")
+    refused = [
+        entry.path
+        for entry in unaccepted_outputs(root, outputs, profile)
+        if any(entry.path.is_relative_to(directory) for directory in directories)
+    ]
+    if refused:
+        raise LoadoutError(f"{refused[0]} was modified outside loadout; no changes made")
+    return {
+        path: path.read_bytes()
+        for path in outputs
+        if any(path.is_relative_to(directory) for directory in directories)
+        and _entry_exists(path)
+        and path.is_file()
+        and not path.is_symlink()
+    }
 
 
 def _quarantine_file(path: Path) -> tuple[Path, Path]:
@@ -383,7 +370,7 @@ def _restore_overrides(changes: list[SkillOverrideRemoval], recovery: Path) -> N
 def _remove_source_and_outputs(
     location: SkillSourceLocation,
     state: SourceSkillState,
-    outputs: dict[Path, _ExpectedOutput],
+    outputs: dict[Path, bytes],
     overrides: tuple[SkillOverrideRemoval, ...],
 ) -> tuple[Path, ...]:
     source_before = location.path.lstat()
@@ -403,10 +390,8 @@ def _remove_source_and_outputs(
             _restore(quarantined_source, location.path)
             raise LoadoutError(f"{location.path} changed while the uninstall was being applied")
 
-        for path, expected in outputs.items():
-            if not _entry_exists(path):
-                continue
-            if not _matches_output(path, expected):
+        for path, seen in outputs.items():
+            if path.is_symlink() or not path.is_file() or path.read_bytes() != seen:
                 raise LoadoutError(f"{path} changed while the uninstall was being applied")
             quarantined, container = _quarantine_file(path)
             moved_outputs.append((path, quarantined, container))
@@ -454,7 +439,6 @@ def uninstall_skill_source(
     if state is SourceSkillState.MODIFIED:
         raise LoadoutError(f"{location.path} was modified after installation; left unchanged")
 
-    outputs = _skill_outputs(root, profile)
-    _validate_outputs(outputs)
+    outputs = _accepted_outputs(root, profile)
     overrides = skill_override_removals(root, profile, (location,))
     return _remove_source_and_outputs(location, state, outputs, overrides)

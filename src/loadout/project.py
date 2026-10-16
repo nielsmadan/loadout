@@ -264,6 +264,50 @@ def project_slices(harnesses: Iterable[str]) -> tuple[tuple[str, str, SliceOutpu
     )
 
 
+def refuse_escaping(root: Path, paths: Iterable[Path]) -> None:
+    """Project scope writes only inside the project. A link committed to the repository
+    can point anywhere, so every path is checked where it really lands."""
+    boundary = root.resolve()
+    escaping = [
+        (path, path.resolve()) for path in paths if not path.resolve().is_relative_to(boundary)
+    ]
+    if escaping:
+        listed = "; ".join(f"{path} resolves to {resolved}" for path, resolved in escaping)
+        raise LoadoutError(
+            f"refusing to write outside the project: {listed}. Remove the symlink that "
+            "leads out of the repository, or point it inside it"
+        )
+
+
+def refuse_external_links(root: Path, excluded: frozenset[str] = frozenset()) -> None:
+    """Project inputs are the repository's own: anything in `loadout/` that a link leads
+    out of the project would be read into committed output. Links are followed, so a
+    linked folder that lands inside the project is checked for what it holds; folders
+    in `excluded` are never read, so they are not entered."""
+    boundary = root.resolve()
+    escaping: list[tuple[Path, Path]] = []
+    visited: set[Path] = set()
+    pending = [root / PROJECT_DIR]
+    while pending:
+        current = pending.pop()
+        resolved = current.resolve()
+        if not resolved.is_relative_to(boundary):
+            escaping.append((current, resolved))
+            continue
+        if not current.is_dir() or resolved in visited:
+            continue
+        visited.add(resolved)
+        pending.extend(
+            entry for entry in sorted(current.iterdir(), reverse=True) if entry.name not in excluded
+        )
+    if escaping:
+        listed = "; ".join(f"{link} -> {target}" for link, target in escaping)
+        raise LoadoutError(
+            f"refusing to read through a link out of the project: {listed}. Copy the file "
+            "into the repository, or point the link inside it"
+        )
+
+
 def gitignore_entries(root: Path, written: Iterable[Path]) -> tuple[str, ...]:
     """The root-anchored `.gitignore` lines for what sync wrote, and nothing else.
 

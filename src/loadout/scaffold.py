@@ -50,8 +50,20 @@ def _tracked(root: Path, relative: str) -> bool:
     return result.returncode == 0
 
 
-def _append_gitignore(root: Path, entries: list[str]) -> bool:
+def _gitignore(root: Path) -> Path:
+    """The project's `.gitignore`, refused when it is not a plain file of the project:
+    a link would have the lines appended to whatever it names."""
     path = root / ".gitignore"
+    if path.is_symlink() or (path.exists() and not path.is_file()):
+        raise LoadoutError(f"{path} must be a regular file, not a symlink, for loadout to edit it")
+    return path
+
+
+def _append_gitignore(root: Path, entries: list[str]) -> int:
+    """Append the entries not already there; returns how many that was."""
+    if any("\n" in entry or "\r" in entry for entry in entries):
+        raise LoadoutError("a .gitignore entry may not contain a line break")
+    path = _gitignore(root)
     existing = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
     seen = set(existing)
     additions: list[str] = []
@@ -60,15 +72,15 @@ def _append_gitignore(root: Path, entries: list[str]) -> bool:
             additions.append(entry)
             seen.add(entry)
     if not additions:
-        return False
+        return 0
     lines = existing + additions
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return True
+    return len(additions)
 
 
 def _remove_gitignore(root: Path, entries: Iterable[str]) -> int:
     """Drop exactly these lines, keeping every other line where it is."""
-    path = root / ".gitignore"
+    path = _gitignore(root)
     if not path.is_file():
         return 0
     unwanted = set(entries)
@@ -136,8 +148,8 @@ def init_project(
     # on a project that has since declared an instruction order is what extends
     # .gitignore to cover the documents that order now generates.
     entries += project_outputs(load_project_config(config_path))
-    if _append_gitignore(root, entries):
-        actions.append(f"added {len(entries)} entries to .gitignore")
+    if added := _append_gitignore(root, entries):
+        actions.append(f"added {added} entries to .gitignore")
 
     if machine_config_path is not None and not machine_config_path.is_file():
         actions.append(

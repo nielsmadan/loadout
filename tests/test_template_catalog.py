@@ -59,12 +59,18 @@ def _native(root: Path, agents: tuple[str, ...] = ("claude",)) -> None:
     (source / "permissions.toml").write_text("")
 
 
-def _template(root: Path, action: str, name: str) -> int:
+def _answering(monkeypatch: pytest.MonkeyPatch, answer: object) -> None:
+    """A terminal that answers the shared-parts prompt with `answer`."""
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", answer)
+
+
+def _template(root: Path, action: str, name: str, *extra: str) -> int:
     if action == "vendored":
         return main(["template", "add", name, "--vendored", "--root", str(root)])
     if action == "tracked":
         return main(["template", "add", name, "--tracked", "--root", str(root)])
-    return main(["template", action, name, "--root", str(root)])
+    return main(["template", action, name, "--root", str(root), *extra])
 
 
 def test_two_templates_share_one_vendored_part_and_render_once(
@@ -98,11 +104,13 @@ def test_shared_update_prompts_for_all_affected_templates(
     path = catalog / "instructions/typescript.md"
     path.write_text("Updated shared advice\n")
     before = project_config_path(bare_project).read_bytes()
-    monkeypatch.setattr("builtins.input", lambda _: "no")
-    assert _template(bare_project, "sync", "nextjs") == 1
+    _answering(monkeypatch, lambda _: "no")
+    assert _template(bare_project, "sync", "nextjs") == 0
     assert project_config_path(bare_project).read_bytes() == before
-    assert "Affected templates: nextjs, react-native" in capsys.readouterr().out
-    monkeypatch.setattr("builtins.input", lambda _: "yes")
+    out = capsys.readouterr().out
+    assert "Affected templates: nextjs, react-native" in out
+    assert "declined; no changes made" in out
+    _answering(monkeypatch, lambda _: "yes")
     assert _template(bare_project, "sync", "nextjs") == 0
     assert (
         bare_project / "loadout/templates/instructions/typescript.md"
@@ -195,7 +203,7 @@ def test_shared_skill_sync_removes_retired_support_file(
     local = bare_project / "loadout/templates/skills/review-typescript/scripts/check"
     assert local.stat().st_mode & 0o777 == 0o755
     support.unlink()
-    monkeypatch.setattr("builtins.input", lambda _: "yes")
+    _answering(monkeypatch, lambda _: "yes")
     assert _template(bare_project, "sync", "nextjs") == 0
     assert not local.exists()
     assert template_divergence(bare_project) == []
@@ -227,7 +235,7 @@ def test_new_local_skill_file_during_confirmation_refuses_update(
         _write(bare_project / "loadout/templates/skills/review-typescript/new.txt", "user edit")
         return "yes"
 
-    monkeypatch.setattr("builtins.input", answer)
+    _answering(monkeypatch, answer)
     assert _template(bare_project, "sync", "nextjs") == 3
     assert project_config_path(bare_project).read_bytes() == before
 
@@ -280,7 +288,7 @@ def test_shared_update_rolls_back_a_write_failure(
     retired.unlink()
     added = _write(catalog / "skills/review-typescript/added.sh", "new script")
     added.chmod(0o755)
-    monkeypatch.setattr("builtins.input", lambda _: "yes")
+    _answering(monkeypatch, lambda _: "yes")
     install = template_vendor.atomic_install
 
     def fail(path: Path, content: template_vendor.FrozenFile) -> None:
@@ -296,3 +304,22 @@ def test_shared_update_rolls_back_a_write_failure(
 
 def _part_source(root: Path, category: str) -> Path:
     return root / "loadout" / ("mcp.toml" if category == "mcp" else f"{category}.toml")
+
+
+def test_shared_update_without_a_terminal_needs_yes(
+    bare_project: Path, catalog: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Review 2.9: no terminal means no answer, so it is refused, not read as "no"."""
+    for name in ("nextjs", "react-native"):
+        assert _template(bare_project, "vendored", name) == 0
+    (catalog / "instructions/typescript.md").write_text("Updated shared advice\n")
+    before = project_config_path(bare_project).read_bytes()
+
+    assert _template(bare_project, "sync", "nextjs") == 2
+
+    assert "--yes" in capsys.readouterr().err
+    assert project_config_path(bare_project).read_bytes() == before
+    assert _template(bare_project, "sync", "nextjs", "--yes") == 0
+    assert (
+        bare_project / "loadout/templates/instructions/typescript.md"
+    ).read_text() == "Updated shared advice\n"

@@ -52,7 +52,7 @@ def test_claude_gets_its_model_effort_and_own_block(tmp_path: Path) -> None:
     assert rendered == (
         "---\n"
         "name: reviewer\n"
-        "description: Reviews a diff for defects.\n"
+        'description: "Reviews a diff for defects."\n'
         "model: sonnet\n"
         "effort: high\n"
         "tools: Read, Grep\n"
@@ -80,7 +80,7 @@ def test_opencode_is_named_by_its_file_and_marked_a_subagent(tmp_path: Path) -> 
 
     assert rendered.startswith(
         "---\n"
-        "description: Reviews a diff for defects.\n"
+        'description: "Reviews a diff for defects."\n'
         "mode: subagent\n"
         "model: anthropic/claude-sonnet-5-5\n"
         "---\n"
@@ -91,7 +91,7 @@ def test_a_harness_the_model_map_omits_gets_no_model_line(tmp_path: Path) -> Non
     rendered = render_agent(_agent(tmp_path), "pi")
 
     assert rendered.startswith(
-        "---\nname: reviewer\ndescription: Reviews a diff for defects.\nthinking: high\n---\n"
+        '---\nname: reviewer\ndescription: "Reviews a diff for defects."\nthinking: high\n---\n'
     )
 
 
@@ -99,7 +99,7 @@ def test_inherit_alone_is_valid_and_writes_no_model(tmp_path: Path) -> None:
     agent = _agent(tmp_path, "---\ndescription: D.\nmodel: inherit\n---\nBody.\n")
 
     assert agent.models == {}
-    assert render_agent(agent, "droid").startswith("---\nname: reviewer\ndescription: D.\n---\n")
+    assert render_agent(agent, "droid").startswith('---\nname: reviewer\ndescription: "D."\n---\n')
 
 
 def test_one_model_for_every_harness_is_refused(tmp_path: Path) -> None:
@@ -213,3 +213,41 @@ def test_a_hand_written_codex_agent_with_a_table_cannot_be_read(tmp_path: Path) 
 
     with pytest.raises(LoadoutError, match="cannot carry"):
         extract_agent("codex", text, "r")
+
+
+@pytest.mark.parametrize(
+    ("written", "text"),
+    [
+        ("description: |\n  Reviews a diff.\n  Line two.", "Reviews a diff.\nLine two.\n"),
+        ("description: >-\n  Reviews a\n  diff.", "Reviews a diff."),
+        ('description: "Says \\"hi\\": loudly"', 'Says "hi": loudly'),
+        ("description: 'It''s fine'", "It's fine"),
+    ],
+)
+def test_a_description_is_read_as_the_text_it_holds(
+    tmp_path: Path, written: str, text: str
+) -> None:
+    """Review 2.2/2.3: block scalars and escapes keep their text."""
+    agent = _agent(tmp_path, f"---\n{written}\n---\nBody.\n")
+
+    assert agent.description == text
+
+
+@pytest.mark.parametrize("harness", sorted(KNOWN_HARNESSES))
+def test_a_description_holding_yaml_syntax_round_trips(tmp_path: Path, harness: str) -> None:
+    agent = _agent(tmp_path, '---\ndescription: "Use: carefully # really"\n---\nBody.\n')
+
+    native = extract_agent(harness, render_agent(agent, harness), agent.name)
+
+    assert native.description == "Use: carefully # really"
+
+
+def test_a_codex_string_extra_stays_a_string_both_ways(tmp_path: Path) -> None:
+    document = 'name = "r"\ndescription = "D."\nsandbox_mode = "true"\nsize = "123"\n'
+    native = extract_agent("codex", document + 'developer_instructions = "x"\n', "r")
+    text = "---\ndescription: D.\ncodex:\n" + "".join(f"  {line}\n" for line in native.extra)
+    agent = _agent(tmp_path, text + "---\nx\n", name="r")
+
+    rendered = tomllib.loads(render_agent(agent, "codex"))
+
+    assert (rendered["sandbox_mode"], rendered["size"]) == ("true", "123")

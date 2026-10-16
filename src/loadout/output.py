@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import stat
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal
@@ -77,6 +78,16 @@ def no_symlinks(path: Path, root: Path | None = None) -> None:
         if current in (root, current.parent):
             break
         current = current.parent
+
+
+def item_name(name: str, path: Path) -> str:
+    """A skill or agent name becomes a path segment and a `.gitignore` line, so it may
+    hold no control character and no separator, and may not be `.` or `..`."""
+    if any(unicodedata.category(c) == "Cc" for c in name):
+        raise LoadoutError(f"{path!r}: a name may not contain a control character")
+    if "/" in name or name in {"", ".", ".."}:
+        raise LoadoutError(f"{path}: {name!r} is not a usable name")
+    return name
 
 
 def regular_file(path: Path) -> None:

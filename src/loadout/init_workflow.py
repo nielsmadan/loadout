@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 import tomlkit
 
@@ -20,17 +20,20 @@ from .emit import render_all
 from .errors import LoadoutError, UsageError
 from .harnesses import KNOWN_HARNESSES
 from .init_options import InitOptions
-from .machine import load_machine_config, machine_config_path
+from .machine import load_machine_config, machine_config_path, resolve_profile
 from .migration import plan_migration
 from .migration_backup import (
     Backup,
+    Declared,
+    Restored,
     complete,
     create_backup,
     interrupted_backup,
     latest_backup,
+    record,
     restore,
 )
-from .migration_git import git
+from .migration_git import index_path
 from .migration_models import Issue, MigrationPlan, SourceWrite, Unadopted
 from .migration_transaction import (
     Delinked,
@@ -40,6 +43,7 @@ from .migration_transaction import (
     prepare_migration,
 )
 from .output import Merged, Output
+from .project import gitignore_entries
 from .written import written_state_path
 
 
@@ -186,6 +190,7 @@ def _show(preview: dict[str, Any], *, as_json: bool) -> None:
     for label, key in (("Write source", "source_writes"), ("Generate", "generated_writes")):
         for entry in preview[key]:
             print(f"{label}: {entry['path']}")
+    _show_private(preview["candidates"])
     for original in preview["originals"]:
         print(f"{original['action']}: {original['path']} ({original['reason']})")
     for delinked in preview.get("delinked", ()):
@@ -198,6 +203,15 @@ def _show(preview: dict[str, Any], *, as_json: bool) -> None:
         print(f"{issue['code']}: {issue['message']}", file=sys.stderr)
         for path in issue["paths"]:
             print(f"  {path}", file=sys.stderr)
+
+
+def _show_private(candidates: list[dict[str, Any]]) -> None:
+    """Each original adopted privately, with what made it so, so a false positive is
+    visible before approval."""
+    for candidate in candidates:
+        if candidate["disposition"] == "migrated" and candidate["private"]:
+            reason = candidate["private_reason"]
+            print(f"Private (stays on this machine): {candidate['path']}: {reason}")
 
 
 def _show_unadopted(items: list[dict[str, Any]]) -> None:
@@ -226,12 +240,7 @@ def _show_render(changes: tuple[RenderedChange, ...]) -> None:
 
 
 def _render_profile(plan: MigrationPlan) -> str:
-    if plan.inventory.scope == "project":
-        return "default"
-    machine = load_machine_config(machine_config_path(), require_source=False)
-    if machine is None or machine.source.resolve() != plan.inventory.source_root.resolve():
-        return "default"
-    return machine.profile or "default"
+    return resolve_profile(_render_root(plan))
 
 
 def _render_root(plan: MigrationPlan) -> Path:
@@ -401,9 +410,14 @@ def _run_init(options: InitOptions) -> int:
     if not plan.complete:
         _show(plan.preview(), as_json=options.json)
         return 2
-    prepared = prepare_migration(plan, machine_write=machine)
     profile = _render_profile(plan)
     render = () if plan.already_initialized else planned_render(plan, profile)
+    ignores = (
+        gitignore_entries(plan.inventory.root, (change.path for change in render))
+        if plan.inventory.scope == "project"
+        else ()
+    )
+    prepared = prepare_migration(plan, machine_write=machine, ignores=ignores)
     if (stopped := _preview(options, prepared, machine, render)) is not None:
         return stopped
     if not prepared.operations:
@@ -456,11 +470,29 @@ def _apply(
     plan = prepared.plan
     delinked = prepared.delinked()
     label = {"scope": plan.inventory.scope, "root": str(plan.inventory.root)}
-    if prepared.new_repository is not None:
-        label["repository"] = str(prepared.new_repository)
-    backup = create_backup(_touched(prepared, render), now=datetime.now(UTC), label=label)
+    root = _render_root(plan).absolute()
+    untracked = (
+        (
+            prepared.canonical(index_path(prepared.repository)),
+            prepared.repository,
+            prepared.untracked,
+        )
+        if prepared.repository is not None and prepared.untracked
+        else None
+    )
+    declared = Declared(
+        _planned(prepared, render),
+        records=(prepared.canonical(written_state_path(root)),),
+        untracked=untracked,
+        repository=prepared.new_repository,
+    )
+    backup = create_backup(_touched(prepared, render), declared, now=datetime.now(UTC), label=label)
     try:
         result = apply_migration(prepared)
+        record(backup, (prepared.canonical(path) for path in prepared.touched()))
+        if prepared.new_repository is not None:
+            created = prepared.canonical(prepared.new_repository / ".git")
+            record(backup, (created, *sorted(created.rglob("*"))), created=True)
         code = (
             0
             if plan.already_initialized
@@ -483,26 +515,64 @@ def _apply(
 
 def _touched(prepared: MigrationPreparation, render: tuple[RenderedChange, ...]) -> list[Path]:
     """What applying and the first render can change: the operations, the rendered outputs,
-    the render root's deployment state and its write record."""
+    the render root's deployment state and its write record, each in its one spelling."""
     plan = prepared.plan
     root = _render_root(plan).absolute()
     state = plan.inventory.source_root / ".loadout-state"
-    return [
+    paths = (
         *prepared.touched(),
         *(change.path for change in render),
         state,
         *(state / name for name in (".gitignore", "project.json", "global.json")),
         written_state_path(root),
-    ]
+    )
+    return list(dict.fromkeys(prepared.canonical(path) for path in paths))
+
+
+def _planned(
+    prepared: MigrationPreparation, render: tuple[RenderedChange, ...]
+) -> dict[Path, list[str]]:
+    """Every shape init may leave at each path it writes: what each operation writes,
+    then what the first render writes, which can differ for the same file."""
+    planned: dict[Path, list[str]] = {}
+    for operation in prepared.operations:
+        planned.setdefault(prepared.canonical(operation.path), []).append(operation.after.shape())
+    for change in render:
+        planned.setdefault(prepared.canonical(change.path), []).append(f"file:{change.sha256}")
+    return planned
 
 
 def _failed(backup: Backup, reason: str, *, as_json: bool) -> int:
-    restore(backup)
-    message = f"init failed ({reason}); everything it changed was restored from {backup.directory}"
+    restored = restore(backup)
+    message = f"init failed ({reason}); what it changed was restored from {backup.directory}"
     if as_json:
-        print(json.dumps({"status": "restored", "backup": str(backup.directory), "error": reason}))
+        print(
+            json.dumps({"status": "restored", "error": reason, **_restore_report(restored, backup)})
+        )
     print(f"loadout: {message}", file=sys.stderr)
+    _print_kept(restored, sys.stderr)
     return 1
+
+
+def _restore_report(restored: Restored, backup: Backup) -> dict[str, object]:
+    return {
+        "backup": str(backup.directory),
+        "kept": [str(path) for path in restored.kept],
+        "links": {str(path): target for path, target in restored.links.items()},
+    }
+
+
+def _print_kept(restored: Restored, stream: TextIO) -> None:
+    for path in restored.kept:
+        print(f"Kept, not init's to undo: {path}", file=stream)
+    for path, target in restored.links.items():
+        print(f"{path} used to link to {target}; it stays a directory for now.", file=stream)
+    if restored.kept:
+        print(
+            "The backup now holds only what was kept; run `loadout init restore` again "
+            "once those paths are dealt with.",
+            file=stream,
+        )
 
 
 def _after_migration(
@@ -538,37 +608,21 @@ def _commit_hint(plan: MigrationPlan) -> str:
     )
 
 
-def _unborn_repository(backup: Backup) -> frozenset[Path]:
-    """The source repository init created, while it still has no commit to lose."""
-    raw = backup.manifest().get("repository")
-    if not isinstance(raw, str) or not (Path(raw) / ".git").is_dir():
-        return frozenset()
-    unborn = git(Path(raw), "rev-parse", "--verify", "HEAD", check=False).returncode != 0
-    return frozenset({Path(raw) / ".git"}) if unborn else frozenset()
-
-
 def _restored(backup: Backup, *, as_json: bool) -> int:
-    kept = restore(backup, disposable=_unborn_repository(backup))
-    data = {
-        "status": "restored",
-        "backup": str(backup.directory),
-        "kept": [str(path) for path in kept],
-    }
+    restored = restore(backup)
     if as_json:
-        print(json.dumps(data, indent=2))
+        print(json.dumps({"status": "restored", **_restore_report(restored, backup)}, indent=2))
     else:
-        print(f"Restored everything init changed, from {backup.directory}.")
-        for path in kept:
-            print(f"Kept, changed since init: {path}")
-    return 1 if kept else 0
+        print(f"Restored what init changed, from {backup.directory}.")
+        _print_kept(restored, sys.stdout)
+    return 1 if restored.kept else 0
 
 
 def run_restore(*, yes: bool, as_json: bool) -> int:
     """Undo the latest adoption, or finish undoing one that was interrupted."""
     backup = interrupted_backup() or latest_backup()
     if backup is None:
-        print("loadout: no init backup to restore", file=sys.stderr)
-        return 2
+        raise LoadoutError("no init backup to restore; a backup is spent once it is restored")
     if not yes:
         if as_json or not sys.stdin.isatty():
             raise UsageError("init restore requires --yes")

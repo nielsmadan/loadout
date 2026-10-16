@@ -29,7 +29,7 @@ from .git_hook_commands import run_hook
 from .git_hooks import EVENTS, install_hooks, status_hooks, uninstall_hooks
 from .init_options import InitOptions
 from .init_workflow import run_init, run_restore
-from .machine import load_machine_config, machine_config_path
+from .machine import load_machine_config, machine_config_path, resolve_profile
 from .project import project_config_path
 from .staged import check_staged
 
@@ -138,6 +138,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="copy the template into this project and record its content hash",
     )
     add_root(add_template)
+    add_template.add_argument(
+        "--yes",
+        action="store_true",
+        help="apply a change to shared template parts without a prompt",
+    )
     for sub_name, sub_help in (
         ("list", "show each declared template, its mode and how it resolves"),
         ("sync", "update the vendored copy from its source"),
@@ -146,6 +151,11 @@ def build_parser() -> argparse.ArgumentParser:
         add_root(template_sub)
         if sub_name == "sync":
             template_sub.add_argument("name", help="template name")
+            template_sub.add_argument(
+                "--yes",
+                action="store_true",
+                help="apply a change to shared template parts without a prompt",
+            )
 
     integrate = subparsers.add_parser(
         "integrate", help="wire loadout into another system so it runs automatically"
@@ -204,16 +214,10 @@ def _add_skill(parser: argparse.ArgumentParser) -> None:
 
 
 def _resolve_root_and_profile(args: argparse.Namespace) -> tuple[Path, str]:
-    """Precedence for profile: explicit --profile > machine config's profile > 'default'."""
     if getattr(args, "use_global", False):
-        config_path = machine_config_path()
-        config = load_machine_config(config_path)
-        if config is None:
-            raise LoadoutError(
-                f"no machine config at {config_path}; run `loadout init global` first"
-            )
-        return config.source, args.profile or config.profile or "default"
-    return args.root.resolve(), args.profile or "default"
+        return _resolve_global(args.profile)
+    root = args.root.resolve()
+    return root, resolve_profile(root, args.profile)
 
 
 def _add_git_hooks(parser: argparse.ArgumentParser) -> None:
@@ -274,7 +278,7 @@ def _resolve_global(profile: str | None) -> tuple[Path, str]:
     config = load_machine_config(config_path)
     if config is None:
         raise LoadoutError(f"no machine config at {config_path}; run `loadout init global` first")
-    return config.source, profile or config.profile or "default"
+    return config.source, resolve_profile(config.source, profile)
 
 
 TEMPLATE_OUTSIDE_PROJECT = (
@@ -290,8 +294,8 @@ def _dispatch_template(args: argparse.Namespace) -> int:
     if args.template_command == "list":
         return cmd_template_list(root)
     if args.template_command == "add":
-        return cmd_template_add(root, args.name, args.template_mode)
-    return cmd_template_sync(root, args.name)
+        return cmd_template_add(root, args.name, args.template_mode, yes=args.yes)
+    return cmd_template_sync(root, args.name, yes=args.yes)
 
 
 def _add_init_choices(init: argparse.ArgumentParser) -> None:
@@ -408,23 +412,9 @@ def _dispatch(args: argparse.Namespace) -> int:
     return _dispatch_outputs(args)
 
 
-def _hook_profile(root: Path, explicit: str | None) -> str:
-    """Same precedence as sync/check: explicit > the machine config's > 'default'."""
-    if explicit:
-        return explicit
-    try:
-        config = load_machine_config(machine_config_path())
-    except LoadoutError:
-        # Hooks are repository-local; an unusable global config must not block them.
-        return "default"
-    if config is not None and config.source.resolve() == root:
-        return config.profile or "default"
-    return "default"
-
-
 def _dispatch_git_hooks(args: argparse.Namespace) -> int:
     root = args.root.resolve()
-    profile = _hook_profile(root, args.profile)
+    profile = resolve_profile(root, args.profile)
     if args.git_hook_command == "install":
         return install_hooks(
             root,

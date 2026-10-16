@@ -12,6 +12,8 @@ old file everywhere; `name` may be omitted and is otherwise checked against it.
 
 from __future__ import annotations
 
+import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,6 +22,7 @@ import tomlkit
 
 from .errors import LoadoutError
 from .harnesses import KNOWN_HARNESSES
+from .output import item_name
 from .skills import _TOP_LEVEL_KEY, apply_body, split_frontmatter
 
 AGENTS_SUBDIR = "agents"
@@ -65,12 +68,59 @@ def agent_file_name(name: str, harness: str) -> str:
 def discover_agents(directory: Path) -> tuple[Path, ...]:
     if not directory.is_dir():
         return ()
-    return tuple(sorted(p for p in directory.iterdir() if p.is_file() and p.suffix == ".md"))
+    found = sorted(p for p in directory.iterdir() if p.is_file() and p.suffix == ".md")
+    return tuple(p for p in found if item_name(p.stem, p))
+
+
+_BLOCK = re.compile(r"([|>])([+-]?)")
+
+
+def yaml_text(value: str, children: list[str], label: str) -> str:
+    """The text one frontmatter scalar holds: plain, single- or double-quoted, or a
+    `|` or `>` block over the indented lines beneath it."""
+    block = _BLOCK.fullmatch(value)
+    if block is not None:
+        return _block_text(block.group(1), block.group(2), children)
+    if children:
+        raise LoadoutError(f"{label}: a value over several lines must be a `|` or `>` block")
+    if value[:1] == '"':
+        try:
+            decoded = json.loads(value)
+        except ValueError:
+            raise LoadoutError(f"{label}: unreadable double-quoted value {value!r}") from None
+        if not isinstance(decoded, str):
+            raise LoadoutError(f"{label}: unreadable double-quoted value {value!r}")
+        return decoded
+    if value[:1] == "'" and value.endswith("'") and len(value) > 1:
+        return value[1:-1].replace("''", "'")
+    return value
+
+
+def _block_text(style: str, chomp: str, children: list[str]) -> str:
+    indent = min((len(line) - len(line.lstrip()) for line in children if line.strip()), default=0)
+    lines = [line[indent:] for line in children]
+    if style == "|":
+        text = "\n".join(lines)
+    else:
+        paragraphs: list[list[str]] = [[]]
+        for line in lines:
+            if line.strip():
+                paragraphs[-1].append(line)
+            elif paragraphs[-1]:
+                paragraphs.append([])
+        text = "\n".join(" ".join(paragraph) for paragraph in paragraphs if paragraph)
+    if chomp == "-":
+        return text.rstrip("\n")
+    return text.rstrip("\n") + "\n" if chomp == "" else text + "\n"
+
+
+def yaml_string(text: str) -> str:
+    """A double-quoted scalar: valid YAML whatever the text holds."""
+    return json.dumps(text, ensure_ascii=False)
 
 
 def _unquote(value: str) -> str:
-    quoted = value[:1] in {'"', "'"} and value.endswith(value[:1]) and len(value) > 1
-    return value[1:-1] if quoted else value
+    return yaml_text(value, [], "frontmatter")
 
 
 def _blocks(lines: list[str], label: str) -> dict[str, tuple[str, list[str]]]:
@@ -126,7 +176,7 @@ def parse_agent(path: Path) -> Agent:
             f"{label}: name {name!r} differs from the file name; OpenCode names an agent by "
             f"its file and the others by `name`, so the two must agree"
         )
-    description = blocks.get("description", ("", []))[0]
+    description = yaml_text(*blocks.get("description", ("", [])), label)
     if not description:
         raise LoadoutError(f"{label}: description is required; every harness needs one")
     models = _models(blocks.get("model"), label)
@@ -247,7 +297,7 @@ def render_agent(agent: Agent, harness: str) -> str:
     effort, _ = effort_for(agent, harness)
     extra = agent.extra.get(harness, ())
     lines = [] if harness == "opencode" else [f"name: {agent.name}"]
-    lines.append(f"description: {agent.description}")
+    lines.append(f"description: {yaml_string(agent.description)}")
     if harness == "opencode" and not any(line.startswith("mode:") for line in extra):
         # Omitted, OpenCode's mode is `all`, which also lists the agent as a primary one.
         lines.append("mode: subagent")
@@ -261,6 +311,8 @@ def render_agent(agent: Agent, harness: str) -> str:
 
 
 def _scalar(value: str) -> object:
+    """A plain `true`, `false` or integer keeps its TOML type; anything else is text,
+    so a quoted "true" stays a string."""
     if value in {"true", "false"}:
         return value == "true"
     if value.lstrip("-").isdigit():
@@ -272,7 +324,7 @@ def _render_codex(agent: Agent, body: str) -> str:
     document = tomlkit.document()
     document.add(tomlkit.comment(BANNER.format(name=agent.name)))
     document.add("name", agent.name)
-    document.add("description", _unquote(agent.description))
+    document.add("description", agent.description)
     if (model := agent.models.get("codex")) is not None:
         document.add("model", model)
     effort, _ = effort_for(agent, "codex")
@@ -327,7 +379,7 @@ def extract_agent(harness: str, text: str, stem: str) -> NativeAgent:
     effort = blocks.get(effort_key, ("", []))[0] if effort_key else ""
     return NativeAgent(
         name=name,
-        description=blocks.get("description", ("", []))[0],
+        description=yaml_text(*blocks.get("description", ("", [])), label),
         body=_strip_banner(body, name),
         model=_unquote(model) if model and _unquote(model) != "inherit" else None,
         effort=_unquote(effort) or None,
@@ -344,8 +396,10 @@ def _extract_codex(text: str, stem: str) -> NativeAgent:
             continue
         if isinstance(value, bool):
             extra.append(f"{key}: {'true' if value else 'false'}")
-        elif isinstance(value, (int, str)):
+        elif isinstance(value, int):
             extra.append(f"{key}: {value}")
+        elif isinstance(value, str):
+            extra.append(f"{key}: {yaml_string(value)}")
         else:
             raise LoadoutError(
                 f"codex agent {stem}: {key!r} holds a {type(value).__name__}, which a source "

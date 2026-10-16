@@ -229,3 +229,36 @@ def test_a_symlink_cycle_under_a_harness_root_is_still_refused(
         capsys.readouterr().err
     )
     assert (claude / "skills" / "loop").is_symlink()
+
+
+DE_LINKED_DOCUMENTS = {
+    "codex": (".codex", "config.toml", 'model = "gpt-5"\n', 'model = "gpt-5"'),
+    "droid": (
+        ".factory",
+        "settings.json",
+        '{"model": "custom:fast", "commandAllowlist": ["ls"]}\n',
+        '"model": "custom:fast"',
+    ),
+}
+
+
+@pytest.mark.parametrize("harness", sorted(DE_LINKED_DOCUMENTS))
+def test_a_de_linked_root_keeps_the_unowned_keys_of_its_shared_document(
+    tmp_path: Path, fake_home: Path, capsys, harness: str
+) -> None:
+    """Review 1.9: the shared document under a replaced link must be written when the link
+    goes, or the first render finds it absent and the unowned keys are lost."""
+    root, document, content, unowned = DE_LINKED_DOCUMENTS[harness]
+    dotfiles = tmp_path / "dotfiles" / harness
+    (dotfiles / document).parent.mkdir(parents=True)
+    (dotfiles / document).write_text(content)
+    (fake_home / root).symlink_to(dotfiles, target_is_directory=True)
+    before = _snapshot(dotfiles)
+    source = tmp_path / "src"
+    source.mkdir()
+
+    assert loadout.main(["init", "global", str(source), "--harness", harness, "--yes"]) == 0
+
+    assert not (fake_home / root).is_symlink()
+    assert unowned in (fake_home / root / document).read_text()
+    assert _snapshot(dotfiles) == before

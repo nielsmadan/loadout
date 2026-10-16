@@ -10,6 +10,7 @@ than being parsed and re-emitted.
 
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -17,6 +18,7 @@ from pathlib import Path
 
 from .errors import LoadoutError
 from .harnesses import KNOWN_HARNESSES
+from .output import item_name
 
 SKILL_DOCUMENT = "SKILL.md"
 
@@ -96,13 +98,18 @@ def _excluded(path: Path, relative: Path) -> bool:
 def _supporting(root: Path, document: Path) -> tuple[Path, ...]:
     if not root.is_dir():
         return ()
-    return tuple(
-        sorted(
-            item.relative_to(root)
-            for item in root.rglob("*")
-            if item.is_file() and item != document and not _excluded(item, item.relative_to(root))
+    found: list[Path] = []
+    for directory, directories, files in os.walk(root):
+        # Pruned before descending, so a vendored node_modules is never walked.
+        directories[:] = [name for name in directories if name not in EXCLUDED_DIRECTORIES]
+        here = Path(directory)
+        found.extend(
+            here / name
+            for name in files
+            if here / name != document
+            and not _excluded(here / name, (here / name).relative_to(root))
         )
-    )
+    return tuple(sorted(path.relative_to(root) for path in found if path.is_file()))
 
 
 def loose_skill_files(skills_root: Path) -> tuple[Path, ...]:
@@ -134,7 +141,7 @@ def discover_skills(skills_root: Path) -> tuple[Skill, ...]:
         if not document.is_file():
             continue
         is_local = entry.name.endswith(".local")
-        name = entry.name.removesuffix(".local") if is_local else entry.name
+        name = item_name(entry.name.removesuffix(".local") if is_local else entry.name, entry)
         target = local if is_local else public
         target[name] = Skill(name, document, entry, _supporting(entry, document))
 

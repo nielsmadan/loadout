@@ -72,6 +72,25 @@ def test_a_removed_skill_s_folder_is_retired_with_its_gitignore_entry(
     assert "/.claude/skills/gone/" not in ignored
 
 
+def test_an_orphan_already_deleted_still_loses_its_gitignore_entry(tmp_path: Path, capsys) -> None:
+    """Review 2.4: an output deleted by hand before its source goes is not retired by
+    sync, but its `.gitignore` entry must still go."""
+    source = _project(tmp_path)
+    removed = _skill(source, "gone")
+    assert _sync(tmp_path) == 0
+    _remove(tmp_path / ".claude" / "skills" / "gone")
+    _remove(removed)
+    capsys.readouterr()
+
+    assert _sync(tmp_path) == 0
+
+    assert "removed 1 entries from .gitignore" in capsys.readouterr().out
+    assert (tmp_path / ".gitignore").read_text().splitlines() == [
+        "/CLAUDE.md",
+        "/.claude/settings.json",
+    ]
+
+
 def test_retired_destinations_leave_the_record_and_the_next_sync_is_up_to_date(
     tmp_path: Path, capsys
 ) -> None:
@@ -288,3 +307,17 @@ def test_another_tool_s_hook_survives_retiring_the_settings_it_lives_in(
         capsys.readouterr().err
     )
     assert json.loads(settings.read_text())["hooks"]["PreCompact"] == hook
+
+
+def test_sync_counts_only_the_gitignore_entries_it_added(tmp_path: Path, capsys) -> None:
+    """Review 2.6: entries already in `.gitignore` are not counted as added."""
+    _project(tmp_path)
+    (tmp_path / ".gitignore").write_text("/CLAUDE.md\n")
+
+    assert _sync(tmp_path) == 0
+
+    assert "added 1 entries to .gitignore" in capsys.readouterr().out
+    assert (tmp_path / ".gitignore").read_text().splitlines() == [
+        "/CLAUDE.md",
+        "/.claude/settings.json",
+    ]

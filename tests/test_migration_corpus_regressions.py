@@ -59,3 +59,29 @@ def test_batched_privacy_keeps_nested_repositories_and_rechecks(tmp_path: Path) 
     assert ignored_paths((outer, inner)) == {outer}
     (nested / ".gitignore").write_text("inner.txt\n")
     assert ignored_paths((outer, inner)) == {outer, inner}
+
+
+def test_paths_in_many_directories_of_one_repository_share_one_probe(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Review 2.8: one Git run per repository, not one per directory."""
+    repository(tmp_path)
+    paths = []
+    for index in range(10):
+        directory = tmp_path / f"d{index}"
+        directory.mkdir()
+        paths.append(directory / "f.txt")
+        paths[-1].write_text("x\n")
+    (tmp_path / ".gitignore").write_text("d3/\n")
+    calls = []
+    original = subprocess.run
+
+    def run(command, *args, **kwargs):
+        if "check-ignore" in command:
+            calls.append(command)
+        return original(command, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", run)
+
+    assert ignored_paths(paths) == {tmp_path / "d3/f.txt"}
+    assert len(calls) == 1

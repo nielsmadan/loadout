@@ -8,6 +8,7 @@ import stat
 import subprocess
 from collections.abc import Mapping
 from dataclasses import replace
+from itertools import pairwise
 from pathlib import Path
 
 from .errors import LoadoutError
@@ -309,50 +310,151 @@ def _excluded(path: Path) -> bool:
     )
 
 
+def _privacy_reason(path: Path, content: bytes, format_name: str) -> str | None:
+    if _private(path):
+        return "its name marks it personal (.local)"
+    return credential_material(content, format_name)
+
+
 def _private(path: Path) -> bool:
     return ".local." in path.name or path.name.endswith(".local")
 
 
-def credential_material(content: bytes, format_name: str = "copy") -> bool:
+# What a secret's value looks like, wherever it sits. Each group names what it found,
+# so the preview can say why a file is kept private.
+SECRET_SHAPES = re.compile(
+    r"(?P<pem>-----BEGIN [A-Z ]*PRIVATE KEY-----)"
+    r"|(?P<token>\b(?:"
+    r"(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]{20,}"
+    r"|glpat-[A-Za-z0-9_-]{20,}"
+    r"|npm_[A-Za-z0-9]{30,}"
+    r"|sk-(?:ant-)?[A-Za-z0-9_-]{16,}"
+    r"|(?:AKIA|ASIA)[0-9A-Z]{16}"
+    r"|AIza[0-9A-Za-z_-]{30,}"
+    r"|xox[abpe]-[A-Za-z0-9-]{10,}"
+    r"|xapp-[A-Za-z0-9-]{10,}"
+    r"|eyJ[\w-]{8,}\.eyJ[\w-]{8,}\.[\w-]{8,}"
+    r")\b)"
+    r"|(?P<userinfo>\b[a-z][a-z0-9+.-]*://(?:[^/\s:@]+:[^/\s@]+|[^/\s:@]{20,})@)"
+    r"|(?P<basic>(?i:\bauthorization)\s*[:=]\s*[\"']?Basic\s+[A-Za-z0-9+/]{8,}=*)"
+    r"|(?P<userpass>\b(?:curl|wget|http)\b[^\n]*?\s(?:-u|--user)[ =][^\s:]+:\S+)"
+    r"|(?P<aws>(?i:\baws_secret_access_key)\s*[:=]\s*\S+)"
+    r"|(?P<query>[?&](?:key|api_key|apikey|access_token|token)=[^&\s\"']{8,})"
+)
+SHAPE_REASONS = {
+    "pem": "a private key",
+    "token": "a token in a provider's format",
+    "userinfo": "credentials in a URL",
+    "basic": "an HTTP Basic credential",
+    "userpass": "a user:password on an HTTP client's command line",
+    "aws": "an aws_secret_access_key",
+    "query": "a key in a URL query",
+}
+LABELLED_SECRET = re.compile(
+    r"(?i)(?:bearer\s+(?!\$|\{)[\w.+/=-]+|(?:api[_-]?key|password|secret|token)\s*[:=]\s*[\"']?(?!\$|\{)[\w.+/=-]+)"
+)
+# A flag whose whole last word names a secret; `--api-key-file`, `--max-tokens` and
+# `--token-limit` name something else.
+SECRET_FLAG = re.compile(
+    r"(?i)^--?(?:[a-z0-9]+-)*"
+    r"(?:token|api-?key|secret|password|pass|auth-token|access-key|private-key|pat|auth)$"
+)
+VALUE_MAPS = frozenset({"env", "headers", "http_headers", "environment"})
+PLAIN_HEADERS = frozenset(
+    {"accept", "accept-encoding", "accept-language", "cache-control", "content-type", "user-agent"}
+)
+PLAIN_VARIABLE = re.compile(
+    r"(?i)^(?:PATH|PATH_\w*|\w*_PATH|HOME|LANG|LC_\w+|TERM|TZ|SHELL|\w*_ENV|DEBUG|\w*LOG_LEVEL"
+    r"|DISABLE_\w*|ENABLE_\w*|NO_COLOR|FORCE_COLOR|CI)$"
+)
+PLAIN_VALUE = re.compile(r"(?i)^(?:-?\d+(?:\.\d+)?|true|false|yes|no|on|off|[~.]?/.*)$")
+
+
+def _placeholder(found: str) -> bool:
+    """A documentation stand-in: AWS's `…EXAMPLE` keys, or a run of x's."""
+    core = re.sub(
+        r"^(?:sk-(?:ant-)?|gh[pousr]_|github_pat_|glpat-|npm_|xox[abpe]-|xapp-)", "", found
+    )
+    return found.endswith("EXAMPLE") or set(core.replace("-", "").replace("_", "")) <= {"x", "X"}
+
+
+def credential_material(content: bytes, format_name: str = "copy") -> str | None:
+    """Why `content` looks like it holds a secret, or None when it does not."""
     text = content.decode("utf-8", errors="replace")
-    if re.search(
-        r"(?i)(?:bearer\s+(?!\$|\{)[\w.+/=-]+|(?:api[_-]?key|password|secret|token)\s*[:=]\s*[\"']?(?!\$|\{)[\w.+/=-]+)",
-        text,
-    ):
-        return True
+    for match in SECRET_SHAPES.finditer(text):
+        if not _placeholder(match.group(0)):
+            return SHAPE_REASONS[match.lastgroup or "token"]
+    if LABELLED_SECRET.search(text):
+        return "a value labelled as a secret"
     if format_name not in {"json", "toml"}:
-        return False
+        return None
     try:
         document = parse_document(text, format_name)
     except LoadoutError:
-        return False
+        return None
     return _credential_value(document)
 
 
-def _credential_value(value: object, key: str = "") -> bool:
+def _credential_value(value: object, key: str = "") -> str | None:
     if isinstance(value, dict):
-        return any(
-            _credential_value(v, str(k))
-            or (
-                key.lower() in {"env", "headers", "http_headers"}
-                and isinstance(v, str)
-                and bool(v)
-                and not _environment_reference(v)
-            )
-            for k, v in value.items()
-        )
+        found = (_map_entry(key, str(name), item) for name, item in value.items())
+        return next((reason for reason in found if reason is not None), None)
     if isinstance(value, list):
-        return any(_credential_value(v, key) for v in value)
+        found = (_credential_value(item, key) for item in value)
+        first = next((reason for reason in found if reason is not None), None)
+        return first or _flagged_secret([item for item in value if isinstance(item, str)])
+    return _string_secret(key, value)
+
+
+def _map_entry(key: str, name: str, item: object) -> str | None:
+    if key.lower() in VALUE_MAPS:
+        if _plain_entry(name, item):
+            return None
+        if isinstance(item, str):
+            return f"{key}.{name}"
+    return _credential_value(item, name)
+
+
+def _string_secret(key: str, value: object) -> str | None:
+    if not isinstance(value, str) or not value:
+        return None
     sensitive = re.search(
         r"(?i)(?:authorization|credential|password|secret|token|api[_-]?key)", key
     )
+    if sensitive and not _environment_reference(value) and not key.endswith("_env_var"):
+        return f"{key} holds a literal value"
+    return _flagged_secret(value.split())
+
+
+def _plain_entry(name: str, value: object) -> bool:
+    """An environment or header entry that cannot be a secret: a number, a switch, a
+    path, an environment reference, or a name that never holds one."""
+    if not isinstance(value, str):
+        return True
     return bool(
-        sensitive
-        and isinstance(value, str)
-        and value
-        and not _environment_reference(value)
-        and not key.endswith("_env_var")
+        not value
+        or PLAIN_VALUE.match(value)
+        or _environment_reference(value)
+        or name.lower() in PLAIN_HEADERS
+        or PLAIN_VARIABLE.match(name)
     )
+
+
+def _flagged_secret(words: list[str]) -> str | None:
+    """The value after a `--token`, `--api-key` and the like, or given as `--token=…`,
+    in an argument list or a command line."""
+    for word in words:
+        flag, _, inline = word.partition("=")
+        if inline and SECRET_FLAG.match(flag) and _literal(inline):
+            return f"the value of {flag}"
+    for flag, value in pairwise(words):
+        if SECRET_FLAG.match(flag) and _literal(value):
+            return f"the value after {flag}"
+    return None
+
+
+def _literal(value: str) -> bool:
+    return bool(value) and not value.startswith("-") and not _environment_reference(value)
 
 
 def _environment_reference(value: str) -> bool:
@@ -616,9 +718,10 @@ class _InventoryBuilder:
             "Mapped native artifact.",
             content,
             stat.S_IMODE(path.stat().st_mode),
-            _private(path) or credential_material(content, privacy_format),
+            bool(reason := _privacy_reason(path, content, privacy_format)),
             format_name,
             _private(path),
+            reason or "",
         )
 
     def _unresolved(
@@ -822,12 +925,14 @@ def discover(
     )
     published = _published_settings(builder, root, agents, scope)
     candidates = tuple(
-        replace(c, private=False, personal=False)
+        replace(c, private=False, personal=False, private_reason="")
         if c.path in published
         else replace(
             c,
             private=c.private or (c.canonical or c.path) in ignored,
             personal=c.personal or (c.canonical or c.path) in ignored,
+            private_reason=c.private_reason
+            or ("Git ignores it" if (c.canonical or c.path) in ignored else ""),
         )
         if c.disposition == "migrated"
         else c

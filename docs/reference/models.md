@@ -157,6 +157,9 @@ must equal it, so renaming the file retires the old agent everywhere.
 - **OpenCode** gets `mode: subagent` unless the agent's OpenCode block sets a mode.
 - **Pi** output needs the `pi-subagents` package installed; Pi core has no subagents.
 - Anything else harness-specific goes in a block keyed by the harness and is written only there.
+- `description` may be plain, quoted, or a `|` or `>` block; it is written as a double-quoted
+  string, so a colon or `#` in it stays text. A quoted value in a Codex block, such as
+  `sandbox_mode: "true"`, stays a TOML string; a plain `true` or integer keeps its type.
 
 **A skill's Claude-only keys go to Claude only.** `model`, `effort`, `context` and `agent` at the top
 level of a skill's frontmatter are written into Claude's copy and left out of every other harness's,

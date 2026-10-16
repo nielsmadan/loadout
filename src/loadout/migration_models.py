@@ -52,6 +52,7 @@ class Candidate:
     private: bool = False
     format: str = "copy"
     personal: bool = False
+    private_reason: str = ""
 
     @property
     def document_name(self) -> str:
@@ -98,6 +99,7 @@ class Inventory:
                     "disposition": c.disposition,
                     "reason": c.reason,
                     "private": c.private,
+                    "private_reason": c.private_reason,
                     "format": c.format,
                     "mode": c.mode,
                 }

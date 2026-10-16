@@ -51,7 +51,7 @@ def test_one_agent_in_two_harnesses_becomes_one_source_agent(
     assert code == 0
     assert (source / "loadout/agents/reviewer.md").read_text() == (
         "---\n"
-        "description: Reviews a diff.\n"
+        'description: "Reviews a diff."\n'
         "model:\n"
         "  claude: sonnet\n"
         "  codex: gpt-5.5\n"
@@ -75,7 +75,7 @@ def test_an_agent_from_one_harness_reaches_the_others(
     assert code == 0
     rendered = (fake_home / ".pi/agent/agents/reviewer.md").read_text()
     assert rendered.startswith(
-        "---\nname: reviewer\ndescription: Reviews a diff.\nthinking: high\n---\n"
+        '---\nname: reviewer\ndescription: "Reviews a diff."\nthinking: high\n---\n'
     )
     assert "Review the diff." in rendered
 
@@ -158,3 +158,21 @@ def test_a_project_agent_is_adopted_and_its_outputs_ignored(tmp_path: Path, caps
     assert {"/.claude/agents/reviewer.md", "/.codex/agents/reviewer.toml"} <= ignored
     capsys.readouterr()
     assert loadout.main(["check", "--root", str(root)]) == 0
+
+
+def test_a_block_scalar_description_survives_adoption(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    """Review 2.2: `description: |` used to come back as the bare `|`."""
+    _write(
+        fake_home / ".claude/agents/reviewer.md",
+        "---\nname: reviewer\ndescription: |\n  Reviews a diff.\n  Strictly.\n---\n\nReview.\n",
+    )
+
+    code, source = _init_global(tmp_path, "claude")
+
+    assert code == 0
+    assert (
+        'description: "Reviews a diff.\\nStrictly.\\n"\n'
+        in (source / "loadout/agents/reviewer.md").read_text()
+    )

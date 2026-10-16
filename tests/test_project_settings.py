@@ -142,19 +142,20 @@ def test_the_settings_source_is_the_residual_rather_than_the_file_on_disk(
 
 def test_an_untracked_settings_value_never_reaches_committed_source(tmp_path: Path, capsys) -> None:
     root = _project(tmp_path / "p", {"opencode.json": json.dumps(OPENCODE)})
+    secret = {"permissions": {"deny": ["Bash(rm:*)"]}, "env": {"DEPLOY_KEY": "abc123secret"}}
     (root / ".claude").mkdir()
-    (root / ".claude/settings.json").write_text(json.dumps(CLAUDE))
+    (root / ".claude/settings.json").write_text(json.dumps(secret))
 
     assert _init(root) == 0
     _git(root, "add", "-A")
     _git(root, "commit", "-qm", "loadout")
 
     private = root / "loadout/settings/claude.json"
-    assert _read(private) == {"env": {"NODE_ENV": "test"}}
+    assert _read(private) == {"env": {"DEPLOY_KEY": "abc123secret"}}
     assert _git(root, "check-ignore", str(private)).stdout.strip() == str(private)
-    committed = _git(root, "grep", "-l", "NODE_ENV", "HEAD", "--", ".", check=False)
+    committed = _git(root, "grep", "-l", "abc123secret", "HEAD", "--", ".", check=False)
     assert (committed.returncode, committed.stdout) == (1, "")
-    assert _read(root / ".claude/settings.json")["env"] == {"NODE_ENV": "test"}
+    assert _read(root / ".claude/settings.json")["env"] == {"DEPLOY_KEY": "abc123secret"}
 
 
 def test_a_project_droid_settings_file_is_not_treated_as_runtime_state(

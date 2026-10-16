@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -86,6 +87,18 @@ class MigrationPreparation:
         return tuple(
             dict.fromkeys((*(o.path for o in self.operations), *receipts, *index, *repository))
         )
+
+    def canonical(self, path: Path) -> Path:
+        """The one spelling of `path` a backup records. Beneath a link init replaces it
+        stays at the harness path; anywhere else its parent is resolved, so a link above
+        a harness root (written through, ADR 0023) is never an ancestor of a backup path."""
+        normalized = _layout(self.plan).normalize(path)
+        replaced = {
+            o.path for o in self.operations if o.phase == "topology" and o.before.kind == "symlink"
+        }
+        if normalized in replaced or replaced.intersection(normalized.parents):
+            return normalized
+        return entry_path(normalized)
 
     def delinked(self) -> tuple[Delinked, ...]:
         """Read before applying: afterwards the links are gone."""
@@ -185,15 +198,20 @@ def _links(plan: MigrationPlan, outputs: tuple[Path, ...]) -> tuple[Path, ...]:
 def _mirror(
     builder: _Builder,
     path: Path,
-    outputs: tuple[Path, ...],
+    outputs: Mapping[Path, FrozenFile],
     plan: MigrationPlan,
 ) -> None:
+    """Rebuild a replaced link's directory: entries loadout does not write link back
+    into the target, and each output it does is written now with what it will hold, so
+    a shared document keeps the keys loadout does not own once the link is gone."""
     originals = {entry_path(o.path): o for o in plan.originals}
     retired = tuple(entry_path(p) for p in plan.obsolete)
     for child in sorted(path.iterdir()):
         adopted = tuple(p for p in outputs if p == child or p.is_relative_to(child))
         if adopted:
             if child in adopted:
+                frozen = outputs[child]
+                builder.put(child, Image("file", frozen.content, frozen.mode), "topology")
                 continue
             if not child.is_dir():
                 raise LoadoutError(f"destination topology conflicts with a file: {child}")
@@ -208,8 +226,8 @@ def _mirror(
             builder.put(child, Image("symlink", os.fsencode(target), 0o777), "topology")
 
 
-def _topology(builder: _Builder, plan: MigrationPlan, outputs: tuple[Path, ...]) -> None:
-    for link in _links(plan, outputs):
+def _topology(builder: _Builder, plan: MigrationPlan, outputs: Mapping[Path, FrozenFile]) -> None:
+    for link in _links(plan, tuple(outputs)):
         directory = link.is_dir()
         builder.put(link, Image(), "topology")
         if directory:
@@ -324,7 +342,8 @@ def _ignore_lines(plan: MigrationPlan) -> tuple[str, ...]:
 
 def _append_ignores(content: bytes, patterns: tuple[str, ...]) -> bytes:
     text = content.decode()
-    missing = [p for p in patterns if p not in text.splitlines()]
+    present = set(text.splitlines())
+    missing = [p for p in dict.fromkeys(patterns) if p not in present]
     if not missing:
         return content
     return (
@@ -356,7 +375,7 @@ def _filesystem_plan(
         if machine_write.path.is_relative_to(plan.inventory.source_root):
             raise LoadoutError("machine registration must not overlap authored source")
     frozen = _frozen_outputs(plan)
-    _topology(builder, plan, tuple(frozen))
+    _topology(builder, plan, frozen)
     layout = _layout(plan)
     private = tuple(layout.normalize(p) for p in plan.private_paths)
     for write in plan.source_writes:
@@ -389,8 +408,13 @@ def _filesystem_plan(
 
 
 def prepare_migration(
-    plan: MigrationPlan, *, machine_write: SourceWrite | None = None
+    plan: MigrationPlan,
+    *,
+    machine_write: SourceWrite | None = None,
+    ignores: tuple[str, ...] = (),
 ) -> MigrationPreparation:
+    """`ignores` are the lines the first render will add to `.gitignore`, written now so
+    the render finds them there."""
     if not plan.complete:
         raise LoadoutError("migration requires a fully resolved, validated plan")
     _verify_environment(plan)
@@ -414,7 +438,7 @@ def prepare_migration(
             ignore_path,
             Image(
                 "file",
-                _append_ignores(current.content, _ignore_lines(plan)),
+                _append_ignores(current.content, (*_ignore_lines(plan), *ignores)),
                 current.mode if current.kind == "file" else 0o644,
             ),
             "ignore",

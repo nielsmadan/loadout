@@ -54,8 +54,9 @@ copy and are excluded by the skill renderer; native markers live in `.loadout-bu
 deployable trees. Native installation work and recoverable originals stay under private,
 gitignored `.loadout-state/`. Reinstalling refreshes an unchanged older copy. A source copy you edited, an unowned
 skill with the same name, or a generated output edited outside Loadout is reported and left alone.
-Uninstall removes only the owned source and unchanged files rendered from it; unrelated files in
-the destination directory survive.
+Uninstall removes only the owned source and the files rendered from it that sync would accept as
+its own (the current render, what was committed, or what sync last wrote); unrelated files in the
+destination directory survive.
 When uninstalling an overriding copy, the command also removes its `loadout` override entry from
 the manifest that declares it, preserving other entries, comments and file mode. The earlier
 source's skill becomes active again and the command's sync deploys it. An inherited declaration
@@ -215,7 +216,10 @@ which is correct for someone who only uses project scope. `loadout sync --global
 fails and names the file to create. `loadout init project` notes its absence and carries on.
 
 For `sync` and `check`, `--global` and `--root` are mutually exclusive; `--global` resolves the root from the machine
-config. `--profile` still wins over the machine config's `profile` when both are given.
+config. Every run picks its profile by one rule: `--profile` when given; otherwise the machine
+config's `profile` when the root is the registered global source, whether named by `--global`,
+by `--root`, by a git hook or by init; otherwise `default`. So a manual sync and a hook-run sync of
+the global source render the same profile, and neither retires the other's outputs.
 
 ## `loadout.toml`
 
@@ -523,8 +527,8 @@ Both `[instructions.<agent>]` and `[permissions.<name>]` targets accept an optio
 key, as `instructions.claude-autonomous` does above. It selects which targets render for the
 machine's **active profile**:
 
-- The active profile is the literal string `"default"` unless overridden with `--profile NAME`
-  on `sync` or `check`.
+- The active profile is `--profile NAME` when given, else the machine config's `profile` when
+  syncing or checking the registered global source, else the literal string `"default"`.
 - A target declaring `profile = X` renders only when the active profile is `X`.
 - A target with **no** `profile` renders under every active profile. This is what keeps the
   rest of the manifest — `instructions.shared`, and every `[permissions.<name>]` target that
@@ -646,6 +650,16 @@ since even empty it makes `bash` ask; its project file is written only with a ru
 written, empty when there are no rules. Nor does sync create `~/.codex/config.toml` just to leave
 it empty.
 
+Project-scope sync writes only inside the project, and edits `.gitignore` only when it is a
+regular file rather than a symlink. A symlink committed to the repository, such as
+`.claude -> ../../.claude`, would otherwise route its outputs into a home directory, so sync refuses
+before writing anything and names each path and where it resolves. The same holds for what it
+reads: a link anywhere in `loadout/` that leads out of the project, such as a skill's supporting
+file pointing at a key in `~/.ssh`, is refused rather than copied into the repository's outputs.
+Linked folders are followed, so a folder linked to somewhere else in the project is checked for
+what it holds; folders never read, such as a skill's `.venv` or `node_modules`, are skipped.
+Both checks run before sync or check compares anything, so no diff of an outside file is shown.
+
 Generated project files are ignored and removed from the final index while remaining available to
 the harness. `.gitignore` lists exactly what sync wrote: with no `mcp.toml` there is no `.mcp.json`
 entry, so one written by `claude mcp add` stays committable, and a skill is listed by its own folder
@@ -707,7 +721,9 @@ loadout/skills/review/SKILL.md
 loadout/skills/review/reference.md
 ```
 
-That is the only skill form. A file directly in `loadout/skills/` is not a skill: `README.md`
+That is the only skill form. A skill's folder name, like an agent's file name, may not hold a
+control character such as a line break, a `/`, or be `.` or `..`, since it becomes a path and a
+`.gitignore` line. A file directly in `loadout/skills/` is not a skill: `README.md`
 documents the directory and is skipped silently, and any other loose file is skipped with a notice
 from `sync` and `check`.
 
@@ -863,7 +879,7 @@ Full detail, including the content-hash definition: [docs/reference/templates.md
 | Code | Meaning |
 | ---- | ------- |
 | 0 | clean — nothing to do, or drift check found no differences |
-| 1 | drift, refused safe update, interrupted migration, or recovery conflicts |
-| 2 | usage error, unresolved init choices, or missing noninteractive approval |
-| 3 | source or deployment error — missing/invalid input or receipt, unsafe destination or ownership collision |
+| 1 | drift, refused safe update, an init that failed and restored itself, or a restore that kept paths |
+| 2 | usage error, unresolved init choices, missing noninteractive approval, or an interrupted init found by the next one |
+| 3 | source error — missing or invalid input, unsafe destination, or ownership collision |
 | 4 | internal error — an unexpected exception; a traceback is printed to stderr |

@@ -46,6 +46,7 @@ from .subagents import (
     NativeAgent,
     agent_file_name,
     extract_agent,
+    yaml_string,
 )
 
 CODEX_RULES_OUTPUT = Path(PROJECT_PRESET["codex"]["permissions"].output or "").name
@@ -230,10 +231,12 @@ def _authored(candidate: Candidate, scope: str | None) -> Candidate:
         }
     )
     content = serialize_document(authored, candidate.format)
+    reason = credential_material(content, candidate.format)
     return replace(
         candidate,
         content=content,
-        private=credential_material(content, candidate.format) or candidate.personal,
+        private=bool(reason) or candidate.personal,
+        private_reason=reason or (candidate.private_reason if candidate.personal else ""),
     )
 
 
@@ -526,13 +529,18 @@ class _PlanBuilder:
                                 for name, entry in document.get("mcpServers", {}).items()
                             },
                         }
-                    extracted = (
-                        extract_codex_servers(candidate.content.decode()).value
+                    extraction = (
+                        extract_codex_servers(candidate.content.decode())
                         if spec.renderer == "codex-config"
-                        else extract_codex_plugins(candidate.content.decode()).value
+                        else extract_codex_plugins(candidate.content.decode())
                         if spec.renderer == "codex-plugins"
-                        else extract_value(spec.renderer, extracted_document).value
+                        else extract_value(spec.renderer, extracted_document)
                     )
+                    extracted = extraction.value
+                    if existing:
+                        self.notes.extend(
+                            f"{candidate.destination}: {note.detail}" for note in extraction.notes
+                        )
                     if existing or extracted:
                         self.global_values[category].append((agent, extracted))
                         self.global_slices[agent].add(category)
@@ -562,7 +570,12 @@ class _PlanBuilder:
                     )
                     self.project_values[category].append((agent, rules))
                 elif category in {"hooks", "plugins", "mcp"}:
-                    value = extract_value(spec.renderer or "", document).value
+                    extraction = extract_value(spec.renderer or "", document)
+                    value = extraction.value
+                    if existing:
+                        self.notes.extend(
+                            f"{candidate.destination}: {note.detail}" for note in extraction.notes
+                        )
                     if not existing and not value:
                         continue
                     self.project_values[category].append((agent, value))
@@ -1374,7 +1387,7 @@ def _adopt_agents(builder: _PlanBuilder, candidates: tuple[Candidate, ...]) -> N
             continue
         copies[native.name].append((harness, candidate, native))
     for name, group in sorted(copies.items()):
-        texts = {(_unquoted(n.description), n.body.strip()) for _, _, n in group}
+        texts = {(n.description, n.body.strip()) for _, _, n in group}
         if len(texts) > 1:
             builder.leave_out("agent", name, [c for _, c, _ in group])
             continue
@@ -1389,17 +1402,10 @@ def _adopt_agents(builder: _PlanBuilder, candidates: tuple[Candidate, ...]) -> N
             )
 
 
-def _unquoted(value: str) -> str:
-    quoted = value[:1] in {'"', "'"} and value.endswith(value[:1]) and len(value) > 1
-    return value[1:-1] if quoted else value
-
-
 def _source_agent(group: list[tuple[str, Candidate, NativeAgent]]) -> str:
     """The source agent whose render gives each harness what its copy says."""
     markdown = next((n for h, _, n in group if h != "codex"), None)
-    description = (
-        markdown.description if markdown is not None else _yaml_scalar(group[0][2].description)
-    )
+    description = yaml_string((markdown or group[0][2]).description)
     body = (markdown or group[0][2]).body
     lines = [f"description: {description}"]
     models = [(h, n.model) for h, _, n in group if n.model is not None]
@@ -1418,11 +1424,6 @@ def _source_agent(group: list[tuple[str, Candidate, NativeAgent]]) -> str:
         if native.extra:
             lines += [f"{harness}:", *(f"  {line}" for line in native.extra)]
     return "---\n" + "\n".join(lines) + "\n---\n" + body
-
-
-def _yaml_scalar(text: str) -> str:
-    plain = text and text[0] not in "\"'#&*!|>%@`[]{}-?:," and ": " not in text and " #" not in text
-    return text if plain else json.dumps(text)
 
 
 def _item_path(kind: str, name: str, candidate: Candidate) -> Path:

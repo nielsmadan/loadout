@@ -525,8 +525,9 @@ def prepare_deployment(
     )
 
 
-def atomic_install(path: Path, frozen: FrozenFile) -> None:
-    _no_symlinks(path)
+def atomic_install(path: Path, frozen: FrozenFile, boundary: Path | None = None) -> None:
+    """Replace `path` with `frozen`, refusing a link between it and `boundary` (or `/`)."""
+    _no_symlinks(path, boundary)
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix=".loadout-")
     try:
@@ -535,7 +536,7 @@ def atomic_install(path: Path, frozen: FrozenFile) -> None:
             handle.flush()
             os.fchmod(handle.fileno(), frozen.mode)
             os.fsync(handle.fileno())
-        _no_symlinks(path)
+        _no_symlinks(path, boundary)
         os.replace(temporary, path)
     except BaseException:
         Path(temporary).unlink(missing_ok=True)

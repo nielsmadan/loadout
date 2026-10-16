@@ -83,6 +83,22 @@ def test_skill_install_vendors_into_the_global_source_and_syncs(
     assert (fake_home / ".codex" / "skills" / "loadout" / "SKILL.md").is_file()
 
 
+def test_skill_uninstall_refused_over_an_edited_output_is_a_source_error(
+    tmp_path: Path, monkeypatch, fake_home: Path, capsys
+) -> None:
+    """Review 2.10: a LoadoutError exits 3 here as everywhere else."""
+    _global_skill_root(tmp_path, monkeypatch)
+    assert loadout.main(["integrate", "skill", "install", "--yes"]) == 0
+    output = fake_home / ".claude" / "skills" / "loadout" / "SKILL.md"
+    output.write_text("my edit\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert loadout.main(["integrate", "skill", "uninstall", "--yes"]) == 3
+
+    assert "was modified outside loadout" in capsys.readouterr().err
+    assert output.read_text(encoding="utf-8") == "my edit\n"
+
+
 def test_skill_status_reports_the_source_copy_and_configured_agents(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:

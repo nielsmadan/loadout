@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import stat
 import tempfile
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path, PurePosixPath
@@ -70,12 +71,15 @@ from .project import (
     load_project_config,
     project_config_path,
     project_slices,
+    refuse_escaping,
+    refuse_external_links,
 )
 from .record import read_record, render_record
 from .resolve import INSTRUCTIONS, SETTINGS, json_slice, resolve_item
 from .servers import SERVERS_SOURCE, Server, parse_servers
 from .skill_policy import SkillPolicy, render_skill_for, selected_skill_agents
 from .skills import (
+    EXCLUDED_DIRECTORIES,
     SKILL_DOCUMENT,
     Skill,
     check_skill_agents,
@@ -972,21 +976,21 @@ def skill_trees(manifest: Manifest) -> tuple[Skill, ...]:
 def _expand_every_skill(
     manifest: Manifest, outputs: dict[Path, Output], claimed: dict[Path, str]
 ) -> None:
-    if manifest.skills:
-        _check_skill_agents(skill_trees(manifest), manifest.skill_policies, source_agents(manifest))
+    if not manifest.skills:
+        return
+    trees = skill_trees(manifest)
+    _check_skill_agents(trees, manifest.skill_policies, source_agents(manifest))
     for skills_target in manifest.skills:
-        _expand_skills(skills_target, manifest, outputs, claimed)
+        _expand_skills(skills_target, manifest, trees, (outputs, claimed))
 
 
 def _expand_skills(
     target: SkillsTarget,
     manifest: Manifest,
-    outputs: dict[Path, Output],
-    claimed: dict[Path, str],
+    trees: tuple[Skill, ...],
+    state: tuple[dict[Path, Output], dict[Path, str]],
 ) -> None:
-    trees = skill_trees(manifest)
-    if not trees:
-        return
+    outputs, claimed = state
     for destination in target.destinations:
         base = resolve_destination(str(destination), f"{target.agent}.skills")
         for skill in trees:
@@ -1195,8 +1199,14 @@ def _project_source_inputs(root: Path, config: ProjectConfig) -> tuple[Path, ...
 
 
 def render_project(root: Path) -> dict[Path, Output]:
+    refuse_external_links(root, EXCLUDED_DIRECTORIES)
     config = load_project_config(project_config_path(root))
-    return _render_project_slices(root, config)
+    outputs = _render_project_slices(root, config)
+    # Before anything compares or shows these: a diff of a file outside the project
+    # would print it.
+    records = (r for c in outputs.values() if isinstance(c, Merged) for r, _ in c.records)
+    refuse_escaping(root, (*outputs, *records))
+    return outputs
 
 
 def _project_rules(root: Path, config: ProjectConfig, catalogs: Mapping[Path, Catalog]) -> Rules:
@@ -1569,7 +1579,7 @@ def write_outputs(
     deployment = prepare_deployment(scopes, outputs, force=force)
     if deployment.conflicts:
         raise DeploymentConflict("; ".join(deployment.conflicts))
-    frozen: dict[Path, str | FrozenFile] = {}
+    frozen: dict[Path, str | FrozenFile | Copied] = {}
     for path, content in outputs.items():
         if path not in deployment.managed:
             frozen.update(_frozen(path, content))
@@ -1582,27 +1592,30 @@ def write_outputs(
         path.parent.mkdir(parents=True, exist_ok=True)
         if isinstance(frozen_content, FrozenFile):
             _atomic_frozen_copy(path, frozen_content.content, frozen_content.mode)
+        elif isinstance(frozen_content, Copied):
+            _atomic_stream_copy(path, frozen_content)
         else:
             atomic_write(path, frozen_content)
         written.append(path)
     return written
 
 
-def _frozen(path: Path, content: Output) -> dict[Path, str | FrozenFile]:
-    if isinstance(content, FrozenFile):
+def _frozen(path: Path, content: Output) -> dict[Path, str | FrozenFile | Copied]:
+    if isinstance(content, FrozenFile | Copied):
+        # A copy stays a reference and is streamed when written, never held whole.
         return {path: content}
-    if isinstance(content, Copied):
-        return {path: FrozenFile(content.read_bytes(), content.file_mode())}
     if isinstance(content, Merged):
         applied = created_document(path, content)
         return {**({path: applied} if applied is not None else {}), **dict(content.records)}
     return {path: content}
 
 
-def _unchanged(path: Path, content: str | FrozenFile) -> bool:
+def _unchanged(path: Path, content: str | FrozenFile | Copied) -> bool:
     """Same bytes already there, so rewriting would only move the mtime."""
     if not path.is_file():
         return False
+    if isinstance(content, Copied):
+        return _same_copy(path, content)
     if isinstance(content, FrozenFile):
         return (
             path.read_bytes() == content.content
@@ -1611,9 +1624,12 @@ def _unchanged(path: Path, content: str | FrozenFile) -> bool:
     return path.read_bytes() == content.encode("utf-8")
 
 
-def check_all(root: Path, profile: str = "default") -> list[tuple[Path, str, str]]:
+def check_all(
+    root: Path, profile: str = "default", outputs: Mapping[Path, Output] | None = None
+) -> list[tuple[Path, str, str]]:
+    """Every output on disk that differs from `outputs`, rendered here when not given."""
     root = root.absolute()
-    outputs = render_all(root, profile)
+    outputs = render_all(root, profile) if outputs is None else outputs
     deployment = prepare_deployment(artifact_deployment_scopes(root, profile), outputs)
     drift = list(deployment.drift)
     for path in deployment.detached:
@@ -1654,6 +1670,42 @@ def check_all(root: Path, profile: str = "default") -> list[tuple[Path, str, str
                 if on_disk != text:
                     drift.append((record_path, on_disk, text))
     return drift
+
+
+CHUNK = 1 << 20
+
+
+def _same_copy(path: Path, copied: Copied) -> bool:
+    """Whether `path` already holds the copy, compared a chunk at a time."""
+    have = path.stat()
+    if stat.S_IMODE(have.st_mode) != copied.file_mode() & 0o7777:
+        return False
+    if have.st_size != len(copied.prefix) + copied.source.stat().st_size:
+        return False
+    with path.open("rb") as existing, copied.source.open("rb") as source:
+        if existing.read(len(copied.prefix)) != copied.prefix:
+            return False
+        while True:
+            chunk = source.read(CHUNK)
+            if existing.read(CHUNK) != chunk:
+                return False
+            if not chunk:
+                return True
+
+
+def _atomic_stream_copy(path: Path, copied: Copied) -> None:
+    target = path.resolve() if path.is_symlink() else path
+    fd, temporary = tempfile.mkstemp(dir=target.parent, prefix=".loadout-")
+    try:
+        with os.fdopen(fd, "wb") as handle, copied.source.open("rb") as source:
+            handle.write(copied.prefix)
+            shutil.copyfileobj(source, handle, CHUNK)
+            # Mode before the rename: an executable must never appear without its bit.
+            os.fchmod(handle.fileno(), copied.file_mode())
+        os.replace(temporary, target)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
 
 
 def _atomic_frozen_copy(path: Path, content: bytes, mode: int) -> None:

@@ -549,3 +549,25 @@ def test_check_calls_an_absent_output_missing(tmp_path: Path, capsys) -> None:
     assert "DRIFT (missing): CLAUDE.md" in err
     assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
     assert output.is_file()
+
+
+def test_an_output_matching_the_committed_source_is_accepted_without_a_record(
+    tmp_path: Path, capsys
+) -> None:
+    """With no record of what sync wrote, a file rendered from the committed source is
+    still loadout's own, so an unsynced source edit goes through."""
+    (tmp_path / "loadout" / "instructions").mkdir(parents=True)
+    (tmp_path / "loadout" / "config.toml").write_text(
+        'harnesses = ["claude"]\ninstructions = ["main"]\n', encoding="utf-8"
+    )
+    main = tmp_path / "loadout" / "instructions" / "main.md"
+    main.write_text("Version one.\n", encoding="utf-8")
+    _commit_source(tmp_path)
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
+    written_state_path(tmp_path).unlink()
+    main.write_text("Version two.\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
+
+    assert "Version two." in (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")

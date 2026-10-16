@@ -1243,6 +1243,15 @@ CODEX_SERVER_HTTP_KEYS = frozenset({"url", "bearer_token_env_var"})
 CODEX_SERVER_STDIO_KEYS = frozenset({"command", "args", "env"})
 
 
+def _not_adopted(name: str, keys: list[str]) -> str:
+    """Keys of a Codex server that loadout's server source cannot hold, so the next sync
+    writes the server without them. An auth header belongs in bearer_token_env_var."""
+    return (
+        f"codex-servers: {name} carries {', '.join(keys)}, which loadout does not adopt; "
+        "the next sync writes the server without them (use bearer_token_env_var for a token)"
+    )
+
+
 def _extract_codex_server(name: str, block: Any, notes: list[Note]) -> Server | None:
     if not isinstance(block, Mapping):
         notes.append(Note("unrecognised", f"codex-servers: {name} is not a table"))
@@ -1250,7 +1259,7 @@ def _extract_codex_server(name: str, block: Any, notes: list[Note]) -> Server | 
     if "url" in block:
         stray = sorted(set(block) - CODEX_SERVER_HTTP_KEYS)
         if stray:
-            notes.append(Note("cannot", f"codex-servers: {name} carries {', '.join(stray)}"))
+            notes.append(Note("cannot", _not_adopted(name, stray)))
         url = block.get("url")
         if not isinstance(url, str):
             notes.append(Note("unrecognised", f"codex-servers: {name} http entry has no url"))
@@ -1265,7 +1274,7 @@ def _extract_codex_server(name: str, block: Any, notes: list[Note]) -> Server | 
     if "command" in block:
         stray = sorted(set(block) - CODEX_SERVER_STDIO_KEYS)
         if stray:
-            notes.append(Note("cannot", f"codex-servers: {name} carries {', '.join(stray)}"))
+            notes.append(Note("cannot", _not_adopted(name, stray)))
         command = block.get("command")
         if not isinstance(command, str):
             notes.append(Note("unrecognised", f"codex-servers: {name} stdio entry has no command"))

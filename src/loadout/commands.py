@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import difflib
+import functools
 import hashlib
 import io
 import json
@@ -38,9 +39,10 @@ from .project import (
     gitignore_entries,
     load_project_config,
     project_config_path,
+    refuse_escaping,
 )
 from .retirement import orphan_drift, orphaned, retire
-from .scaffold import _append_gitignore, _remove_gitignore, init_global, init_project
+from .scaffold import _append_gitignore, _gitignore, _remove_gitignore, init_global, init_project
 from .skill_installation import (
     SkillSourceLocation,
     SourceSkillState,
@@ -158,11 +160,7 @@ def cmd_skill_install(
     ):
         print("declined; no changes made")
         return 0
-    try:
-        changed = install_skill_source(location, bundle)
-    except LoadoutError as error:
-        print(f"loadout: {error}", file=sys.stderr)
-        return 1
+    changed = install_skill_source(location, bundle)
     print(
         f"{'installed' if changed else 'already installed'} loadout skill in "
         f"source {location.source}: {location.path}"
@@ -192,11 +190,7 @@ def cmd_skill_uninstall(
     if not _confirm_skill_change("uninstall", location.path, yes):
         print("declined; no changes made")
         return 0
-    try:
-        removed = uninstall_skill_source(location, root=root, profile=profile)
-    except LoadoutError as error:
-        print(f"loadout: {error}", file=sys.stderr)
-        return 1
+    removed = uninstall_skill_source(location, root=root, profile=profile)
     print(
         f"uninstalled loadout skill from source {location.source}: {location.path} "
         f"({len(removed)} generated files removed)"
@@ -238,9 +232,11 @@ def _render_variants(
 
 
 def _committed_variants(root: Path, profiles: Iterable[str]) -> dict[Path, set[str]]:
+    # A project's render reads only its own source folder, so only that is archived.
+    scope = ["--", PROJECT_DIR] if project_config_path(root).is_file() else []
     try:
         proc = subprocess.run(
-            ["git", "-C", str(root), "archive", "HEAD"], capture_output=True, check=False
+            ["git", "-C", str(root), "archive", "HEAD", *scope], capture_output=True, check=False
         )
     except OSError:
         return {}
@@ -299,17 +295,25 @@ def unaccepted_outputs(
     A recorded destination this run no longer renders is judged the same way, with
     deletion as the change, so an edit made to it after sync wrote it is refused too.
     """
-    profiles = declared_profiles(root)
-    committed = _committed_variants(root, profiles)
-    acceptable = {path: set(forms) for path, forms in committed.items()}
-    for path, forms in _render_variants(root, profiles, rebase_to=root).items():
-        acceptable.setdefault(path, set()).update(forms)
     # The third variant, and the only one that knows about a source state which was
     # never committed and has since moved on. See written.py and ADR 0019.
     written = read_written(root)
 
+    # The committed source and every other profile cost a render each, so they are
+    # built only once some file matches neither this render nor the record.
+    @functools.cache
+    def committed() -> dict[Path, set[str]]:
+        return _committed_variants(root, declared_profiles(root))
+
+    @functools.cache
+    def acceptable() -> dict[Path, set[str]]:
+        forms = {path: set(found) for path, found in committed().items()}
+        for path, found in _render_variants(root, declared_profiles(root), rebase_to=root).items():
+            forms.setdefault(path, set()).update(found)
+        return forms
+
     def unaccepted(path: Path, actual: str, expected: str) -> Unaccepted:
-        baseline = path in committed or written.get(path) is not None
+        baseline = path in committed() or written.get(path) is not None
         return Unaccepted(path, "hand-edited" if baseline else "unknown", actual, expected)
 
     modified: list[Unaccepted] = []
@@ -346,13 +350,17 @@ def unaccepted_outputs(
             # silently; `check` reports it, and covering it properly needs a
             # baseline this guard does not have for a file loadout does not own.
             continue
-        forms = acceptable.get(path, set())
-        if not path.is_file() or not forms:
+        if not path.is_file():
             continue
         actual = path.read_text(encoding="utf-8")
-        if not _text_accepted(path, actual, forms, written.get(path)):
+        if _text_accepted(path, actual, {normalise(path, expected)}, written.get(path)):
+            continue
+        forms = acceptable().get(path, set())
+        if forms and not _text_accepted(path, actual, forms, written.get(path)):
             modified.append(unaccepted(path, actual, expected))
-    modified += _unaccepted_orphans(orphaned(written, outputs), acceptable)
+    orphans = orphaned(written, outputs)
+    if orphans:
+        modified += _unaccepted_orphans(orphans, acceptable())
     return modified
 
 
@@ -485,7 +493,10 @@ def retire_orphans(
     record_written(root, profile, {}, dropped=orphans)
     if not project_config_path(root).is_file():
         return retired, 0
-    deleted = [path for path in retired if orphans[path].kind != "merged"]
+    # Gone, whether retiring deleted it just now or it was deleted by hand before.
+    deleted = [
+        path for path, entry in orphans.items() if entry.kind != "merged" and not path.exists()
+    ]
     unwanted = set(gitignore_entries(root, deleted)) - set(gitignore_entries(root, outputs))
     return retired, _remove_gitignore(root, unwanted)
 
@@ -496,6 +507,11 @@ def deploy(
     """Write rendered outputs, record them, and ignore them: what sync does once the
     guard has passed, shared with init's first render. Returns the paths written and
     how many `.gitignore` entries were added."""
+    if project_config_path(root).is_file():
+        _gitignore(root)
+        records = (r for c in outputs.values() if isinstance(c, Merged) for r, _ in c.records)
+        orphans = orphaned(read_written(root), outputs)
+        refuse_escaping(root, (*outputs, *records, *orphans))
     written = write_outputs(outputs, scopes=artifact_deployment_scopes(root, profile), force=force)
     record_written(root, profile, _entries_for(outputs))
     if not project_config_path(root).is_file():
@@ -504,18 +520,20 @@ def deploy(
     # would also ignore loadout/instructions/native/claude/CLAUDE.md, and
     # `git add loadout` then silently drops that source from the index.
     entries = list(gitignore_entries(root, outputs))
-    return written, len(entries) if _append_gitignore(root, entries) else 0
+    return written, _append_gitignore(root, entries)
 
 
 @dataclass(frozen=True)
 class RenderedChange:
     """One output against the file on disk. `kind` is identical, update or create;
-    `actual` and `wanted` are text for a diff, or a size and digest for a copy."""
+    `actual` and `wanted` are text for a diff, or a size and digest for a copy.
+    `sha256` is the digest of the bytes the output writes, whichever it is."""
 
     path: Path
     kind: str
     actual: str
     wanted: str
+    sha256: str = ""
 
 
 def _copy_summary(content: bytes, mode: int) -> str:
@@ -545,19 +563,22 @@ def compare_with_disk(outputs: Mapping[Path, Output]) -> list[RenderedChange]:
 
 
 def _text_change(path: Path, wanted: str) -> RenderedChange:
+    digest = hashlib.sha256(wanted.encode()).hexdigest()
     if not path.is_file():
-        return RenderedChange(path, "create", "", wanted)
+        return RenderedChange(path, "create", "", wanted, digest)
     actual = path.read_text(encoding="utf-8", newline="")
     same = normalise(path, actual) == normalise(path, wanted)
-    return RenderedChange(path, "identical" if same else "update", actual, wanted)
+    return RenderedChange(path, "identical" if same else "update", actual, wanted, digest)
 
 
 def _copy_change(path: Path, content: bytes, mode: int) -> RenderedChange:
     wanted = _copy_summary(content, mode)
+    digest = hashlib.sha256(content).hexdigest()
     if not path.is_file():
-        return RenderedChange(path, "create", "", wanted)
+        return RenderedChange(path, "create", "", wanted, digest)
     actual = _copy_summary(path.read_bytes(), path.stat().st_mode)
-    return RenderedChange(path, "identical" if actual == wanted else "update", actual, wanted)
+    kind = "identical" if actual == wanted else "update"
+    return RenderedChange(path, kind, actual, wanted, digest)
 
 
 def _entries_for(outputs: Mapping[Path, Output]) -> dict[Path, WrittenEntry]:
@@ -636,13 +657,14 @@ def classified_drift(
     its drift is unknown rather than a guess. An orphan the guard accepts is
     orphaned; one it refuses is hand-edited, because sync will refuse it.
     """
-    drift = check_all(root, profile)
     outputs = render_all(root, profile)
+    drift = check_all(root, profile, outputs)
     orphans = orphaned(read_written(root), outputs)
     drift += orphan_drift(orphans)
     verdicts = {u.path: u.kind for u in unaccepted_outputs(root, outputs, profile)}
-    unmanaged = unmanaged_entries(root, outputs, profile)
-    drift += [(path, describe_unmanaged(path), "") for path in unmanaged]
+    found = unmanaged_entries(root, outputs, profile)
+    unmanaged = set(found)
+    drift += [(path, describe_unmanaged(path), "") for path in found]
 
     def kind(path: Path) -> str:
         if path in unmanaged:
@@ -736,7 +758,7 @@ def cmd_template_list(root: Path) -> int:
     return 0
 
 
-def cmd_template_add(root: Path, name: str | None, mode: str | None) -> int:
+def cmd_template_add(root: Path, name: str | None, mode: str | None, *, yes: bool = False) -> int:
     """Choose a template and how this project uses it.
 
     Bare `add` enumerates every resolvable template and prompts for a name and a
@@ -790,7 +812,7 @@ def cmd_template_add(root: Path, name: str | None, mode: str | None) -> int:
             record_hash(root, name, tree_hash(local))
         print(f"adopted the existing vendored copy of {name} at {_display(local, root)}")
         return 0
-    return _make_vendored(root, name)
+    return _make_vendored(root, name, yes=yes)
 
 
 def _choose_template(root: Path) -> str:
@@ -828,11 +850,11 @@ def _choose_mode(root: Path, name: str) -> str:
     return choice
 
 
-def _make_vendored(root: Path, name: str) -> int:
+def _make_vendored(root: Path, name: str, *, yes: bool = False) -> int:
     found = resolve_template(name, root)
     local = vendored_path(root, name)
     if found.path.is_file():
-        return vendor_catalog(root, name, found)
+        return vendor_catalog(root, name, found, yes=yes)
     copy_tree(found.path, local)
     declare(root, name)
     record_hash(root, name, tree_hash(local))
@@ -878,7 +900,7 @@ def _report_diff(lines: list[str]) -> None:
         print(f"    ... {len(lines) - DIFF_LIMIT} more diff line(s)", file=sys.stderr)
 
 
-def cmd_template_sync(root: Path, name: str) -> int:
+def cmd_template_sync(root: Path, name: str, *, yes: bool = False) -> int:
     """Update a vendored copy from its source, refusing rather than merging.
 
     Refuse-and-diff is never wrong and never silently mangles anything. The
@@ -889,7 +911,7 @@ def cmd_template_sync(root: Path, name: str) -> int:
     config = load_project_config(project_config_path(root))
     local = vendored_path(root, name)
     if local.is_file():
-        return vendor_catalog(root, name, resolve_upstream_template(name), update=True)
+        return vendor_catalog(root, name, resolve_upstream_template(name), update=True, yes=yes)
     if not local.is_dir():
         raise LoadoutError(
             f"{name} is not vendored, so there is nothing to sync — it resolves from a "

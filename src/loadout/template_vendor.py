@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
 from .deployment import atomic_install, read_file
-from .errors import LoadoutError
+from .errors import LoadoutError, UsageError
 from .output import FrozenFile
 from .project import ProjectConfig, load_project_config, project_config_path
 from .resolve import ResolvedItem
@@ -116,16 +117,23 @@ def _preview(
         return read_file(project_config_path(preview))
 
 
-def _confirm(root: Path, changes: dict[Path, FrozenFile | None], affected: set[str]) -> bool:
+def _confirm(
+    root: Path, changes: dict[Path, FrozenFile | None], affected: set[str], *, yes: bool
+) -> bool:
     print("Template changes:")
     for path, content in changes.items():
         print(f"    {'remove' if content is None else 'write'} {path.relative_to(root)}")
-    if len(affected) <= 1:
+    if len(affected) <= 1 or yes:
         return True
     print("Affected templates: " + ", ".join(sorted(affected)))
+    if not sys.stdin.isatty():
+        raise UsageError(
+            "updating parts shared with other templates needs --yes after reviewing the changes; "
+            "no changes made"
+        )
     try:
         answer = input("Update these shared template parts? [y/N] ")
-    except (EOFError, OSError):
+    except (EOFError, OSError, KeyboardInterrupt):
         answer = ""
     return answer.strip().lower() in {"y", "yes"}
 
@@ -146,7 +154,9 @@ def _apply(changes: dict[Path, FrozenFile | None], before: dict[Path, FrozenFile
         raise
 
 
-def vendor_catalog(root: Path, name: str, upstream: ResolvedItem, *, update: bool = False) -> int:
+def vendor_catalog(
+    root: Path, name: str, upstream: ResolvedItem, *, update: bool = False, yes: bool = False
+) -> int:
     config_path = project_config_path(root)
     config = load_project_config(config_path)
     local = vendored_path(root, name)
@@ -173,9 +183,9 @@ def vendor_catalog(root: Path, name: str, upstream: ResolvedItem, *, update: boo
     if not changes:
         print(f"{name} is up to date")
         return 0
-    if not _confirm(root, changes, affected):
-        print("Cancelled; nothing changed.")
-        return 1
+    if not _confirm(root, changes, affected, yes=yes):
+        print("declined; no changes made")
+        return 0
     if any(read_file(path) != content for path, content in before.items()) or any(
         tree_hash(path) != digest for path, digest in hashes.items()
     ):

@@ -26,7 +26,7 @@ loadout check --global --profile focused
 | --- | --- | --- |
 | `--root PATH` | `sync`, `check` | Directory containing the source/project configuration |
 | `--global` | `sync`, `check` | Resolve the source and default profile from this machine's configuration |
-| `--profile NAME` | `sync`, `check` | Select a global manifest profile |
+| `--profile NAME` | `sync`, `check` | Select a global manifest profile; without it, the registered global source uses the machine's profile and any other root uses `default` |
 | `--force` | `sync` | Overwrite generated files protected as modified outside Loadout |
 | `--json` | `check` | Emit `status`, `exit_code`, each out-of-sync `path` and any notes as JSON; not with `--staged` |
 
@@ -121,6 +121,11 @@ applied to projects and authored as `templates/<name>/` in your global source.
 | `list` | Show declared templates, each one's mode, and where it resolves |
 
 Adding a template that is already declared changes its mode in either direction.
+
+When vendoring or syncing a catalog template would change parts it shares with other declared
+templates, the command lists the affected templates and asks before writing. `--yes` (on `add`
+and `sync`) applies the change without asking; without a terminal and without `--yes` it exits 2
+and changes nothing. Declining exits 0 with "declined; no changes made".
 
 Run the ordinary `loadout sync` to render the resulting project configuration.
 See [templates](../guides/templates.md) for the complete lifecycle.

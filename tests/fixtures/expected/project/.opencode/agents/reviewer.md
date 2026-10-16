@@ -1,5 +1,5 @@
 ---
-description: Reviews a diff for defects before it is committed.
+description: "Reviews a diff for defects before it is committed."
 mode: subagent
 model: anthropic/claude-sonnet-5-5
 ---

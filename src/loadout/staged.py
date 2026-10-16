@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import os
+import posixpath
 import subprocess
 import sys
 import tempfile
+import tomllib
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from .errors import LoadoutError
 
@@ -59,32 +61,82 @@ def _entries(root: Path, revision: str | None = None) -> dict[str, Entry]:
 
 
 def _snapshot(root: Path, destination: Path, entries: dict[str, Entry]) -> None:
+    """Write `entries` out as files, streaming their blobs from one `cat-file` run."""
     destination.mkdir()
-    blobs = [entry.oid for entry in entries.values() if entry.mode != "160000"]
-    data = git(root, "cat-file", "--batch", data="".join(oid + "\n" for oid in blobs).encode())
-    offset = 0
+    files = {name: entry for name, entry in entries.items() if entry.mode != "160000"}
+    process = subprocess.Popen(
+        ["git", "-C", str(root), "cat-file", "--batch"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
+    )
+    assert process.stdin is not None and process.stdout is not None
+    process.stdin.write("".join(entry.oid + "\n" for entry in files.values()).encode())
+    process.stdin.close()
     links = []
-    for name, entry in entries.items():
-        target = destination / name
-        if entry.mode == "160000":
-            continue
-        end = data.index(b"\n", offset)
-        oid, kind, size = data[offset:end].split()
-        if oid.decode() != entry.oid or kind != b"blob":
-            raise LoadoutError(f"cannot read staged blob: {name}; repair the supplied Git index")
-        offset = end + 1
-        content = data[offset : offset + int(size)]
-        offset += int(size) + 1
-        target.parent.mkdir(parents=True, exist_ok=True)
-        if entry.mode == "120000":
-            links.append((target, content))
-        elif entry.mode in {"100644", "100755"}:
-            target.write_bytes(content)
-            target.chmod(0o755 if entry.mode == "100755" else 0o644)
-        else:
-            raise LoadoutError(f"unsupported staged mode {entry.mode}: {name}")
+    try:
+        for name, entry in files.items():
+            target = destination / name
+            match process.stdout.readline().split():
+                case [oid, b"blob", size] if oid.decode() == entry.oid:
+                    content = process.stdout.read(int(size))
+                case _:
+                    raise LoadoutError(
+                        f"cannot read staged blob: {name}; repair the supplied Git index"
+                    )
+            process.stdout.read(1)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if entry.mode == "120000":
+                links.append((target, content))
+            elif entry.mode in {"100644", "100755"}:
+                target.write_bytes(content)
+                target.chmod(0o755 if entry.mode == "100755" else 0o644)
+            else:
+                raise LoadoutError(f"unsupported staged mode {entry.mode}: {name}")
+    finally:
+        process.stdout.close()
+        process.wait()
     for path, content in links:
         path.symlink_to(os.fsdecode(content))
+
+
+def _read_blob(root: Path, entry: Entry | None) -> bytes:
+    return git(root, "cat-file", "blob", entry.oid) if entry is not None else b""
+
+
+def _render_inputs(root: Path, relative: Path, entries: dict[str, Entry]) -> dict[str, Entry]:
+    """The entries a render of this source can read. A project reads its `loadout/`
+    folder and the files at its root; a global source reads its own folder and any
+    source it names outside it. Nothing else of the repository is written out."""
+    base = PurePosixPath(relative.as_posix())
+    project = str(base / "loadout/config.toml") in entries
+    prefixes = [base / "loadout"] if project else [base, *_external_sources(root, base, entries)]
+
+    def wanted(name: str) -> bool:
+        path = PurePosixPath(name)
+        if project and path.parent == base:
+            return True
+        return any(path.is_relative_to(prefix) for prefix in prefixes)
+
+    return {name: entry for name, entry in entries.items() if wanted(name)}
+
+
+def _external_sources(
+    root: Path, base: PurePosixPath, entries: dict[str, Entry]
+) -> list[PurePosixPath]:
+    manifest = _read_blob(root, entries.get(str(base / "loadout.toml")))
+    try:
+        document = tomllib.loads(manifest.decode())
+    except (UnicodeDecodeError, tomllib.TOMLDecodeError):
+        return []
+    sources = document.get("source", [])
+    found = [
+        PurePosixPath(posixpath.normpath(str(base / entry["path"])))
+        for entry in sources
+        if isinstance(sources, list)
+        if isinstance(entry, dict) and isinstance(entry.get("path"), str)
+    ]
+    return [path for path in found if not path.is_relative_to(base)]
 
 
 def _inspect(
@@ -143,8 +195,8 @@ def check_staged(root: Path, profile: str = "default") -> int:
     with tempfile.TemporaryDirectory(prefix="loadout-staged-") as directory:
         scratch = Path(directory).resolve()
         index_tree, head_tree = scratch / "index", scratch / "head"
-        _snapshot(repository, index_tree, staged)
-        _snapshot(repository, head_tree, head)
+        _snapshot(repository, index_tree, _render_inputs(repository, relative, staged))
+        _snapshot(repository, head_tree, _render_inputs(repository, relative, head))
         owned = set(_inspect(head_tree, repository, relative, profile, head))
         owned.update(_inspect(index_tree, repository, relative, profile, staged))
         changed = [

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+import loadout
 from loadout.emit import write_all
 from loadout.errors import LoadoutError
 from loadout.skill_installation import (
@@ -177,6 +178,28 @@ def test_uninstall_refuses_a_modified_generated_output(tmp_path: Path, fake_home
         uninstall_skill_source(location, root=root, profile="default")
     assert location.path.is_dir()
     assert output.read_text(encoding="utf-8") == "my output edit\n"
+
+
+def test_uninstall_accepts_what_sync_last_wrote_after_a_refresh(
+    tmp_path: Path, fake_home: Path
+) -> None:
+    """Review 2.5: after a bundle refresh the outputs on disk are v1, the render is v2.
+    Sync accepts them through its write record (ADR 0022), so uninstall must as well."""
+    root = _root(tmp_path)
+    first = _bundle(tmp_path / "first", "v1\n")
+    install_skill_source(inspect_skill_source(root, "default", first), first)
+    assert loadout.main(["sync", "--root", str(root)]) == 0
+    second = _bundle(tmp_path / "second", "v2\n")
+    assert install_skill_source(inspect_skill_source(root, "default", second), second)
+    output = fake_home / ".claude" / "skills" / "loadout" / "SKILL.md"
+    assert "v1" in output.read_text(encoding="utf-8")
+
+    removed = uninstall_skill_source(
+        inspect_skill_source(root, "default", second), root=root, profile="default"
+    )
+
+    assert output in removed
+    assert not output.exists()
 
 
 def test_uninstall_preserves_unrelated_files_in_the_generated_skill_directory(

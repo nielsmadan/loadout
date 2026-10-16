@@ -84,3 +84,19 @@ def load_machine_config(path: Path, *, require_source: bool = True) -> MachineCo
             )
 
     return MachineConfig(source=source.resolve(), profile=profile, harnesses=harnesses)
+
+
+def resolve_profile(root: Path, explicit: str | None = None) -> str:
+    """The profile a run at `root` renders: an explicit one, else the machine's when
+    `root` is the registered global source, else `default`. One rule for sync, check,
+    the git hooks and init, so no two of them retire each other's outputs (ADR 0022)."""
+    if explicit:
+        return explicit
+    try:
+        config = load_machine_config(machine_config_path(), require_source=False)
+    except LoadoutError:
+        # An unusable global config must not block a project or a hook.
+        return "default"
+    if config is not None and config.source.resolve() == root.resolve():
+        return config.profile or "default"
+    return "default"

@@ -23,6 +23,7 @@ from .bundled_templates import BUNDLED, STARTERS, bundled_template
 from .errors import LoadoutError
 from .machine import load_machine_config, machine_config_path
 from .manifest import load_manifest, manifest_path
+from .output import no_symlinks as _no_symlinks
 from .project import PROJECT_DIR, load_project_config, project_config_path
 from .resolve import ResolvedItem, Slice
 from .skills import EXCLUDED_DIRECTORIES, EXCLUDED_NAMES, EXCLUDED_SUFFIXES
@@ -262,6 +263,7 @@ def remove_vendored(root: Path, name: str) -> None:
     another template, so only the manifest is removed.
     """
     local = vendored_path(root, name)
+    _no_symlinks(local, root)
     if local.is_dir():
         shutil.rmtree(local)
         return

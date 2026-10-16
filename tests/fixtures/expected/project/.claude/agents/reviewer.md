@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: Reviews a diff for defects before it is committed.
+description: "Reviews a diff for defects before it is committed."
 model: sonnet
 effort: max
 tools: Read, Grep, Glob

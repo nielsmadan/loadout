@@ -149,23 +149,74 @@ directory in the machine config. Neither scope writes `artifacts.toml`.
 
 Existing generated destinations are reconstructed in isolation before approval.
 
+## What init keeps private
+
+A project original is adopted privately, into a gitignored source file that stays on this machine,
+when Git ignores it, when its name holds `.local`, or when its content looks like a credential:
+
+- a key named like a token, password, secret, API key or authorization holding a literal value;
+- a literal value under `env`, `environment`, `headers` or `http_headers`, other than a number, a
+  switch such as `true` or `on`, a path, or a name that never holds a secret (`PATH`, `*_ENV`,
+  `DISABLE_*`, `Content-Type` and the like);
+- the value after, or given inline to, a flag naming a secret, whole word: `--token`,
+  `--api-key`, `--secret`, `--password`, `--access-key`, `--private-key` and the like, in an
+  argument list or a command line. `--api-key-file`, `--max-tokens` or `--keymap` name something
+  else, and a value starting with `-` is the next flag;
+- a value shaped like a secret anywhere in the file: a PEM private key; a GitHub (`ghp_`,
+  `github_pat_` and kin), GitLab, npm, OpenAI/Anthropic `sk-`, AWS `AKIA`/`ASIA`, Google `AIza`,
+  Slack or JWT token; credentials or a long token in a URL; a key in a URL query; an
+  `Authorization: Basic` credential; a user:password given to an HTTP client with `-u`; or an
+  `aws_secret_access_key`.
+
+A reference such as `$API_KEY` or `${API_KEY}`, and a documentation placeholder ending in
+`EXAMPLE` or made of x's, is not a credential. The check is a heuristic, so the preview names what
+made each file private, as `Private (stays on this machine): <path>: <reason>`, and the reason is
+in `--json` as `private_reason`. A co-owned project settings file Git already tracks is published
+regardless, since its content is already in the repository's history.
+
+At global scope this applies to the files init carries whole, such as skills; the settings, MCP
+server, hook and instruction documents it splits into source slices are currently written into the
+global source even when flagged.
+
+A Codex MCP server's keys that the server source cannot hold, such as a literal `http_headers`
+table, are named in the preview as not adopted: the next sync writes the server without them, so
+put a token in `bearer_token_env_var` instead.
+
 ## Backup and restore
 
 Before its first write, init records a before-image of every path it will touch in
 `$XDG_STATE_HOME/loadout/backups/<timestamp>/` (`~/.local/state` when unset): the source it writes,
 the originals it retires or de-links, `.gitignore`, the machine registration, the first render's
-outputs, the deployment receipt, the write record, a new source repository, and the Git index when
-it untracks generated files. Each missing ancestor a write could create is recorded as absent. A
-`manifest.json` maps every entry to its path, and an `in-progress` marker is cleared on success.
+outputs, the write record, a new source repository, and the Git index when it untracks generated
+files. Each missing ancestor a write could create is recorded as absent. Every path is recorded in
+one spelling: beneath a harness root it replaces it stays at the harness path, and anywhere else
+its parent is resolved, so a link above a harness root (written through, ADR 0023) is followed to
+where the file really is. Alongside each before-image the manifest keeps what init planned to
+write there and, as init goes, what it left; an `in-progress` marker is cleared on success.
 
-- A failure restores the backup straight away and exits 1, naming it.
+Restore reverts only what is still init's: a path holding its before-image, what init planned, or
+what init left. Anything else is someone else's, stays as it is and is listed under `kept`, and the
+exit code is then 1. A directory init created is removed only once empty. A link init replaced with
+a directory comes back only if everything in that directory is init's; otherwise the whole
+directory stays as it is and is reported, with the target the link used to have, rather than being
+emptied around a file the harness wrote since. A source repository init created is treated the
+same way, so a commit made in it since keeps it whole. The Git index counts as init's while it
+differs from its before-image only by the generated files init untracked, and a repository init
+created counts as init's while it has no commit and no index; both are declared before Git runs,
+so a run killed straight after still restores them. Every path is checked before anything is
+removed: one now reached through a link that was added since, such as a project moved behind a
+symlink, is kept rather than written through. The write record loses only the entries for paths
+restore put back, so a file synced since init is still known as loadout's.
+
+- A failure restores the backup straight away and exits 1, naming it and what it kept.
 - A killed init leaves the marker. The next `init` offers the restore, or exits 2 with
   `"status": "interrupted"` under `--json` or without a terminal.
 - `loadout init restore --yes` restores the interrupted backup, or else the latest completed one.
-  A completed backup records what each path held after init, so a path changed since is kept and
-  listed under `kept`, and a directory init created is removed only once empty; the exit code is
-  then 1.
-- Only the latest completed backup is kept.
+- A backup is spent once restored. With nothing kept it is deleted, and restoring again reports
+  there is nothing to restore. With something kept it shrinks to the kept paths, so the undo can
+  be finished once they are dealt with and can never replay over them. Only the latest completed
+  backup is kept. A backup written by another version of loadout is refused, naming the directory
+  to delete.
 
 Init commits nothing and stages nothing. In a project it never creates a repository, and the only
 index change is removing the files it adds to `.gitignore`. A new global source gets its own
@@ -188,7 +239,9 @@ A global harness root that is a symlink, such as `~/.claude` pointing into a dot
 adopted, and so are stow-style per-file links inside it. Adoption **de-links**
 them; see [0023](../decisions/0023-adoption-de-links-a-symlinked-deployment.md):
 
-- loadout's outputs become real files at the harness path;
+- loadout's outputs become real files at the harness path, written as the link goes. A document
+  loadout shares with the harness, such as Codex's `config.toml`, keeps every key loadout does not
+  own, such as `model`;
 - every entry loadout does not manage becomes a link back into the original target, so runtime
   state, credentials, commands and subagents keep working. A directory loadout writes nothing into,
   such as `commands/`, links back whole, so a file added to it later appears;
