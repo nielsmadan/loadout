@@ -227,6 +227,9 @@ flags these changes; it does not merge them.
    reads whole: a skill folder, or a Codex rules file such as `~/.codex/rules/default.rules`.
    `unmanaged-link` is a link loadout did not create there; it has no content to port, so show
    the user where it points and ask before deleting it. Never read through it.
+   `unparsable` is a file loadout shares with the harness that no longer parses: there is nothing
+   to port from it, so tell the user and ask before replacing it with `loadout sync --force`, or,
+   for one the source no longer renders, before deleting it.
    `source-changed`, `missing` and `orphaned` need only a sync.
 2. Read the change. `loadout check` without `--json` prints each diff: `-` lines exist only on
    disk, `+` lines only in the source. For an `unmanaged` path, read the file or folder itself.

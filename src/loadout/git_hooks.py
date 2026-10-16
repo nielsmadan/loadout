@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from . import migration_git
+from .emit import refuse_unregistered_global
 from .errors import LoadoutError, UsageError
 from .manifest import manifest_path
 from .output import FrozenFile, atomic_install
@@ -198,6 +199,8 @@ def _require_source(root: Path) -> None:
 
 def install_hooks(root: Path, *, regenerate: bool = False, dry_run: bool = False) -> int:
     _require_source(root)
+    # Hooks for a global setup that may not render would refuse every commit after this.
+    refuse_unregistered_global(root)
     plan = plan_hooks(root, regenerate=regenerate)
     show_hooks(plan.preview())
     if dry_run:

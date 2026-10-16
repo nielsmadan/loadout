@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-import time
+import sys
 import tomllib
 from pathlib import Path
 
@@ -13,7 +13,14 @@ import pytest
 
 import loadout
 import loadout.init_workflow as workflow
-from loadout.credentials import MAX_SCANNED, credential_material, findings
+from loadout.credentials import (
+    BINARY_PROBE,
+    MAX_SCANNED,
+    credential_material,
+    findings,
+    redact,
+    redacted_pair,
+)
 from loadout.sync import RenderedChange
 
 SECRETS = {
@@ -216,18 +223,20 @@ def test_a_codex_server_with_two_auth_sources_is_adopted_with_a_note(
 
 
 @pytest.mark.parametrize(
-    ("content", "format_name"),
+    ("content", "format_name", "reason"),
     [
-        (b'{"auth": "s3cr3tvalue"}', "json"),
-        (b"credential = s3cr3tvalue\n", "copy"),
-        (b'{"args": ["--auth", "s3cr3tvalue"]}', "json"),
-        (b'{"x-api-key": "s3cr3tvalue"}', "json"),
+        (b'{"auth": "s3cr3tvalue"}', "json", "a value labelled as a secret"),
+        (b"credential = s3cr3tvalue\n", "copy", "a value labelled as a secret"),
+        (b'{"args": ["--auth", "s3cr3tvalue"]}', "json", "the value after --auth"),
+        (b'{"x-api-key": "s3cr3tvalue"}', "json", "a value labelled as a secret"),
     ],
 )
-def test_every_place_a_secret_sits_uses_one_vocabulary(content: bytes, format_name: str) -> None:
+def test_every_place_a_secret_sits_uses_one_vocabulary(
+    content: bytes, format_name: str, reason: str
+) -> None:
     """Review 2, 2.14: `--auth x` was a secret and `{"auth": x}` was not, and the reverse
     for `credential`."""
-    assert credential_material(content, format_name)
+    assert credential_material(content, format_name) == reason
 
 
 @pytest.mark.parametrize(
@@ -273,11 +282,172 @@ def test_only_the_scanned_prefix_of_a_large_file_is_read() -> None:
     assert findings(late) == []
 
 
+def _scan_in_a_subprocess(content: bytes, seconds: float) -> str:
+    """The findings for `content`, from a child process given `seconds` to finish. A scan
+    gone quadratic hangs rather than fails, for 55 minutes once, so the child is killed
+    and the test fails instead (review 3, batch 5.11)."""
+    script = (
+        "import sys; from loadout.credentials import findings; "
+        "print(findings(sys.stdin.buffer.read()))"
+    )
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            input=content,
+            capture_output=True,
+            check=True,
+            timeout=seconds,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail(f"the scan took longer than {seconds} s")
+    return result.stdout.decode().strip()
+
+
 def test_one_long_word_is_scanned_in_linear_time() -> None:
     """A label could start anywhere inside a run of name characters, and each start
     rescanned the rest of the run: 20k characters took 4.4 s, a 1 MB one hours."""
-    started = time.perf_counter()
+    assert _scan_in_a_subprocess(b"x" * 50_000, 10) == "[]"
 
-    assert findings(b"x" * 50_000) == []
 
-    assert time.perf_counter() - started < 2
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Review 3, batch 3.3: from each `http` the user:password shape scanned to the end of
+        # the line, so a 469 KB one-line JSON took 28.7 s.
+        "http x " * 60_000,
+        # The URL scheme restarted at every word boundary of a dotted run: 100 KB took 3.8 s.
+        "a." * 50_000,
+    ],
+    ids=["many http on one line", "a long dotted run"],
+)
+def test_a_long_line_is_scanned_in_linear_time(text: str) -> None:
+    assert _scan_in_a_subprocess(text.encode(), 10) == "[]"
+
+
+def test_a_user_password_far_along_the_command_line_is_still_found() -> None:
+    """The bound on the gap is wide enough for a real command line."""
+    line = "curl " + "-H 'X-A: b' " * 15 + "--user admin:hunter2 https://x.test\n"
+    assert credential_material(line.encode()) == "a user:password on an HTTP client's command line"
+
+
+REDACTED = {
+    "a JSON-escaped value": (
+        "json",
+        '{"env": {"PASSWORD": "pa\\"ss-w0rd"}}\n',
+        '{"env": {"PASSWORD": "<redacted>"}}\n',
+    ),
+    "a PEM inside JSON": (
+        "json",
+        '{"key": "-----BEGIN PRIVATE KEY-----\\nMIIBODY\\n-----END PRIVATE KEY-----\\n"}\n',
+        '{"key": "<redacted>\\n"}\n',
+    ),
+    "a PEM in markdown": (
+        "md",
+        "-----BEGIN RSA PRIVATE KEY-----\nMIIBODY\n-----END RSA PRIVATE KEY-----\nafter\n",
+        "<redacted>\nafter\n",
+    ),
+    "a PEM with no END line": ("md", "-----BEGIN PRIVATE KEY-----\nMIIBODY\n", "<redacted>"),
+    "a label value past punctuation": ("md", "password: hunter2!REST\n", "password: <redacted>\n"),
+    "a quoted label in plain text": (
+        "txt",
+        '"API_TOKEN": "abcdef123456"\n',
+        '"API_TOKEN": "<redacted>"\n',
+    ),
+    "a quoted label in unparsable JSON": (
+        "json",
+        '{"API_TOKEN": "abcdef123456",\n',
+        '{"API_TOKEN": "<redacted>",\n',
+    ),
+    "a value holding an at sign": (
+        "md",
+        "password = p@ssword123\npath = /p/x\n",
+        "password = <redacted>\npath = /p/x\n",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", sorted(REDACTED))
+def test_a_printed_diff_redacts_every_spelling_of_a_secret(case: str) -> None:
+    """Review 3, 1.7: each of these printed part or all of the secret."""
+    format_name, text, expected = REDACTED[case]
+
+    assert redacted_pair(text, "", format_name) == (expected, "")
+
+
+def test_a_secret_on_one_side_is_redacted_on_both() -> None:
+    assert redacted_pair("token: ghp_" + "a1B2" * 9 + "\n", "x ghp_" + "a1B2" * 9 + "\n") == (
+        "token: <redacted>\n",
+        "x <redacted>\n",
+    )
+
+
+LABELLED = "a value labelled as a secret"
+QUERY = "a key in a URL query"
+
+# Each case is decided by the one rule it is named for: without that rule it reads
+# otherwise (review 3, batch 5.10). A None is a value the rule keeps from being flagged.
+DECIDED = {
+    "password in SECRET_NAMES": (b"password: hunter2xyz\n", "copy", LABELLED),
+    "secret in SECRET_NAMES": (b"client_secret = abc123xyz\n", "copy", LABELLED),
+    "a placeholder label value": (b"api_key = xxxxxxxxxxxx\n", "copy", None),
+    "CI is plain": (b'{"env": {"CI": "a1b2c3"}}', "json", None),
+    "*_ENV is plain": (b'{"env": {"NODE_ENV": "a1b2c3"}}', "json", None),
+    "PATH_* is plain": (b'{"env": {"PATH_EXTRA": "a1b2c3"}}', "json", None),
+    "*_PATH is plain": (b'{"env": {"GO_PATH": "a1b2c3"}}', "json", None),
+    "an env value that is not plain": (
+        b'{"env": {"DEPLOY_KEY": "a1b2c3"}}',
+        "json",
+        "env.DEPLOY_KEY",
+    ),
+    "a path value is plain": (b'{"env": {"DEPLOY_KEY": "/usr/local/bin"}}', "json", None),
+    "value maps case-folded": (b'{"ENV": {"DEPLOY_KEY": "a1b2c3"}}', "json", "ENV.DEPLOY_KEY"),
+    "a flag starts with a dash": (b'{"args": ["token", "a1b2c3d4"]}', "json", None),
+    "query key": (b"https://x.test/v1?key=abcdefgh12\n", "copy", QUERY),
+    "query api_key": (b"https://x.test/v1?a=1&api_key=abcdefgh12\n", "copy", QUERY),
+    "query apikey": (b"https://x.test/v1?apikey=abcdefgh12\n", "copy", QUERY),
+    "query access_token": (b"https://x.test/v1?access_token=abcdefgh12\n", "copy", QUERY),
+    "query token": (b"https://x.test/v1?a=1&token=abcdefgh12\n", "copy", QUERY),
+    "the basic shape": (
+        b"Authorization: Basic dXNlcjpwYXNzd29yZA==\n",
+        "copy",
+        "an HTTP Basic credential",
+    ),
+    "the aws shape": (
+        b"aws_secret_access_key = wJalrXUtnFEMIK7MDENG\n",
+        "copy",
+        "an aws_secret_access_key",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", sorted(DECIDED))
+def test_each_rule_decides_a_case_alone(case: str) -> None:
+    content, format_name, reason = DECIDED[case]
+
+    assert credential_material(content, format_name) == reason
+
+
+@pytest.mark.parametrize(
+    ("offset", "reason"),
+    [(BINARY_PROBE - 1, None), (BINARY_PROBE, "a token in a provider's format")],
+)
+def test_a_nul_counts_as_binary_only_inside_the_probe(offset: int, reason: str | None) -> None:
+    content = b"x" * offset + b"\0 " + TOKEN + b"\n"
+
+    assert credential_material(content) == reason
+
+
+@pytest.mark.parametrize(("extra", "reason"), [(0, "the value after --api-key"), (1, None)])
+def test_a_document_is_parsed_up_to_the_cap_and_no_further(extra: int, reason: str | None) -> None:
+    """A secret only the document's structure shows is found in a file of exactly
+    MAX_SCANNED bytes and not in one a byte longer."""
+    head = b'{"args": ["--api-key", "a1b2c3d4"], "pad": "'
+    tail = b'"}'
+    content = head + b"y" * (MAX_SCANNED + extra - len(head) - len(tail)) + tail
+
+    assert credential_material(content, "json") == reason
+
+
+def test_redaction_replaces_the_longest_value_first() -> None:
+    """A shorter value replaced first would leave the rest of a longer one behind."""
+    assert redact("token=abcdef abc\n", ["abc", "abcdef"]) == "token=<redacted> <redacted>\n"

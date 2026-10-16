@@ -338,6 +338,7 @@ def test_sync_with_ambiguous_fragment_returns_3(root: Path, capsys) -> None:
 
 
 def test_source_as_a_plain_array_returns_3_not_4(root: Path, capsys) -> None:
+    register(root)
     manifest = root / "loadout.toml"
     manifest.write_text(
         manifest.read_text(encoding="utf-8").replace(
@@ -346,12 +347,13 @@ def test_source_as_a_plain_array_returns_3_not_4(root: Path, capsys) -> None:
         encoding="utf-8",
     )
     assert loadout.main(["sync", "--root", str(root)]) == 3
-    assert "traceback" not in capsys.readouterr().err.lower()
+    assert capsys.readouterr().err == "loadout: [[source]] entries must be tables, got 'a'\n"
 
 
 def test_absolute_output_returns_3_and_writes_nothing_outside_root(
     root: Path, tmp_path: Path, capsys
 ) -> None:
+    register(root)
     escape_target = tmp_path.parent / "loadout-escape-absolute.md"
     escape_target.unlink(missing_ok=True)
     manifest = root / "loadout.toml"
@@ -362,10 +364,15 @@ def test_absolute_output_returns_3_and_writes_nothing_outside_root(
         encoding="utf-8",
     )
     assert loadout.main(["sync", "--root", str(root)]) == 3
+    assert capsys.readouterr().err == (
+        "loadout: instructions.primary: output must be a relative path inside the repo root, "
+        f"got '{escape_target}'\n"
+    )
     assert not escape_target.exists()
 
 
 def test_empty_output_returns_3_not_4(root: Path, capsys) -> None:
+    register(root)
     manifest = root / "loadout.toml"
     manifest.write_text(
         manifest.read_text(encoding="utf-8").replace(
@@ -374,12 +381,16 @@ def test_empty_output_returns_3_not_4(root: Path, capsys) -> None:
         encoding="utf-8",
     )
     assert loadout.main(["sync", "--root", str(root)]) == 3
-    assert "traceback" not in capsys.readouterr().err.lower()
+    assert capsys.readouterr().err == (
+        "loadout: instructions.primary: output must be a relative path inside the repo root, "
+        "got ''\n"
+    )
 
 
 def test_output_escaping_the_root_returns_3_and_writes_nothing_outside_root(
     root: Path, capsys
 ) -> None:
+    register(root)
     escape_target = root.parent / "escaped.md"
     escape_target.unlink(missing_ok=True)
     manifest = root / "loadout.toml"
@@ -390,10 +401,15 @@ def test_output_escaping_the_root_returns_3_and_writes_nothing_outside_root(
         encoding="utf-8",
     )
     assert loadout.main(["sync", "--root", str(root)]) == 3
+    assert capsys.readouterr().err == (
+        "loadout: instructions.primary: output must be a relative path inside the repo root, "
+        "got '../escaped.md'\n"
+    )
     assert not escape_target.exists()
 
 
 def test_zero_targets_of_either_kind_returns_3_not_0(root: Path, capsys) -> None:
+    register(root)
     manifest = root / "loadout.toml"
     manifest.write_text(
         manifest.read_text(encoding="utf-8")
@@ -404,8 +420,7 @@ def test_zero_targets_of_either_kind_returns_3_not_0(root: Path, capsys) -> None
         encoding="utf-8",
     )
     assert loadout.main(["sync", "--root", str(root)]) == 3
-    err = capsys.readouterr().err
-    assert "target" in err
+    assert "unknown top-level key(s) instruction, permission" in capsys.readouterr().err
 
 
 def test_duplicate_output_across_targets_returns_3_not_0(root: Path, capsys) -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import sys
 from collections.abc import Mapping
@@ -7,10 +8,11 @@ from pathlib import Path
 from typing import Literal
 
 from .bundled_skill import bundled_skill_path
+from .credentials import redacted_pair
 from .diffs import diff_lines, report_diff
 from .emit import refuse_unregistered_global, render_all
 from .errors import LoadoutError, UsageError
-from .files import DriftKind
+from .files import DriftKind, refuse_unparsable
 from .machine import state_dir
 from .notices import collect_notices
 from .output import FrozenFile, Output, atomic_install, output_record_paths
@@ -28,7 +30,15 @@ from .skill_installation import (
     install_skill_source,
     uninstall_skill_source,
 )
-from .sync import classified_drift, deploy, newly_managed, retire_orphans, unaccepted_outputs
+from .sync import (
+    classified_drift,
+    deploy,
+    newly_managed,
+    refuse_unparsable_orphans,
+    retire_orphans,
+    sync_state,
+    unaccepted_outputs,
+)
 from .template_discover import available_templates
 from .template_vendor import vendor_catalog
 from .templates import (
@@ -152,10 +162,37 @@ def _display(path: Path, root: Path) -> str:
         return str(path)
 
 
+def _abort_sentences(kinds: set[str]) -> list[str]:
+    """What the refused diffs mean, by kind: a removed key shows as `+` lines sync would
+    write back, anything else as `-` lines it would destroy (review 3, batch 2.11)."""
+    sentences = []
+    if kinds - {"owned-key-removed"}:
+        sentences.append(
+            "Sync aborted — the '-' lines would be lost. Port them into the source with "
+            "/loadout, or run `loadout sync --force` to discard them."
+        )
+    if "owned-key-removed" in kinds:
+        sentences.append(
+            "Sync aborted — the '+' lines were removed outside loadout and would be written "
+            "back. Remove them from the source with /loadout, or run `loadout sync --force` "
+            "to write them back."
+        )
+    return sentences
+
+
+def _redacted(path: Path, actual: str, expected: str) -> tuple[str, str]:
+    """A diff's two sides as loadout prints them: never repeating a secret either holds,
+    on the terminal or in the file the sync abort leaves (review 3, 1.7)."""
+    return redacted_pair(actual, expected, path.suffix[1:])
+
+
+ABORT_DIFF = "sync-abort.diff"
+
+
 def _write_full_diff(lines: list[str]) -> Path | None:
     """The untruncated diff, so an abort the terminal shortened stays reviewable; None
     when the state directory cannot hold it, which must not turn the abort into a crash."""
-    path = state_dir() / "sync-abort.diff"
+    path = state_dir() / ABORT_DIFF
     try:
         atomic_install(path, FrozenFile("".join(lines).encode("utf-8"), 0o600), path.parent)
     except OSError:
@@ -170,25 +207,31 @@ def cmd_sync(root: Path, profile: str, force: bool = False) -> int:
     # Rendered once and reused for the guard, the write and the record, so what is
     # recorded is provably what was written rather than a third render of it.
     outputs = render_all(root, profile)
+    # The root as sync finds it, before writing anything.
+    before = sync_state(root)
+    refuse_unparsable_orphans(before, outputs)
     if not force:
-        modified = unaccepted_outputs(root, outputs)
+        refuse_unparsable(outputs)
+        modified = unaccepted_outputs(before, outputs)
         if modified:
             full: list[str] = []
             truncated = False
             for item in modified:
                 rel = _display(item.path, root)
                 state = " and is no longer rendered" if item.orphaned else ""
-                print(f"WARNING: {rel} was modified outside loadout{state}", file=sys.stderr)
+                print(
+                    f"WARNING: {rel} was modified outside loadout{state} ({item.kind})",
+                    file=sys.stderr,
+                )
                 # Tight context: on a 16k settings.json the one runtime-added entry
                 # should be readable without scrolling past the whole document.
-                lines = diff_lines(rel, item.actual, item.expected, context=1)
+                lines = diff_lines(
+                    rel, *_redacted(item.path, item.actual, item.expected), context=1
+                )
                 full.extend(lines)
                 truncated = report_diff(lines) or truncated
-            print(
-                "\nSync aborted — the '-' lines would be lost. Port them into the source "
-                "with /loadout, or run `loadout sync --force` to discard them.",
-                file=sys.stderr,
-            )
+            for sentence in _abort_sentences({item.kind for item in modified}):
+                print(f"\n{sentence}", file=sys.stderr)
             # A blocking prompt the reader cannot see all of is one they learn to
             # skip, and skipping this one means reaching for --force, which is the
             # thing it exists to prevent. Whatever the terminal truncates, the file
@@ -198,13 +241,16 @@ def cmd_sync(root: Path, profile: str, force: bool = False) -> int:
             return 1
 
     # Read before writing: once deployed, the value a key held is gone.
-    managed = newly_managed(root, outputs)
-    written, ignored = deploy(root, outputs)
+    managed = newly_managed(before, outputs)
+    written, ignored = deploy(before, outputs)
     for path in written:
         print(f"wrote {_display(path, root)}")
     for path, key, was in managed:
         print(f"now managed: {key} in {_display(path, root)} (was {was})")
-    retired, unignored = retire_orphans(root, outputs)
+    retired, unignored = retire_orphans(before, outputs)
+    # Only the abort it described made the full diff worth keeping.
+    with contextlib.suppress(OSError):
+        (state_dir() / ABORT_DIFF).unlink(missing_ok=True)
     for path in retired:
         print(f"retired {_display(path, root)}")
     print(_sync_summary(outputs, written, retired))
@@ -271,6 +317,8 @@ DRIFT_ADVICE: dict[DriftKind, str] = {
     "orphaned": "written by loadout but no longer rendered; run `loadout sync` to retire it",
     "unmanaged": UNMANAGED_ADVICE,
     "unmanaged-link": UNMANAGED_LINK_ADVICE,
+    "unparsable": "a file loadout shares with a harness no longer parses; fix or delete it, then "
+    "run `loadout sync`; for one the source still renders, `loadout sync --force` replaces it",
 }
 
 
@@ -303,7 +351,9 @@ def cmd_check(root: Path, profile: str, *, as_json: bool = False) -> int:
     for item in drift:
         rel = _display(item.path, root)
         print(f"DRIFT ({item.kind}): {rel}", file=sys.stderr)
-        report_diff(list(diff_lines(rel, item.actual, item.expected, context=3)))
+        report_diff(
+            list(diff_lines(rel, *_redacted(item.path, item.actual, item.expected), context=3))
+        )
     print(f"\n{len(drift)} generated file(s) out of sync:", file=sys.stderr)
     for kind, advice in DRIFT_ADVICE.items():
         count = sum(1 for item in drift if item.kind == kind)
@@ -415,27 +465,25 @@ def cmd_template_add(
 
 
 def _choose_template(root: Path) -> str:
+    # Never empty: the bundled starters are always on offer.
     options = available_templates(root)
-    if not options:
-        raise LoadoutError(
-            "no templates available: nothing is vendored here and no source this "
-            "machine declares offers one"
-        )
     print("Available templates:")
     for index, option in enumerate(options, 1):
         print(f"  {index}. {option.name}  ({option.source})")
+    span = f"1-{len(options)}"
     try:
-        choice = input(f"Template [1-{len(options)}]: ").strip()
+        choice = input(f"Template [{span}]: ").strip()
     except (EOFError, OSError):
         choice = ""
+    # An explicit answer only: Enter or the end of input never picks one for the user.
     if not choice:
-        return options[0].name
+        raise UsageError(f"choose a template by number ({span})")
     try:
         index = int(choice)
     except ValueError:
-        raise LoadoutError(f"choose a template by number, not {choice!r}") from None
+        raise UsageError(f"choose a template by number ({span}), not {choice!r}") from None
     if not 1 <= index <= len(options):
-        raise LoadoutError(f"no template {index}; choose 1-{len(options)}")
+        raise UsageError(f"no template {index}; choose {span}")
     return options[index - 1].name
 
 
@@ -446,7 +494,7 @@ def _choose_mode(name: str) -> TemplateMode:
         choice = ""
     modes: dict[str, TemplateMode] = {"tracked": "tracked", "vendored": "vendored"}
     if choice not in modes:
-        raise LoadoutError(f"choose tracked or vendored for {name}, not {choice!r}")
+        raise UsageError(f"choose tracked or vendored for {name}, not {choice!r}")
     return modes[choice]
 
 
@@ -507,6 +555,11 @@ def cmd_template_sync(root: Path, name: str, *, yes: bool = False) -> int:
     local = vendored_path(root, name)
     if local.is_file():
         return vendor_catalog(root, name, resolve_upstream_template(name), update=True, yes=yes)
+    if not local.is_dir() and name not in config.templates:
+        raise LoadoutError(
+            f"{name} is not declared in loadout/config.toml, so there is nothing to sync; "
+            f"run `loadout template add {name}` to add it"
+        )
     if not local.is_dir():
         raise LoadoutError(
             f"{name} is not vendored, so there is nothing to sync — it resolves from a "

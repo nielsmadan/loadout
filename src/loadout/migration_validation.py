@@ -117,7 +117,7 @@ def _reconstruct(plan: MigrationPlan) -> tuple[GeneratedWrite, ...]:
                 if parent is None:
                     continue
                 path = reverse[str(parent)] / temporary.relative_to(parent)
-            wanted = expected.get(path)
+            planned = expected.get(path)
             content = base64.b64decode(output["content"], validate=True)
             if (
                 output["owned"] is not None
@@ -128,7 +128,7 @@ def _reconstruct(plan: MigrationPlan) -> tuple[GeneratedWrite, ...]:
                 )
             ):
                 continue
-            mode = wanted.mode if output["owned"] is not None and wanted else None
+            mode = planned.mode if output["owned"] is not None and planned else None
             generated.append(
                 GeneratedWrite(
                     path,

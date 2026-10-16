@@ -44,12 +44,12 @@ def apply_json(existing: str, owned: frozenset[str], document: str) -> str:
     base: object = json.loads(existing) if existing.strip() else {}
     if not isinstance(base, dict):
         raise LoadoutError("cannot merge into a JSON document that is not an object")
-    wanted = json.loads(document)
-    if not isinstance(wanted, dict):
+    incoming = json.loads(document)
+    if not isinstance(incoming, dict):
         raise LoadoutError("a merged JSON fragment must be an object")
-    for key, value in wanted.items():
+    for key, value in incoming.items():
         base[key] = value
-    for key in owned - set(wanted):
+    for key in owned - set(incoming):
         base.pop(key, None)
     rendered = json.dumps(base, indent=2, ensure_ascii=False)
     # Match the file's own convention rather than imposing one: Claude writes this

@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
 
 import loadout
+import loadout.migration as migration_module
 from loadout.discovery import discover, entry_state, live_roots
 from loadout.emit import render_all
 from loadout.errors import LoadoutError
@@ -312,20 +314,16 @@ def test_the_source_directory_is_never_scanned_for_harness_layouts(
     assert {c.path for c in plan.inventory.candidates} == {live}
 
 
-def test_symlinked_harness_root_excludes_canonical_runtime_aliases(tmp_path: Path) -> None:
-    auth = write(tmp_path, "canonical/auth.json", "opaque-runtime-credential")
-    alias = tmp_path / "canonical/skills/one/SKILL.md"
-    alias.parent.mkdir(parents=True)
-    alias.symlink_to("../../auth.json")
+def test_a_harness_root_linked_inside_the_project_is_reported_not_walked(tmp_path: Path) -> None:
+    """Review 3, gap (a): project sync never writes through `.claude -> canonical`, so init
+    reports the link instead of adopting what it names."""
+    write(tmp_path, "canonical/skills/one/SKILL.md", "---\nname: one\n---\nx\n")
     (tmp_path / ".claude").symlink_to("canonical", target_is_directory=True)
-    plan = migration(tmp_path)
-    candidates = {c.path: c for c in plan.inventory.candidates}
-    assert candidates[tmp_path / ".claude/skills/one/SKILL.md"].disposition == (
-        "runtime-private exclusion"
-    )
-    assert candidates[tmp_path / ".claude/skills/one/SKILL.md"].content == b""
-    assert auth in plan.private_paths
-    assert plan.generated_writes == ()
+    plan = plan_migration(discover(tmp_path, scope="project", harnesses=("claude",)))
+    assert {(issue.code, issue.paths) for issue in plan.issues} == {
+        ("linked-folder", (tmp_path / ".claude",))
+    }
+    assert not plan.complete
 
 
 def test_private_instruction_excludes_canonical_original_and_aliases(tmp_path: Path) -> None:
@@ -664,3 +662,33 @@ def test_a_shared_document_is_planned_with_the_keys_loadout_owns(
     assert [(write.path, write.owned) for write in plan.generated_writes] == [
         (config, ("marketplaces", "mcp_servers", "plugins"))
     ]
+
+
+def test_planning_originals_scales_with_the_number_of_skills(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review 3, batch 3.1: each original was matched against every destination, so 200
+    skills spent 25 s here. 300 now take about a tenth of a second; the bound leaves room
+    for a slow machine and still fails the quadratic walk many times over."""
+    for index in range(300):
+        write(tmp_path, f".claude/skills/s{index}/run.sh", "true\n")
+        write(
+            tmp_path,
+            f".claude/skills/s{index}/SKILL.md",
+            f"---\nname: s{index}\ndescription: d\n---\nX\n",
+        )
+    inventory = discover(tmp_path, scope="project", harnesses=("claude",))
+    original = migration_module._original_entries
+    spent: list[float] = []
+
+    def timed(*arguments: object) -> object:
+        started = time.perf_counter()
+        result = original(*arguments)  # type: ignore[arg-type]
+        spent.append(time.perf_counter() - started)
+        return result
+
+    monkeypatch.setattr(migration_module, "_original_entries", timed)
+    plan_migration(inventory)
+
+    assert len(spent) == 1
+    assert spent[0] < 0.5

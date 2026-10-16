@@ -117,7 +117,7 @@ def test_a_hook_renders_no_global_scope_on_an_unreadable_machine_config(
 
     assert loadout.main(["hook-event", "post-merge", "--root", str(source)]) == 3
 
-    assert "isn't this machine's registered source" in capsys.readouterr().err
+    assert "config.toml: unknown key(s) profle" in capsys.readouterr().err
     assert not (fake_home / "here.md").exists()
 
 

@@ -9,14 +9,15 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterable, Mapping
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
+from .containment import first_link, protected
 from .destinations import resolve_destination
-from .discovery import RUNTIME_DIRECTORIES, RUNTIME_FILES, UNMANAGED_NAMES
 from .harnesses import DIRECTORY_SLICES
 from .manifest import load_profile, manifest_path
 from .output import Output
-from .project import PROJECT_PRESET, PROTECTED, load_project_config, project_config_path
+from .project import PROJECT_PRESET, load_project_config, project_config_path
+from .runtime_paths import RUNTIME_DIRECTORIES, RUNTIME_FILES, UNMANAGED_NAMES
 from .written import every_recorded_path
 
 WHOLE_FOLDER_RENDERERS = frozenset({"codex", "codex-project"})
@@ -68,24 +69,12 @@ def managed_folders(
         # A committed link can make a project folder any folder on the machine, or the
         # git dir, so a project folder is scanned only where sync would write.
         for folder in project:
-            link = _first_link(root, folder)
+            link = first_link(root, folder)
             if link is not None:
                 links.append(link)
-            elif folder.relative_to(root).parts[0].casefold() not in PROTECTED:
+            elif protected(PurePosixPath(folder.relative_to(root).as_posix())) is None:
                 folders.append(folder)
     return tuple(dict.fromkeys(folders)), tuple(dict.fromkeys(links))
-
-
-def _first_link(root: Path, folder: Path) -> Path | None:
-    parts = folder.relative_to(root).parts
-    return next(
-        (
-            root.joinpath(*parts[:depth])
-            for depth in range(1, len(parts) + 1)
-            if root.joinpath(*parts[:depth]).is_symlink()
-        ),
-        None,
-    )
 
 
 def _ignored(relative: Path) -> bool:
@@ -98,11 +87,11 @@ def _ignored(relative: Path) -> bool:
 
 
 def _unaccounted(
-    entry: Path, folder: Path, accounted: frozenset[Path], holding: frozenset[Path]
+    entry: Path, folder: Path, accounted: frozenset[Path], holding: frozenset[str]
 ) -> list[Path]:
     if _ignored(entry.relative_to(folder)) or entry in accounted:
         return []
-    if entry.is_symlink() or not entry.is_dir() or entry not in holding:
+    if entry.is_symlink() or not entry.is_dir() or str(entry) not in holding:
         return [entry]
     return [
         found
@@ -123,7 +112,7 @@ def unmanaged_entries(
 
 def _scan(folders: Iterable[Path], accounted: frozenset[Path]) -> list[Path]:
     # Every directory that holds an accounted path, so a lookup replaces a scan of them all.
-    holding = frozenset(parent for path in accounted for parent in path.parents)
+    holding = _holding(accounted)
     return [
         found
         for folder in folders
@@ -131,6 +120,21 @@ def _scan(folders: Iterable[Path], accounted: frozenset[Path]) -> list[Path]:
         for entry in sorted(folder.iterdir())
         for found in _unaccounted(entry, folder, accounted, holding)
     ]
+
+
+def _holding(paths: Iterable[Path]) -> frozenset[str]:
+    """Each directory above any of `paths`, as text: a Path per ancestor of each path was
+    a third of a no-op sync (review 3, batch 3.5). Walking up stops at the first ancestor
+    already found, since every one above it is found too."""
+    found: set[str] = set()
+    for path in paths:
+        text = str(path)
+        while (cut := text.rfind(os.sep)) > 0:
+            text = text[:cut]
+            if text in found:
+                break
+            found.add(text)
+    return frozenset(found)
 
 
 def describe_unmanaged(path: Path) -> str:

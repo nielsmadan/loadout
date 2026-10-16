@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 
 import loadout
+from loadout.containment import refuse_external_links
 from loadout.errors import LoadoutError
-from loadout.project import refuse_external_links
 from loadout.templates import remove_vendored
 from registration import register
 
@@ -139,40 +139,88 @@ def test_removing_a_vendored_template_never_follows_a_link_out(tmp_path: Path) -
     assert (elsewhere / "frontend/instructions.md").read_text() == "keep\n"
 
 
-def test_a_linked_directory_inside_the_project_is_followed_to_what_it_holds(
-    tmp_path: Path, fake_home: Path, capsys
-) -> None:
-    """A linked skill folder lands inside the project, but a file in it links out."""
+def test_a_skill_folder_linked_elsewhere_in_the_project_is_refused(tmp_path: Path, capsys) -> None:
+    """Review 3, 1.9: a link that stays in the project but leaves `loadout/` is refused
+    at the link, whatever its folder holds."""
     root = _plain_project(tmp_path / "src/proj")
-    secret = fake_home / ".ssh/id_ed25519"
-    secret.parent.mkdir()
-    secret.write_text("PRIVATE\n")
     (root / "docs/x").mkdir(parents=True)
     (root / "docs/x/SKILL.md").write_text(SKILL)
-    (root / "docs/x/notes.txt").symlink_to(secret)
     (root / "loadout/skills").mkdir()
     (root / "loadout/skills/x").symlink_to("../../docs/x", target_is_directory=True)
 
     assert loadout.main(["sync", "--root", str(root)]) == 3
 
-    assert "notes.txt" in capsys.readouterr().err
+    assert f"{root / 'loadout/skills/x'} -> {(root / 'docs/x').resolve()}, out of loadout/" in (
+        capsys.readouterr().err
+    )
     assert not (root / ".claude/skills/x").exists()
 
 
-def test_a_linked_settings_folder_is_followed_to_what_it_holds(
-    tmp_path: Path, fake_home: Path, capsys
+def test_a_settings_folder_linked_elsewhere_in_the_project_is_refused(
+    tmp_path: Path, capsys
 ) -> None:
     root = _plain_project(tmp_path / "src/proj")
-    (fake_home / ".claude").mkdir()
-    (fake_home / ".claude/settings.json").write_text('{"env": {"API_KEY": "secret"}}\n')
     (root / "cfg").mkdir()
-    (root / "cfg/claude.json").symlink_to(fake_home / ".claude/settings.json")
+    (root / "cfg/claude.json").write_text('{"env": {"A": "b"}}\n')
     (root / "loadout/settings").symlink_to("../cfg", target_is_directory=True)
 
     assert loadout.main(["sync", "--root", str(root)]) == 3
 
-    assert "claude.json" in capsys.readouterr().err
+    assert f"{root / 'loadout/settings'} -> " in capsys.readouterr().err
     assert not (root / ".claude/settings.json").exists()
+
+
+def test_a_gitignored_env_file_is_never_copied_into_a_skill(tmp_path: Path, capsys) -> None:
+    """Review 3, 1.9, as reproduced."""
+    root = _plain_project(tmp_path / "p")
+    (root / ".env").write_text("TOKEN=secret\n")
+    (root / "loadout/skills/x").mkdir(parents=True)
+    (root / "loadout/skills/x/SKILL.md").write_text(SKILL)
+    (root / "loadout/skills/x/env.txt").symlink_to("../../../.env")
+
+    assert loadout.main(["sync", "--root", str(root)]) == 3
+
+    assert "env.txt" in capsys.readouterr().err
+    assert not (root / ".claude/skills/x").exists()
+
+
+def test_sync_refuses_a_source_folder_that_is_a_link(tmp_path: Path, capsys) -> None:
+    """Review 3, 1.8: with `loadout -> .claude`, `sync --force` wrote the outputs into the
+    source and gitignored it."""
+    root = tmp_path / "p"
+    (root / ".claude").mkdir(parents=True)
+    (root / ".claude/config.toml").write_text('harnesses = ["claude"]\n')
+    (root / ".claude/permissions.toml").write_text('[shell]\ndeny = ["rm"]\n')
+    (root / "loadout").symlink_to(".claude", target_is_directory=True)
+    before = _snapshot(root)
+
+    assert loadout.main(["sync", "--root", str(root), "--force"]) == 3
+
+    assert f"{root / 'loadout'} is a link" in capsys.readouterr().err
+    assert _snapshot(root) == before
+
+
+def test_sync_refuses_a_settings_document_linked_to_the_instructions(
+    tmp_path: Path, capsys
+) -> None:
+    """Review 3, 1.11: AGENTS.md was overwritten with the settings JSON."""
+    root = tmp_path / "p"
+    (root / "loadout/instructions").mkdir(parents=True)
+    (root / "loadout/config.toml").write_text(
+        'harnesses = ["claude", "codex"]\ninstructions = ["main"]\n'
+    )
+    (root / "loadout/permissions.toml").write_text('[shell]\ndeny = ["rm"]\n')
+    (root / "loadout/instructions/main.md").write_text("Be brief.\n")
+    (root / "AGENTS.md").write_text("Hand-kept instructions.\n")
+    (root / ".claude").mkdir()
+    (root / ".claude/settings.json").symlink_to("../AGENTS.md")
+
+    assert loadout.main(["sync", "--root", str(root), "--force"]) == 3
+
+    assert f"{root / '.claude/settings.json'} -> {(root / 'AGENTS.md').resolve()}, a link sync" in (
+        capsys.readouterr().err
+    )
+    assert (root / "AGENTS.md").read_text() == "Hand-kept instructions.\n"
 
 
 def test_a_skill_with_a_local_virtualenv_still_syncs(tmp_path: Path) -> None:
@@ -409,6 +457,31 @@ def test_a_skill_or_template_named_like_an_excluded_folder_is_refused(
     assert loadout.main(["sync", "--root", str(root)]) == 3
 
     assert f"{name!r}" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("target", "refusal"),
+    [("../../vendor/backend", "out of loadout/"), ("../shared/backend", "path is a symlink")],
+    ids=["elsewhere in the project", "inside loadout"],
+)
+def test_template_sync_refuses_a_vendored_copy_linked_inside_the_project(
+    tmp_path: Path, capsys, target: str, refusal: str
+) -> None:
+    """Review 3, batch 5.14: inputs come from `loadout/` alone, and a vendored copy is
+    replaced wholesale, so a link to one is refused wherever it points."""
+    root = _plain_project(tmp_path / "p")
+    (root / "loadout/config.toml").write_text('harnesses = ["claude"]\ntemplates = ["backend"]\n')
+    (root / "loadout/templates").mkdir()
+    copy = (root / "loadout/templates" / target).resolve()
+    copy.mkdir(parents=True)
+    (copy / "instructions.md").write_text("Backend.\n")
+    link = root / "loadout/templates/backend"
+    link.symlink_to(target, target_is_directory=True)
+
+    assert loadout.main(["template", "sync", "backend", "--root", str(root)]) == 3
+
+    assert refusal in capsys.readouterr().err
+    assert link.is_symlink()
 
 
 def test_template_sync_refuses_a_vendored_copy_linked_out(
@@ -722,4 +795,5 @@ def test_the_input_walk_resolves_links_alone(
     with pytest.raises(LoadoutError, match="elsewhere"):
         refuse_external_links(root)
 
-    assert resolved == [root, root / "loadout", docs / "elsewhere"]
+    # The root, for the boundary, and the one link: nothing else needs resolving.
+    assert resolved == [root, docs / "elsewhere"]

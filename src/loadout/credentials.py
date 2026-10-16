@@ -8,6 +8,7 @@ gives it away.
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
@@ -53,7 +54,12 @@ class Shape:
 
 
 SHAPES = (
-    Shape("pem", r"-----BEGIN [A-Z ]*PRIVATE KEY-----", "a private key"),
+    # To its END line, or to the end of the text: the body is the secret, not the header.
+    Shape(
+        "pem",
+        r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|\Z)",
+        "a private key",
+    ),
     Shape(
         "token",
         r"\b(?:(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}"
@@ -84,7 +90,8 @@ SHAPES = (
     ),
     Shape(
         "userinfo",
-        r"\b[a-z][a-z0-9+.-]*://(?:[^/\s:@]+:[^/\s@]+|[^/\s:@]{20,})@",
+        # Starts only where a run of scheme characters starts, as `_NAME` does below.
+        r"(?<![A-Za-z0-9+.-])[a-z][a-z0-9+.-]*://(?:[^/\s:@]+:[^/\s@]+|[^/\s:@]{20,})@",
         "credentials in a URL",
     ),
     Shape(
@@ -94,7 +101,8 @@ SHAPES = (
     ),
     Shape(
         "userpass",
-        r"\b(?:curl|wget|http)\b[^\n]*?\s(?:-u|--user)[ =][^\s:]+:\S+",
+        # A bounded gap: unbounded, every `http` on one long line scanned to its end.
+        r"\b(?:curl|wget|http)\b[^\n]{0,256}?\s(?:-u|--user)[ =][^\s:]+:\S+",
         "a user:password on an HTTP client's command line",
     ),
     Shape("aws", r"(?i:\baws_secret_access_key)\s*[:=]\s*\S+", "an aws_secret_access_key"),
@@ -111,8 +119,11 @@ _PREFIXES = tuple(sorted({p for s in SHAPES for p in s.prefixes}, key=len, rever
 # Starts only where a run of name characters starts: a start inside one rescans the
 # rest of the run, which made one long word quadratic.
 _NAME = r"(?<![A-Za-z0-9_-])[A-Za-z][A-Za-z0-9_-]*"
+# A label may be quoted, as a JSON or YAML key is, and its value runs to the next space or
+# quote: a narrower class cut `hunter2!REST` at the `!` and printed the rest.
 _LABELLED = re.compile(
-    rf"(?i)\bbearer\s+(?P<bearer>[\w.+/=-]+)|(?P<label>{_NAME})\s*[:=]\s*[\"']?(?P<value>[\w.+/=$:{{}}-]+)"
+    rf"(?i)\bbearer\s+(?P<bearer>[\w.+/=-]+)"
+    rf"|(?P<label>{_NAME})[\"']?\s*[:=]\s*[\"']?(?:(?:bearer|basic)\s+)?(?P<value>[^\s\"']+)"
 )
 
 VALUE_MAPS = frozenset({"env", "headers", "http_headers", "environment"})
@@ -150,8 +161,8 @@ def _placeholder(found: str) -> bool:
 
 def _secret_value(value: str) -> bool:
     """A literal worth warning about: not a reference, a switch, a number, a path or a
-    placeholder."""
-    return bool(value) and not (reference(value) or PLAIN_VALUE.match(value) or _placeholder(value))
+    placeholder. The empty string counts as a placeholder."""
+    return not (reference(value) or PLAIN_VALUE.match(value) or _placeholder(value))
 
 
 def findings(content: bytes, format_name: str = "copy") -> list[tuple[str, str]]:
@@ -185,10 +196,21 @@ def credential_material(content: bytes, format_name: str = "copy") -> str | None
 
 
 def redact(text: str, values: Iterable[str]) -> str:
-    """`text` with each secret value replaced, so a diff never repeats one."""
-    for value in sorted(set(values), key=len, reverse=True):
+    """`text` with each secret value replaced, so a diff never repeats one: as it was
+    found and as JSON escapes it, since a value parsed out of a document is found decoded."""
+    spellings = {form for value in values for form in (value, json.dumps(value)[1:-1]) if form}
+    for value in sorted(spellings, key=len, reverse=True):
         text = text.replace(value, "<redacted>")
     return text
+
+
+def redacted_pair(actual: str, expected: str, format_name: str = "copy") -> tuple[str, str]:
+    """Both sides of a diff with every secret either holds replaced in both, so no diff
+    loadout prints, on a terminal or in a file, repeats a value it found."""
+    values = [
+        value for text in (actual, expected) for _, value in findings(text.encode(), format_name)
+    ]
+    return redact(actual, values), redact(expected, values)
 
 
 def _structured(value: object, key: str = "") -> Iterator[tuple[str, str]]:

@@ -3,6 +3,7 @@ with the presets (review 4.1)."""
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -14,14 +15,15 @@ from loadout.harnesses import GLOBAL_PRESET, KNOWN_HARNESSES, SHARED_SKILL_READE
 from loadout.hooks import HARNESS_PREFIXES
 from loadout.migration_models import Candidate
 from loadout.notices import _ADAPTED as ADAPTED_EVENTS
-from loadout.notices import known_events
-from loadout.permissions.renderers import RENDERERS
+from loadout.notices import CATCH_ALL_ELSEWHERE, known_events
+from loadout.permissions.renderers import CATCH_ALL_RENDERERS, RENDERERS, JsonSpec, TextSpec
+from loadout.permissions.rules import Rules
 from loadout.plugins import ADDRESSED_BY
 from loadout.project import PROJECT_PRESET
 from loadout.subagents import EFFORT_KEY, EFFORT_LEVELS
+from loadout.unmanaged import WHOLE_FOLDER_RENDERERS
 
 COMPLETE = {
-    "agents.GLOBAL_PRESET": GLOBAL_PRESET,
     "project.PROJECT_PRESET": PROJECT_PRESET,
     "discovery.GLOBAL_ROOTS": discovery.GLOBAL_ROOTS,
     "discovery.PROJECT_ROOTS": discovery.PROJECT_ROOTS,
@@ -137,3 +139,56 @@ def test_the_shared_skill_readers_include_the_harness_that_writes_there() -> Non
         if (spec := slices.get("skills")) is not None and spec.output == ".agents/skills"
     }
     assert writers and writers <= set(SHARED_SKILL_READERS) <= _harnesses_with("skills")
+
+
+def test_runtime_keys_are_the_keys_the_presets_preserve() -> None:
+    """Review 3, batch 4.3: a mutation of these survived the suite while the presets
+    said the same thing; Codex's are its own, outside any slice."""
+    preserved = {
+        agent: frozenset(key for spec in slices.values() for key in spec.preserve)
+        for agent, slices in GLOBAL_PRESET.items()
+    }
+    assert {
+        "codex": frozenset({"projects", "trust"}),
+        **{agent: keys for agent, keys in preserved.items() if keys},
+    } == discovery.RUNTIME_KEYS
+
+
+def _states_shell_rules(name: str) -> bool:
+    spec = RENDERERS[name]
+    rules = Rules(allow=("pwd-probe",))
+    if isinstance(spec, JsonSpec):
+        return "pwd-probe" in json.dumps(spec.fn(rules, {}))
+    if isinstance(spec, TextSpec):
+        return "pwd-probe" in spec.fn(rules)
+    return False
+
+
+def test_every_renderer_of_shell_rules_says_where_its_catch_all_lives() -> None:
+    """A renderer of shell rules that carries no catch-all must say where the harness
+    keeps one, or a `[shell] default` it cannot render goes unreported."""
+    stating = {name for name in RENDERERS if _states_shell_rules(name)}
+    assert stating == CATCH_ALL_RENDERERS | set(CATCH_ALL_ELSEWHERE)
+    assert CATCH_ALL_RENDERERS.isdisjoint(CATCH_ALL_ELSEWHERE)
+
+
+def test_whole_folder_renderers_are_those_writing_into_a_rules_folder() -> None:
+    """Codex reads every file in its rules folder, so a file there loadout did not
+    write still decides what runs."""
+    specs = [
+        spec
+        for preset in (GLOBAL_PRESET, PROJECT_PRESET)
+        for slices in preset.values()
+        for spec in slices.values()
+    ]
+    in_rules = {
+        spec.renderer
+        for spec in specs
+        if spec.renderer
+        and any(
+            Path(str(place)).parent.name == "rules"
+            for place in (spec.output, spec.destination)
+            if place
+        )
+    }
+    assert in_rules == WHOLE_FOLDER_RENDERERS

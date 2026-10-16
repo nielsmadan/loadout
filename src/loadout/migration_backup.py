@@ -18,11 +18,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from .containment import first_link
 from .errors import LoadoutError
 from .machine import state_dir
 from .migration_git import git
 from .migration_images import Image, install, snapshot
-from .output import FrozenFile, atomic_install, sha256
+from .output import TEMPORARY_PREFIX, FrozenFile, atomic_install, sha256
 from .written import forget_written
 
 BACKUP_VERSION = 4
@@ -30,6 +31,8 @@ MANIFEST = "manifest.json"
 MARKER = "in-progress"
 # Written once init starts changing things: a backup without it never applied anything.
 APPLIED = "applied"
+# Beside MARKER while a restore runs, so a killed restore is offered as one, not as an init.
+RESTORING = "restoring"
 IMAGES = "images"
 
 
@@ -44,6 +47,11 @@ class Backup:
     @property
     def interrupted(self) -> bool:
         return (self.directory / MARKER).exists()
+
+    @property
+    def restoring(self) -> bool:
+        """Whether the interruption was a restore's rather than the init's."""
+        return (self.directory / RESTORING).exists()
 
     def manifest(self) -> dict[str, Any]:
         try:
@@ -424,7 +432,7 @@ def _reachable(path: Path) -> bool:
     """Whether `path` can be reached without passing a link. Every backup path is
     recorded with its ancestors resolved, so a link above it was put there since, and
     writing or deleting through it would touch somewhere else."""
-    return not any(parent.is_symlink() for parent in path.parents)
+    return first_link(Path(path.anchor), path.parent) is None
 
 
 @dataclass(frozen=True)
@@ -470,6 +478,7 @@ def restore(backup: Backup) -> Restored:
         )
     # From here restore changes things, so a kill leaves the backup offered again.
     (backup.directory / MARKER).write_text("")
+    (backup.directory / RESTORING).write_text("")
     disposable = plan.disposable()
     frozen = {
         unit: entries
@@ -479,15 +488,20 @@ def restore(backup: Backup) -> Restored:
     restorable, kept = _restorable(plan, frozen, disposable, records)
     for unit in disposable:
         shutil.rmtree(unit)
-    removed, unremoved = _remove_created(plan, restorable)
+    removed, unremoved = _remove_created(plan, restorable, records)
     put_back, not_put_back = _put_back(plan, restorable)
     reverted = [*disposable, *removed, *put_back]
     kept = {**unremoved, **not_put_back, **kept}
     # Back at its before-image, whether restore put it there or init left it so.
     settled = [*reverted, *(path for path, image in restorable.items() if _current(path) == image)]
     for record_path in records:
+        # A link added above it since init would have restore rewrite its target.
+        if not _reachable(record_path):
+            kept[record_path] = "now reached through a link added since init"
+            continue
         forget_written(record_path, settled, created=plan.images[record_path].kind == "absent")
-    kept = _prune_created(restorable, kept)
+    _remove_emptied(restorable)
+    kept = _still_kept(plan.images, kept)
     result = Restored(
         tuple(sorted(kept)),
         {
@@ -521,7 +535,11 @@ def _restorable(
     captured = frozenset(plan.images)
     held = {entry for unit in frozen for entry in (unit, *_subtree(unit))}
     kept: dict[Path, str] = {unit: _unit_reason(plan.images[unit]) for unit in frozen}
-    kept.update((entry, "added since init") for entries in frozen.values() for entry in entries)
+    kept.update(
+        (entry, CHANGED if entry in plan.images else "added since init")
+        for entries in frozen.values()
+        for entry in entries
+    )
     restorable: dict[Path, Image] = {}
     for path, image in plan.images.items():
         skipped = path in held or path in records or _beneath_link(path, captured)
@@ -535,7 +553,7 @@ def _restorable(
 
 
 def _remove_created(
-    plan: _Plan, restorable: Mapping[Path, Image]
+    plan: _Plan, restorable: Mapping[Path, Image], records: set[Path]
 ) -> tuple[list[Path], dict[Path, str]]:
     """Remove what init created, deepest first: what went, and what stays with why."""
     removed: list[Path] = []
@@ -544,17 +562,50 @@ def _remove_created(
         if restorable[path].kind != "absent" or _current(path) == Image():
             continue
         if path.is_dir() and not path.is_symlink():
+            _drop_interrupted_writes(path)
             try:
                 path.rmdir()
                 removed.append(path)
             except OSError:
-                kept[path] = "a folder init created that now holds files it did not"
+                kept[path] = _blocked(path, records)
         elif plan.ours(path):
             path.unlink()
             removed.append(path)
         else:
             kept[path] = CHANGED
     return removed, kept
+
+
+# What a write killed between its temporary file and the rename over the target leaves.
+INTERRUPTED_WRITE = TEMPORARY_PREFIX
+
+
+def _drop_interrupted_writes(folder: Path) -> None:
+    """A folder init created holds no file of anyone else's under loadout's temporary
+    name, so one there is a write of loadout's that a kill cut short (review 3, 2.4)."""
+    with contextlib.suppress(OSError):
+        for entry in folder.iterdir():
+            if (
+                entry.name.startswith(INTERRUPTED_WRITE)
+                and entry.is_file()
+                and not entry.is_symlink()
+            ):
+                entry.unlink()
+
+
+BLOCKERS_SHOWN = 3
+
+
+def _blocked(folder: Path, records: set[Path]) -> str:
+    """Why a folder init created stays, naming what is in the way."""
+    # The write record is dealt with after this, so it is no reason on its own.
+    others = [entry for entry in sorted(folder.iterdir()) if entry not in records]
+    if not others:
+        return "a folder init created, kept for the write record restore kept in it"
+    names = [entry.name for entry in others[:BLOCKERS_SHOWN]]
+    more = len(others) - len(names)
+    listed = ", ".join(names) + (f" and {more} more" if more else "")
+    return f"a folder init created that now holds files it did not: {listed}"
 
 
 def _put_back(plan: _Plan, restorable: Mapping[Path, Image]) -> tuple[list[Path], dict[Path, str]]:
@@ -568,7 +619,9 @@ def _put_back(plan: _Plan, restorable: Mapping[Path, Image]) -> tuple[list[Path]
         if image.kind == "absent" or _current(path) == image:
             continue
         replaced_link = image.kind == "symlink" and path.is_dir() and not path.is_symlink()
-        if not plan.ours(path) and not replaced_link:
+        # Gone since init: putting the original back overwrites nothing (review 3, 1.12).
+        cleared = _current(path) == Image()
+        if not plan.ours(path) and not replaced_link and not cleared:
             kept[path] = CHANGED
             continue
         try:
@@ -579,14 +632,22 @@ def _put_back(plan: _Plan, restorable: Mapping[Path, Image]) -> tuple[list[Path]
     return put_back, kept
 
 
-def _prune_created(restorable: Mapping[Path, Image], kept: dict[Path, str]) -> dict[Path, str]:
-    """Remove a directory init created that the write record held until now, and drop it
-    from what was kept once it is gone."""
+def _remove_emptied(restorable: Mapping[Path, Image]) -> None:
+    """Remove each directory init created that the write record held until now."""
     for path in _by_depth(restorable, deepest_first=True):
         if restorable[path].kind == "absent" and path.is_dir() and not path.is_symlink():
             with contextlib.suppress(OSError):
                 path.rmdir()
-    return {path: why for path, why in kept.items() if path.exists() or path.is_symlink()}
+
+
+def _still_kept(images: Mapping[Path, Image], kept: Mapping[Path, str]) -> dict[Path, str]:
+    """What stays kept: a path still there, or one that held something before init, so its
+    before-image is never spent while absent."""
+    return {
+        path: why
+        for path, why in kept.items()
+        if path.exists() or path.is_symlink() or images.get(path, Image()).kind != "absent"
+    }
 
 
 def _spend(backup: Backup, document: Mapping[str, Any], kept: tuple[Path, ...]) -> None:
@@ -606,6 +667,7 @@ def _spend(backup: Backup, document: Mapping[str, Any], kept: tuple[Path, ...]) 
     ]
     _write_manifest(backup, {**document, "entries": remaining})
     (backup.directory / MARKER).unlink(missing_ok=True)
+    (backup.directory / RESTORING).unlink(missing_ok=True)
     needed = {entry["sha256"] for entry in remaining}
     for image in (backup.directory / IMAGES).iterdir():
         if image.name not in needed:

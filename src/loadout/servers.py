@@ -23,7 +23,9 @@ from .errors import LoadoutError
 __all__ = [
     "SERVERS_SOURCE",
     "Server",
+    "auth_conflict",
     "is_http",
+    "literal_header",
     "parse_servers",
     "render_claude_project_servers",
     "render_claude_servers",

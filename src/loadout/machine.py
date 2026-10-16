@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -65,6 +66,9 @@ def load_machine_config(path: Path, *, require_source: bool = True) -> MachineCo
         raise LoadoutError(f"{path}: source must be a non-empty string naming a directory")
 
     source = Path(raw_source).expanduser()
+    # A relative source would resolve against whatever folder a command runs in.
+    if not source.is_absolute():
+        raise LoadoutError(f"{path}: source {raw_source!r} must be an absolute path")
     if require_source and not source.is_dir():
         raise LoadoutError(f"{path}: source {raw_source!r} is not a directory")
 
@@ -126,6 +130,22 @@ def profile_for(root: Path, explicit: str | None, config: MachineConfig | None) 
 def is_registered(root: Path, source: Path | None) -> bool:
     """Whether `root` is the registered source, through a link or a relative spelling."""
     return source is not None and source.resolve() == root.resolve()
+
+
+def unregistered(root: Path) -> LoadoutError:
+    """Why `root`'s global setup may not render, naming the cause and its remedy. A machine
+    config that does not load is that cause, so its own error is the answer (review 3, 2.6)."""
+    config = load_machine_config(machine_config_path(), require_source=False)
+    held = f"{root}: this folder holds a global setup ({MANIFEST_NAME}), but this machine"
+    command = f"loadout init global {shlex.quote(str(root))}"
+    if config is None:
+        return LoadoutError(
+            f"{held} has no registered source; register this folder with `{command}`"
+        )
+    return LoadoutError(
+        f"{held}'s registered source is {config.source}; to make this folder the one, run "
+        f"`{command} --registration replace`"
+    )
 
 
 def registered_source() -> Path | None:

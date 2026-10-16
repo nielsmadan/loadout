@@ -443,8 +443,9 @@ def template_notices(root: Path) -> tuple[Notice, ...]:
                 "project",
                 "templates",
                 f"the vendored template {name!r} has no recorded provenance, so nothing can "
-                f"tell your edits from its source — `loadout template add {name} --vendored` "
-                "takes the source wholesale and records one",
+                f"tell your edits from its source — delete loadout/templates/{name} and run "
+                f"`loadout template add {name} --vendored` to take the source wholesale and "
+                "record one",
             )
             for name in unverifiable_templates(root)
         ),
@@ -455,17 +456,16 @@ def collect_notices(
     root: Path,
     profile: str = "default",
     environ: Mapping[str, str] | None = None,
-    context: RenderContext | None = None,
 ) -> tuple[Notice, ...]:
     """Advisory findings about project setup and global slice fragments."""
     environ = os.environ if environ is None else environ
     found: list[Notice] = [
-        *project_notices(root, environ, context or RenderContext()),
+        *project_notices(root, environ, RenderContext()),
         *template_notices(root),
     ]
     if not manifest_path(root).is_file():
         return tuple(found)
-    refuse_unregistered_global(root, context)
+    refuse_unregistered_global(root)
     manifest = load_profile(root, profile)
     found.extend(
         _loose_skill_notices(

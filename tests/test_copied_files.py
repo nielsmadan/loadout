@@ -14,11 +14,12 @@ from pathlib import Path
 import pytest
 
 import loadout
-from loadout import sync
+from loadout import output, sync
 from loadout.emit import render_all
 from loadout.files import copy_matches, describe_file, write_outputs
 from loadout.output import Copied, FrozenFile, Merged, file_sha256
 from loadout.sync import compare_with_disk
+from registration import register
 
 
 def _make(path: Path, content: bytes, executable: bool = False) -> Path:
@@ -120,6 +121,7 @@ def test_copied_carries_its_source(tmp_path: Path) -> None:
     assert Copied(source=tmp_path / "a").source == tmp_path / "a"
 
 
+@pytest.mark.integration
 def test_check_the_preview_and_sync_agree_on_a_copy_s_mode(tmp_path: Path, capsys) -> None:
     """Review 2, 2.7: after `chmod 600`, check saw no drift, the preview an update and
     sync a rewrite, because each judged a copy its own way."""
@@ -172,7 +174,7 @@ def test_sync_never_holds_a_copied_file_whole(
     monkeypatch.setattr(Path, "read_bytes", whole)
 
     assert [change.kind for change in compare_with_disk(outputs)] == ["identical", "identical"]
-    assert sync.unaccepted_outputs(tmp_path, outputs) == []
+    assert sync.unaccepted_outputs(sync.sync_state(tmp_path), outputs) == []
     digest = hashlib.sha256(b"payload").hexdigest()
     assert {entry.sha256 for entry in sync._entries_for(outputs).values()} == {digest}
 
@@ -197,3 +199,39 @@ def test_a_frozen_outputs_record_hashes_its_bytes(tmp_path: Path) -> None:
     entries = sync._entries_for({path: FrozenFile(b"#!/bin/sh\n", 0o755)})
 
     assert entries[path].sha256 == hashlib.sha256(b"#!/bin/sh\n").hexdigest()
+
+
+def test_a_source_copied_to_several_harnesses_is_hashed_once_a_pass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review 3, batch 3.4: a module-wide cache keyed by a resolve and a stat cost about
+    what it saved, never cleared, and could go stale on a coarse clock. The run keeps
+    its own memo instead."""
+    root = register(tmp_path / "source")
+    skill = root / "skills/x"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("---\nname: x\ndescription: d\n---\nX\n")
+    (skill / "run.sh").write_text("true\n")
+    (root / "loadout.toml").write_text(
+        '[[source]]\nname = "s"\npath = "."\n\n[claude]\n\n[codex]\n\n[droid]\n'
+    )
+    outputs = render_all(root)
+    script = skill / "run.sh"
+    copies = [p for p, o in outputs.items() if isinstance(o, Copied) and o.source == script]
+    assert len(copies) >= 2
+    write_outputs(outputs)
+    hashed: list[Path] = []
+    real = output.file_sha256
+
+    def counting(path: Path) -> str:
+        hashed.append(path)
+        return real(path)
+
+    monkeypatch.setattr(output, "file_sha256", counting)
+
+    sync.unaccepted_outputs(sync.sync_state(root), outputs)
+    guarded = hashed.count(script)
+    hashed.clear()
+    sync._entries_for(outputs)
+
+    assert (guarded, hashed.count(script)) == (1, 1)

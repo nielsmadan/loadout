@@ -34,8 +34,10 @@ continue to protect retired outputs.
 
 The index and HEAD trees are materialized from Git blobs, so partially staged content and
 staged deletions are independent of the working tree. Only what a render can read is written out,
-streamed one blob at a time: a project's `loadout/` folder and the files at its root, or a global
-source's folder and any source it names outside it. Large unrelated assets elsewhere in the
+streamed from one `cat-file` run: a project's `loadout/` folder and the files at its root, or a
+global source's manifest and profiles and, of each source they declare, the files in its folder and
+the folders of the artifact types its `use` names. A source at the repository root therefore does
+not write the repository out. Large unrelated assets elsewhere in the
 repository are listed by path, which is all the staged-output comparison needs, and never read.
 Renderers run in a fresh process with isolated global destinations and a read boundary around
 the snapshot. Repository scripts and skill programs are read as data and never executed.
@@ -140,7 +142,17 @@ can be made again.
 
 Post-checkout (branch changes only) and post-merge call normal guarded sync for the recorded
 source and the profile resolved at that moment. External edits cause refusal; regeneration never supplies `--force`. After a failure, the diagnostic explicitly
-states that Git already completed and gives the sync command to retry after reconciling the
-reported conflict. A post-checkout failure can return nonzero after changing HEAD; Git merge can
+states that Git already completed and gives the sync command to retry, after reconciling the
+reported conflict when the guard refused, or after fixing the reported problem when sync could not
+run. The command carries `--profile` only when the hook was given one; otherwise the retry resolves
+the profile again, as the hook did. A post-checkout failure can return nonzero after changing HEAD; Git merge can
 return zero despite a post-merge failure. Inspect the diagnostic and resulting Git state rather
 than treating either status as a rollback.
+
+The hooks live in the common hook directory, so they also run in every linked worktree of the
+registered source. A worktree is not the registered folder and may not render global scope
+([0031](../decisions/0031-global-scope-renders-only-from-the-registered-source.md)), so there the
+post-checkout and post-merge hooks sync nothing and print one line saying so; sync from the
+registered source itself. The pre-commit `check --staged` still runs in a worktree: it renders
+only into its own sandbox, so it validates the worktree's snapshot without the registration gate.
+A worktree of any other repository, or a clone, is refused like any other unregistered folder.

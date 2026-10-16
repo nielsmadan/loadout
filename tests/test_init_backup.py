@@ -1309,3 +1309,287 @@ def test_a_folder_init_created_is_its_own_before_the_run_records_it(tmp_path: Pa
     plan = migration_backup._Plan({folder: Image()}, {}, {})
 
     assert plan.ours(folder) is True
+
+
+def test_a_pre_existing_file_deleted_since_init_is_put_back(tmp_path: Path, capsys) -> None:
+    """Review 3, 1.12: restore treated the deletion as an edit to keep, then stopped
+    reporting it, and the reduced backup dropped the only copy of the original."""
+    root = _project(tmp_path / "p")
+    assert _init_project(root, "--yes") == 0
+    settings = root / ".claude/settings.json"
+    settings.unlink()
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 0
+
+    assert json.loads(capsys.readouterr().out)["kept"] == []
+    assert settings.read_text() == CLAUDE_SETTINGS
+
+
+def test_a_file_deleted_after_a_first_restore_is_put_back_by_the_next(
+    tmp_path: Path, capsys
+) -> None:
+    root = _project(tmp_path / "p")
+    settings, _ = _undo_kept_back_an_edit(root, capsys)
+    settings.unlink()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 0
+
+    assert json.loads(capsys.readouterr().out)["kept"] == []
+    assert settings.read_text() == CLAUDE_SETTINGS
+
+
+def test_restore_never_cleans_a_record_reached_through_a_link_added_since_init(
+    tmp_path: Path, capsys
+) -> None:
+    """Review 3, 1.13: restore reported the record folder kept, then rewrote the record
+    inside the link's target anyway."""
+    root = _project(tmp_path / "p")
+    assert _init_project(root, "--yes") == 0
+    record = written_state_path(root)
+    folder = record.parent
+    elsewhere = tmp_path / "elsewhere"
+    shutil.move(folder, elsewhere)
+    folder.symlink_to(elsewhere, target_is_directory=True)
+    held = (elsewhere / record.name).read_text()
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 1
+
+    report = json.loads(capsys.readouterr().out)
+    assert report["reasons"][str(record)] == "now reached through a link added since init"
+    assert (elsewhere / record.name).read_text() == held
+
+
+def test_a_deleted_original_restore_cannot_reach_stays_kept_until_it_is_put_back(
+    tmp_path: Path, capsys
+) -> None:
+    """Review 3, 1.12: an absent path dropped out of `kept`, and the reduced backup with it."""
+    root = _project(tmp_path / "p")
+    assert _init_project(root, "--yes") == 0
+    claude = root / ".claude"
+    shutil.rmtree(claude)
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    claude.symlink_to(empty, target_is_directory=True)
+    settings = claude / "settings.json"
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 1
+    assert str(settings) in json.loads(capsys.readouterr().out)["kept"]
+
+    claude.unlink()
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 0
+    assert settings.read_text() == CLAUDE_SETTINGS
+
+
+def test_a_write_killed_mid_record_does_not_block_the_restore(tmp_path: Path, capsys) -> None:
+    """Review 3, batch 2.4: the temporary file a killed record write leaves made every
+    later restore keep the folder init created and exit 1."""
+    root = _project(tmp_path / "p")
+    assert _init_project(root, "--yes") == 0
+    folder = written_state_path(root).parent
+    (folder / ".loadout-k1ll3d").write_text('{"half": ')
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 0
+
+    assert json.loads(capsys.readouterr().out)["kept"] == []
+    assert not folder.exists()
+
+
+def test_a_folder_init_created_names_the_files_that_keep_it(tmp_path: Path, capsys) -> None:
+    root = _project(tmp_path / "p")
+    assert _init_project(root, "--yes") == 0
+    folder = written_state_path(root).parent
+    (folder / "notes.txt").write_text("mine\n")
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 1
+
+    reasons = json.loads(capsys.readouterr().out)["reasons"]
+    assert (
+        reasons[str(folder)] == "a folder init created that now holds files it did not: notes.txt"
+    )
+
+
+def test_a_folder_holding_only_the_kept_record_says_so(tmp_path: Path, capsys) -> None:
+    root = _project(tmp_path / "p")
+    assert _init_project(root, "--yes") == 0
+    _write(root / "loadout/skills/added/SKILL.md", "---\nname: added\ndescription: a\n---\nA.\n")
+    assert loadout.main(["sync", "--root", str(root)]) == 0
+    folder = written_state_path(root).parent
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 1
+
+    reasons = json.loads(capsys.readouterr().out)["reasons"]
+    assert (
+        reasons[str(folder)]
+        == "a folder init created, kept for the write record restore kept in it"
+    )
+
+
+def test_a_codex_init_with_no_servers_can_be_undone(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    """Review 3, batch 2.5: the record named a `config.toml` sync never created, so restore
+    could not finish and left `~/.config/loadout` behind."""
+    source = tmp_path / "source"
+    source.mkdir()
+    before = _home(fake_home)
+    assert loadout.main(["init", "global", str(source), "--harness", "codex", "--yes"]) == 0
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 0
+
+    assert json.loads(capsys.readouterr().out)["kept"] == []
+    assert _home(fake_home) == before
+
+
+def test_the_restore_report_lists_what_it_put_back(tmp_path: Path, capsys) -> None:
+    """Review 3, batch 2.14: `--json` could not say what, if anything, was restored."""
+    root = _project(tmp_path / "p")
+    assert _init_project(root, "--yes") == 0
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 0
+
+    assert str(root / ".claude/settings.json") in json.loads(capsys.readouterr().out)["restored"]
+
+
+def test_a_spent_backup_is_not_named_as_where_the_restore_came_from(tmp_path: Path, capsys) -> None:
+    root = _project(tmp_path / "p")
+    assert _init_project(root, "--yes") == 0
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes"]) == 0
+
+    assert capsys.readouterr().out.splitlines()[0] == (
+        "Restored what init changed; the backup is spent and was removed."
+    )
+
+
+def test_a_changed_entry_of_a_repository_init_created_is_called_changed(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    source = _global_source(tmp_path / "source", fake_home)
+    _git(source, "remote", "add", "origin", "https://example.invalid/me/agents.git")
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 1
+
+    assert json.loads(capsys.readouterr().out)["reasons"][str(source / ".git/config")] == (
+        "changed since init"
+    )
+
+
+def _kill_restore_after_putting_back(root: Path, capsys) -> None:
+    assert _init_project(root, "--yes") == 0
+    (root / "loadout/instructions/main.md").write_text("# Edited after init\n")
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            migration_backup, "_spend", lambda *args: (_ for _ in ()).throw(KeyboardInterrupt)
+        )
+        with pytest.raises(KeyboardInterrupt):
+            loadout.main(["init", "restore", "--yes", "--json"])
+    capsys.readouterr()
+
+
+def test_a_killed_restore_is_announced_as_a_restore(tmp_path: Path, capsys) -> None:
+    root = _project(tmp_path / "p")
+    _kill_restore_after_putting_back(root, capsys)
+
+    assert _init_project(root, "--json") == 2
+
+    assert json.loads(capsys.readouterr().out)["error"] == (
+        "an earlier restore did not finish; finish it with `loadout init restore`"
+    )
+
+
+def test_resuming_a_killed_restore_says_the_earlier_one_did_the_work(
+    tmp_path: Path, capsys
+) -> None:
+    root = _project(tmp_path / "p")
+    _kill_restore_after_putting_back(root, capsys)
+
+    assert loadout.main(["init", "restore", "--yes"]) == 1
+
+    assert capsys.readouterr().out.splitlines()[0] == (
+        "The earlier restore had already put back everything it could."
+    )
+
+
+def test_a_new_source_repository_swapped_for_a_link_is_kept_whole(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    """Review 3, batch 5.13: removing the repository through the link would have reached
+    into whatever it names."""
+    source = _global_source(tmp_path / "source", fake_home)
+    elsewhere = tmp_path / "elsewhere-git"
+    shutil.move(source / ".git", elsewhere)
+    (source / ".git").symlink_to(elsewhere, target_is_directory=True)
+    held = sorted(path.relative_to(elsewhere) for path in elsewhere.rglob("*"))
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 1
+
+    assert json.loads(capsys.readouterr().out)["reasons"][str(source / ".git")] == (
+        "changed since init"
+    )
+    assert sorted(path.relative_to(elsewhere) for path in elsewhere.rglob("*")) == held
+
+
+def test_a_write_record_from_before_init_is_cleaned_rather_than_put_back(
+    tmp_path: Path, capsys
+) -> None:
+    """Review 3, batch 5.13: putting the record's before-image back would forget what a
+    sync wrote since init."""
+    root = _project(tmp_path / "p")
+    _write(root / "loadout/config.toml", 'harnesses = ["claude"]\n')
+    _write(root / "loadout/permissions.toml", '[shell]\ndeny = ["rm"]\n')
+    # Forced: the fixture's settings.json holds what this source does not render.
+    assert loadout.main(["sync", "--root", str(root), "--force"]) == 0
+    shutil.rmtree(root / "loadout")
+    assert written_state_path(root).is_file()
+    assert _init_project(root, "--yes") == 0
+    added = root / ".claude/skills/added/SKILL.md"
+    _write(root / "loadout/skills/added/SKILL.md", "---\nname: added\ndescription: a\n---\nA.\n")
+    assert loadout.main(["sync", "--root", str(root)]) == 0
+    capsys.readouterr()
+
+    loadout.main(["init", "restore", "--yes", "--json"])
+
+    # The record is cleaned, not kept: only what the later sync left stays.
+    assert json.loads(capsys.readouterr().out)["kept"] == [
+        str(root / ".gitignore"),
+        str(root / "loadout"),
+        str(root / "loadout/skills"),
+    ]
+    assert str(added) in json.loads(written_state_path(root).read_text())["written"]
+
+
+@pytest.mark.parametrize("applied", [True, False])
+def test_a_backup_from_another_version_is_refused_by_name_whether_or_not_it_applied(
+    tmp_path: Path, applied: bool
+) -> None:
+    root = _project(tmp_path / "p")
+    assert _init_project(root, "--yes") == 0
+    (backup,) = backups()
+    manifest = backup.directory / "manifest.json"
+    manifest.write_text(json.dumps({**json.loads(manifest.read_text()), "version": 1}))
+    if not applied:
+        (backup.directory / "applied").unlink()
+
+    with pytest.raises(LoadoutError, match=f"{backup.directory}.*delete that directory"):
+        workflow.run_restore(yes=True, as_json=True)
+
+
+def test_a_backup_whose_manifest_is_not_an_object_is_passed_over(tmp_path: Path) -> None:
+    root = _project(tmp_path / "p")
+    assert _init_project(root, "--yes") == 0
+    (backup,) = backups()
+    (backup.directory / "manifest.json").write_text("[]\n")
+
+    with pytest.raises(LoadoutError, match="no init backup to restore"):
+        workflow.run_restore(yes=True, as_json=True)

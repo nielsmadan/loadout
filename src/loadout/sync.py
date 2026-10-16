@@ -14,16 +14,23 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal, assert_never
 
+from .containment import refuse_escaping, within
+from .credentials import findings, names_a_secret
 from .emit import RenderContext, declared_profiles, render_all
 from .errors import LoadoutError
 from .files import (
     Drift,
     DriftKind,
+    GuardKind,
+    UnparsableDocument,
+    applied_document,
     check_all,
     copy_matches,
-    created_document,
     describe_copy,
     describe_file,
+    document_format,
+    merged_texts,
+    unparsable_as,
     write_outputs,
 )
 from .gitignore import append_lines, remove_lines, require_plain_gitignore
@@ -33,12 +40,13 @@ from .output import (
     FrozenFile,
     Merged,
     Output,
+    digests,
     file_sha256,
     output_record_paths,
     sha256,
 )
-from .project import PROJECT_DIR, gitignore_entries, project_config_path, refuse_escaping
-from .retirement import orphan_drift, orphaned, retire
+from .project import PROJECT_DIR, gitignore_entries, project_config_path
+from .retirement import orphan_drift, orphaned, retire, stripped
 from .unmanaged import describe_unmanaged, unmanaged_entries
 from .written import (
     ABSENT,
@@ -91,11 +99,27 @@ def _rebased(path: Path, source_root: Path, rebase_to: Path) -> Path:
         return path  # a destination outside the root renders to the same path
 
 
+@dataclass(frozen=True)
+class SyncState:
+    """One root as a command finds it: whether it holds a project, and what sync last
+    wrote there. Read once and passed down, rather than probed again by every step
+    (review 3, batch 4.4)."""
+
+    root: Path
+    project: bool
+    written: Mapping[Path, WrittenEntry]
+
+
+def sync_state(root: Path) -> SyncState:
+    return SyncState(root, project_config_path(root).is_file(), read_written(root))
+
+
 def _committed_variants(
-    root: Path, profiles: Iterable[str], context: RenderContext
+    state: SyncState, profiles: Iterable[str], context: RenderContext
 ) -> dict[Path, set[str]]:
+    root = state.root
     # A project's render reads only its own source folder, so only that is archived.
-    scope = ["--", PROJECT_DIR] if project_config_path(root).is_file() else []
+    scope = ["--", PROJECT_DIR] if state.project else []
     try:
         proc = subprocess.run(
             ["git", "-C", str(root), "archive", "HEAD", *scope], capture_output=True, check=False
@@ -120,11 +144,12 @@ def _committed_variants(
 @dataclass(frozen=True, kw_only=True)
 class Unaccepted:
     """A file on disk no baseline accounts for. `kind` is hand-edited when a commit or
-    a record says what loadout wrote there, and unknown when neither exists. `orphaned`
+    a record says what loadout wrote there, owned-key or owned-key-removed for one of
+    loadout's keys in a document it shares, and unknown when nothing does. `orphaned`
     marks a recorded destination this run no longer renders, which sync would retire."""
 
     path: Path
-    kind: Literal["hand-edited", "owned-key", "owned-key-removed", "unknown"]
+    kind: GuardKind
     actual: str
     expected: str
     orphaned: bool = False
@@ -159,9 +184,10 @@ def _unaccepted_owned(
     acceptable: Callable[[], Mapping[Path, set[str]]],
 ) -> Unaccepted | None:
     """The owned keys on disk that neither this render, the record nor a variant
-    accounts for, each judged alone. Only a key the record covers has a baseline: one it
-    does not is newly managed, a source change, and an evicted key is owned only to be
-    stripped. An entry from before per-key hashes covers nothing, as before."""
+    accounts for, each judged alone. A key a per-key entry does not cover is newly
+    managed, a source change, and an evicted key is owned only to be stripped. With no
+    per-key entry, none at all or one from before per-key hashes, nothing is newly
+    managed: a value on disk no variant explains is refused as `unknown` (review 3, 1.2)."""
     keys = _guarded(expected)
     text = path.read_text(encoding="utf-8")
     disk = owned_hashes(text, keys, expected.format)
@@ -179,41 +205,42 @@ def _unaccepted_owned(
         key
         for key in sorted(keys)
         if disk[key] != want[key]
-        and key in recorded
-        and disk[key] != recorded[key]
+        and (key in recorded if recorded else disk[key] != ABSENT)
+        and disk[key] != recorded.get(key)
         and f"{key}\0{disk[key]}" not in acceptable().get(path, set())
     ]
     if not unexplained:
         return None
     removed = all(disk[key] == ABSENT for key in unexplained)
+    # The document as check diffs it, so the abort and check show the same lines.
     return Unaccepted(
         path=path,
-        kind="owned-key-removed" if removed else "owned-key",
-        actual=_shown(text, unexplained, expected.format),
-        expected=_shown(expected.document, unexplained, expected.format),
+        kind="unknown" if not recorded else "owned-key-removed" if removed else "owned-key",
+        actual=text,
+        expected=applied_document(path, expected),
     )
 
 
-def newly_managed(root: Path, outputs: Mapping[Path, Output]) -> list[tuple[Path, str, str]]:
+def newly_managed(state: SyncState, outputs: Mapping[Path, Output]) -> list[tuple[Path, str, str]]:
     """Each key a source now manages that the record never covered and the file holds
     with another value: sync overwrites it as a source change, and says so."""
-    written = read_written(root)
+    written = state.written
     found: list[tuple[Path, str, str]] = []
     for path, expected in outputs.items():
         if not isinstance(expected, Merged) or not path.is_file():
             continue
         entry = written.get(path)
-        if entry is not None and not entry.owned_sha256:
-            continue  # recorded before per-key hashes: no baseline, as before
-        recorded = dict(entry.owned_sha256) if entry is not None else {}
+        if entry is None or not entry.owned_sha256:
+            continue  # with no per-key entry the guard has judged every key already
+        recorded = dict(entry.owned_sha256)
         keys = sorted(_guarded(expected) - recorded.keys())
         values = owned_values(path.read_text(encoding="utf-8"), keys, expected.format) or {}
-        wanted = owned_values(expected.document, keys, expected.format) or {}
+        rendered = owned_values(expected.document, keys, expected.format) or {}
         found += [
-            (path, key, _brief(values[key]))
+            (path, key, _brief(key, values[key]))
             for key in keys
             if key in values
-            and (key not in wanted or canonical(values[key]) != canonical(wanted[key]))
+            and (key not in rendered or canonical(values[key]) != canonical(rendered[key]))
         ]
     return found
 
@@ -221,32 +248,33 @@ def newly_managed(root: Path, outputs: Mapping[Path, Output]) -> list[tuple[Path
 BRIEF_LIMIT = 60
 
 
-def _brief(value: object) -> str:
+def _brief(key: str, value: object) -> str:
+    """The value a newly managed key held, short enough to show, and never one the
+    credential check flags by its key or its shape (review 3, 1.7)."""
     text = canonical(value)
-    if isinstance(value, dict | list) or len(text) > BRIEF_LIMIT:
+    flagged = names_a_secret(key.rsplit(".", 1)[-1]) or bool(findings(text.encode()))
+    if isinstance(value, dict | list) or len(text) > BRIEF_LIMIT or flagged:
         return "another value"
     return text
 
 
 def refuse_unsafe_orphans(
-    root: Path, orphans: Iterable[Path], outputs: Mapping[Path, Output]
+    state: SyncState, orphans: Iterable[Path], outputs: Mapping[Path, Output]
 ) -> None:
     """Before any orphan is read: the repository may have replaced a path sync wrote
     with a link, and reading it would print whatever the link names."""
-    if project_config_path(root).is_file():
-        refuse_escaping(root, _in_project(root, orphans), outputs)
+    if state.project:
+        refuse_escaping(state.root, _in_project(state.root, orphans), outputs)
 
 
 def _in_project(root: Path, paths: Iterable[Path]) -> list[Path]:
     """The paths the project write rule covers. A root that is also a global source
     renders destinations under ~ too, which are the global scope's and never inside."""
     boundary = root.resolve()
-    return [path for path in paths if path.is_relative_to(root) or path.is_relative_to(boundary)]
+    return [path for path in paths if within(root, path, boundary) is not None]
 
 
-def unaccepted_outputs(
-    root: Path, outputs: Mapping[Path, Output], context: RenderContext | None = None
-) -> list[Unaccepted]:
+def unaccepted_outputs(state: SyncState, outputs: Mapping[Path, Output]) -> list[Unaccepted]:
     """Files matching no output loadout itself could have written.
 
     The one classifier behind sync's refusal, check's drift kinds and retirement, so
@@ -263,15 +291,17 @@ def unaccepted_outputs(
     """
     # The third variant, and the only one that knows about a source state which was
     # never committed and has since moved on. See written.py and ADR 0019.
-    context = context or RenderContext()
-    written = read_written(root)
-    refuse_unsafe_orphans(root, orphaned(written, outputs), outputs)
+    root = state.root
+    context = RenderContext()
+    written = state.written
+    orphans = orphaned(written, outputs)
+    refuse_unsafe_orphans(state, orphans, outputs)
 
     # The committed source and every other profile cost a render each, so they are
     # built only once some file matches neither this render nor the record.
     @functools.cache
     def committed() -> dict[Path, set[str]]:
-        return _committed_variants(root, declared_profiles(root), context)
+        return _committed_variants(state, declared_profiles(root), context)
 
     @functools.cache
     def acceptable() -> dict[Path, set[str]]:
@@ -289,28 +319,34 @@ def unaccepted_outputs(
             expected=expected,
         )
 
+    # One pass: a source copied to several harnesses is read once.
+    run = _Pass(acceptable, unaccepted, digests())
     modified = [
         found
         for path, expected in outputs.items()
-        if path.is_file()
-        and (found := _judged(path, expected, written.get(path), acceptable, unaccepted))
-        is not None
+        if path.is_file() and (found := _judged(path, expected, written.get(path), run)) is not None
     ]
-    orphans = orphaned(written, outputs)
     if orphans:
         modified += _unaccepted_orphans(orphans, acceptable)
     return modified
 
 
+@dataclass(frozen=True)
+class _Pass:
+    """What one run of the guard shares across its outputs: the variants it builds only
+    when asked, how it names a refusal, and the file digests it has already read."""
+
+    acceptable: Callable[[], Mapping[Path, set[str]]]
+    unaccepted: Callable[[Path, str, str], Unaccepted]
+    digest: Callable[[Path], str]
+
+
 def _judged(
-    path: Path,
-    expected: Output,
-    entry: WrittenEntry | None,
-    acceptable: Callable[[], Mapping[Path, set[str]]],
-    unaccepted: Callable[[Path, str, str], Unaccepted],
+    path: Path, expected: Output, entry: WrittenEntry | None, run: _Pass
 ) -> Unaccepted | None:
     """The guard's verdict on one output already on disk: None when something loadout
     could have written accounts for it."""
+    acceptable, unaccepted, digest = run.acceptable, run.unaccepted, run.digest
     match expected:
         case FrozenFile():
             accepted = _bytes_accepted(path.read_bytes(), expected.content, entry)
@@ -322,8 +358,8 @@ def _judged(
             # source directly. check_all only *reports* drift; this is the guard
             # that stops sync overwriting a hand edit, and it has to cover a
             # supporting file just as much as a SKILL.md.
-            digest = file_sha256(path)
-            accepted = digest == file_sha256(expected.source) or accepts_digest(entry, digest)
+            found = digest(path)
+            accepted = found == digest(expected.source) or accepts_digest(entry, found)
             return (
                 None if accepted else unaccepted(path, describe_file(path), describe_copy(expected))
             )
@@ -361,10 +397,12 @@ def _unaccepted_orphans(
     cost a render each, and an orphan sync left as it was needs none of them."""
     modified: list[Unaccepted] = []
     for path, entry in sorted(orphans.items()):
-        # A merged orphan loses only loadout's keys, which the guard never protects.
-        if entry.kind == "merged" or not path.is_file():
+        if not path.is_file():
             continue
-        if entry.kind == "text":
+        if entry.kind == "merged":
+            if (found := _unaccepted_merged_orphan(path, entry, acceptable)) is not None:
+                modified.append(found)
+        elif entry.kind == "text":
             actual = path.read_text(encoding="utf-8")
             if not accepts_text(entry, path, actual) and not _text_accepted(
                 path, actual, acceptable().get(path, set()), entry
@@ -387,17 +425,56 @@ def _unaccepted_orphans(
     return modified
 
 
-def retire_orphans(root: Path, outputs: Mapping[Path, Output]) -> tuple[list[Path], int]:
+def _unaccepted_merged_orphan(
+    path: Path, entry: WrittenEntry, acceptable: Callable[[], Mapping[Path, set[str]]]
+) -> Unaccepted | None:
+    """Retiring strips every key loadout recorded writing, so each one still on disk is
+    judged first, against its recorded hash or, with none, the variants (review 3, 1.1)."""
+    keys = frozenset(entry.owned)
+    format_name = "json" if path.suffix == ".json" else "toml"
+    text = path.read_text(encoding="utf-8")
+    disk = owned_hashes(text, keys, format_name)
+    if disk is None:
+        return None
+    recorded = dict(entry.owned_sha256)
+    unexplained = [
+        key
+        for key in sorted(keys)
+        if disk[key] != ABSENT
+        and disk[key] != recorded.get(key)
+        and f"{key}\0{disk[key]}" not in acceptable().get(path, set())
+    ]
+    if not unexplained:
+        return None
+    return Unaccepted(
+        path=path,
+        kind="owned-key" if recorded else "unknown",
+        actual=text,
+        expected=stripped(path, entry, text),
+        orphaned=True,
+    )
+
+
+def refuse_unparsable_orphans(state: SyncState, outputs: Mapping[Path, Output]) -> None:
+    """Retiring a shared document strips loadout's keys from it, which one that no longer
+    parses cannot have done to it, forced or not."""
+    for path, entry in sorted(orphaned(state.written, outputs).items()):
+        if entry.kind == "merged" and unparsable_as(path, document_format(path), entry.owned):
+            raise UnparsableDocument(path, document_format(path), orphaned=True)
+
+
+def retire_orphans(state: SyncState, outputs: Mapping[Path, Output]) -> tuple[list[Path], int]:
     """Retire every recorded destination this run no longer renders, once the guard
     has passed or been forced, and forget them. Returns the paths changed on disk and
-    how many `.gitignore` entries were dropped."""
-    written = read_written(root)
-    orphans = orphaned(written, outputs)
+    how many `.gitignore` entries were dropped. The record read before deploying names
+    the same orphans: deploying records only what this run renders."""
+    root = state.root
+    orphans = orphaned(state.written, outputs)
     if not orphans:
         return [], 0
-    retired = retire(orphans, written)
+    retired = retire(orphans, state.written)
     record_written(root, {}, dropped=orphans)
-    if not project_config_path(root).is_file():
+    if not state.project:
         return retired, 0
     # Gone, whether retiring deleted it just now or it was deleted by hand before.
     deleted = [
@@ -407,19 +484,23 @@ def retire_orphans(root: Path, outputs: Mapping[Path, Output]) -> tuple[list[Pat
     return retired, remove_lines(root, unwanted)
 
 
-def deploy(root: Path, outputs: Mapping[Path, Output]) -> tuple[list[Path], int]:
+def deploy(state: SyncState, outputs: Mapping[Path, Output]) -> tuple[list[Path], int]:
     """Write rendered outputs, record them, and ignore them: what sync does once the
     guard has passed, shared with init's first render. Returns the paths written and
     how many `.gitignore` entries were added."""
-    if project_config_path(root).is_file():
+    root = state.root
+    if state.project:
         require_plain_gitignore(root)
-        orphans = orphaned(read_written(root), outputs)
+        orphans = orphaned(state.written, outputs)
         refuse_escaping(
             root, _in_project(root, (*outputs, *output_record_paths(outputs), *orphans)), outputs
         )
     written = write_outputs(outputs)
-    record_written(root, _entries_for(outputs))
-    if not project_config_path(root).is_file():
+    # A shared document that would stay empty is never created, so it is no record of
+    # loadout's to undo (review 3, batch 2.5).
+    recorded = _entries_for(outputs)
+    record_written(root, {path: entry for path, entry in recorded.items() if path.is_file()})
+    if not state.project:
         return written, 0
     # Root-anchored, the form init's migration writes: a bare "CLAUDE.md"
     # would also ignore loadout/instructions/native/claude/CLAUDE.md, and
@@ -430,7 +511,8 @@ def deploy(root: Path, outputs: Mapping[Path, Output]) -> tuple[list[Path], int]
 
 @dataclass(frozen=True, kw_only=True)
 class RenderedChange:
-    """One output against the file on disk. `kind` is identical, update or create;
+    """One output against the file on disk. `kind` is identical, normalised (equal once
+    loadout's banner and formatting are set aside), update or create;
     `actual` and `expected` are text for a diff, or a size and digest for a copy.
     `sha256` is the digest of the bytes the output writes, whichever it is."""
 
@@ -452,55 +534,56 @@ def compare_with_disk(outputs: Mapping[Path, Output]) -> list[RenderedChange]:
             case FrozenFile() | Copied():
                 copies[path] = content
             case Merged():
-                if (applied := created_document(path, content)) is not None:
-                    texts[path] = applied
-                texts.update(content.records)
+                texts.update(merged_texts(path, content))
             case str():
                 texts[path] = content
             case _:
                 assert_never(content)
-    changes = [_text_change(path, wanted) for path, wanted in texts.items()]
+    changes = [_text_change(path, expected) for path, expected in texts.items()]
     changes += [_copy_change(path, copy) for path, copy in copies.items()]
     return changes
 
 
-def _text_change(path: Path, wanted: str) -> RenderedChange:
-    digest = sha256(wanted.encode())
+def _text_change(path: Path, expected: str) -> RenderedChange:
+    digest = sha256(expected.encode())
     if not path.is_file():
-        return RenderedChange(path=path, kind="create", actual="", expected=wanted, sha256=digest)
+        return RenderedChange(path=path, kind="create", actual="", expected=expected, sha256=digest)
     actual = path.read_text(encoding="utf-8", newline="")
     kind: Literal["identical", "normalised", "update"] = (
         "identical"
-        if actual == wanted
+        if actual == expected
         # Only loadout's banner or a re-serialisation differs: nothing of the user's changes.
         else "normalised"
-        if normalise(path, actual) == normalise(path, wanted)
+        if normalise(path, actual) == normalise(path, expected)
         else "update"
     )
-    return RenderedChange(path=path, kind=kind, actual=actual, expected=wanted, sha256=digest)
+    return RenderedChange(path=path, kind=kind, actual=actual, expected=expected, sha256=digest)
 
 
 def _copy_change(path: Path, copy: FrozenFile | Copied) -> RenderedChange:
-    wanted = describe_copy(copy)
+    expected = describe_copy(copy)
     digest = sha256(copy.content) if isinstance(copy, FrozenFile) else file_sha256(copy.source)
     if not path.is_file():
-        return RenderedChange(path=path, kind="create", actual="", expected=wanted, sha256=digest)
+        return RenderedChange(path=path, kind="create", actual="", expected=expected, sha256=digest)
     kind: Literal["identical", "update"] = "identical" if copy_matches(path, copy) else "update"
     return RenderedChange(
-        path=path, kind=kind, actual=describe_file(path), expected=wanted, sha256=digest
+        path=path, kind=kind, actual=describe_file(path), expected=expected, sha256=digest
     )
 
 
 def _entries_for(outputs: Mapping[Path, Output]) -> dict[Path, WrittenEntry]:
     entries: dict[Path, WrittenEntry] = {}
+    digest = digests()
     for path, content in outputs.items():
         match content:
             case FrozenFile():
                 entries[path] = frozen_entry(content.content)
             case Copied():
-                entries[path] = copied_entry(content.source)
+                entries[path] = copied_entry(content.source, digest)
             case Merged():
-                entries[path] = merged_entry(content.owned, content.document, content.format)
+                entries[path] = merged_entry(
+                    content.owned, content.document, content.format, content.evicted
+                )
             case str():
                 entries[path] = text_entry(path, content)
             case _:
@@ -508,18 +591,19 @@ def _entries_for(outputs: Mapping[Path, Output]) -> dict[Path, WrittenEntry]:
     return entries
 
 
-def classified_drift(root: Path, profile: str, context: RenderContext | None = None) -> list[Drift]:
+def classified_drift(root: Path, profile: str) -> list[Drift]:
     """Every drifted path, retirements included, with its kind from the guard's verdict.
 
     A merged output the guard refuses has an edited owned key. An orphan the guard
     accepts is orphaned; one it refuses is hand-edited, because sync will refuse it.
     """
-    outputs = render_all(root, profile, context)
-    orphans = orphaned(read_written(root), outputs)
-    refuse_unsafe_orphans(root, orphans, outputs)
+    outputs = render_all(root, profile)
+    state = sync_state(root)
+    orphans = orphaned(state.written, outputs)
+    refuse_unsafe_orphans(state, orphans, outputs)
     drift = check_all(outputs)
     drift += orphan_drift(orphans)
-    verdicts = {u.path: u.kind for u in unaccepted_outputs(root, outputs, context)}
+    verdicts = {u.path: u.kind for u in unaccepted_outputs(state, outputs)}
     found = unmanaged_entries(root, outputs, profile)
     unmanaged = set(found)
     drift += [
@@ -527,7 +611,10 @@ def classified_drift(root: Path, profile: str, context: RenderContext | None = N
         for path in found
     ]
 
-    def kind(path: Path) -> DriftKind:
+    def kind(item: Drift) -> DriftKind:
+        path = item.path
+        if item.kind == "unparsable":
+            return item.kind
         if path in unmanaged:
             return "unmanaged-link" if path.is_symlink() else "unmanaged"
         if not path.exists():
@@ -536,4 +623,4 @@ def classified_drift(root: Path, profile: str, context: RenderContext | None = N
             return verdicts.get(path, "orphaned")
         return verdicts.get(path, "source-changed")
 
-    return [replace(item, kind=kind(item.path)) for item in drift]
+    return [replace(item, kind=kind(item)) for item in drift]

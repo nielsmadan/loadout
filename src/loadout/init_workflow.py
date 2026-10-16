@@ -13,10 +13,11 @@ from typing import Any, Literal, TextIO
 
 import tomlkit
 
-from .credentials import findings, redact
+from .containment import refuse_escaping
+from .credentials import redacted_pair
 from .diffs import diff_lines, report_diff
-from .discovery import discover, initialized_project_path
-from .emit import RenderContext, refuse_unregistered_global, render_all
+from .discovery import discover, initialized_project_path, project_root
+from .emit import RenderContext, refuse_unregistered_global, render_all, render_project
 from .errors import LoadoutError, UsageError
 from .harnesses import KNOWN_HARNESSES
 from .init_options import InitOptions
@@ -54,7 +55,7 @@ from .migration_transaction import (
 )
 from .output import Merged, Output
 from .project import PROJECT_DIR, gitignore_entries
-from .sync import RenderedChange, compare_with_disk, deploy
+from .sync import RenderedChange, compare_with_disk, deploy, sync_state
 from .written import written_state_path
 
 
@@ -295,8 +296,8 @@ def _show_render(changes: tuple[RenderedChange, ...]) -> None:
     if updates:
         print(f"Render changes {len(updates)} existing file(s); applying overwrites them:")
         for change in updates:
-            actual, wanted = _redacted(change)
-            report_diff(diff_lines(str(change.path), actual, wanted, context=1), sys.stdout)
+            actual, expected = _redacted(change)
+            report_diff(diff_lines(str(change.path), actual, expected, context=1), sys.stdout)
     elif not any(c.kind == "normalised" for c in changes):
         print("Render: loadout reproduces your setup exactly.")
     for change in changes:
@@ -309,13 +310,7 @@ def _show_render(changes: tuple[RenderedChange, ...]) -> None:
 def _redacted(change: RenderedChange) -> tuple[str, str]:
     """Both sides of a change with every secret either holds replaced: the preview warns
     about a secret by name, and its diff must not print the value beside the warning."""
-    format_name = change.path.suffix[1:]
-    values = [
-        value
-        for text in (change.actual, change.expected)
-        for _, value in findings(text.encode(), format_name)
-    ]
-    return redact(change.actual, values), redact(change.expected, values)
+    return redacted_pair(change.actual, change.expected, change.path.suffix[1:])
 
 
 def _render_profile(plan: MigrationPlan) -> str:
@@ -349,27 +344,52 @@ def planned_render(plan: MigrationPlan, profile: str) -> tuple[RenderedChange, .
     real = _render_root(plan).absolute()
     with tempfile.TemporaryDirectory(prefix="loadout-init-render-") as name:
         scratch = Path(name).resolve() / "root"
-        source = scratch / PROJECT_DIR if plan.inventory.scope == "project" else scratch
-        for write in plan.source_writes:
-            path = source / write.path.relative_to(plan.inventory.source_root)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(write.content)
-            path.chmod(write.mode)
-        # init registers the source it plans, so its scratch copy may render global scope.
-        context = RenderContext(registered=lambda: scratch)
-        for path in render_all(scratch, profile, context):
-            original = real / path.relative_to(scratch) if path.is_relative_to(scratch) else None
-            if original is None or not original.is_file() or path.exists() or path.is_symlink():
-                continue
-            path.parent.mkdir(parents=True, exist_ok=True)
-            # An in-repo link decides what is rendered there, so scratch keeps it a link.
-            target = original.resolve()
-            if original.is_symlink() and target.is_relative_to(real.resolve()):
-                path.symlink_to(scratch / target.relative_to(real.resolve()))
-            else:
-                path.write_bytes(original.read_bytes())
-        outputs = _rebased(render_all(scratch, profile, context), scratch, real)
-        return tuple(compare_with_disk(outputs))
+        try:
+            return _planned_render(plan, profile, scratch, real)
+        except LoadoutError as error:
+            # Nothing outside init knows the scratch folder, so a refusal names the project.
+            raise LoadoutError(str(error).replace(str(scratch), str(real))) from error
+
+
+def _planned_render(
+    plan: MigrationPlan, profile: str, scratch: Path, real: Path
+) -> tuple[RenderedChange, ...]:
+    source = scratch / PROJECT_DIR if plan.inventory.scope == "project" else scratch
+    for write in plan.source_writes:
+        path = source / write.path.relative_to(plan.inventory.source_root)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(write.content)
+        path.chmod(write.mode)
+    # init registers the source it plans, so its scratch copy may render global scope.
+    context = RenderContext(registered=lambda: scratch)
+    rendered = list(_render(plan, scratch, profile, context))
+    if plan.inventory.scope == "project":
+        # Before an original is copied in: a link in the project would be read through.
+        written = [real / path.relative_to(scratch) for path in rendered]
+        refuse_escaping(real, written, written)
+    for path in rendered:
+        original = real / path.relative_to(scratch) if path.is_relative_to(scratch) else None
+        if original is None or not original.is_file() or path.exists() or path.is_symlink():
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # An in-repo link decides what is rendered there, so scratch keeps it a link.
+        target = original.resolve()
+        if original.is_symlink() and target.is_relative_to(real.resolve()):
+            path.symlink_to(scratch / target.relative_to(real.resolve()))
+        else:
+            path.write_bytes(original.read_bytes())
+    outputs = _rebased(_render(plan, scratch, profile, context), scratch, real)
+    return tuple(compare_with_disk(outputs))
+
+
+def _render(
+    plan: MigrationPlan, root: Path, profile: str, context: RenderContext
+) -> dict[Path, Output]:
+    """What init renders: a project init renders its project alone, though the root may
+    also be the registered global source (review 3, batch 2.3)."""
+    if plan.inventory.scope == "project":
+        return render_project(root, context)
+    return render_all(root, profile, context)
 
 
 def _first_sync(
@@ -377,16 +397,16 @@ def _first_sync(
 ) -> list[Path] | None:
     """The paths the first render wrote, or None when it was not written."""
     root = _render_root(plan).absolute()
-    outputs = render_all(root, profile)
-    wanted = {change.path: change.expected for change in compare_with_disk(outputs)}
-    if wanted != {change.path: change.expected for change in approved}:
+    outputs = _render(plan, root, profile, RenderContext())
+    rendered = {change.path: change.expected for change in compare_with_disk(outputs)}
+    if rendered != {change.path: change.expected for change in approved}:
         print(
             "loadout: rendered output changed after the preview, so nothing was written; "
             "review it with `loadout check`, then run `loadout sync`",
             file=sys.stderr,
         )
         return None
-    written, _ = deploy(root, outputs)
+    written, _ = deploy(sync_state(root), outputs)
     if not as_json:
         print(f"Rendered {len(written)} generated file(s).")
     return written
@@ -458,11 +478,13 @@ def run_init(options: InitOptions) -> int:
         return 0
 
 
-def interrupted_document(backup: str) -> dict[str, object]:
-    return {
-        "backup": backup,
-        "error": "an earlier init did not finish; restore it with `loadout init restore`",
-    }
+def interrupted_document(backup: Backup) -> dict[str, object]:
+    error = (
+        "an earlier restore did not finish; finish it with `loadout init restore`"
+        if backup.restoring
+        else "an earlier init did not finish; restore it with `loadout init restore`"
+    )
+    return {"backup": str(backup.directory), "error": error}
 
 
 def _interrupted(options: InitOptions) -> int | None:
@@ -471,15 +493,16 @@ def _interrupted(options: InitOptions) -> int | None:
     if backup is None:
         return None
     if options.json or options.dry_run or not sys.stdin.isatty():
-        document = interrupted_document(str(backup.directory))
+        document = interrupted_document(backup)
         if options.json:
             return _envelope("interrupted", 2, **document)
         else:
             print(f"loadout: {document['error']} (backup {backup.directory})", file=sys.stderr)
         return 2
+    unfinished = "restore" if backup.restoring else "init"
     answer = _answer(
-        f"An earlier init did not finish. Restore everything it changed from {backup.directory}? "
-        "[y/N] "
+        f"An earlier {unfinished} did not finish. Restore everything init changed from "
+        f"{backup.directory}? [y/N] "
     )
     if answer.lower() not in {"y", "yes"}:
         print("declined; the backup stays. Restore it later with `loadout init restore`.")
@@ -491,7 +514,8 @@ def _run_init(options: InitOptions) -> int:
     if (pending := _interrupted(options)) is not None:
         return pending
     if options.scope == "project":
-        refuse_unregistered_global(options.root)
+        # The folder init adopts, which a subdirectory resolves up to before planning.
+        refuse_unregistered_global(project_root(options.root))
     options, plan = _resolve(options)
     machine, issue = _registration(options, plan)
     if issue:
@@ -644,6 +668,7 @@ def _restore_report(restored: Restored, backup: Backup) -> dict[str, object]:
     return {
         # Gone once spent: naming a deleted directory would send the reader after nothing.
         "backup": str(backup.directory) if backup.directory.exists() else None,
+        "restored": [str(path) for path in restored.restored],
         "kept": [str(path) for path in restored.kept],
         "reasons": {str(path): why for path, why in restored.reasons.items()},
         "links": {str(path): target for path, target in restored.links.items()},
@@ -691,18 +716,26 @@ def _commit_hint(plan: MigrationPlan) -> str:
 
 
 def _restored(backup: Backup, *, as_json: bool) -> int:
+    resumed = backup.restoring
     restored = restore(backup)
     if as_json:
         return _envelope("restored", 1 if restored.kept else 0, **_restore_report(restored, backup))
-    else:
-        if restored.restored:
-            print(f"Restored what init changed, from {backup.directory}.")
-        elif restored.kept:
-            print("Nothing could be restored.")
-        else:
-            print("Nothing needed restoring; every path was already as before init.")
-        _print_kept(restored, sys.stdout)
+    print(_restore_summary(restored, backup, resumed=resumed))
+    _print_kept(restored, sys.stdout)
     return 1 if restored.kept else 0
+
+
+def _restore_summary(restored: Restored, backup: Backup, *, resumed: bool) -> str:
+    """One line on what this restore did, never naming a backup it has spent."""
+    if restored.restored:
+        if backup.directory.exists():
+            return f"Restored what init changed, from {backup.directory}."
+        return "Restored what init changed; the backup is spent and was removed."
+    if resumed:
+        return "The earlier restore had already put back everything it could."
+    if restored.kept:
+        return "Nothing could be restored."
+    return "Nothing needed restoring; every path was already as before init."
 
 
 def run_restore(*, yes: bool, as_json: bool) -> int:

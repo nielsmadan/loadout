@@ -12,13 +12,14 @@ from typing import Any
 
 from .errors import LoadoutError
 from .git_privacy import ignored_paths, tracked_paths
-from .harnesses import DROID_AGENTS_DIRECTORY, KNOWN_HARNESSES, SHARED_SKILL_READERS
+from .harnesses import DROID_AGENTS_DIRECTORY, GLOBAL_PRESET, KNOWN_HARNESSES, SHARED_SKILL_READERS
 from .manifest import manifest_path
 from .migration_models import Candidate, EntryState, Inventory, Issue, IssueCode, RootMapping
 from .migration_paths import DestinationLayout
 from .native_documents import jsonc_to_json, parse_document
 from .output import Scope, entry_path, sha256
 from .project import PROJECT_DIR, PROJECT_PRESET, project_config_path
+from .runtime_paths import RUNTIME_DIRECTORIES, RUNTIME_FILES, UNMANAGED_NAMES
 
 # The harnesses whose project instructions are AGENTS.md, from the preset.
 AGENTS_MD_READERS = tuple(
@@ -49,10 +50,15 @@ RUNTIME_DOCUMENTS = {
     "droid": "settings.json",
     "pi": "settings.json",
 }
+# The keys a harness writes for itself: what its preset carries over from the live
+# destination, and Codex's own, which no slice of loadout's declares.
 RUNTIME_KEYS = {
     "codex": frozenset({"projects", "trust"}),
-    "droid": frozenset({"trustedFolders"}),
-    "pi": frozenset({"lastChangelogVersion"}),
+    **{
+        agent: keys
+        for agent, slices in GLOBAL_PRESET.items()
+        if (keys := frozenset(key for spec in slices.values() for key in spec.preserve))
+    },
 }
 PROJECT_ROOTS = {
     "claude": ".claude",
@@ -61,53 +67,6 @@ PROJECT_ROOTS = {
     "opencode": ".opencode",
     "pi": ".pi",
 }
-RUNTIME_DIRECTORIES = frozenset(
-    {
-        ".git",
-        ".loadout-state",
-        "node_modules",
-        "__pycache__",
-        "cache",
-        "caches",
-        "sessions",
-        "projects",
-        "history",
-        "logs",
-        "debug",
-        "statsig",
-        "telemetry",
-        "shell-snapshots",
-        "todos",
-        "file-history",
-        "session-env",
-        "backups",
-        "paste-cache",
-        ".ssh",
-        "secrets",
-    }
-)
-RUNTIME_FILES = frozenset(
-    {
-        "auth.json",
-        ".credentials.json",
-        "credentials.json",
-        "credentials",
-        "history.jsonl",
-        "history.json",
-        "trust.json",
-        "trusted-folders.json",
-        "mcp-cache.json",
-        "run-history.jsonl",
-        "mcp-onboarding.json",
-        "stats-cache.json",
-        "session_index.jsonl",
-        "known_marketplaces.json",
-        "installed_plugins.json",
-        "plugins_installation.json",
-        ".env",
-        ".env.local",
-    }
-)
 INSTRUCTION_FILES = frozenset(
     {"AGENTS.md", "AGENTS.override.md", "CLAUDE.md", "CLAUDE.local.md", "opencode.md"}
 )
@@ -182,12 +141,10 @@ MANAGED_PATHS: dict[str, dict[str, tuple[str, ...]]] = {
         "shared": ("skills/",),
     },
 }
-UNMANAGED_NAMES = frozenset({".DS_Store"})
 AGENT_DIRECTORIES = frozenset({"agents", DROID_AGENTS_DIRECTORY})
 PROJECT_WALK_EXCLUSIONS = frozenset(
     {
         ".git",
-        ".loadout-state",
         "node_modules",
         "__pycache__",
         ".venv",
@@ -497,17 +454,9 @@ class _InventoryBuilder:
             )
             return
         self.remember(path, read=False)
-        if self.confined and not any(canonical.is_relative_to(root) for root in self.allowed):
-            self._unresolved(
-                path,
-                destination,
-                mapping.harnesses,
-                "external-symlink",
-                f"{path} links to {canonical}, outside the repository, so adopting it would copy "
-                "that content into committed project source. Share it as a loadout template "
-                f"instead, or replace the link with a real copy (cp -RL {path} <copy>, then move "
-                "the copy into its place) and run init again.",
-            )
+        if self.confined and (refused := self._refused_link(path, canonical, mapping)):
+            code, message = refused
+            self._unresolved(path, destination, mapping.harnesses, code, message)
             return
         self.remember(canonical, read=False)
         if canonical in ancestors:
@@ -526,6 +475,41 @@ class _InventoryBuilder:
                 self._walk(child, mapping, (*ancestors, canonical))
         else:
             self._file(path, canonical, destination, mapping)
+
+    def _refused_link(
+        self, path: Path, canonical: Path, mapping: RootMapping
+    ) -> tuple[IssueCode, str] | None:
+        """A link a project cannot adopt, reported rather than walked: one out of the
+        repository, and, since project sync would refuse it (review 3, 1.3), any link into
+        `.git` and any harness folder that is a link or holds one, which sync never writes
+        through."""
+        if not any(canonical.is_relative_to(root) for root in self.allowed):
+            return "external-symlink", (
+                f"{path} links to {canonical}, outside the repository, so adopting it would copy "
+                "that content into committed project source. Share it as a loadout template "
+                f"instead, or replace the link with a real copy (cp -RL {path} <copy>, then move "
+                "the copy into its place) and run init again."
+            )
+        if not path.is_symlink():
+            return None
+        boundary = self.allowed[0]
+        parts = canonical.relative_to(boundary).parts if canonical.is_relative_to(boundary) else ()
+        if parts and parts[0].casefold() == ".git":
+            return "git-link", (
+                f"{path} links to {canonical}, inside the repository's .git, which holds "
+                "credentials and runs hooks; remove the link, then run init again."
+            )
+        if mapping.kind == "file":
+            return None
+        folder = canonical.is_dir()
+        code: IssueCode = "linked-folder" if folder else "linked-file"
+        kind = "folder" if folder else "file"
+        return code, (
+            f"{path} links to the {kind} {canonical}; sync never writes through a linked "
+            f"harness folder or a link inside one, so init does not read it. Replace the link "
+            f"with a real copy "
+            f"(cp -RL {path} <copy>, then move the copy into its place) and run init again."
+        )
 
     def _file(
         self,

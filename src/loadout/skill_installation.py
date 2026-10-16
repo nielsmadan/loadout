@@ -23,7 +23,7 @@ from .manifest import Manifest, load_profile
 from .output import FrozenFile, Merged, atomic_install, read_file
 from .skills import discover_skills
 from .sources import select_overrides
-from .sync import unaccepted_outputs
+from .sync import sync_state, unaccepted_outputs
 from .templates import copy_tree, tree_hash
 
 OWNER_MARKER = ".loadout-bundle.toml"
@@ -308,7 +308,7 @@ def _accepted_outputs(root: Path, profile: str) -> dict[Path, bytes]:
             raise LoadoutError(f"skill output {path} unexpectedly requires a merged document")
     refused = [
         entry.path
-        for entry in unaccepted_outputs(root, outputs)
+        for entry in unaccepted_outputs(sync_state(root), outputs)
         if any(entry.path.is_relative_to(directory) for directory in directories)
     ]
     if refused:

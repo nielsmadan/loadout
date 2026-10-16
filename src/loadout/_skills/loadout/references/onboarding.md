@@ -30,7 +30,7 @@ cannot activate them. Template instructions, permissions, skills and MCP servers
 the project's standard slices.
 
 Init installs no Git hooks. Offer them separately, after init, with
-`loadout integrate git-hooks install --root <source-root> [--profile <name>] [--regenerate]`.
+`loadout integrate git-hooks install --root <source-root> [--regenerate]`.
 Installation validates the staged dependency snapshot at pre-commit; `--regenerate` also runs
 guarded sync after checkout/merge. Show preview paths and source/profile, preserving occupied or
 shared hooks and reporting the exact integration commands. A clone needs the same command.

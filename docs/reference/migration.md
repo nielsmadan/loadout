@@ -83,6 +83,8 @@ fix it on disk and run init again. An incomplete preview exits 2 and changes not
 | `harnesses-required` | no harness was given and none has configuration at a known path |
 | `symlink-target`, `symlink-cycle` | a link at a read path is missing its target or loops |
 | `external-symlink` | in project scope, a harness root links outside the repository; its content would become committed source. There is no override: share it as a loadout template, or replace the link with a real copy (`cp -RL`) and run init again ([0026](../decisions/0026-a-project-root-linked-outside-the-repository-has-no-override.md)) |
+| `git-link` | in project scope, a link points into the repository's `.git`, which holds credentials such as a token in `.git/config` and runs hooks; init reports it and never reads through it |
+| `linked-folder`, `linked-file` | in project scope, a harness folder that is itself a link inside the repository, such as `.claude -> config/claude`, or a link inside one, such as `.claude/skills/x/scripts -> ../../../tools`; project sync never writes through one, so init reports it instead of walking it. Replace it with a real copy (`cp -RL`) and run init again |
 | `opencode-both-formats` | `opencode.json` and `opencode.jsonc` side by side: OpenCode reads both and merges them, the `.jsonc`'s keys winning; combine them into one file |
 | `invalid-native-document` | a document at a read path does not parse |
 | `dependency-activation` | an adopted declaration references a de-linked original instead of the copy loadout deploys |
@@ -162,9 +164,15 @@ What a file contains does not change where it goes ([0030](../decisions/0030-ado
 as it is, and init warns about it. The preview lists each committable source file that
 looks like it holds one, as `Contains a secret: <path>: <reason>`, `--json` lists the same under
 `secrets` (`path`, `reason`), and the closing message says the source's remote should stay private
-and that the `/loadout` skill can move a secret into an environment variable. The reason names what
+and that the `/loadout` skill can move a secret into an environment variable. Where it goes does
+not change, but who can read it does: a source file holding a detected secret is written
+owner-only (group and other bits cleared, so 0600 for a 0644 original), and so is anything adopted
+from an original only its owner could read, such as `mcp.toml` from a 0600 `~/.claude.json`. A
+skill file with a secret deploys from that source, so its generated copy is owner-only too. The
+reason names what
 was found, never the value, and the preview's render diff shows each such value as
-`<redacted>`. One vocabulary names a secret wherever it sits (`SECRET_NAMES` in
+`<redacted>`, as every diff loadout prints does, spelled as found or as JSON escapes it; a PEM key
+is redacted from its BEGIN line to its END line, and a label's value to the next space or quote. One vocabulary names a secret wherever it sits (`SECRET_NAMES` in
 `credentials.py`): a key, a flag or a `name = value` label whose last words are token, API key,
 secret, password, passphrase, pass, credential(s), authorization, auth, access key, private key or
 PAT, so `apiKey`, `X-API-KEY`, `--api-key` and `api_key =` all count, and `--api-key-file`,
@@ -179,7 +187,8 @@ PAT, so `apiKey`, `X-API-KEY`, `--api-key` and `api_key =` all count, and `--api
 - a value shaped like a secret anywhere in the file: a PEM private key; a GitHub (`ghp_`,
   `github_pat_` and kin), GitLab, npm, OpenAI/Anthropic `sk-`, AWS `AKIA`/`ASIA`, Google `AIza`,
   Slack or JWT token; credentials or a long token in a URL; a key in a URL query; an
-  `Authorization: Basic` credential; a user:password given to an HTTP client with `-u`; or an
+  `Authorization: Basic` credential; a user:password given to an HTTP client with `-u` or `--user`
+  within 256 characters of the command's name; or an
   `aws_secret_access_key`.
 
 A reference such as `$API_KEY`, `${API_KEY}`, `{env:API_KEY}` or `$env:API_KEY`, a number, a
@@ -211,8 +220,13 @@ manifest records; restore checks every image against that digest before changing
 refuses with nothing restored if one is damaged or missing.
 
 Restore reverts only what is still init's: a path holding its before-image, what init planned, or
-what init left. Anything else is someone else's, stays as it is and is listed under `kept`, and the
-exit code is then 1. A directory init created is removed only once empty. A link init replaced with
+what init left. A file that existed before init and has since been deleted counts too: putting it
+back overwrites nothing. Anything else is someone else's, stays as it is and is listed under
+`kept`, and the exit code is then 1. A folder init created goes once empty; a `.loadout-*` file
+in it, which a write killed before its rename leaves, counts as init's, and a folder that stays
+names what keeps it, or says it holds only the write record restore kept. A path that held
+something before init stays listed, and its
+before-image stays in the backup, until a restore has put it back. A directory init created is removed only once empty. A link init replaced with
 a directory comes back only if everything in that directory is init's; otherwise the whole
 directory stays as it is and is reported, with the target the link used to have, rather than being
 emptied around a file the harness wrote since. A source repository init created is treated the
@@ -226,7 +240,8 @@ repository has no index and no ref, what read-only git writes on its own (fsmoni
 `fsmonitor--daemon*`, `FETCH_HEAD`, `packed-refs`, `info/refs`, `objects/info/*` and lock files)
 does not count against it, so a `git status` or a fetch never makes a clean undo impossible. Every path is checked before anything is
 removed: one now reached through a link that was added since, such as a project moved behind a
-symlink, is kept rather than written through. The write record loses only the entries for paths
+symlink, is kept rather than written through. That holds for the write record too: one reached
+through a link added since init is kept and reported, never rewritten. The write record loses only the entries for paths
 restore put back, so a file synced since init is still known as loadout's; a record that no longer
 parses is left as it is, and kept. Every write of the record is a rename over it, so a killed sync
 never leaves it torn.
@@ -234,7 +249,9 @@ never leaves it torn.
 - A failure restores the backup straight away and exits 1, naming it and what it kept.
 - A killed init leaves the marker. The next `init` offers the restore, or exits 2 with
   `"status": "interrupted"` under `--json` or without a terminal. A restore sets the marker again
-  before its first change, so a killed restore is offered the same way.
+  before its first change, so a killed restore is offered the same way, and named as an
+  unfinished restore rather than an unfinished init. `--json` lists what a restore put back under
+  `restored` and what it left under `kept`; the text names the backup only while it still exists.
 - `loadout init restore --yes` restores the interrupted backup, or else the latest completed one.
   A backup counts only once its run began applying, which init marks with an `applied` file, and
   only with a readable manifest: a run killed before either changed nothing, and its directory is
@@ -303,6 +320,11 @@ target and differs from what loadout last wrote is still refused as modified out
 Still refused: a symlink cycle, and in project scope a harness root linked outside the repository,
 whose content would otherwise become committed project source. That refusal has no override; it
 names the link's target and the two remedies, a loadout template or a real copy made with `cp -RL`.
+In project scope init also refuses each link project sync would refuse: any link into `.git`, a
+harness folder that is a link, and any link inside one. A global harness root that is a link is
+still de-linked ([0023](../decisions/0023-adoption-de-links-a-symlinked-deployment.md)). The preview checks its outputs against the project's links before
+it copies a single original into its scratch render, and a refusal there names the project's own
+paths.
 
 ## Older adopted repositories
 

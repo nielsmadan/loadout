@@ -215,3 +215,18 @@ def test_uninstall_preserves_unrelated_files_in_the_generated_skill_directory(
     location = inspect_skill_source(root, "default", bundle)
     uninstall_skill_source(location, root=root, profile="default")
     assert extra.read_text(encoding="utf-8") == "keep me\n"
+
+
+def test_install_over_an_unowned_skill_exits_1_and_changes_nothing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Review 3, batch 2.15: the README said 3; a refusal like this one is a 1."""
+    root = register(_root(tmp_path))
+    existing = root / "primary" / "skills" / "loadout"
+    existing.mkdir(parents=True)
+    (existing / "SKILL.md").write_text("mine\n", encoding="utf-8")
+
+    assert loadout.main(["integrate", "skill", "install", "--yes"]) == 1
+
+    assert f"loadout: {existing} " in capsys.readouterr().err
+    assert (existing / "SKILL.md").read_text(encoding="utf-8") == "mine\n"

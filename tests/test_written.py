@@ -17,12 +17,14 @@ import pytest
 from loadout import sync
 from loadout.output import Copied
 from loadout.written import (
+    VERSION,
     WrittenEntry,
     accepts_bytes,
     accepts_text,
     every_recorded_path,
     forget_written,
     normalise,
+    owned_values,
     read_written,
     record_written,
     text_entry,
@@ -187,3 +189,44 @@ def test_only_the_recorded_paths_inside_the_folders_asked_about_are_read(tmp_pat
     assert every_recorded_path([Path("/home/.claude/skills")]) == {
         Path("/home/.claude/skills/a/SKILL.md")
     }
+
+
+@pytest.mark.parametrize(
+    ("text", "owned", "format_name"),
+    [
+        ("[]\n", (), "json"),
+        ("[]\n", ("mcpServers",), "json"),
+        ("tui = 5\n", ("tui.theme",), "toml"),
+    ],
+)
+def test_a_document_that_cannot_hold_the_owned_keys_reads_as_unparsable(
+    text: str, owned: tuple[str, ...], format_name: str
+) -> None:
+    """Review 3, batch 2.10: `[]` read as holding no keys, and a scalar parent as the key
+    being absent, so the guard reported a removal instead."""
+    assert owned_values(text, owned, format_name) is None
+
+
+def test_a_record_entry_of_an_unknown_shape_is_dropped(tmp_path: Path) -> None:
+    """Review 3, batch 4.4: an unknown kind was read as a copied file."""
+    root = tmp_path / "p"
+    root.mkdir()
+    record = written_state_path(root)
+    record.parent.mkdir(parents=True)
+    kept = str(root / "kept.md")
+    record.write_text(
+        json.dumps(
+            {
+                "version": VERSION,
+                "root": str(root),
+                "written": {
+                    kept: {"kind": "copied", "sha256": "abc"},
+                    str(root / "bogus.md"): {"kind": "bogus", "sha256": "abc"},
+                    str(root / "owned.json"): {"kind": "merged", "owned": "mcpServers"},
+                    str(root / "hash.md"): {"kind": "text", "norm_sha256": 7},
+                },
+            }
+        )
+    )
+
+    assert read_written(root) == {Path(kept): WrittenEntry(kind="copied", sha256="abc")}

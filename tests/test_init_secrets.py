@@ -91,6 +91,8 @@ def test_a_global_skill_with_a_token_goes_into_its_normal_source(
     assert adopted.read_text() == skill.read_text()
     assert _git(source, "check-ignore", str(adopted), check=False).returncode == 1
     assert f"Contains a secret: {adopted}: a private key" in capsys.readouterr().out
+    # Review 3, 1.5: the source and the copy sync deploys from it are owner-only.
+    assert (_mode(adopted), _mode(skill)) == (0o600, 0o600)
 
 
 def test_a_tracked_project_skill_with_a_token_stays_shared(tmp_path: Path, capsys) -> None:
@@ -143,3 +145,42 @@ def test_an_untracked_project_settings_file_stays_private_without_a_secret(
         f"Private (stays on this machine): {root / '.claude/settings.json'}: Git does not track it"
         in capsys.readouterr().out
     )
+
+
+def _mode(path: Path) -> int:
+    return path.stat().st_mode & 0o777
+
+
+def test_a_source_file_holding_a_secret_is_owner_only(tmp_path: Path, fake_home: Path) -> None:
+    """Review 3, 1.5: the token from a 0644 `~/.claude.json` reached a 0644 `mcp.toml`."""
+    source = _global_with_a_token(fake_home, tmp_path)
+    (fake_home / ".claude.json").chmod(0o644)
+
+    assert loadout.main(["init", "global", str(source), "--harness", "claude", "--yes"]) == 0
+
+    assert _mode(source / "loadout/mcp.toml") == 0o600
+
+
+def test_an_owner_only_original_keeps_derived_source_owner_only(
+    tmp_path: Path, fake_home: Path
+) -> None:
+    """Review 3, 1.5: `~/.claude.json` is 0600, and what is adopted from it stays so; the
+    0644 `settings.json` beside it stays 0644."""
+    claude = fake_home / ".claude.json"
+    claude.write_text(json.dumps({"mcpServers": {"docs": {"command": "docs-mcp"}}}))
+    claude.chmod(0o600)
+    (fake_home / ".claude").mkdir()
+    settings = fake_home / ".claude/settings.json"
+    settings.write_text(json.dumps({"permissions": {"allow": ["Bash(ls)"]}, "model": "opus"}))
+    settings.chmod(0o644)
+    source = tmp_path / "source"
+    source.mkdir()
+
+    assert loadout.main(["init", "global", str(source), "--harness", "claude", "--yes"]) == 0
+
+    loadout_dir = source / "loadout"
+    modes = {
+        name: _mode(loadout_dir / name)
+        for name in ("mcp.toml", "permissions.toml", "settings/claude.json")
+    }
+    assert modes == {"mcp.toml": 0o600, "permissions.toml": 0o644, "settings/claude.json": 0o644}

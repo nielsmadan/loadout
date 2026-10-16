@@ -167,8 +167,12 @@ def test_loadouts_own_spelling_still_round_trips(name: str) -> None:
 
 
 def test_a_null_byte_is_refused_rather_than_crashing() -> None:
-    """Review 2, 2.12: `ast.parse` raises ValueError for one, which escaped as exit 4."""
-    with pytest.raises(LoadoutError, match="not valid Starlark"):
+    """Review 2, 2.12: it escaped as exit 4. On 3.13, which loadout requires, `ast.parse`
+    raises a SyntaxError for one, so it is refused with the others (review 3, 5.12)."""
+    with pytest.raises(
+        LoadoutError,
+        match=r"^codex: not valid Starlark: source code string cannot contain null bytes$",
+    ):
         extract("codex", 'prefix_rule(pattern=["ls"])\n\0\n')
 
 

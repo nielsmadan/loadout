@@ -20,7 +20,7 @@ from .discovery import (
 from .emit import PROJECT_SETTINGS_DIR, project_owned_keys
 from .errors import LoadoutError
 from .extract import extract, extract_codex_plugins, extract_codex_servers, extract_value
-from .harnesses import DIRECTORY_SLICES, GLOBAL_PRESET
+from .harnesses import DIRECTORY_SLICES, GLOBAL_PRESET, KNOWN_HARNESSES
 from .manifest import MANIFEST_NAME, load_manifest
 from .migration_models import (
     Candidate,
@@ -282,6 +282,23 @@ class _PlanBuilder:
         self.unadopted: list[Unadopted] = []
         self.unadopted_paths: set[Path] = set()
         self.absorbed: dict[Path, str] = {}
+        # (agent, category) values adopted from an original only its owner could read.
+        self.restricted: set[tuple[str, str]] = set()
+
+    def adopt_value(
+        self,
+        scope: dict[str, list[tuple[str, object]]],
+        category: str,
+        agent: str,
+        value: object,
+        candidate: Candidate,
+    ) -> None:
+        scope[category].append((agent, value))
+        if _owner_only(candidate.mode):
+            self.restricted.add((agent, category))
+
+    def restricted_values(self, category: str, values: list[tuple[str, object]]) -> bool:
+        return any((agent, category) in self.restricted for agent, _ in values)
 
     def leave_out(self, kind: UnadoptedKind, name: str, candidates: list[Candidate]) -> None:
         """Adopt nothing of an item whose copies disagree, and name every copy."""
@@ -339,9 +356,16 @@ class _PlanBuilder:
         return Path(category) / ("local" if private else "native") / "+".join(agents) / relative
 
     def write(
-        self, relative: Path, content: bytes, *, mode: int = 0o644, private: bool = False
+        self,
+        relative: Path,
+        content: bytes,
+        *,
+        mode: int = 0o644,
+        private: bool = False,
+        restricted: bool = False,
     ) -> None:
         path = self.inventory.source_root / relative
+        mode = _source_mode(mode, content, path, restricted=restricted)
         item = SourceWrite(path, content, mode, private)
         previous = self.writes.get(path)
         if previous is not None and previous != item:
@@ -375,8 +399,10 @@ class _PlanBuilder:
                 fingerprints=key_fingerprints(content.decode(), candidate.format, keys),
             )
         else:
+            # A copy deploys with its source's mode, which a secret restricts.
+            mode = _source_mode(candidate.mode, content, candidate.destination)
             self.expected[candidate.destination] = ExpectedOutput(
-                candidate.destination, "copy", sha256(content), candidate.mode
+                candidate.destination, "copy", sha256(content), mode
             )
 
     def document(self, candidate: Candidate, *, existing: bool = True) -> None:
@@ -435,11 +461,12 @@ class _PlanBuilder:
             if category in {"permissions", "mcp-permissions"}:
                 renderer = _permission_renderer(candidate, False)
                 if renderer is not None:
-                    self.global_values["permissions"].append(
-                        (
-                            agent,
-                            self.extracted_rules(renderer, candidate, document, existing=existing),
-                        )
+                    self.adopt_value(
+                        self.global_values,
+                        "permissions",
+                        agent,
+                        self.extracted_rules(renderer, candidate, document, existing=existing),
+                        candidate,
                     )
                     self.global_slices[agent].add("permissions")
                 continue
@@ -459,11 +486,11 @@ class _PlanBuilder:
                             f"{candidate.destination}: {note.detail}" for note in extraction.notes
                         )
                     if existing or extracted:
-                        self.global_values[category].append((agent, extracted))
+                        self.adopt_value(self.global_values, category, agent, extracted, candidate)
                         self.global_slices[agent].add(category)
                 continue
             if category == "settings" and (existing or value):
-                self.global_values["settings"].append((agent, value))
+                self.adopt_value(self.global_values, "settings", agent, value, candidate)
                 self.global_slices[agent].add("settings")
         if existing:
             self.records[candidate.destination] = self.record(
@@ -485,7 +512,7 @@ class _PlanBuilder:
                     rules = self.extracted_rules(
                         spec.renderer or "", candidate, document, existing=existing
                     )
-                    self.project_values[category].append((agent, rules))
+                    self.adopt_value(self.project_values, category, agent, rules, candidate)
                 elif category in {"hooks", "plugins", "mcp"}:
                     extraction = extract_value(spec.renderer or "", document)
                     value = extraction.value
@@ -495,7 +522,7 @@ class _PlanBuilder:
                         )
                     if not existing and not value:
                         continue
-                    self.project_values[category].append((agent, value))
+                    self.adopt_value(self.project_values, category, agent, value, candidate)
                 else:
                     continue
                 matched = True
@@ -523,6 +550,7 @@ class _PlanBuilder:
                     Path(PROJECT_SETTINGS_DIR) / f"{agent}.json",
                     serialize_document(residual, "json"),
                     private=candidate.private,
+                    restricted=_owner_only(candidate.mode),
                 )
 
     def opaque(self, candidate: Candidate, *, existing: bool = True) -> None:
@@ -546,9 +574,8 @@ class _PlanBuilder:
         if candidate.category == "permissions":
             renderer = _permission_renderer(candidate, False)
             if renderer is not None and candidate.content:
-                self.global_values["permissions"].append(
-                    (agent, self.extracted_rules(renderer, candidate, candidate.content.decode()))
-                )
+                rules = self.extracted_rules(renderer, candidate, candidate.content.decode())
+                self.adopt_value(self.global_values, "permissions", agent, rules, candidate)
                 self.global_slices[agent].add("permissions")
                 if existing:
                     self.adopt_rules_file(candidate)
@@ -573,7 +600,8 @@ class _PlanBuilder:
             renderer = _permission_renderer(candidate, True)
             if renderer is not None:
                 rules = self.extracted_rules(renderer, candidate, candidate.content.decode())
-                self.project_values["permissions"].append((candidate.harnesses[0], rules))
+                agent = candidate.harnesses[0]
+                self.adopt_value(self.project_values, "permissions", agent, rules, candidate)
                 self.adopt_rules_file(candidate)
                 return
         self.retained.update(_original_paths(candidate))
@@ -622,7 +650,11 @@ class _PlanBuilder:
                         )
                     value = values[0][1]
                     assert isinstance(value, dict)
-                    self.write(Path(f"{category}.json"), serialize_document(value, "json"))
+                    self.write(
+                        Path(f"{category}.json"),
+                        serialize_document(value, "json"),
+                        restricted=self.restricted_values(category, values),
+                    )
 
     def project_instruction_order(self) -> tuple[str, ...]:
         """The instruction order the project config names: `main`, once it is written."""
@@ -642,17 +674,27 @@ class _PlanBuilder:
                     for agent, value in values:
                         assert isinstance(value, dict)
                         self.write(
-                            Path(f"{category}/{agent}.json"), serialize_document(value, "json")
+                            Path(f"{category}/{agent}.json"),
+                            serialize_document(value, "json"),
+                            restricted=(agent, category) in self.restricted,
                         )
         if self.inventory.source_root / "mcp.toml" not in self.writes:
             self.write(Path("mcp.toml"), SERVERS_EXAMPLE)
         self.write(Path("README.md"), SOURCE_README)
 
     def _write_permissions(self, values: list[tuple[str, object]]) -> None:
-        self.write(Path("permissions.toml"), _rules_source(_merged_rules(values)))
+        self.write(
+            Path("permissions.toml"),
+            _rules_source(_merged_rules(values)),
+            restricted=self.restricted_values("permissions", values),
+        )
 
     def _write_servers(self, values: list[tuple[str, object]], fallback: bytes = b"") -> None:
-        self.write(Path("mcp.toml"), serialize_servers(_merged_servers(values)) or fallback)
+        self.write(
+            Path("mcp.toml"),
+            serialize_servers(_merged_servers(values)) or fallback,
+            restricted=self.restricted_values("mcp", values),
+        )
 
     def global_blocks(self) -> dict[str, dict[str, object]]:
         """Each agent's manifest block: the slices `write_global_sources` wrote for it."""
@@ -1007,9 +1049,9 @@ def _initialized(inventory: Inventory) -> MigrationPlan:
                         *(
                             p.renderer.split("-", 1)[0]
                             for p in manifest.permissions
-                            if p.renderer.split("-", 1)[0] in PROJECT_ROOTS
+                            if p.renderer.split("-", 1)[0] in KNOWN_HARNESSES
                         ),
-                        *(t.name for t in manifest.targets if t.name in PROJECT_ROOTS),
+                        *(t.name for t in manifest.targets if t.name in KNOWN_HARNESSES),
                         *(s.harness for s in manifest.skills),
                         *(m.harness for m in manifest.module_config),
                     )
@@ -1214,6 +1256,17 @@ def plan_migration(inventory: Inventory) -> MigrationPlan:
     return validate_plan(plan)
 
 
+def _owner_only(mode: int) -> bool:
+    return not mode & 0o077
+
+
+def _source_mode(mode: int, content: bytes, path: Path, *, restricted: bool = False) -> int:
+    """Owner-only when it holds a secret or came from a file only its owner could read."""
+    if restricted or credential_material(content, path.suffix[1:]) is not None:
+        return mode & 0o700
+    return mode
+
+
 def _secrets(writes: Iterable[SourceWrite]) -> tuple[tuple[Path, str], ...]:
     """Each committable source file that looks like it holds a secret, and why (ADR 0030)."""
     return tuple(
@@ -1347,14 +1400,17 @@ def _original_entries(
 ) -> tuple[OriginalEntry, ...]:
     inventory = builder.inventory
     layout = inventory_layout(inventory)
-    private = tuple(entry_path(path) for path in private_paths)
-    destinations = tuple(layout.normalize(path) for path in builder.records)
-    trees = tuple(
+    # Sets walked by each path's ancestors, so the cost is the path's depth rather than
+    # the number of entries (review 3, batch 3.1: 200 skills took 25 s here).
+    private = frozenset(entry_path(path) for path in private_paths)
+    destinations = frozenset(layout.normalize(path) for path in builder.records)
+    holding = frozenset(p for d in destinations for p in (d, *d.parents))
+    trees = frozenset(
         layout.normalize(destination)
         for destination, record in builder.records.items()
         if record["format"] == "tree"
     )
-    retained = tuple(
+    retained = frozenset(
         entry_path(path)
         for candidate in inventory.candidates
         if candidate.disposition != "migrated"
@@ -1373,16 +1429,14 @@ def _original_entries(
                 )
             elif path in builder.absorbed:
                 action, reason = "retire", builder.absorbed[path]
-            elif any(entry.is_relative_to(p) for p in private):
+            elif _within_any(entry, private):
                 action, reason = (
                     "retain",
                     "Private or runtime original remains excluded and in place.",
                 )
-            elif path in builder.retained or any(entry.is_relative_to(p) for p in retained):
+            elif path in builder.retained or _within_any(entry, retained):
                 action, reason = "retain", candidate.reason
-            elif any(planned == p or p.is_relative_to(planned) for p in destinations) or any(
-                planned.is_relative_to(tree) for tree in trees
-            ):
+            elif planned in holding or _within_any(planned, trees):
                 action, reason = "generated", "This entry remains a required generated destination."
             elif not entry.is_relative_to(inventory.root.resolve()):
                 action, reason = (
@@ -1396,6 +1450,11 @@ def _original_entries(
                 )
             entries.setdefault(path, OriginalEntry(path, candidate.destination, action, reason))
     return tuple(entries.values())
+
+
+def _within_any(path: Path, roots: frozenset[Path]) -> bool:
+    """Whether `path` is one of `roots` or lies beneath one."""
+    return path in roots or not roots.isdisjoint(path.parents)
 
 
 def _readiness(builder: _PlanBuilder) -> tuple[CategoryReadiness, ...]:

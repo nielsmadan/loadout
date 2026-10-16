@@ -46,8 +46,23 @@ includes a file the source no longer produces: sync refuses to retire it until y
 into the source, delete the file yourself, or pass `--force`.
 `orphaned` means loadout wrote the file and the source no longer produces it; the next `sync`
 retires it.
+`owned-key` means a key loadout writes in a file it shares with the harness, such as a server in
+`~/.claude.json` added with `claude mcp add`, was edited there; port it into the source with
+`/loadout`, or pass `--force` to discard it. `owned-key-removed` means such a key was removed
+there: remove it from the source too, or pass `--force` to write it back.
 `unknown` means loadout has neither a record of what it wrote nor a committed baseline, so it cannot
-tell a source change from a hand edit: read the diff before syncing. Repeatedly
+tell a source change from a hand edit: read the diff before syncing.
+`unmanaged` is a file loadout did not write in a folder the harness reads whole, such as a skills
+folder; port it and delete it. `unmanaged-link` is a link there; check where it points before
+deleting it. `unparsable` is a shared file that no longer parses: fix or delete it, then sync.
+
+## Sync or check refuses a global setup
+
+A folder holding a `loadout.toml` renders only if it is this machine's registered global source.
+Anywhere else, `sync` and `check` exit 3 before reading it, and say why: this machine has no
+registered source, so run `loadout init global <folder>` to register this one; or another source
+is registered, so add `--registration replace` to register this one instead. A machine config
+that does not load is reported as its own error; fix the key it names. Repeatedly
 overwriting generated files by hand makes the next sync undo those changes.
 
 ## A skill named README, or a skill that stopped updating

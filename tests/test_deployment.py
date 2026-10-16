@@ -1,6 +1,8 @@
 import subprocess
 from pathlib import Path
 
+import pytest
+
 import loadout
 
 
@@ -80,6 +82,7 @@ def test_gitignore_names_each_skill_folder_loadout_writes(tmp_path: Path) -> Non
     assert "/.claude/skills" not in ignored
 
 
+@pytest.mark.integration
 def test_a_skill_folder_with_glob_characters_is_ignored_by_its_literal_name(
     tmp_path: Path,
 ) -> None:
@@ -101,6 +104,7 @@ def test_a_skill_folder_with_glob_characters_is_ignored_by_its_literal_name(
     assert check.stdout == ".claude/skills/x[1] y/SKILL.md\n"
 
 
+@pytest.mark.integration
 def test_an_agent_file_with_glob_characters_is_ignored_by_its_literal_name(
     tmp_path: Path,
 ) -> None:

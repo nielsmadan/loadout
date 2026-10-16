@@ -565,3 +565,26 @@ def test_check_staged_refuses_a_file_staged_inside_a_generated_folder(repo):
         LoadoutError, match=r"staged for addition or editing:\n  \.agents/skills/hand"
     ):
         check_staged(repo)
+
+
+def test_a_plain_install_reports_an_old_loadout_hook_as_stale_and_leaves_it(repo, capsys):
+    """Review 3, batch 5.8: the upgrade path after ca79d05. The marker and `--root` say
+    the hook is loadout's; its body is an older one, which only `--regenerate` rewrites."""
+    _project(repo)
+    _commit(repo, "loadout")
+    hook = repo / ".git/hooks/pre-commit"
+    hook.parent.mkdir(parents=True, exist_ok=True)
+    old = (
+        b"#!/bin/sh\n# loadout Git hook v1\nrepo=$(git rev-parse --show-toplevel) || exit $?\n"
+        b'exec loadout check --staged --root "$repo"/. -- "$@"\n'
+    )
+    hook.write_bytes(old)
+    hook.chmod(0o755)
+    capsys.readouterr()
+
+    assert loadout.main(["integrate", "git-hooks", "install", "--root", str(repo)]) == 0
+
+    out = capsys.readouterr().out
+    assert f"Git hook pre-commit: stale ({hook})" in out
+    assert "Written by loadout and out of date; `--regenerate` rewrites it." in out
+    assert hook.read_bytes() == old

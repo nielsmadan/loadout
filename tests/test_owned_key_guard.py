@@ -132,6 +132,26 @@ def test_a_removed_key_the_harness_writes_back_is_stripped_again(
     assert tomllib.loads(target.read_text()) == {"model": "gpt-5"}
 
 
+def test_moving_a_removed_key_to_a_managed_value_is_opting_it_in(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    """Review 3, batch 2.1: the evicted key was recorded as ABSENT, so the value the harness
+    wrote back read as a hand edit once the source began managing it."""
+    register(tmp_path)
+    target = _codex(
+        tmp_path, fake_home, {"model": "gpt-5", "$remove": ["developer_instructions"]}, ""
+    )
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
+    target.write_text('developer_instructions = "x"\n' + target.read_text())
+    _fragment(tmp_path, {"model": "gpt-5", "developer_instructions": "y"})
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
+
+    assert f'now managed: developer_instructions in {target} (was "x")' in capsys.readouterr().out
+    assert tomllib.loads(target.read_text())["developer_instructions"] == "y"
+
+
 def test_opting_a_key_in_overwrites_its_value_and_says_so(
     tmp_path: Path, fake_home: Path, capsys
 ) -> None:
@@ -150,10 +170,11 @@ def test_opting_a_key_in_overwrites_its_value_and_says_so(
     assert tomllib.loads(target.read_text())["model_reasoning_effort"] == "high"
 
 
-def test_a_record_from_before_owned_hashes_accepts_a_source_change(
-    tmp_path: Path, fake_home: Path
+def test_a_record_from_before_owned_hashes_refuses_an_unexplained_value(
+    tmp_path: Path, fake_home: Path, capsys
 ) -> None:
-    """G3: no owned baseline behaves as before there was one."""
+    """G3, narrowed by review 3, 1.2: with no per-key baseline and no committed source,
+    a source change cannot be told from a hand edit, so it is refused as `unknown`."""
     register(tmp_path)
     target = _codex(tmp_path, fake_home, {"model": "gpt-5"}, "")
     assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
@@ -164,10 +185,13 @@ def test_a_record_from_before_owned_hashes_accepts_a_source_change(
         entry.pop("norm_sha256", None)
     record.write_text(json.dumps(document))
     _fragment(tmp_path, {"model": "gpt-6"})
+    capsys.readouterr()
 
-    assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
+    assert loadout.main(["check", "--root", str(tmp_path), "--json"]) == 1
+    assert {"path": str(target), "kind": "unknown"} in json.loads(capsys.readouterr().out)["drift"]
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 1
 
-    assert tomllib.loads(target.read_text())["model"] == "gpt-6"
+    assert tomllib.loads(target.read_text())["model"] == "gpt-5"
 
 
 def test_deleting_every_server_is_flagged_rather_than_written_back(root: Path, capsys) -> None:
@@ -215,3 +239,51 @@ def test_a_value_changing_type_is_an_edit(tmp_path: Path, fake_home: Path, capsy
     assert loadout.main(["sync", "--root", str(tmp_path)]) == 1
 
     assert "hide_agent_reasoning = 1" in target.read_text()
+
+
+def _diff(err: str) -> list[str]:
+    return [
+        line
+        for line in err.splitlines()
+        if line[:1] in {"-", "+"} and line[:3] not in {"---", "+++"}
+    ]
+
+
+def test_the_sync_abort_shows_the_document_diff_check_shows(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    """Review 3, batch 2.11: the abort showed a sorted JSON projection, even of a TOML file."""
+    register(tmp_path)
+    target = _codex(tmp_path, fake_home, {"model": "gpt-5"}, "")
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
+    target.write_text(target.read_text().replace('"gpt-5"', '"gpt-4"'))
+    capsys.readouterr()
+    assert loadout.main(["check", "--root", str(tmp_path)]) == 1
+    checked = _diff(capsys.readouterr().err)
+
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 1
+
+    err = capsys.readouterr().err
+    assert f"WARNING: {target} was modified outside loadout (owned-key)" in err
+    assert _diff(err) == checked == ['-model = "gpt-4"', '+model = "gpt-5"']
+    assert "Sync aborted — the '-' lines would be lost." in err
+
+
+def test_the_sync_abort_for_a_removed_key_says_it_would_be_written_back(root: Path, capsys) -> None:
+    register(root)
+    shared = _synced(root)
+    document = json.loads(shared.read_text())
+    del document["mcpServers"]
+    shared.write_text(json.dumps(document, indent=2))
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--root", str(root)]) == 1
+
+    err = capsys.readouterr().err
+    assert f"WARNING: {SHARED} was modified outside loadout (owned-key-removed)" in err
+    assert (
+        "Sync aborted — the '+' lines were removed outside loadout and would be written back. "
+        "Remove them from the source with /loadout, or run `loadout sync --force` to write "
+        "them back." in err
+    )
+    assert err.count("Sync aborted") == 1

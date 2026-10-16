@@ -15,18 +15,19 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 
 import tomlkit
 
 from .bundled_templates import BUNDLED, STARTERS, bundled_template
+from .containment import no_symlinks as _no_symlinks
+from .containment import refuse_external_links
 from .errors import LoadoutError
 from .gitignore import replace_text
 from .machine import load_machine_config, machine_config_path
 from .manifest import load_manifest, manifest_path
-from .output import no_symlinks as _no_symlinks
-from .project import PROJECT_DIR, load_project_config, project_config_path, refuse_external_links
+from .project import PROJECT_DIR, load_project_config, project_config_path
 from .resolve import ResolvedItem, Slice
 from .skills import EXCLUDED_DIRECTORIES, excluded
 from .sources import Source
@@ -109,7 +110,13 @@ def contained(root: Path, name: str | None = None) -> None:
 
 
 class TemplateNotFound(LoadoutError):
-    """No vendored copy, source or bundled template answers to the name."""
+    """No vendored copy, source or bundled template answers to the name. `offered` is
+    what the resolver that looked could have resolved, so the message lists those rather
+    than reading the machine's sources again (review 3, batch 4.2)."""
+
+    def __init__(self, message: str, *, offered: Iterable[str] = ()) -> None:
+        super().__init__(message)
+        self.offered = tuple(offered)
 
 
 class NoGlobalSource(LoadoutError):
@@ -152,9 +159,10 @@ def resolve_template(
 
     try:
         return (upstream or resolve_upstream_template)(name)
-    except (TemplateNotFound, NoGlobalSource) as error:
-        configured = not isinstance(error, NoGlobalSource)
-        raise LoadoutError(_not_found(name, root, configured=configured)) from error
+    except TemplateNotFound as error:
+        raise LoadoutError(_not_found(name, root, error.offered, configured=True)) from error
+    except NoGlobalSource as error:
+        raise LoadoutError(_not_found(name, root, (), configured=False)) from error
 
 
 def source_template_names(source: Source) -> tuple[str, ...]:
@@ -177,17 +185,8 @@ def source_template_names(source: Source) -> tuple[str, ...]:
     return tuple(dict.fromkeys(names))
 
 
-def _resolvable_names(root: Path) -> list[str]:
-    try:
-        sources = declared_sources()
-    except LoadoutError:
-        sources = ()
-    offered = {name for source in sources for name in source_template_names(source)}
-    return sorted(offered | set(vendored_names(root)) | set(STARTERS))
-
-
-def _not_found(name: str, root: Path, *, configured: bool) -> str:
-    names = _resolvable_names(root)
+def _not_found(name: str, root: Path, offered: Iterable[str], *, configured: bool) -> str:
+    names = sorted(set(offered) | set(vendored_names(root)) | set(STARTERS))
     sentences = [f"template {name!r} not found."]
     if not configured:
         sentences.append(
@@ -236,7 +235,8 @@ def resolve_upstream_template(name: str) -> ResolvedItem:
     if bundled is not None:
         return _bundled_template(name, bundled)
     raise TemplateNotFound(
-        f"templates not found: {name!r}. Searched {', '.join(searched) or '(no source offers templates)'}."
+        f"templates not found: {name!r}. Searched {', '.join(searched) or '(no source offers templates)'}.",
+        offered=(offer for source in sources for offer in source_template_names(source)),
     )
 
 

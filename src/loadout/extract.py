@@ -567,7 +567,8 @@ def _codex_rule(label: str, document: str, statement: ast.stmt) -> CodexRule:
             )
         try:
             values[keyword.arg] = ast.literal_eval(keyword.value)
-        except (ValueError, TypeError, RecursionError, MemoryError):
+        # A value too deep to evaluate never parses, so parsing refused it already.
+        except (ValueError, TypeError):
             raise _codex_refusal(
                 label, document, call, f"{keyword.arg} must be written as a literal"
             ) from None
@@ -599,9 +600,12 @@ def _codex_rules(document: str, label: str) -> list[CodexRule]:
     try:
         module = ast.parse(document)
     except SyntaxError as error:
-        line = (error.text or "").strip()
-        raise LoadoutError(f"{label}: line {error.lineno}: not valid Starlark: {line}") from None
-    except (ValueError, RecursionError, MemoryError) as error:
+        # A NUL has neither a line nor its text, only the parser's message.
+        where = f"line {error.lineno}: " if error.lineno else ""
+        detail = (error.text or "").strip() or error.msg
+        raise LoadoutError(f"{label}: {where}not valid Starlark: {detail}") from None
+    # A NUL is a SyntaxError on 3.13 and later; these are the parser running out.
+    except (RecursionError, MemoryError) as error:
         raise LoadoutError(f"{label}: not valid Starlark: {type(error).__name__}") from None
     rules = [_codex_rule(label, document, statement) for statement in module.body]
     # Capped for the file as well as per rule: each alternative is rendered and read back.

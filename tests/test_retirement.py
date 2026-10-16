@@ -340,6 +340,6 @@ def test_an_orphan_sync_left_alone_costs_no_variant_render(
     monkeypatch.setattr(sync, "_committed_variants", lambda root, *_: renders.append(root) or {})
     monkeypatch.setattr(sync, "_render_variants", lambda root, *_: renders.append(root) or {})
 
-    assert sync.unaccepted_outputs(root, {}) == []
+    assert sync.unaccepted_outputs(sync.sync_state(root), {}) == []
 
     assert renders == []

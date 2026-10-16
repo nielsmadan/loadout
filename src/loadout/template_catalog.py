@@ -6,8 +6,8 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from .containment import no_symlinks as _no_symlinks
 from .errors import LoadoutError
-from .output import no_symlinks as _no_symlinks
 from .output import regular_file as _regular_file
 from .permissions.rules import parse_rules
 from .servers import parse_servers
@@ -55,8 +55,9 @@ class Catalog:
         )
 
 
-def _validate_part(target: Path, category: str) -> tuple[Path, ...]:
-    _no_symlinks(target)
+def _validate_part(target: Path, category: str, folder: Path) -> tuple[Path, ...]:
+    """A part of the catalog in `folder`, refused if a link sits between them."""
+    _no_symlinks(target, folder)
     if not target.exists():
         raise LoadoutError(f"missing {category} part: {target}")
     if category == "skills":
@@ -64,7 +65,7 @@ def _validate_part(target: Path, category: str) -> tuple[Path, ...]:
             raise LoadoutError(f"{target}: skill requires a directory with SKILL.md")
         files = []
         for item in target.rglob("*"):
-            _no_symlinks(item)
+            _no_symlinks(item, folder)
             if not item.is_dir():
                 _regular_file(item)
                 if not excluded(item.relative_to(target)):
@@ -93,7 +94,9 @@ def load_catalogs(paths: Iterable[Path]) -> dict[Path, Catalog]:
 
 
 def _load_catalog(path: Path, validated: dict[tuple[str, Path], tuple[Path, ...]]) -> Catalog:
-    _no_symlinks(path)
+    # Bounded at the catalog's folder: a link above it, such as a home under a linked
+    # prefix, is where the catalog is, not a way out of it (review 3, batch 4.1).
+    _no_symlinks(path, path.parent)
     _regular_file(path)
     try:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
@@ -114,7 +117,7 @@ def _load_catalog(path: Path, validated: dict[tuple[str, Path], tuple[Path, ...]
             target = path.parent / category / (name + CATEGORIES[category])
             key = (category, target)
             if key not in validated:
-                validated[key] = _validate_part(target, category)
+                validated[key] = _validate_part(target, category, path.parent)
             content.update(validated[key])
             parts.append((category, target))
     return Catalog(path, tuple(parts), tuple(sorted(content)))

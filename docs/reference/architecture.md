@@ -36,16 +36,22 @@ global scope. `render_global` refuses any other root before it reads the manifes
 (`emit.refuse_unregistered_global`, [0031](../decisions/0031-global-scope-renders-only-from-the-registered-source.md));
 by default that root is the source the machine config registers, and init's scratch preview, its
 isolated validation, the staged snapshot and the guard's committed tree name their own copy. The staged-render and migration-validation
-workers pass their own instead of patching modules. What renders again on a render's behalf takes
-the same context: the guard's profile and committed variants (`sync.unaccepted_outputs`),
-`sync.classified_drift`, and `notices.collect_notices`, which also takes the environment it reads.
+workers pass their own instead of patching modules. The guard (`sync.unaccepted_outputs`),
+`sync.classified_drift` and `notices.collect_notices` render with the default context, since
+nothing renders them for another root; the guard hands its committed tree a copy that may render
+it, and `collect_notices` takes the environment it reads. A template a resolver cannot find is
+named with what that resolver offered, never with a fresh read of the machine's sources.
 `written.py` stores the other half beside that config: what `sync` last wrote at each
 destination, which is the third variant the modified-outside-loadout guard compares against and
 the sidecar [0008](../decisions/0008-generated-files-carry-no-machine-state.md) deferred for
-orphan removal — see [0019](../decisions/0019-sync-records-what-it-wrote.md). It only widens
-acceptance: no record means the guard behaves exactly as it did before one existed. For a
+orphan removal — see [0019](../decisions/0019-sync-records-what-it-wrote.md). For a file loadout
+writes whole it only widens acceptance: no record means the guard behaves exactly as it did before
+one existed. For a
 document loadout shares with its harness, the entry hashes each key loadout wrote on its own, and
-the guard compares only those; a key no entry covers yet is newly managed, not an edit.
+the guard compares only those; a key an entry does not cover yet is newly managed, not an edit.
+With no per-key entry the guard fails closed: each owned key on disk must match this render or
+a committed or profile variant, or it is refused as `unknown`. A merged orphan's keys are judged
+the same way before retirement strips them.
 `retirement.py` consumes it: a recorded destination the run no longer renders is deleted, or has
 its recorded keys stripped, once `sync.unaccepted_outputs` (the guard's classifier) accepts
 it — see [0022](../decisions/0022-sync-retires-what-it-no-longer-renders.md). With no record,
@@ -77,16 +83,18 @@ output, so `sync`/`check` regenerate whichever scopes are present.
 
 | area | modules |
 |---|---|
-| CLI | `cli.py` (arguments, exit codes, `--json` errors), `commands.py` (the commands), `diffs.py` (the diffs they show), `completions.py` |
-| render | `emit.py`, `composition.py`, `permissions/` (`rules.py`, `merge.py`, `renderers.py`), `hooks.py`, `adapters.py`, `plugins.py`, `servers.py`, `skills.py`, `subagents.py`, `module_config.py`, `output.py` (the output types) |
+| CLI | `__init__.py` and `__main__.py` (the entry points), `cli.py` (arguments, exit codes, `--json` errors), `errors.py` (`LoadoutError` and `UsageError`, exit 3 and 2), `commands.py` (the commands), `diffs.py` (the diffs they show), `completions.py` |
+| render | `emit.py`, `composition.py`, `documents.py` (merging JSON documents), `permissions/` (`rules.py`, `merge.py`, `renderers.py`), `hooks.py`, `adapters.py`, `plugins.py`, `servers.py`, `skills.py`, `subagents.py`, `module_config.py`, `output.py` (the output types) |
 | sources | `harnesses.py` (the global preset), `manifest.py`, `sources.py`, `resolve.py`, `destinations.py`, `machine.py`, `project.py`, `skill_policy.py` |
-| sync | `sync.py` (guard, deploy, retirement, drift), `files.py` (writers, `check_all`), `retirement.py`, `written.py` (the write record), `record.py` (owned key names), `surgery.py` and `toml_paths.py` (writing into shared documents), `notices.py`, `unmanaged.py`, `gitignore.py` |
-| init | `init_workflow.py` (preview, apply, restore), `discovery.py` (inventory), `credentials.py` (secret warnings), `migration.py` (plan), `migration_models.py`, `migration_paths.py`, `migration_transaction.py` (apply), `migration_validation.py` (isolated reconstruction), `migration_images.py` (what a path holds, captured and installed), `migration_backup.py` (backup and restore), `migration_git.py`, `git_privacy.py`, `native_documents.py`, `extract.py` (reading native documents back) |
-| git | `staged.py` and `staged_render.py` (`check --staged`), `git_hooks.py` and `git_hook_commands.py` |
+| sync | `containment.py` (where loadout may read and write: `within`, `protected`, `first_link` and the project rules built on them), `sync.py` (guard, deploy, retirement, drift), `files.py` (writers, `check_all`), `retirement.py`, `written.py` (the write record), `record.py` (owned key names), `surgery.py` and `toml_paths.py` (writing into shared documents), `notices.py`, `unmanaged.py`, `gitignore.py` |
+| init | `init_workflow.py` (preview, apply, restore), `init_options.py` (what was asked for), `discovery.py` (inventory), `credentials.py` (secret warnings), `runtime_paths.py` (what a harness writes for itself, shared with `unmanaged.py`), `migration.py` (plan), `migration_models.py`, `migration_paths.py`, `migration_transaction.py` (apply), `migration_validation.py` (isolated reconstruction), `migration_images.py` (what a path holds, captured and installed), `migration_backup.py` (backup and restore), `migration_git.py`, `git_privacy.py`, `native_documents.py`, `extract.py` (reading native documents back) |
+| git | `staged.py` and `staged_render.py` (`check --staged`), `git_hooks.py` and `git_hook_commands.py`, `worktrees.py` (a linked worktree of the registered source) |
 | templates | `templates.py` (resolution, vendored copies), `template_catalog.py`, `template_discover.py`, `template_vendor.py`, `bundled_templates.py` |
 | bundled skill | `skill_installation.py`, `bundled_skill.py` |
 
 Harness facts live in the presets: `harnesses.py:GLOBAL_PRESET` and `project.py:PROJECT_PRESET`
 say where each slice of each harness goes, `KNOWN_HARNESSES` is the global preset's keys, and
 `discovery.py` (roots, runtime paths) and `migration.py` (dormant routes) restate what adoption
-needs. `tests/test_harness_tables.py` holds every restatement to the presets.
+needs. `tests/test_harness_tables.py` holds the restatements it lists to the presets: the
+per-harness tables, managed paths, runtime keys, which renderers carry a catch-all and where the
+others keep one, and which read a whole folder. A new restatement needs its own test there.

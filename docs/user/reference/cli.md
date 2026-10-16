@@ -44,16 +44,29 @@ drift without rewriting the generated files, so `check` is the preview of `sync`
 `sync --dry-run`. Each drifted file carries a kind, judged by the same comparison `sync` uses to
 refuse an overwrite: `source-changed` (the source moved on; run `sync`), `hand-edited` (it differs
 from what sync last wrote; port the edit into the source with `/loadout`, or `sync --force` to
-discard it), `unknown` (no record and no committed baseline to judge by; review the diff, then port
-or discard the same way), `missing`,
+discard it), `owned-key` (a key loadout writes in a file it shares with the harness, such as a
+server in `~/.claude.json`, was edited there; port it with `/loadout`, or `sync --force` to discard
+it), `owned-key-removed` (such a key was removed there; remove it from the source too, or
+`sync --force` to write it back), `unknown` (no record and no committed baseline to judge by;
+review the diff, then port or discard the same way), `missing`,
 `orphaned` (sync wrote it, the source no longer produces it, and the next `sync` retires it), or
 `unmanaged` (loadout did not write it, but it sits in a folder the harness reads whole, such as a
 skills folder or Codex's rules folder; port it with `/loadout`, then delete it — `sync` warns
-about it and carries on).
+about it and carries on), `unmanaged-link` (a link loadout did not create in such a folder; it has
+nothing to port, so check where it points before deleting it), or `unparsable` (a file loadout shares with a harness, such as
+`~/.claude.json`, no longer parses, or parses but cannot hold loadout's keys, such as a JSON
+array or a TOML scalar where a table goes: fix or delete it and sync, or `sync --force` replaces it
+outright; plain `sync` refuses with exit 3 and names the file. One the source no longer renders
+has nothing to replace it, so `sync` refuses it with or without `--force` until it is fixed or
+deleted).
 `check --json` reports the same kind per path and exits with the same code as `check`. The registered global
 source may also hold a project configuration, and then renders both scopes. Any other root holding
 a `loadout.toml` is refused with exit 3 before anything is read or written, its project
-configuration included; `check --staged` refuses a staged one the same way. Registering is the
+configuration included. The refusal names its cause: this machine has no registered source (run
+`loadout init global <that folder>`), or another one is registered (add `--registration replace`).
+A machine config that does not load is reported as its own error instead. `integrate git-hooks install` and the `template` commands refuse such a root too, rather than installing hooks that would refuse every commit; `check --staged` refuses one in the index the same way, under any case spelling
+of its name, since a case-insensitive disk reads `Loadout.toml` as the manifest; a commit that
+removes one is not refused for HEAD still holding it. Registering is the
 trust decision: `loadout init global <path>` registers a folder, and there is no other way to
 render one.
 
@@ -78,7 +91,7 @@ loadout init global ~/agent-config
 
 Scope is a subcommand: `init project` for a repository, `init global` for machine-wide
 configuration. `init global [DIR]` takes the directory as an optional argument, like
-`git init [dir]`, and defaults to the current directory, so a bare `init global` adopts the cwd. `--root` exists only on `init project`; `--registration keep|replace` only on `init global`. Keeping another registration while init sets up a new source exits 3 before writing anything: the first sync renders global scope, which only the registered source may.
+`git init [dir]`, and defaults to the current directory, so a bare `init global` adopts the cwd. `--root` exists only on `init project`; `--registration keep|replace` only on `init global`. At the registered global source that also holds a project, `init project` previews, compares and writes the project's outputs alone; the global ones stay for `sync`. Keeping another registration while init sets up a new source exits 3 before writing anything: the first sync renders global scope, which only the registered source may.
 `loadout init restore [--yes] [--json]` puts back everything the latest init changed, from the
 backup it took first; a path changed since that init is kept and reported, and the exit code is 1.
 An init that was killed part way is offered for restore by the next `init`, which otherwise exits
@@ -177,7 +190,8 @@ loadout integrate git-hooks status --root .
 loadout integrate git-hooks uninstall --root . --yes
 ```
 
-All three accept `--root` and `--profile NAME`. `install` also accepts `--dry-run`, and
+All three accept `--root`; none takes `--profile`, since each hook resolves the profile when it
+runs. `install` also accepts `--dry-run`, and
 `--regenerate` to add the post-checkout and post-merge hooks alongside pre-commit.
 
 `uninstall` removes only hooks loadout wrote, identified by the marker on the second line of

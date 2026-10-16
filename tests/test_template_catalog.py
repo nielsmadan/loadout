@@ -323,3 +323,25 @@ def test_shared_update_without_a_terminal_needs_yes(
     assert (
         bare_project / "loadout/templates/instructions/typescript.md"
     ).read_text() == "Updated shared advice\n"
+
+
+def test_a_catalog_under_a_linked_folder_above_it_still_loads(
+    tmp_path: Path, catalog: Path
+) -> None:
+    """Review 3, batch 4.1: the check ran to `/`, so a catalog reached through a link
+    above it, such as a home under a linked prefix, was refused."""
+    alias = tmp_path / "alias"
+    alias.symlink_to(catalog.parent.parent, target_is_directory=True)
+    folder = alias / "loadout/templates"
+
+    loaded = load_catalog(folder / "nextjs.toml")
+
+    assert folder / "skills/review-typescript/SKILL.md" in loaded.files()
+
+
+def test_a_link_inside_a_catalog_is_still_refused(tmp_path: Path, catalog: Path) -> None:
+    (tmp_path / "elsewhere.md").write_text("x\n")
+    (catalog / "skills/review-typescript/notes.md").symlink_to(tmp_path / "elsewhere.md")
+
+    with pytest.raises(LoadoutError, match=r"path is a symlink: .*review-typescript/notes\.md"):
+        load_catalog(catalog / "nextjs.toml")

@@ -13,6 +13,7 @@ from loadout.discovery import discover
 from loadout.emit import render_all
 from loadout.machine import machine_config_path
 from loadout.written import written_state_path
+from registration import register
 
 pytestmark = pytest.mark.migration_integration
 
@@ -702,3 +703,27 @@ def test_project_init_ignores_a_glob_named_skill_by_its_literal_name(tmp_path, c
         "/.claude/settings.json",
         "/.claude/skills/x\\[1\\]/",
     ]
+
+
+def test_init_project_at_a_registered_dual_scope_root_renders_the_project_alone(
+    tmp_path, fake_home, capsys
+):
+    """Review 3, batch 2.3: the preview rendered the project and the first sync both scopes,
+    so the two never matched and every such init rolled back."""
+    root = register(tmp_path / "p")
+    (root / "instructions").mkdir(parents=True)
+    (root / "instructions/x.md").write_text("Global rules.\n")
+    (root / "loadout.toml").write_text(
+        '[[source]]\nname = "s"\npath = "."\n\n'
+        '[instructions.mine]\ndestinations = ["~/mine.md"]\norder = ["x"]\n'
+    )
+    (root / ".claude").mkdir()
+    (root / ".claude/settings.json").write_text('{"permissions": {"deny": ["Bash(rm:*)"]}}\n')
+    _repo(root)
+
+    assert (
+        loadout.main(["init", "project", "--root", str(root), "--harness", "claude", "--yes"]) == 0
+    )
+
+    assert (root / "loadout/permissions.toml").is_file()
+    assert sorted(path.name for path in fake_home.iterdir()) == [".config", ".local"]

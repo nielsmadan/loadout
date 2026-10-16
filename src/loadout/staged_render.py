@@ -12,6 +12,7 @@ from . import emit, templates
 from .destinations import resolve_destination
 from .errors import LoadoutError
 from .manifest import (
+    AgentsTarget,
     InstructionTarget,
     ModuleConfigTarget,
     PermissionTarget,
@@ -32,6 +33,9 @@ class Snapshot:
     relative: Path
     environment: dict[str, str]
     gitlinks: tuple[Path, ...]
+    # Whether the root this snapshot copies is the registered source; the snapshot's own
+    # path never is, so the parent decides (ADR 0031).
+    registered: bool
 
     @property
     def root(self) -> Path:
@@ -146,8 +150,9 @@ class Snapshot:
             owned.update(
                 self.destination(str(value), "staged ownership") for value in target.destinations
             )
-        trees: tuple[SkillsTarget | ModuleConfigTarget, ...] = (
+        trees: tuple[SkillsTarget | AgentsTarget | ModuleConfigTarget, ...] = (
             *config.skills,
+            *config.agents,
             *config.module_config,
         )
         for tree in trees:
@@ -165,7 +170,10 @@ class Snapshot:
         configured = project_config_path(self.root).is_file() or manifest_path(self.root).is_file()
         if render and configured:
             context = emit.RenderContext(
-                self.destination, self.upstream, self.sources, registered=lambda: self.root
+                self.destination,
+                self.upstream,
+                self.sources,
+                registered=lambda: self.root if self.registered else None,
             )
             for path, output in emit.render_all(self.root, profile, context).items():
                 owned.add(path)
@@ -204,6 +212,7 @@ def main() -> None:
             Path(request["relative"]),
             request["environment"],
             tuple(tree / path for path in request["gitlinks"]),
+            request["registered"] is True,
         )
         # This process exists only to render the snapshot: nothing it reads may come from
         # the user's real configuration.

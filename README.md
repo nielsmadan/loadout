@@ -50,8 +50,8 @@ overrides the active profile.
 
 An ownership marker, `.loadout-bundle.toml` inside the source copy, records the installed content
 hash; the skill renderer never copies it. Reinstalling refreshes an unchanged older copy. A source
-copy you edited, an unowned skill with the same name, or a generated output edited outside Loadout
-is reported and left alone, and the command exits 3.
+copy you edited or an unowned skill with the same name is reported and left alone, and the command
+exits 1; a generated output edited outside Loadout is refused the same way with exit 3.
 Uninstall removes only the owned source and the files rendered from it that sync would accept as
 its own (the current render, what was committed, or what sync last wrote); unrelated files in the
 destination directory survive.
@@ -78,12 +78,15 @@ Generated files look like ordinary files, so they get hand-edited — and the ed
 on the next `sync`, silently. Before writing, `sync` compares each file against every output
 loadout itself could have produced: rendered from the committed source and from the working
 tree, under every declared profile. A file matching none of them was written by something
-else, so `sync` names it, changes nothing, and exits 1. It prints a diff alongside the name —
-the `-` lines are the ones that exist only on disk, so a permission a harness granted itself at
+else, so `sync` names it with the kind `check` would report, changes nothing, and exits 1. It
+prints the same diff `check` does alongside the name — the `-` lines are the ones that exist only
+on disk, and for a key removed outside loadout the `+` lines are what sync would write back, so a permission a harness granted itself at
 runtime is reported verbatim rather than silently discarded. When the terminal shortens that
 diff, the whole of it goes to `$XDG_STATE_HOME/loadout/sync-abort.diff` (mode 0600), which the
-next such abort replaces; when that directory cannot be written, the abort says so by leaving the
-line out and still exits 1. Port the edit into the source with the bundled `/loadout` skill, or
+next such abort replaces and the next sync that completes removes; when that directory cannot be
+written, the abort says so by leaving the line out and still exits 1. Every diff loadout prints,
+there, in `check` and in the init preview, shows a value the credential check recognises as
+`<redacted>`. Port the edit into the source with the bundled `/loadout` skill, or
 pass `--force` to discard it.
 
 Comparison is by parsed document for JSON targets, not by bytes, so a harness re-serialising
@@ -92,15 +95,23 @@ its harness, such as `~/.claude.json` or `~/.codex/config.toml`, only the keys l
 compared, each on its own: the harness may change the rest, while an edit to one of loadout's keys,
 such as a server added to `mcpServers` with `claude mcp add`, stops sync and is reported by `check`
 as `owned-key`, and deleting one, such as `codex mcp remove` of the last server, as
-`owned-key-removed`. A key the source manages for the first time is a source change: sync
-overwrites it and says so, as `now managed: model in ~/.codex/config.toml (was "gpt-5")`. A key
-listed under `$remove` is never an edit, since the harness may write it back.
+`owned-key-removed`. A key the source manages for the first time, beside keys sync has already
+recorded writing there, is a source change: sync overwrites it and says so, as
+`now managed: model in ~/.codex/config.toml (was "gpt-5")`. With no record of the file at all, on a
+first sync or with the record deleted, a value one of loadout's keys already holds is overwritten
+only when this render or the committed source accounts for it; anything else is refused as
+`unknown`, while a key the file does not hold yet is simply added. A key listed under `$remove` is
+never an edit, since the harness may write it back, and moving it from `$remove` to a value opts it
+in like any newly managed key. When a slice stops rendering into a shared
+file, each of its keys still there is judged the same way before sync strips it, so a server
+added by hand stops the retirement as `owned-key` instead of going with it.
 
 There is a third comparison beside those two renders: **what `sync` recorded writing there
 last**, kept per destination under `$XDG_CONFIG_HOME/loadout/written/`. Without it, editing a
 source twice before committing left an output rendered from a state that is neither baseline,
-and `sync` refused a file it had written itself. The record only ever widens acceptance — delete
-it and the guard behaves exactly as it did before, warning and all. `sync` deletes the record of
+and `sync` refused a file it had written itself. For a file loadout writes whole the record only
+ever widens acceptance: delete it and the guard behaves exactly as it did before, warning and all.
+For a file it shares with a harness, deleting it makes the guard stricter, as described above. `sync` deletes the record of
 any root that no longer exists; a root it cannot examine, such as one a sandbox hides, keeps its
 record. `check` never changes machine state.
 
@@ -164,13 +175,14 @@ config** says where its source lives:
 
 ```toml
 # $XDG_CONFIG_HOME/loadout/config.toml, or ~/.config/loadout/config.toml
-source    = "~/ac"                    # directory holding loadout.toml; must exist
+source    = "~/ac"                    # directory holding loadout.toml; absolute or ~/, must exist
 profile   = "autonomous"              # optional; active profile, default "default"
 harnesses = ["claude", "codex", "pi"] # optional; defaults for fresh project init
 ```
 
 `source`, `profile`, and `harnesses` are the only accepted keys — anything else is an error, so a
-typo fails loudly. An explicit `--harness` selection overrides the machine default. Existing
+typo fails loudly. A relative `source` is an error too: it would register whatever folder a command
+runs in. An explicit `--harness` selection overrides the machine default. Existing
 projects keep the harnesses in their own config. The file is machine state: never
 version-controlled, never generated, and the only place loadout *stores* state that is not part
 of a source (see
@@ -672,16 +684,17 @@ Project-scope sync writes only to real paths inside the project, never under `.g
 `loadout/`, and edits `.gitignore` only when it is a regular file rather than a symlink. A symlink
 committed to the repository can route outputs anywhere: `.claude -> ../../.claude` into a home
 directory, or `.claude/skills/x -> ../../.git/hooks` into a hook the next checkout runs. So no link
-may sit between the project root and an output, and an output may itself be a link only when it
-points at another file the same sync writes, such as `CLAUDE.md -> AGENTS.md`. Sync refuses before
-writing anything and names each link and where it resolves. The same holds for what it
-reads: a link anywhere in `loadout/` that leads out of the project, such as a skill's supporting
-file pointing at a key in `~/.ssh`, or into its `.git`, which holds credentials such as a token in
-`.git/config`, is refused rather than copied into the repository's outputs. A template's own
-files are read only as real files, never through a link.
-Linked folders are followed, so a folder linked to somewhere else in the project is checked for
-what it holds; folders never read, such as a skill's `.venv` or `node_modules`, are skipped, so a
-skill or template may not itself be named like one.
+may sit between the project root and an output, and the only output that may itself be a link is
+`CLAUDE.md -> AGENTS.md` when the same sync writes both. Any other link from one output to another,
+such as `.claude/settings.json -> ../AGENTS.md`, would have sync overwrite one with the other.
+Sync refuses before writing anything and names each link and where it resolves. The same holds
+for what it reads: inputs come from `loadout/` alone, and `loadout/` must be a real folder. A link
+in it that leads anywhere else is refused rather than copied into the repository's outputs: a
+skill's supporting file pointing at a key in `~/.ssh`, into `.git`, which holds credentials such
+as a token in `.git/config`, or at a gitignored `.env` beside it. A template's own files are read
+only as real files, never through a link.
+Links that stay inside `loadout/` are followed; folders never read, such as a skill's `.venv` or
+`node_modules`, are skipped, so a skill or template may not itself be named like one.
 Both checks run before sync or check compares anything, a file sync wrote and no longer renders
 included, so no diff of an outside file is shown.
 

@@ -3,7 +3,7 @@
 `template list` shows declared templates; a fresh project needs to *find* one.
 This is the source `list` cannot currently surface: everything resolution could
 find — the project's vendored copies first (they shadow source offers), then
-every source the machine's global manifest declares.
+every source the machine's global manifest declares, then the starters loadout ships.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from .bundled_templates import BUNDLED, STARTERS
 from .errors import LoadoutError
 from .templates import VENDORED, declared_sources, source_template_names, vendored_names
 
@@ -43,4 +44,5 @@ def available_templates(root: Path) -> tuple[AvailableTemplate, ...]:
                 continue
             options.append(AvailableTemplate(name, source.name))
             seen.add(name)
+    options += [AvailableTemplate(name, BUNDLED) for name in STARTERS if name not in seen]
     return tuple(options)

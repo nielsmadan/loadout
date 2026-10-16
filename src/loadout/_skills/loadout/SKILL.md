@@ -43,7 +43,8 @@ Edit the declared source for each configured consumer. Generated harness files a
 - A missing personal producer requires a scope decision. Do not silently edit shared source or
   invent a second contributor claiming the same keys.
 - A change made outside loadout belongs in the source, not beside it. When sync refuses an output,
-  or `check` reports `hand-edited`, `unknown` or `unmanaged`, follow
+  or `check` reports `hand-edited`, `owned-key`, `owned-key-removed`, `unknown`, `unmanaged`,
+  `unmanaged-link` or `unparsable`, follow
   “Porting a change made outside loadout” in [configuration routing](references/configuration.md).
   Run `sync --force` only after showing the diff and getting the user's approval.
 - An init that lists `unadopted` items left copies that disagree across harnesses in place. Merge

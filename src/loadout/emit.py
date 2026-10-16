@@ -7,11 +7,12 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .composition import HEADER, load_fragment, render
+from .containment import refuse_escaping, refuse_external_links
 from .destinations import resolve_destination
 from .documents import merge_documents
 from .errors import LoadoutError
 from .harnesses import DIRECTORY_SLICES, SHARED_SKILL_READERS
-from .machine import is_registered, registered_source
+from .machine import is_registered, registered_source, unregistered
 from .manifest import (
     MANIFEST_NAME,
     InstructionTarget,
@@ -48,10 +49,7 @@ from .project import (
     ProjectConfig,
     load_project_config,
     project_config_path,
-    project_outputs,
     project_slices,
-    refuse_escaping,
-    refuse_external_links,
 )
 from .record import owned_now, read_record, render_record
 from .resolve import INSTRUCTIONS, SETTINGS, ResolvedItem, json_slice, resolve_item
@@ -105,10 +103,7 @@ def refuse_unregistered_global(
     if (held or manifest_path(root).is_file()) and not is_registered(
         root, (context or RenderContext()).registered()
     ):
-        raise LoadoutError(
-            f"{root}: this folder holds a global setup ({MANIFEST_NAME}) that isn't this "
-            "machine's registered source; register it with `loadout init global <path>`"
-        )
+        raise unregistered(root)
 
 
 @dataclass(frozen=True)
@@ -934,7 +929,7 @@ def render_project(root: Path, context: RenderContext | None = None) -> dict[Pat
         for _, _, spec in project_slices(config.harnesses)
         if spec.preserve_foreign and spec.output is not None
     ]
-    refuse_escaping(root, shared, [root / output for output in project_outputs(config)])
+    refuse_escaping(root, shared)
     templates = project_templates(root, config, context or RenderContext())
     outputs = _render_project_slices(root, config, templates)
     # Before anything compares or shows these: a diff of a file outside the project

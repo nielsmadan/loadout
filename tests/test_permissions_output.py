@@ -180,11 +180,12 @@ def test_missing_base_file_is_an_error(root: Path) -> None:
 
 
 def test_base_permissions_key_must_be_an_object(root: Path) -> None:
+    register(root)
     base_path = root / "bases" / "opencode.base.json"
     doc = json.loads(base_path.read_text(encoding="utf-8"))
     doc["permissions"] = "oops"
     base_path.write_text(json.dumps(doc), encoding="utf-8")
-    with pytest.raises(LoadoutError, match="permissions"):
+    with pytest.raises(LoadoutError, match="base document's permissions must be a JSON object"):
         render_all(root)
 
 

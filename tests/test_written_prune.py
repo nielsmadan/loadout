@@ -11,7 +11,7 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.fixture(autouse=True)
-def scratch_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def scratch_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     state = tmp_path / "xdg"
     monkeypatch.setenv("XDG_CONFIG_HOME", str(state))
     return state
@@ -56,18 +56,18 @@ def test_sync_deletes_the_record_of_a_vanished_root_and_keeps_the_live_one(
 
 
 def test_check_leaves_the_state_directory_unchanged(
-    tmp_path: Path, scratch_state: Path, capsys
+    tmp_path: Path, scratch_config: Path, capsys
 ) -> None:
     live = _project(tmp_path / "live")
     assert loadout.main(["sync", "--root", str(live)]) == 0
     dead = _dead_record(tmp_path / "gone")
-    before = _files(scratch_state)
+    before = _files(scratch_config)
     assert dead in before
 
     assert loadout.main(["check", "--root", str(live), "--json"]) == 0
     assert loadout.main(["check", "--root", str(live)]) == 0
 
-    assert _files(scratch_state) == before
+    assert _files(scratch_config) == before
     assert '"status": "clean"' in capsys.readouterr().out
 
 
@@ -87,9 +87,9 @@ def test_a_root_that_cannot_be_examined_keeps_its_record(tmp_path: Path) -> None
     assert kept.is_file()
 
 
-def test_a_record_with_no_readable_root_is_left_alone(tmp_path: Path, scratch_state: Path) -> None:
+def test_a_record_with_no_readable_root_is_left_alone(tmp_path: Path, scratch_config: Path) -> None:
     live = _project(tmp_path / "live")
-    records = scratch_state / "loadout" / "written"
+    records = scratch_config / "loadout" / "written"
     records.mkdir(parents=True)
     corrupt = records / "0000000000000000.json"
     corrupt.write_text("{not json")

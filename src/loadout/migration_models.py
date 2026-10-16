@@ -21,6 +21,9 @@ IssueCode = Literal[
     "symlink-cycle",
     "symlink-target",
     "external-symlink",
+    "git-link",
+    "linked-folder",
+    "linked-file",
 ]
 UnadoptedKind = Literal["instructions", "skill", "agent"]
 Disposition = Literal["migrated", "runtime-private exclusion", "retained dependency", "unresolved"]

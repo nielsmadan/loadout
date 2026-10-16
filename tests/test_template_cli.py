@@ -134,11 +134,31 @@ def test_bare_add_can_take_a_vendored_choice(
     assert load_project_config(_config(bare_project)).vendored_hash("web") == tree_hash(vendored)
 
 
-def test_bare_add_with_nothing_available_refuses(
-    bare_project: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    ("answers", "message"),
+    [
+        (("",), "choose a template by number (1-2)"),
+        (("x",), "choose a template by number (1-2), not 'x'"),
+        (("9",), "no template 9; choose 1-2"),
+        (("1", ""), "choose tracked or vendored for frontend"),
+    ],
+)
+def test_bare_add_needs_an_explicit_choice(
+    bare_project: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    answers: tuple[str, ...],
+    message: str,
 ) -> None:
+    """Review 3, batch 2.13: Enter took the first template with no default shown, and a
+    wrong answer was a source error (exit 3) rather than a usage error."""
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
-    assert main(["template", "add", "--root", str(bare_project)]) == 3
+    replies = iter(answers)
+    monkeypatch.setattr("builtins.input", lambda _: next(replies))
+
+    assert main(["template", "add", "--root", str(bare_project)]) == 2
+
+    assert message in capsys.readouterr().err
     assert load_project_config(_config(bare_project)).templates == ()
 
 
@@ -458,7 +478,11 @@ def test_check_reports_a_vendored_copy_with_no_recorded_provenance(
 
     assert main(["check", "--root", str(bare_project)]) == 0
 
-    assert "no recorded provenance" in capsys.readouterr().out
+    assert (
+        "the vendored template 'web' has no recorded provenance, so nothing can tell your edits "
+        "from its source — delete loadout/templates/web and run "
+        "`loadout template add web --vendored` to take the source wholesale and record one"
+    ) in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("mode", ("tracked", "vendored"))
@@ -571,3 +595,15 @@ def test_template_add_without_a_mode_or_a_terminal_is_a_usage_error(
     assert main(["template", "add", "frontend", "--root", str(bare_project)]) == 2
 
     assert "needs a mode" in capsys.readouterr().err
+
+
+def test_syncing_an_undeclared_template_says_it_is_not_declared(
+    bare_project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Review 3, batch 2.13: it claimed the template resolves from a source on every render."""
+    assert main(["template", "sync", "web", "--root", str(bare_project)]) == 3
+
+    assert capsys.readouterr().err == (
+        "loadout: web is not declared in loadout/config.toml, so there is nothing to sync; "
+        "run `loadout template add web` to add it\n"
+    )

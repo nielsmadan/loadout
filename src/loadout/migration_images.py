@@ -8,9 +8,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+from .containment import no_symlinks as _no_symlinks
 from .errors import LoadoutError
 from .output import FrozenFile, atomic_install, sha256
-from .output import no_symlinks as _no_symlinks
 
 ImageKind = Literal["absent", "file", "directory", "symlink"]
 Phase = Literal["topology", "source", "retire", "registration", "ignore"]

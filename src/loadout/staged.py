@@ -7,14 +7,18 @@ import posixpath
 import subprocess
 import sys
 import tempfile
+import threading
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from .emit import refuse_unregistered_global
 from .errors import LoadoutError
+from .machine import is_registered, registered_source
 from .manifest import MANIFEST_NAME
 from .project import PROJECT_CONFIG_NAME, PROJECT_DIR
+from .sources import ARTIFACT_TYPES
+from .worktrees import linked_worktree_source
 
 
 def git(root: Path, *arguments: str, data: bytes | None = None) -> bytes:
@@ -69,8 +73,9 @@ def _entries(root: Path, revision: str | None = None) -> dict[str, Entry]:
 def _snapshot(root: Path, destination: Path, entries: dict[str, Entry]) -> None:
     """Write `entries` out as files, streaming their blobs from one `cat-file` run.
 
-    One request at a time, each reply read before the next is sent: writing every
-    request first deadlocks once git's output pipe and its input pipe are both full."""
+    A thread writes every request while this one reads the replies: writing them all
+    first from one thread deadlocks once git's output pipe and its input pipe are both
+    full, and one request per reply waited a round trip per file (review 3, batch 3.2)."""
     destination.mkdir()
     files = {name: entry for name, entry in entries.items() if entry.mode != "160000"}
     process = subprocess.Popen(
@@ -80,12 +85,20 @@ def _snapshot(root: Path, destination: Path, entries: dict[str, Entry]) -> None:
         env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
     )
     assert process.stdin is not None and process.stdout is not None
+    requests = process.stdin
+
+    def feed() -> None:
+        with contextlib.suppress(BrokenPipeError, ValueError):
+            for entry in files.values():
+                requests.write(entry.oid.encode() + b"\n")
+            requests.close()
+
+    writer = threading.Thread(target=feed, daemon=True)
+    writer.start()
     links = []
     try:
         for name, entry in files.items():
             target = destination / name
-            process.stdin.write(entry.oid.encode() + b"\n")
-            process.stdin.flush()
             match process.stdout.readline().split():
                 case [oid, b"blob", size] if oid.decode() == entry.oid:
                     content = process.stdout.read(int(size))
@@ -103,10 +116,13 @@ def _snapshot(root: Path, destination: Path, entries: dict[str, Entry]) -> None:
             else:
                 raise LoadoutError(f"unsupported staged mode {entry.mode}: {name}")
     finally:
-        with contextlib.suppress(BrokenPipeError):
-            process.stdin.close()
         process.stdout.close()
+        if process.poll() is None and writer.is_alive():
+            process.kill()
         process.wait()
+        writer.join()
+        with contextlib.suppress(BrokenPipeError):
+            requests.close()
     for path, content in links:
         path.symlink_to(os.fsdecode(content))
 
@@ -117,20 +133,31 @@ def _read_blob(root: Path, entry: Entry | None) -> bytes:
 
 def _render_inputs(root: Path, relative: Path, entries: dict[str, Entry]) -> dict[str, Entry]:
     """The entries a render of this source can read. A project reads its `loadout/`
-    folder and the files at its root; a global source reads its own folder and any
-    source it names outside it. Nothing else of the repository is written out."""
+    folder and the files at its root. A global source reads its manifest and profiles,
+    and of each source they declare, the files in its folder and the folders of the
+    artifact types it uses (review 3, batch 3.2: a source at the repository root wrote
+    the whole repository out). Nothing else of the repository is written out."""
     base = PurePosixPath(relative.as_posix())
-    project = str(base / PROJECT_DIR / PROJECT_CONFIG_NAME) in entries
-    folders = [base / PROJECT_DIR] if project else [base, *_external_sources(root, base, entries)]
-    prefixes = tuple("" if str(folder) == "." else f"{folder}/" for folder in folders)
-    exact = {str(folder) for folder in folders}
+    if str(base / PROJECT_DIR / PROJECT_CONFIG_NAME) in entries:
+        source = _prefix(base / PROJECT_DIR)
+
+        def in_project(name: str) -> bool:
+            return (name.rpartition("/")[0] or ".") == str(base) or name.startswith(source)
+
+        return {name: entry for name, entry in entries.items() if in_project(name)}
+    sources = _declared_sources(root, base, entries)
+    own = {str(base), *(str(folder) for folder, _ in sources)}
+    prefixes = tuple(_prefix(folder / kind) for folder, use in sources for kind in sorted(use))
 
     def wanted(name: str) -> bool:
-        if project and (name.rpartition("/")[0] or ".") == str(base):
-            return True
-        return name.startswith(prefixes) or name in exact
+        parent = name.rpartition("/")[0] or "."
+        return parent in own or name.startswith(prefixes)
 
     return {name: entry for name, entry in entries.items() if wanted(name)}
+
+
+def _prefix(folder: PurePosixPath) -> str:
+    return "" if str(folder) == "." else f"{folder}/"
 
 
 def _ownership_inputs(relative: Path, entries: dict[str, Entry]) -> dict[str, Entry]:
@@ -147,36 +174,58 @@ def _ownership_inputs(relative: Path, entries: dict[str, Entry]) -> dict[str, En
     return {name: entry for name, entry in entries.items() if wanted(name)}
 
 
-def _external_sources(
+def _declared_sources(
     root: Path, base: PurePosixPath, entries: dict[str, Entry]
-) -> list[PurePosixPath]:
-    manifest = _read_blob(root, entries.get(str(base / MANIFEST_NAME)))
-    try:
-        document = tomllib.loads(manifest.decode())
-    except (UnicodeDecodeError, tomllib.TOMLDecodeError):
-        return []
-    sources = document.get("source", [])
-    found = [
-        PurePosixPath(posixpath.normpath(str(base / entry["path"])))
-        for entry in sources
-        if isinstance(sources, list)
-        if isinstance(entry, dict) and isinstance(entry.get("path"), str)
+) -> list[tuple[PurePosixPath, frozenset[str]]]:
+    """Each source the manifest or a profile beside it declares, with the artifact types
+    it uses. One that does not parse declares nothing here; the render says why."""
+    profiles = [
+        name
+        for name in entries
+        if (name.rpartition("/")[0] or ".") == str(base) and name.endswith(".toml")
     ]
-    return [path for path in found if not path.is_relative_to(base)]
+    found: list[tuple[PurePosixPath, frozenset[str]]] = []
+    for name in profiles:
+        try:
+            document = tomllib.loads(_read_blob(root, entries[name]).decode())
+        except (UnicodeDecodeError, tomllib.TOMLDecodeError):
+            continue
+        sources = document.get("source", [])
+        for entry in sources if isinstance(sources, list) else []:
+            if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
+                continue
+            raw_use = entry.get("use")
+            use = (
+                frozenset(str(kind) for kind in raw_use)
+                if isinstance(raw_use, list)
+                else ARTIFACT_TYPES
+            )
+            found.append((PurePosixPath(posixpath.normpath(str(base / entry["path"]))), use))
+    return found
 
 
-def _inspect(
-    snapshot: Path, original: Path, relative: Path, profile: str, entries: dict[str, Entry]
-) -> tuple[str, ...]:
+@dataclass(frozen=True)
+class _Check:
+    """What every snapshot of one `check --staged` run is inspected against."""
+
+    original: Path
+    relative: Path
+    profile: str
+    registered: bool
+
+
+def _inspect(snapshot: Path, check: _Check, entries: dict[str, Entry]) -> tuple[str, ...]:
     render = snapshot.name == "index"
+    original = check.original
     request = {
         "snapshot": str(snapshot),
         "original": str(original),
-        "relative": str(relative),
-        "profile": profile,
+        "relative": str(check.relative),
+        "profile": check.profile,
         "render": render,
         "environment": dict(os.environ),
         "gitlinks": [path for path, entry in entries.items() if entry.mode == "160000"],
+        "registered": check.registered,
     }
     result = subprocess.run(
         [sys.executable, "-I", "-m", "loadout.staged_render"],
@@ -212,9 +261,18 @@ def check_staged(root: Path, profile: str = "default") -> int:
     staged = _entries(repository)
     head_ref = git(repository, "rev-parse", "--revs-only", "HEAD").decode().strip()
     head = _entries(repository, head_ref) if head_ref else {}
-    refuse_unregistered_global(
-        root, held=str(relative / MANIFEST_NAME) in staged.keys() | head.keys()
-    )
+    # Case-folded: on a case-insensitive disk the snapshot reads `Loadout.toml` as the manifest.
+    # A linked worktree of the registered source renders only into the sandbox below.
+    worktree = linked_worktree_source(root) is not None
+    manifest = str(relative / MANIFEST_NAME).casefold()
+    if not worktree:
+        refuse_unregistered_global(
+            # The index alone: a commit that removes the manifest is what fixes it.
+            root,
+            held=any(name.casefold() == manifest for name in staged),
+        )
+    registered = worktree or is_registered(root, registered_source())
+    check = _Check(repository, relative, profile, registered)
     configs = {str(relative / MANIFEST_NAME), str(relative / PROJECT_DIR / PROJECT_CONFIG_NAME)}
     if not configs.intersection(staged.keys() | head.keys()):
         raise LoadoutError(
@@ -226,8 +284,8 @@ def check_staged(root: Path, profile: str = "default") -> int:
         index_tree, head_tree = scratch / "index", scratch / "head"
         _snapshot(repository, index_tree, _render_inputs(repository, relative, staged))
         _snapshot(repository, head_tree, _ownership_inputs(relative, head))
-        owned = set(_inspect(head_tree, repository, relative, profile, head))
-        owned.update(_inspect(index_tree, repository, relative, profile, staged))
+        owned = set(_inspect(head_tree, check, head))
+        owned.update(_inspect(index_tree, check, staged))
         # A staged path is generated when it, or a folder above it, is an output.
         generated = {Path(output) for output in owned}
         changed = [

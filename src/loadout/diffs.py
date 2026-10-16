@@ -9,16 +9,22 @@ from typing import TextIO
 DIFF_LIMIT = 40
 
 
+NO_NEWLINE = "\\ No newline at end of file\n"
+
+
 def diff_lines(rel: str, actual: str, expected: str, context: int) -> list[str]:
-    return list(
-        difflib.unified_diff(
-            actual.splitlines(keepends=True),
-            expected.splitlines(keepends=True),
-            fromfile=f"{rel} (on disk)",
-            tofile=f"{rel} (expected)",
-            n=context,
-        )
-    )
+    """A unified diff whose every line ends in a newline: a last line that lacks one is
+    terminated and marked, as git marks it, so it never runs into the next."""
+    lines: list[str] = []
+    for line in difflib.unified_diff(
+        actual.splitlines(keepends=True),
+        expected.splitlines(keepends=True),
+        fromfile=f"{rel} (on disk)",
+        tofile=f"{rel} (expected)",
+        n=context,
+    ):
+        lines += [line] if line.endswith("\n") else [f"{line}\n", NO_NEWLINE]
+    return lines
 
 
 def report_diff(lines: list[str], stream: TextIO | None = None) -> bool:

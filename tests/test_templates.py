@@ -4,14 +4,16 @@ from pathlib import Path
 
 import pytest
 
+from loadout.bundled_templates import BUNDLED
 from loadout.errors import LoadoutError
 from loadout.project import PROJECT_DIR, load_project_config, project_config_path
-from loadout.resolve import Slice, resolve_item
+from loadout.resolve import ResolvedItem, Slice, resolve_item
 from loadout.sources import ARTIFACT_TYPES, Source
 from loadout.template_discover import available_templates
 from loadout.templates import (
     HASH_PREFIX,
     VENDORED,
+    TemplateNotFound,
     copy_tree,
     declare,
     record_hash,
@@ -212,6 +214,8 @@ def test_available_templates_offer_vendored_copies_first_and_shadow_sources(
     assert [(option.name, option.source) for option in options] == [
         ("web", VENDORED),
         ("railway", "ac"),
+        ("frontend", BUNDLED),
+        ("backend", BUNDLED),
     ]
 
 
@@ -219,12 +223,26 @@ def test_available_templates_without_machine_config_list_only_vendored(tmp_path:
     vendored = vendored_path(tmp_path, "web")
     vendored.mkdir(parents=True)
     assert [(option.name, option.source) for option in available_templates(tmp_path)] == [
-        ("web", VENDORED)
+        ("web", VENDORED),
+        ("frontend", BUNDLED),
+        ("backend", BUNDLED),
     ]
 
 
-def test_available_templates_with_nothing_available_is_empty(tmp_path: Path) -> None:
-    assert available_templates(tmp_path) == ()
+def test_with_nothing_else_available_the_bundled_starters_are_offered(tmp_path: Path) -> None:
+    """Review 3, batch 2.12: a bare `template add` never offered them."""
+    assert [(option.name, option.source) for option in available_templates(tmp_path)] == [
+        ("frontend", BUNDLED),
+        ("backend", BUNDLED),
+    ]
+
+
+def test_a_vendored_copy_shadows_the_bundled_starter_of_its_name(tmp_path: Path) -> None:
+    vendored_path(tmp_path, "backend").mkdir(parents=True)
+    assert [(option.name, option.source) for option in available_templates(tmp_path)] == [
+        ("backend", VENDORED),
+        ("frontend", BUNDLED),
+    ]
 
 
 def test_a_vendored_copy_resolves_with_no_machine_config_at_all(tmp_path: Path) -> None:
@@ -371,3 +389,19 @@ def test_declaring_a_template_keeps_the_final_newline(tmp_path: Path) -> None:
     text = path.read_text(encoding="utf-8")
     assert text.endswith("\n")
     assert load_project_config(path).templates == ("web", "railway")
+
+
+def test_a_template_not_found_lists_what_its_own_resolver_offered(
+    tmp_path: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review 3, batch 4.2: a render given its own resolver still listed the names the real
+    machine config offers."""
+    _global_source(fake_home, monkeypatch, "machine-only")
+
+    def upstream(name: str) -> ResolvedItem:
+        raise TemplateNotFound(f"no {name}", offered=("staged-only",))
+
+    with pytest.raises(LoadoutError) as raised:
+        resolve_template("web", tmp_path, upstream=upstream)
+
+    assert "Available: backend, frontend, staged-only." in str(raised.value)

@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
-from .files import Drift, atomic_write, describe_file
+from .files import Drift, atomic_write, describe_file, document_format, unparsable_as
 from .output import Output
 from .skills import SKILL_DOCUMENT
 from .surgery import apply_json, apply_toml
@@ -42,9 +42,12 @@ def orphan_drift(orphans: Mapping[Path, WrittenEntry]) -> list[Drift]:
             continue
         if entry.kind == "merged":
             existing = path.read_text(encoding="utf-8", newline="")
-            wanted = stripped(path, entry, existing)
-            if wanted != existing:
-                retires(path, existing, wanted)
+            if unparsable_as(path, document_format(path), entry.owned):
+                drift.append(Drift(path=path, actual=existing, expected="", kind="unparsable"))
+                continue
+            remaining = stripped(path, entry, existing)
+            if remaining != existing:
+                retires(path, existing, remaining)
         elif entry.kind == "text":
             retires(path, path.read_text(encoding="utf-8", newline=""), "")
         else:
@@ -64,10 +67,10 @@ def retire(orphans: Mapping[Path, WrittenEntry], recorded: Iterable[Path]) -> li
             continue
         if entry.kind == "merged":
             existing = path.read_text(encoding="utf-8", newline="")
-            wanted = stripped(path, entry, existing)
-            if wanted == existing:
+            remaining = stripped(path, entry, existing)
+            if remaining == existing:
                 continue
-            atomic_write(path, wanted)
+            atomic_write(path, remaining)
         else:
             path.unlink()
             _prune_skill_folder(path, skill_folders)

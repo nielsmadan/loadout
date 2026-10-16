@@ -1,19 +1,19 @@
 from __future__ import annotations
 
-import functools
 import hashlib
 import os
 import stat
 import tempfile
 import unicodedata
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, BinaryIO, Literal
 
 import tomlkit
 from tomlkit.items import Item
 
+from .containment import no_symlinks
 from .errors import LoadoutError
 
 Scope = Literal["project", "global"]
@@ -79,16 +79,6 @@ def entry_path(path: Path) -> Path:
     return path.parent.resolve() / path.name
 
 
-def no_symlinks(path: Path, root: Path | None = None) -> None:
-    current = path
-    while True:
-        if current.is_symlink():
-            raise LoadoutError(f"path is a symlink: {current}")
-        if current in (root, current.parent):
-            break
-        current = current.parent
-
-
 def read_file(path: Path) -> FrozenFile | None:
     no_symlinks(path)
     for parent in path.parents:
@@ -102,22 +92,49 @@ def read_file(path: Path) -> FrozenFile | None:
     return FrozenFile(path.read_bytes(), stat.S_IMODE(metadata.st_mode))
 
 
-def atomic_install(path: Path, frozen: FrozenFile, boundary: Path | None = None) -> None:
-    """Replace `path` with `frozen`, refusing a link between it and `boundary` (or `/`)."""
-    no_symlinks(path, boundary)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix=".loadout-")
+# The name of a write in progress, which a kill before its rename leaves behind.
+TEMPORARY_PREFIX = ".loadout-"
+
+
+def replace_atomically(
+    path: Path,
+    fill: Callable[[BinaryIO], object],
+    *,
+    mode: int | None = None,
+    durable: bool = False,
+    before_rename: Callable[[], None] = lambda: None,
+) -> None:
+    """The one atomic writer (review 3, batch 4.4): `fill` writes a file beside `path`,
+    which is renamed over it, so a kill never leaves `path` torn. The mode is set before
+    the rename, so an executable never appears without its bit."""
+    descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix=TEMPORARY_PREFIX)
     try:
         with os.fdopen(descriptor, "wb") as handle:
-            handle.write(frozen.content)
-            handle.flush()
-            os.fchmod(handle.fileno(), frozen.mode)
-            os.fsync(handle.fileno())
-        no_symlinks(path, boundary)
+            fill(handle)
+            if mode is not None:
+                os.fchmod(handle.fileno(), mode)
+            if durable:
+                handle.flush()
+                os.fsync(handle.fileno())
+        before_rename()
         os.replace(temporary, path)
     except BaseException:
         Path(temporary).unlink(missing_ok=True)
         raise
+
+
+def atomic_install(path: Path, frozen: FrozenFile, boundary: Path | None = None) -> None:
+    """Replace `path` with `frozen`, durably, refusing a link between it and `boundary`
+    (or `/`) before the write and again before the rename."""
+    no_symlinks(path, boundary)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    replace_atomically(
+        path,
+        lambda handle: handle.write(frozen.content),
+        mode=frozen.mode,
+        durable=True,
+        before_rename=lambda: no_symlinks(path, boundary),
+    )
 
 
 def sha256(data: bytes) -> str:
@@ -125,26 +142,26 @@ def sha256(data: bytes) -> str:
 
 
 def file_sha256(path: Path) -> str:
-    """The digest of a file's bytes, read a chunk at a time. A source copied to several
-    harnesses is hashed once while it stays the same file with the same stamp."""
-    metadata = path.stat()
-    return _file_sha256(
-        path.resolve(),
-        metadata.st_dev,
-        metadata.st_ino,
-        metadata.st_size,
-        metadata.st_mtime_ns,
-        metadata.st_ctime_ns,
-    )
-
-
-@functools.lru_cache(maxsize=4096)
-def _file_sha256(path: Path, *stamp: int) -> str:
+    """The digest of a file's bytes, read a chunk at a time. A caller that hashes one
+    source for several harnesses keeps its own memo (`digests`)."""
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         while chunk := handle.read(1 << 20):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def digests() -> Callable[[Path], str]:
+    """`file_sha256` remembered for one pass, so a source copied to several harnesses is
+    read once; a pass is short enough that the file cannot change under it unnoticed."""
+    known: dict[Path, str] = {}
+
+    def digest(path: Path) -> str:
+        if path not in known:
+            known[path] = file_sha256(path)
+        return known[path]
+
+    return digest
 
 
 def item_name(name: str, path: Path) -> str:

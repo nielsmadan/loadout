@@ -10,6 +10,7 @@ import pytest
 
 from loadout import staged
 from loadout.staged import _entries, _render_inputs
+from loadout.staged_render import Snapshot
 from registration import register
 
 pytestmark = pytest.mark.integration
@@ -54,10 +55,37 @@ def test_a_global_source_reads_its_folder_and_named_sources_outside_it(tmp_path:
 
     inputs = _render_inputs(root, Path("config"), _entries(root))
 
+    # `config/skills` is no source's, so no render reads it.
+    assert sorted(inputs) == ["config/loadout.toml", "shared/permissions.toml"]
+
+
+def test_a_root_level_global_source_reads_only_what_its_sources_use(tmp_path: Path) -> None:
+    """Review 3, batch 3.2: a source at the repository root wrote the whole repository out,
+    and 64k files took 33 s. Its profiles' sources count too, since a profile may name its own."""
+    root = _repository(
+        tmp_path,
+        {
+            "loadout.toml": '[[source]]\nname = "s"\npath = "."\nuse = ["instructions", "permissions"]\n',
+            "work.toml": '[[source]]\nname = "e"\npath = "extra"\n',
+            "permissions.toml": "[shell]\n",
+            "instructions/x.md": "x\n",
+            "skills/s/SKILL.md": "s\n",
+            "src/app.py": "pass\n",
+            "extra/mcp.toml": "",
+            "extra/skills/a/SKILL.md": "a\n",
+            "extra/deep/notes.md": "notes\n",
+        },
+    )
+
+    inputs = _render_inputs(root, Path("."), _entries(root))
+
     assert sorted(inputs) == [
-        "config/loadout.toml",
-        "config/skills/a/SKILL.md",
-        "shared/permissions.toml",
+        "extra/mcp.toml",
+        "extra/skills/a/SKILL.md",
+        "instructions/x.md",
+        "loadout.toml",
+        "permissions.toml",
+        "work.toml",
     ]
 
 
@@ -93,4 +121,23 @@ def test_the_head_snapshot_holds_only_what_ownership_reads(
     assert staged.check_staged(root, "work") == 0
 
     assert written["head"] == ["claude.toml", "loadout.toml", "work.toml"]
-    assert "assets/big.bin" in written["index"]
+    assert written["index"] == ["claude.toml", "loadout.toml", "skills/a/SKILL.md", "work.toml"]
+
+
+def test_head_ownership_includes_the_agents_folder(tmp_path: Path) -> None:
+    """Review 3, batch 4.6: the HEAD pass named skills and module config but not agents,
+    so an agent output inside the repository lost its protection once retired."""
+    tree = tmp_path / "head"
+    tree.mkdir()
+    (tree / "loadout.toml").write_text('[[source]]\nname = "s"\npath = "."\n\n[codex]\n')
+    snapshot = Snapshot(
+        tree,
+        tmp_path / "repo",
+        Path("."),
+        # A Codex home inside the repository, which the snapshot maps into its tree.
+        {"HOME": str(tmp_path / "home"), "CODEX_HOME": str(tmp_path / "repo/codex")},
+        (),
+        registered=False,
+    )
+
+    assert tree / "codex/agents" in snapshot.global_ownership("default", render=False)

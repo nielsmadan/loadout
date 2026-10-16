@@ -1,6 +1,6 @@
 """What `sync` last wrote, per destination — ADR 0008's deferred sidecar.
 
-The guard in `commands.py` asks "could loadout have written this file?" and answers
+The guard in `sync.py` asks "could loadout have written this file?" and answers
 it from two renders: the committed source and the working tree now. ADR 0008 accepted
 that as "correct, at the cost of warning benignly on first adoption and on a
 reverted-but-already-synced edit", and deferred a record of what was actually written
@@ -25,15 +25,14 @@ from __future__ import annotations
 import json
 import os
 import re
-import tempfile
 import tomllib
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
 from .machine import config_dir
-from .output import entry_path, file_sha256, sha256
+from .output import entry_path, file_sha256, replace_atomically, sha256
 from .toml_paths import key_path
 
 VERSION = 1
@@ -60,7 +59,7 @@ def normalise(path: Path, content: str) -> str:
     generated file on disk differ from every acceptable variant at once, and the guard
     reports the whole tree as hand-edited. It did, on 205 files.
 
-    Lives here rather than in `commands.py` because the write side and the guard must
+    Lives here rather than in `sync.py` because the write side and the guard must
     agree on it exactly: a recorded hash is worthless if the two normalise differently.
     """
     if path.suffix != ".json":
@@ -132,18 +131,33 @@ def _entries(document: object) -> dict[Path, WrittenEntry]:
     entries = document.get("written")
     if not isinstance(entries, dict):
         return {}
-    out: dict[Path, WrittenEntry] = {}
-    for name, raw in entries.items():
-        if not isinstance(raw, dict) or not isinstance(raw.get("kind"), str):
-            continue
-        out[Path(name)] = WrittenEntry(
-            kind=raw["kind"],
-            sha256=raw.get("sha256"),
-            norm_sha256=raw.get("norm_sha256"),
-            owned=tuple(raw.get("owned", ())),
-            owned_sha256=_pairs(raw.get("owned_sha256")),
-        )
-    return out
+    return {
+        Path(name): entry for name, raw in entries.items() if (entry := _entry(raw)) is not None
+    }
+
+
+ENTRY_KINDS = frozenset({"text", "copied", "merged"})
+
+
+def _entry(raw: object) -> WrittenEntry | None:
+    """One recorded destination, or None for a shape no sync writes: an unknown kind was
+    once read as a copied file (review 3, batch 4.4). A record only widens what the guard
+    accepts, so dropping an entry is the safe reading."""
+    if not isinstance(raw, dict) or raw.get("kind") not in ENTRY_KINDS:
+        return None
+    hashes = (raw.get("sha256"), raw.get("norm_sha256"))
+    owned = raw.get("owned", [])
+    if not all(value is None or isinstance(value, str) for value in hashes) or not (
+        isinstance(owned, list) and all(isinstance(key, str) for key in owned)
+    ):
+        return None
+    return WrittenEntry(
+        kind=raw["kind"],
+        sha256=hashes[0],
+        norm_sha256=hashes[1],
+        owned=tuple(owned),
+        owned_sha256=_pairs(raw.get("owned_sha256")),
+    )
 
 
 def every_recorded_path(
@@ -271,14 +285,8 @@ def record_written(
 def _write_record(path: Path, document: Mapping[str, Any]) -> None:
     """Written beside the record and renamed over it, so a kill never leaves it torn."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix=".loadout-")
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write(json.dumps(document, indent=2) + "\n")
-        os.replace(temporary, path)
-    except BaseException:
-        Path(temporary).unlink(missing_ok=True)
-        raise
+    text = json.dumps(document, indent=2) + "\n"
+    replace_atomically(path, lambda handle: handle.write(text.encode("utf-8")))
 
 
 def forget_written(record: Path, reverted: Iterable[Path], *, created: bool) -> None:
@@ -329,12 +337,19 @@ def frozen_entry(content: bytes) -> WrittenEntry:
     return WrittenEntry(kind="copied", sha256=sha256(content))
 
 
-def copied_entry(source: Path) -> WrittenEntry:
-    return WrittenEntry(kind="copied", sha256=file_sha256(source))
+def copied_entry(source: Path, digest: Callable[[Path], str] = file_sha256) -> WrittenEntry:
+    return WrittenEntry(kind="copied", sha256=digest(source))
 
 
-def merged_entry(owned: Iterable[str], document: str, format_name: str) -> WrittenEntry:
-    hashes = owned_hashes(document, owned, format_name) or {}
+def merged_entry(
+    owned: Iterable[str], document: str, format_name: str, evicted: Iterable[str] = ()
+) -> WrittenEntry:
+    """`owned` names every key retirement strips; only those loadout writes a value for are
+    hashed, since an evicted key the harness writes back is no edit, and moving it to a
+    managed value is opting it in (review 3, batch 2.1)."""
+    owned = tuple(owned)
+    removed = frozenset(evicted)
+    hashes = owned_hashes(document, [key for key in owned if key not in removed], format_name) or {}
     return WrittenEntry(
         kind="merged", owned=tuple(sorted(owned)), owned_sha256=tuple(sorted(hashes.items()))
     )
@@ -370,7 +385,9 @@ def _pairs(raw: object) -> tuple[tuple[str, str], ...]:
 
 
 def owned_values(text: str, owned: Iterable[str], format_name: str) -> dict[str, Any] | None:
-    """Each owned key the document holds, by name, or None when it does not parse."""
+    """Each owned key the document holds, by name, or None when it does not parse or
+    cannot hold them: a document that is not an object, or a scalar where an owned key
+    needs a table (review 3, batch 2.10)."""
     try:
         document = (
             (json.loads(text) if format_name == "json" else tomllib.loads(text))
@@ -379,14 +396,20 @@ def owned_values(text: str, owned: Iterable[str], format_name: str) -> dict[str,
         )
     except (ValueError, tomllib.TOMLDecodeError):
         return None
+    if not isinstance(document, dict):
+        return None
     found: dict[str, Any] = {}
     for name in sorted(owned):
         value: Any = document
         for part in (name,) if format_name == "json" else key_path(name):
-            value = value.get(part, _ABSENT) if isinstance(value, dict) else _ABSENT
-        if value is not _ABSENT:
+            if not isinstance(value, dict):
+                return None
+            value = value.get(part, _MISSING)
+            if value is _MISSING:
+                break
+        if value is not _MISSING:
             found[name] = value
     return found
 
 
-_ABSENT = object()
+_MISSING = object()

@@ -25,6 +25,7 @@ from .completions import (
     status_completions,
     uninstall_completions,
 )
+from .emit import refuse_unregistered_global
 from .errors import LoadoutError, UsageError
 from .git_hook_commands import run_hook
 from .git_hooks import EVENTS, install_hooks, status_hooks, uninstall_hooks
@@ -305,6 +306,7 @@ def _dispatch_template(args: argparse.Namespace) -> int:
     root = args.root.resolve()
     if not project_config_path(root).is_file():
         raise LoadoutError(TEMPLATE_OUTSIDE_PROJECT)
+    refuse_unregistered_global(root)
     if args.template_command == "list":
         return cmd_template_list(root)
     if args.template_command == "add":
@@ -412,7 +414,7 @@ def _dispatch(args: argparse.Namespace) -> int:
     if args.command == "hook-event":
         root = args.root.resolve()
         profile = resolve_profile(root, args.profile, lenient=True)
-        return run_hook(args.event, root, profile, args.git_arguments)
+        return run_hook(args.event, root, profile, args.git_arguments, args.profile)
     if args.command == "integrate":
         if args.integrate_command == "completions":
             return _dispatch_completions(args)

@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-__all__ = ["GLOBAL_PRESET", "KNOWN_HARNESSES", "SliceOutput"]
+__all__ = [
+    "DIRECTORY_SLICES",
+    "DROID_AGENTS_DIRECTORY",
+    "GLOBAL_PRESET",
+    "KNOWN_HARNESSES",
+    "SHARED_SKILL_READERS",
+    "SliceOutput",
+]
 
 
 @dataclass(frozen=True)
@@ -55,10 +62,6 @@ class SliceOutput:
     takes_settings: bool = False
 
 
-# Destinations carry each harness's config-directory variable rather than a
-# literal path. The variables differ in name and in kind, and two of OpenCode's
-# look right and are not — see docs/reference/README.md, which records how each
-# was verified. Keeping them here means a manifest never spells one out.
 # Slices whose directory is the declaration: one named item per entry, no value to set.
 DIRECTORY_SLICES = ("skills", "agents")
 # Factory calls its subagents droids, and keeps them in a folder of that name.
@@ -66,6 +69,10 @@ DROID_AGENTS_DIRECTORY = "droids"
 # The harnesses that read the cross-harness `.agents/skills` folder, at both scopes.
 SHARED_SKILL_READERS = ("codex", "opencode", "pi")
 
+# Destinations carry each harness's config-directory variable rather than a
+# literal path. The variables differ in name and in kind, and two of OpenCode's
+# look right and are not — see docs/reference/README.md, which records how each
+# was verified. Keeping them here means a manifest never spells one out.
 GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
     "claude": {
         "skills": SliceOutput(destination="${CLAUDE_CONFIG_DIR:-~/.claude}/skills"),

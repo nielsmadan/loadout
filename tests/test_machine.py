@@ -91,6 +91,25 @@ def test_source_that_does_not_exist_names_the_config(tmp_path: Path) -> None:
     assert str(caught.value).startswith(f"{path}: ")
 
 
+@pytest.mark.parametrize("source", [".", "ac/loadout", "../elsewhere"])
+@pytest.mark.parametrize("require_source", [True, False])
+def test_a_relative_source_is_an_error(tmp_path: Path, source: str, require_source: bool) -> None:
+    """Review 3, 1.4: `source = "."` registered whatever folder a command ran in."""
+    path = write(tmp_path, f'source = "{source}"\n')
+    with pytest.raises(LoadoutError, match=rf"^{path}: source {source!r} must be an absolute path"):
+        load_machine_config(path, require_source=require_source)
+
+
+def test_a_home_relative_source_is_absolute_once_expanded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / "ac").mkdir()
+    config = load_machine_config(write(tmp_path, 'source = "~/ac"\n'))
+    assert config is not None
+    assert config.source == (tmp_path / "ac").resolve()
+
+
 def test_harness_defaults_can_be_read_from_a_stale_global_registration(tmp_path: Path) -> None:
     path = write(tmp_path, 'source = "/nope/missing"\nharnesses = ["droid"]\n')
     config = load_machine_config(path, require_source=False)

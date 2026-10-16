@@ -106,11 +106,13 @@ stands alone. This is what an open-source project whose contributors do not inst
 The mode is a property of the declaration. `template add <name> --vendored` on an already
 declared template changes it to vendored, copying the tree and recording its hash;
 `--tracked` on a vendored one switches back once the source can still resolve the name.
-Bare `template add` lists every template this machine can resolve and prompts for a name and
-a mode; without a terminal it requires both.
+Bare `template add` lists every template this machine can resolve, vendored copies first, then
+each declared source's, then the bundled starters, and prompts for a number and
+a mode; without a terminal it requires both as arguments. Neither prompt has a default: an empty
+or unrecognised answer is a usage error (exit 2) and changes nothing.
 
 Every `template` command holds to sync's containment before it reads anything: a link in
-`loadout/` that leads out of the project is refused, and so is any link on the way to
+`loadout/` that leads out of it is refused, and so is any link on the way to
 `loadout/config.toml` or `loadout/templates/<name>`, even one that stays inside the project,
 since those are the paths the commands write and replace. A template may not be named like a
 folder loadout never reads, such as `node_modules`.
