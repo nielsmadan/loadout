@@ -168,3 +168,19 @@ def test_check_shows_no_diff_for_an_unparsable_orphan(
         "",
         "1 generated file(s) out of sync:",
     ]
+
+
+@pytest.mark.parametrize(
+    ("case", "line"),
+    [("json", '-{"mcpServers": {"do'), ("json-undecodable", '-{"mcpServers": {"d�')],
+)
+def test_check_shows_an_unparsable_document_as_it_is_on_disk(
+    tmp_path: Path, fake_home: Path, capsys, case: str, line: str
+) -> None:
+    """Review 6, batch 3 (rd-check-merged-shown)."""
+    root, _ = _truncated(tmp_path, fake_home, case)
+    capsys.readouterr()
+
+    assert loadout.main(["check", "--root", str(root)]) == 1
+
+    assert line in capsys.readouterr().err.splitlines()

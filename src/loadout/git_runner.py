@@ -63,6 +63,8 @@ def environment(*, index: Index = None, base: Mapping[str, str] | None = None) -
     given = source.get("GIT_INDEX_FILE")
     cleaned = {name: value for name, value in source.items() if name not in local_variables()}
     cleaned["GIT_OPTIONAL_LOCKS"] = "0"
+    # Its messages in English, as "not a git repository" is matched (review 6, batch 2.5).
+    cleaned["LC_ALL"] = "C"
     if index == "given":
         if given:
             cleaned["GIT_INDEX_FILE"] = str(Path(given).absolute())
@@ -133,3 +135,12 @@ def toplevel(path: Path) -> Path | None:
         detail = result.stderr.decode(errors="replace").strip()
         raise LoadoutError(f"cannot inspect Git repository {path}: {detail}")
     return Path(os.fsdecode(result.stdout).strip()).resolve()
+
+
+def nearest_folder(path: Path) -> Path:
+    """`path` itself or the nearest folder above it that exists: where git can still be
+    asked about a source folder the commit deletes or renames (review 6, batch 1.6)."""
+    probe = path
+    while not probe.is_dir():
+        probe = probe.parent
+    return probe

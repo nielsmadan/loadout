@@ -350,9 +350,14 @@ REDACTED = {
     "a PEM in markdown": (
         "md",
         "-----BEGIN RSA PRIVATE KEY-----\nMIIBODY\n-----END RSA PRIVATE KEY-----\nafter\n",
-        "<redacted>\nafter\n",
+        # A placeholder a line, so each still pairs with the line it stands for.
+        "<redacted>\n<redacted>\n<redacted>\nafter\n",
     ),
-    "a PEM with no END line": ("md", "-----BEGIN PRIVATE KEY-----\nMIIBODY\n", "<redacted>"),
+    "a PEM with no END line": (
+        "md",
+        "-----BEGIN PRIVATE KEY-----\nMIIBODY\n",
+        "<redacted>\n<redacted>\n",
+    ),
     "a label value past punctuation": ("md", "password: hunter2!REST\n", "password: <redacted>\n"),
     "a quoted label in plain text": (
         "txt",
@@ -443,11 +448,11 @@ def test_a_nul_counts_as_binary_only_inside_the_probe(offset: int, reason: str |
     assert credential_material(content) == reason
 
 
-@pytest.mark.parametrize(("extra", "reason"), [(0, "the value after --api-key"), (1, None)])
+@pytest.mark.parametrize(("extra", "reason"), [(0, "env.MY_SERVICE"), (1, None)])
 def test_a_document_is_parsed_up_to_the_cap_and_no_further(extra: int, reason: str | None) -> None:
     """A secret only the document's structure shows is found in a file of exactly
     MAX_SCANNED bytes and not in one a byte longer."""
-    head = b'{"args": ["--api-key", "a1b2c3d4"], "pad": "'
+    head = b'{"env": {"MY_SERVICE": "a1b2c3d4"}, "pad": "'
     tail = b'"}'
     content = head + b"y" * (MAX_SCANNED + extra - len(head) - len(tail)) + tail
 

@@ -175,17 +175,21 @@ was found, never the value, and the preview's render diff shows each such value 
 no printed diff can skip it, and it reads the whole of both texts, whatever their size or bytes,
 since a diff shows them in full. Each secret is replaced where it lies: a PEM key from its BEGIN
 line to its END line, a token by its shape, a label's value to its closing quote or, unquoted, to
-the end of its line (`password: horse battery staple` shows as `password: <redacted>`), a YAML
-block scalar (`password: |`) through its indented body, with a one-word scheme after an
+the end of its line after `key: value` or `key = value`, a ` #` or ` //` comment and trailing
+whitespace aside, so `password: horse battery staple` shows as `password: <redacted>`, and, after
+a bare `KEY=value`, to the first whitespace, as a shell reads it, a YAML block scalar (`password: |`, with its chomping and
+indentation indicators in either order) through its indented body, with a one-word scheme after an
 authorization label (`Token`, `Digest`, `ApiKey`) left in view, and a value a JSON or TOML
 document flags at the string literal holding it, however it is escaped. A flagged value is
 always replaced where it was flagged, a flag's value inside a longer string such as
-`"command": "srv --api-key=…"` included. One of six characters or more is also replaced wherever
-it occurs on either side as a whole word, never inside another: on a command line, in a
-multi-line TOML string, or bare on the other side. A shorter one is replaced only where it was
-flagged, so `secret: word` leaves every other `word` in view. When the two sides
-differ only inside a redacted value, the diff is one line saying so, rather than empty: a port
-must read the real value from the file, never copy `<redacted>`. One vocabulary names a secret wherever it sits
+`"command": "srv --api-key=…"` included. Whatever its length, it is also replaced wherever it
+occurs on either side as a whole word or a whole string literal, never inside another word: on a
+command line, in a multi-line TOML string, or bare on the other side, and in full where it starts
+inside another flagged value and runs past it. A value spanning several
+lines leaves one `<redacted>` on each. Redaction never hides a change: the diff compares the real
+lines and prints their redacted text, so a line that differs only inside a redacted value is still
+shown as changed, marked `(differs inside a redacted value)`. A port must read the real value from
+the file, never copy `<redacted>`. One vocabulary names a secret wherever it sits
 (`SECRET_NAMES` in `credentials.py`): a key, a flag or a `name = value` label whose last words are
 token, API key, secret, password, passphrase, pass, credential(s), authorization, auth, access
 key, private key, secret key, client secret, signing key or PAT, or a provider's name followed by
@@ -195,9 +199,11 @@ and `--api-key-file`, `max_tokens` or `auth_env_var` do not. A file looks like i
 - such a key, or such a label in text, holding a literal value;
 - a literal value under `env`, `environment`, `headers` or `http_headers`, other than a number, a
   switch such as `true` or `on`, a path, or a name that never holds a secret (`PATH`, `*_ENV`,
-  `DISABLE_*`, `Content-Type` and the like);
+  `DISABLE_*`, `Content-Type` and the like), read from such an object's text when a JSON
+  document does not parse;
 - the value after, or given inline to, such a flag (`--token`, `--api-key`, `--auth`), in an
-  argument list or a command line; a value starting with `-` is the next flag;
+  argument list or a command line, in any file, a Codex `.rules` pattern's `"--api-key", "…"`
+  included; a value starting with `-` is the next flag;
 - a value shaped like a secret anywhere in the file: a PEM private key; a GitHub (`ghp_`,
   `github_pat_` and kin), GitLab, npm, OpenAI/Anthropic `sk-`, Stripe `sk_live_`/`rk_test_` and
   kin, Hugging Face `hf_`, AWS `AKIA`/`ASIA`, Google `AIza`, Slack or JWT token; a Django

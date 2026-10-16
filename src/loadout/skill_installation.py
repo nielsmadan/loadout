@@ -77,7 +77,7 @@ def _read_marker(path: Path) -> str | None:
     try:
         with marker.open("rb") as handle:
             data = tomllib.load(handle)
-    except (OSError, tomllib.TOMLDecodeError):
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
         return None
     if set(data) != {"owner", "hash"} or data.get("owner") != _OWNER:
         return None

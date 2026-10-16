@@ -45,6 +45,10 @@ def written_by_loadout(path: Path, source: Path | None = None) -> bool:
     return f'--root "$repo"/{shlex.quote(str(source))} '.encode() in body
 
 
+# As the hook asks git which repository it runs in: every worktree of one shares it.
+COMMON_DIR = ("rev-parse", "--path-format=absolute", "--git-common-dir")
+
+
 def hook_content(event: str, source: Path) -> bytes:
     missing = "loadout is missing from PATH; install the loadout package and retry."
     if event != "pre-commit":
@@ -134,10 +138,12 @@ class HookPlan:
     directory: Path
     placement: Placement
     hooks: tuple[Hook, ...]
+    common_dir: Path
 
     def preview(self) -> dict[str, Any]:
         return {
             "repository": str(self.repository),
+            "common_dir": str(self.common_dir),
             "source": str(self.source),
             "directory": str(self.directory),
             "placement": self.placement,
@@ -175,7 +181,8 @@ def plan_hooks(root: Path, *, regenerate: bool = False) -> HookPlan:
         else:
             status = "install"
         hooks.append(Hook(event, path, content, status, hook_command(event, source), owned))
-    return HookPlan(repository, source, directory, where, tuple(hooks))
+    common_dir = os.fsdecode(git_runner.output(repository, *COMMON_DIR)).strip()
+    return HookPlan(repository, source, directory, where, tuple(hooks), Path(common_dir))
 
 
 def show_hooks(preview: dict[str, Any]) -> None:
@@ -190,25 +197,29 @@ def show_hooks(preview: dict[str, Any]) -> None:
         print(
             f"Hooks directory {preview['directory']} is outside this repository; loadout "
             "writes no hooks there. It may be shared by other repositories, so add each "
-            "command below to the hook for its event there, guarded by this repository."
+            "block below to the hook for its event there: it runs only in this repository "
+            "and its worktrees, and stops the hook when loadout refuses."
         )
     for hook in preview["hooks"]:
         print(f"Git hook {hook['event']}: {hook['status']} ({hook['path']})")
         # Where a hook stands is the placement's to say first: loadout writes nothing to
         # a directory outside the repository, whatever is there (review 5, batch 3.3).
         if preview["placement"] == "external":
-            guard = f'[ "$repo" = {shlex.quote(preview["repository"])} ] && '
+            common = shlex.quote(preview["common_dir"])
             print(
-                "After setting repo=$(git rev-parse --show-toplevel), add:\n  "
-                + guard
-                + hook["command"]
+                f'  if [ "$(git {" ".join(COMMON_DIR)})" = {common} ]; then\n'
+                "    repo=$(git rev-parse --show-toplevel) || exit $?\n"
+                f"    {hook['command']} || exit $?\n"
+                "  fi"
             )
         elif hook["status"] == "stale":
             print("Written by loadout and out of date; `--regenerate` rewrites it.")
         elif hook["status"] not in {"install", "managed", "update"}:
             print(
-                "Preserved. Integrate in your existing hook, after setting "
-                "repo=$(git rev-parse --show-toplevel):\n  " + hook["command"]
+                "Preserved. Add this to your existing hook; it stops the hook when loadout "
+                "refuses:\n"
+                "  repo=$(git rev-parse --show-toplevel) || exit $?\n"
+                f"  {hook['command']} || exit $?"
             )
 
 

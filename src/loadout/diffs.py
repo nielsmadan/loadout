@@ -7,7 +7,7 @@ import sys
 from pathlib import PurePath
 from typing import TextIO
 
-from .credentials import redacted_pair
+from .credentials import redacted_lines
 
 DIFF_LIMIT = 40
 
@@ -15,25 +15,56 @@ DIFF_LIMIT = 40
 NO_NEWLINE = "\\ No newline at end of file\n"
 
 
+HIDDEN = "  (differs inside a redacted value)"
+
+
 def diff_lines(rel: str, actual: str, expected: str, context: int) -> list[str]:
     """A unified diff whose every line ends in a newline: a last line that lacks one is
     terminated and marked, as git marks it, so it never runs into the next. Every secret
     either side holds is redacted here, so no diff loadout prints, on a terminal or in a
-    file, can repeat one (review 4, batch 1.2)."""
-    shown = redacted_pair(actual, expected, PurePath(rel).suffix[1:])
-    if shown[0] == shown[1] and actual != expected:
-        # An empty diff would read as nothing to port (review 5, batch 1.3).
-        return [f"{rel}: differs only inside a redacted value\n"]
+    file, can repeat one (review 4, batch 1.2). The diff is of the texts as written and
+    only shown redacted, so redaction never hides a change: a changed line that redacts
+    the same as its pair says so (review 6, batch 1.2)."""
+    raw_before = actual.splitlines(keepends=True)
+    raw_after = expected.splitlines(keepends=True)
+    before, after = redacted_lines(actual, expected, PurePath(rel).suffix[1:])
+    groups = list(difflib.SequenceMatcher(None, raw_before, raw_after).get_grouped_opcodes(context))
+    if not groups:
+        return []
+    shown = [f"--- {rel} (on disk)\n", f"+++ {rel} (expected)\n"]
+    for group in groups:
+        first, last = group[0], group[-1]
+        shown.append(f"@@ -{_range(first[1], last[2])} +{_range(first[3], last[4])} @@\n")
+        for tag, low, high, start, stop in group:
+            if tag == "equal":
+                shown += [f" {line}" for line in before[low:high]]
+                continue
+            removed, added = before[low:high], after[start:stop]
+            alike = {
+                index for index, line in enumerate(added[: len(removed)]) if line == removed[index]
+            }
+            shown += [f"-{line}" for line in removed]
+            shown += [
+                f"+{_annotated(line) if index in alike else line}"
+                for index, line in enumerate(added)
+            ]
     lines: list[str] = []
-    for line in difflib.unified_diff(
-        shown[0].splitlines(keepends=True),
-        shown[1].splitlines(keepends=True),
-        fromfile=f"{rel} (on disk)",
-        tofile=f"{rel} (expected)",
-        n=context,
-    ):
+    for line in shown:
         lines += [line] if line.endswith("\n") else [f"{line}\n", NO_NEWLINE]
     return lines
+
+
+def _annotated(line: str) -> str:
+    body = line.rstrip("\r\n")
+    return f"{body}{HIDDEN}{line[len(body) :]}"
+
+
+def _range(start: int, stop: int) -> str:
+    """A hunk's range as `difflib.unified_diff` writes it."""
+    length = stop - start
+    if length == 1:
+        return f"{start + 1}"
+    return f"{start if not length else start + 1},{length}"
 
 
 def report_diff(lines: list[str], stream: TextIO | None = None) -> bool:

@@ -650,5 +650,9 @@ def test_install_into_an_external_directory_guards_each_command_by_repository(
     out = capsys.readouterr().out
     assert "It may be shared by other repositories" in out
     plan = plan_hooks(repo)
-    assert f'[ "$repo" = {plan.repository} ] && {plan.hooks[0].command}' in out
+    assert (
+        f'  if [ "$(git rev-parse --path-format=absolute --git-common-dir)" = {plan.common_dir} ]; '
+        f"then\n    repo=$(git rev-parse --show-toplevel) || exit $?\n"
+        f"    {plan.hooks[0].command} || exit $?\n  fi\n"
+    ) in out
     assert list(outside.iterdir()) == []

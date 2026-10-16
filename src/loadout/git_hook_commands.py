@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shlex
 import sys
 from pathlib import Path
@@ -65,9 +66,7 @@ def _nothing_to_protect(event: str, root: Path) -> bool:
 
 
 def _config_in_git(root: Path) -> bool:
-    probe = root
-    while not probe.is_dir():
-        probe = probe.parent
+    probe = git_runner.nearest_folder(root)
     repository = git_runner.toplevel(probe)
     if repository is None:
         return False
@@ -77,6 +76,16 @@ def _config_in_git(root: Path) -> bool:
     relative = base.relative_to(repository).as_posix()
     names = [f"{relative}/{MANIFEST_NAME}", f"{relative}/{PROJECT_DIR}/{PROJECT_CONFIG_NAME}"]
     names = [name.removeprefix("./") for name in names]
-    staged = git_runner.run(repository, "ls-files", "--", *names, index="given")
-    committed = git_runner.run(repository, "ls-tree", "--name-only", "HEAD", "--", *names)
-    return bool(staged.stdout.strip() or (committed.returncode == 0 and committed.stdout.strip()))
+    # Case-folded, as a case-insensitive disk reads `Loadout.toml` as the manifest.
+    spelled = [f":(icase){name}" for name in names]
+    staged = git_runner.run(repository, "ls-files", "--", *spelled, index="given")
+    if staged.stdout.strip():
+        return True
+    # `ls-tree` takes no pathspec magic, so the folder's names are compared here.
+    committed = git_runner.run(
+        repository, "ls-tree", "-r", "-z", "--name-only", "HEAD", "--", relative
+    )
+    wanted = {name.casefold() for name in names}
+    return committed.returncode == 0 and any(
+        os.fsdecode(name).casefold() in wanted for name in committed.stdout.split(b"\0")
+    )

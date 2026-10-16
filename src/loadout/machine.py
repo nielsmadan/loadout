@@ -55,7 +55,7 @@ def _read_config(path: Path) -> dict[str, object] | None:
     try:
         with path.open("rb") as handle:
             return tomllib.load(handle)
-    except (FileNotFoundError, IsADirectoryError, NotADirectoryError):
+    except FileNotFoundError:
         return None
     except UnicodeDecodeError as error:
         raise LoadoutError(f"{path}: not UTF-8: {error.reason}") from error

@@ -9,7 +9,7 @@ import pytest
 
 from loadout import git_runner
 from loadout.errors import LoadoutError
-from loadout.git_tree import Entry, write_snapshot
+from loadout.git_tree import Entry, render_inputs, write_snapshot
 
 OID = "a" * 40
 
@@ -90,3 +90,17 @@ def test_a_cat_file_still_finishing_is_waited_for_not_killed(
     write_snapshot(tmp_path, tmp_path / "out", {"x.md": Entry("100644", OID)})
 
     assert ((tmp_path / "out/x.md").read_bytes(), process.code) == (b"Rules\n", 0)
+
+
+def test_a_truncated_profile_read_for_the_selection_is_refused_by_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review 6, batch 2.4: the selection's own read named the blob by its oid."""
+    _fake(monkeypatch, f"{OID} blob 10\n".encode() + b"Rul")
+
+    with pytest.raises(LoadoutError) as error:
+        render_inputs(tmp_path, Path("."), {"loadout.toml": Entry("100644", OID)})
+
+    assert (
+        str(error.value) == "cannot read staged blob: loadout.toml; repair the supplied Git index"
+    )

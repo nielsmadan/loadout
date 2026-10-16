@@ -387,3 +387,19 @@ def test_a_record_from_before_owned_hashes_names_no_key_newly_managed(
     out = capsys.readouterr().out
     assert f"wrote {target}" in out
     assert [line for line in out.splitlines() if "now managed" in line] == []
+
+
+def test_a_removed_key_written_back_is_never_called_newly_managed(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    """Review 6, batch 3 (gd-newly): sync strips it, which manages nothing new."""
+    register(tmp_path)
+    fragment = {"model": "gpt-5", "$remove": ["developer_instructions"]}
+    target = _codex(tmp_path, fake_home, fragment, "")
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
+    target.write_text('developer_instructions = "x"\n' + target.read_text())
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
+
+    assert [line for line in capsys.readouterr().out.splitlines() if "now managed" in line] == []

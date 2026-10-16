@@ -8,7 +8,9 @@ from pathlib import Path
 
 import pytest
 
+import loadout
 from loadout import git_runner, staged
+from loadout.errors import LoadoutError
 from loadout.git_tree import Entry, render_inputs, tree_entries
 from loadout.staged_render import Snapshot
 from registration import register
@@ -231,3 +233,87 @@ def test_every_link_target_is_read_in_one_git_run(
 
     assert (started, ran) == ([("cat-file", "--batch")], [])
     assert sum(1 for name in inputs if name.endswith("SKILL.md")) == 20
+
+
+def _stage_link(root: Path, name: str, target: bytes) -> None:
+    oid = (
+        subprocess.run(
+            ["git", "-C", str(root), "hash-object", "-w", "--stdin"],
+            input=target,
+            capture_output=True,
+            check=True,
+        )
+        .stdout.decode()
+        .strip()
+    )
+    subprocess.run(
+        ["git", "-C", str(root), "update-index", "--add", "--cacheinfo", f"120000,{oid},{name}"],
+        check=True,
+    )
+
+
+def test_a_staged_link_whose_target_holds_a_nul_is_refused_by_name(tmp_path: Path, capsys) -> None:
+    """Review 6, batch 1.4: writing it out raised `ValueError`, and exit 4."""
+    root = _repository(
+        tmp_path, {"loadout/config.toml": 'harnesses = ["claude"]\n', "loadout/x.md": "x\n"}
+    )
+    _stage_link(root, "loadout/evil", b"a\0b")
+
+    assert loadout.main(["check", "--staged", "--root", str(root)]) == 3
+
+    assert capsys.readouterr().err == (
+        "loadout: loadout/evil is a link whose target holds a NUL byte, which no file system "
+        "can store\n"
+    )
+
+
+def _git(root: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(root), "-c", "user.email=t@e", "-c", "user.name=t", *args],
+        capture_output=True,
+        check=False,
+        text=True,
+    ).stdout
+
+
+def test_an_unmerged_index_is_refused(tmp_path: Path) -> None:
+    """Review 6, batch 3 (gt-unmerged)."""
+    root = _repository(tmp_path, {"f.txt": "base\n"})
+    _git(root, "commit", "-qm", "base")
+    _git(root, "checkout", "-qb", "other")
+    (root / "f.txt").write_text("other\n")
+    _git(root, "commit", "-qam", "other")
+    _git(root, "checkout", "-q", "-")
+    (root / "f.txt").write_text("mine\n")
+    _git(root, "commit", "-qam", "mine")
+    _git(root, "merge", "-q", "other")
+
+    with pytest.raises(LoadoutError) as error:
+        tree_entries(root)
+
+    assert str(error.value) == "unmerged index entry: f.txt; resolve and stage the conflict first"
+
+
+def test_a_tree_holding_a_git_folder_is_refused(tmp_path: Path) -> None:
+    """Review 6, batch 3 (gt-invalid-git): git runs what is under `.git`."""
+    root = _repository(tmp_path, {"f.txt": "x\n"})
+    blob = _git(root, "hash-object", "-w", "f.txt").strip()
+    inner = subprocess.run(
+        ["git", "-C", str(root), "mktree"],
+        input=f"100644 blob {blob}\tconfig\n",
+        capture_output=True,
+        check=True,
+        text=True,
+    ).stdout.strip()
+    tree = subprocess.run(
+        ["git", "-C", str(root), "mktree"],
+        input=f"040000 tree {inner}\t.git\n",
+        capture_output=True,
+        check=True,
+        text=True,
+    ).stdout.strip()
+
+    with pytest.raises(LoadoutError) as error:
+        tree_entries(root, tree)
+
+    assert str(error.value) == "invalid staged path: .git/config"

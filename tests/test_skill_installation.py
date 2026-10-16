@@ -234,3 +234,14 @@ def test_install_over_an_unowned_skill_exits_1_and_changes_nothing(
 
     assert f"loadout: {existing} " in capsys.readouterr().err
     assert (existing / "SKILL.md").read_text(encoding="utf-8") == "mine\n"
+
+
+def test_an_owner_marker_that_is_not_utf_8_is_no_marker(tmp_path: Path) -> None:
+    """Review 6, batch 3 (gt-declared-badtoml): it raised `UnicodeDecodeError`."""
+    root = _root(tmp_path)
+    bundle = _bundle(tmp_path / "bundle")
+    existing = root / "primary" / "skills" / "loadout"
+    existing.mkdir(parents=True)
+    (existing / OWNER_MARKER).write_bytes(b'owner = "\xff"\n')
+
+    assert inspect_skill_source(root, "default", bundle).state is SourceSkillState.CONFLICTING

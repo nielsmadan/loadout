@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from loadout import git_runner
+from loadout.errors import LoadoutError
 from loadout.git_runner import environment, toplevel
 
 HOOK = {
@@ -20,7 +21,7 @@ HOOK = {
 
 
 def test_a_hook_s_repository_variables_are_dropped() -> None:
-    assert environment(base=HOOK) == {"HOME": "/h", "GIT_OPTIONAL_LOCKS": "0"}
+    assert environment(base=HOOK) == {"HOME": "/h", "GIT_OPTIONAL_LOCKS": "0", "LC_ALL": "C"}
 
 
 def test_the_given_index_stays_when_it_is_the_one_inspected() -> None:
@@ -73,3 +74,39 @@ def test_a_streamed_git_starts_without_a_hook_s_repository(
     environ = started["env"]
     assert isinstance(environ, dict)
     assert (environ.get("GIT_DIR"), environ["GIT_OPTIONAL_LOCKS"]) == (None, "0")
+
+
+GERMAN_GIT = """#!/bin/sh
+if [ "$LC_ALL" = C ]; then
+  echo 'fatal: not a git repository (or any of the parent directories): .git' >&2
+else
+  echo 'fatal: Kein Git-Repository (oder irgendeines der Elternverzeichnisse): .git' >&2
+fi
+exit 128
+"""
+
+
+def test_a_localised_git_outside_a_repository_is_still_recognised(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review 6, batch 2.5: the answer was read from git's English message, so a git
+    speaking the user's language made `init project` outside a repository fail."""
+    git_runner.local_variables()  # asked of the real git once, before it is replaced
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin/git").write_text(GERMAN_GIT)
+    (tmp_path / "bin/git").chmod(0o755)
+    monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+    monkeypatch.setenv("LC_ALL", "de_DE.UTF-8")
+
+    assert toplevel(tmp_path) is None
+
+
+def test_toplevel_names_a_repository_git_refuses_to_read(tmp_path: Path) -> None:
+    """Review 6, batch 3 (gr-top-raise): only "not a git repository" means none."""
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / ".git/config").write_text("[core\n")
+
+    with pytest.raises(LoadoutError) as error:
+        toplevel(tmp_path)
+
+    assert str(error.value).startswith(f"cannot inspect Git repository {tmp_path}: fatal: bad")

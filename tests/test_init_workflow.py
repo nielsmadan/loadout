@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 import loadout
+from loadout import init_workflow as workflow
 from loadout.discovery import discover
 from loadout.emit import render_all
 from loadout.machine import machine_config_path
@@ -758,3 +759,40 @@ def test_a_registration_conflict_offers_keep_only_for_an_initialized_source(
             "choose ownership."
         )
     ]
+
+
+@pytest.mark.parametrize("initialized", [False, True], ids=["first init", "initialized"])
+def test_the_registration_prompt_offers_keep_only_for_an_initialized_source(
+    tmp_path, monkeypatch, initialized
+):
+    """Review 6, batch 3 (ik-choices): keeping another registration leaves a source init
+    is creating nothing it may render (review 5, 4.2)."""
+    _repo(tmp_path)
+    init = ["init", "global", str(tmp_path), "--harness", "claude", "--yes"]
+    machine = machine_config_path()
+    if initialized:
+        assert loadout.main(init) == 0
+    machine.parent.mkdir(parents=True, exist_ok=True)
+    machine.write_text('source = "/different"\n')
+    prompts: list[str] = []
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr(workflow, "_answer", lambda prompt: prompts.append(prompt) or "")
+
+    loadout.main(init)
+
+    choices = "replace/keep" if initialized else "replace"
+    assert prompts == [f"Machine registration {machine} differs. Replace it? [{choices}] "]
+
+
+def test_an_initialized_project_sync_would_not_read_names_its_source_folder(tmp_path, capsys):
+    """Review 6, batch 3 (il-kind): the issue named the project root, not `loadout/`."""
+    project = tmp_path / "project"
+    (project / "loadout").mkdir(parents=True)
+    (project / "loadout/config.toml").write_text('harnesses = ["codex"]\n')
+    (tmp_path / "outside.md").write_text("elsewhere\n")
+    (project / "loadout/elsewhere.md").symlink_to(tmp_path / "outside.md")
+
+    assert loadout.main(["init", "project", "--root", str(project), "--yes", "--json"]) != 0
+
+    issue = json.loads(capsys.readouterr().out)["issues"][0]
+    assert (issue["code"], issue["paths"]) == ("initialized-source", [str(project / "loadout")])

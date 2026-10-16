@@ -812,3 +812,22 @@ def test_a_link_into_the_git_dir_is_named_as_one(tmp_path: Path, capsys) -> None
     assert loadout.main(["sync", "--root", str(root)]) == 3
 
     assert f"{link} -> {(root / '.git/config').resolve()}, into .git" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("command", ["check", "sync"])
+def test_a_link_inside_loadout_that_cannot_be_resolved_is_refused_by_name(
+    tmp_path: Path, capsys, command: str
+) -> None:
+    """Review 6, batch 1.4: a pair growing the path each hop ended in an uncaught
+    `File name too long` and exit 4."""
+    root = _plain_project(tmp_path / "p")
+    (root / "loadout/p0").symlink_to("q0/" + "/".join(["a"] * 500))
+    (root / "loadout/q0").symlink_to("p0")
+
+    assert loadout.main([command, "--root", str(root)]) == 3
+
+    assert capsys.readouterr().err == (
+        f"loadout: refusing to read through the link {root / 'loadout/q0'}: it cannot be "
+        "resolved (File name too long). Point it at a file or folder inside loadout/, or "
+        "remove it\n"
+    )

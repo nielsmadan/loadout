@@ -637,3 +637,111 @@ def test_a_truncated_abort_with_nowhere_to_keep_the_diff_still_exits_1(
     err = capsys.readouterr().err
     assert "more diff line(s)" in err
     assert "Sync aborted" in err
+
+
+def test_a_committed_link_whose_target_holds_a_nul_still_lets_the_guard_judge(
+    root: Path, capsys
+) -> None:
+    """Review 6, batch 1.4: writing the committed baseline out raised `ValueError`, and
+    a hand edit made sync exit 4."""
+    register(root)
+    _adopt(root)
+    oid = (
+        subprocess.run(
+            ["git", "-C", str(root), "hash-object", "-w", "--stdin"],
+            input=b"a\0b",
+            capture_output=True,
+            check=True,
+        )
+        .stdout.decode()
+        .strip()
+    )
+    _git(root, "update-index", "--add", "--cacheinfo", f"120000,{oid},evil")
+    _git(root, "commit", "-qm", "link")
+    output = root / "out" / "shared.md"
+    output.write_text(output.read_text() + "\nhand-written line\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--root", str(root)]) == 1
+
+    assert "out/shared.md was modified outside loadout" in capsys.readouterr().err
+
+
+def test_a_repository_git_refuses_to_read_still_lets_the_guard_judge(root: Path, capsys) -> None:
+    """Review 6, batch 3 (cb-top-raise): the committed baseline is only one of the guard's
+    answers, so a git that cannot read the repository leaves it to the record."""
+    register(root)
+    _adopt(root)
+    (root / ".git/config").write_text("[core\n")
+    output = root / "out" / "shared.md"
+    output.write_text(output.read_text() + "\nhand-written line\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--root", str(root)]) == 1
+
+    assert "out/shared.md was modified outside loadout" in capsys.readouterr().err
+
+
+ORPHANED = (
+    '[[source]]\nname = "s"\npath = "."\n'
+    '\n[instructions.kept]\ndestinations = ["~/kept.md"]\norder = ["x"]\n'
+)
+
+
+def _instructions(source: Path, fake_home: Path) -> Path:
+    (source / "instructions").mkdir(parents=True)
+    (source / "instructions/x.md").write_text("Rules.\nMore.\n")
+    (source / "loadout.toml").write_text(
+        ORPHANED + '\n[instructions.mine]\ndestinations = ["~/out.md"]\norder = ["x"]\n'
+    )
+    register(source)
+    assert loadout.main(["sync", "--root", str(source)]) == 0
+    return fake_home / "out.md"
+
+
+@pytest.mark.parametrize("command", ["sync", "check"])
+def test_an_undecodable_orphan_is_shown_as_it_is_on_disk(
+    tmp_path: Path, fake_home: Path, capsys, command: str
+) -> None:
+    """Review 6, batch 3 (rd-orphan-shown, rd-retire-textshown)."""
+    source = tmp_path / "source"
+    output = _instructions(source, fake_home)
+    (source / "loadout.toml").write_text(ORPHANED)
+    output.write_bytes(output.read_bytes() + b"\xff\n")
+    capsys.readouterr()
+
+    assert loadout.main([command, "--root", str(source)]) == 1
+
+    assert "-�" in capsys.readouterr().err.splitlines()
+
+
+def test_a_crlf_checkout_of_a_text_output_is_no_hand_edit(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    """Review 6, batch 3 (rd-text-newline): only the line endings differ, inside the text too."""
+    source = tmp_path / "source"
+    output = _instructions(source, fake_home)
+    output.write_bytes(output.read_bytes().replace(b"\n", b"\r\n"))
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--root", str(source)]) == 0
+
+    assert output.read_bytes().endswith(b"Rules.\nMore.\n")
+
+
+def test_without_a_record_an_edit_to_a_committed_text_output_is_a_hand_edit(
+    root: Path, capsys
+) -> None:
+    """Review 6, batch 3 (gp-failclosed-text2): the commit is a baseline too."""
+    register(root)
+    _adopt(root)
+    written_state_path(root).unlink()
+    output = root / "out" / "shared.md"
+    output.write_text(output.read_text() + "\nhand-written line\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert loadout.main(["check", "--root", str(root), "--json"]) == 1
+
+    assert {"path": str(output), "kind": "hand-edited"} in json.loads(capsys.readouterr().out)[
+        "drift"
+    ]

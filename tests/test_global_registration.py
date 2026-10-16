@@ -377,3 +377,43 @@ def test_init_keeping_a_registration_names_a_machine_config_that_does_not_load(
     assert loadout.main(argv) == 3
 
     assert capsys.readouterr().err.startswith(f"loadout: {machine}: invalid TOML:")
+
+
+def test_sync_decides_the_registration_once_for_its_notes_too(
+    tmp_path: Path, fake_home: Path, monkeypatch, capsys
+) -> None:
+    """Review 6, batch 2.3: the notes after the write read the machine config again, so
+    a registration gone by then refused a sync that had already written."""
+    root = register(_source(tmp_path / "global"))
+    real = loadout.commands.deploy
+
+    def deploy_then_unregister(*args, **kwargs):
+        result = real(*args, **kwargs)
+        (fake_home / ".config/loadout/config.toml").unlink()
+        return result
+
+    monkeypatch.setattr(loadout.commands, "deploy", deploy_then_unregister)
+
+    assert loadout.main(["sync", "--root", str(root)]) == 0, capsys.readouterr().err
+
+    assert (fake_home / "global.md").is_file()
+
+
+@pytest.mark.parametrize("output", [[], ["--json"]], ids=["text", "json"])
+def test_check_decides_the_registration_once_for_its_notes_too(
+    tmp_path: Path, fake_home: Path, monkeypatch, capsys, output: list[str]
+) -> None:
+    """Review 6, batch 2.3: as sync, check read it again for its notes."""
+    root = register(_source(tmp_path / "global"))
+    assert loadout.main(["sync", "--root", str(root)]) == 0
+    real = loadout.commands.classified_drift
+
+    def drift_then_unregister(*args, **kwargs):
+        result = real(*args, **kwargs)
+        (fake_home / ".config/loadout/config.toml").unlink()
+        return result
+
+    monkeypatch.setattr(loadout.commands, "classified_drift", drift_then_unregister)
+    capsys.readouterr()
+
+    assert loadout.main(["check", *output, "--root", str(root)]) == 0, capsys.readouterr().err

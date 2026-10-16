@@ -456,6 +456,8 @@ def collect_notices(
     root: Path,
     profile: str = "default",
     environ: Mapping[str, str] | None = None,
+    *,
+    context: RenderContext | None = None,
 ) -> tuple[Notice, ...]:
     """Advisory findings about project setup and global slice fragments."""
     environ = os.environ if environ is None else environ
@@ -465,7 +467,7 @@ def collect_notices(
     ]
     if not manifest_path(root).is_file():
         return tuple(found)
-    refuse_unregistered_global(root)
+    refuse_unregistered_global(root, context)
     manifest = load_profile(root, profile)
     found.extend(
         _loose_skill_notices(

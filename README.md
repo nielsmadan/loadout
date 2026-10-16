@@ -245,7 +245,7 @@ config. Every run picks its profile by one rule: `--profile` when given; otherwi
 config's `profile` when the root is the registered global source, whether named by `--global`,
 by `--root`, by a git hook or by init; otherwise `default`. So a manual sync and a hook-run sync of
 the global source render the same profile, and neither retires the other's outputs. A machine
-config that cannot be read stops a run at a global source rather than fall back to `default`,
+config that cannot be read, a folder in its place included, stops a run at a global source rather than fall back to `default`,
 which would retire the profile's outputs; a git hook there stops too, after git has finished,
 and says what to run once the config is fixed. A project, hooks included, falls back to
 `default`.
@@ -700,7 +700,8 @@ skill's supporting file pointing at a key in `~/.ssh`, into `.git`, which holds 
 as a token in `.git/config`, or at a gitignored `.env` beside it. A template's own files are read
 only as real files, never through a link.
 Links that stay inside `loadout/` are followed; folders never read, such as a skill's `.venv` or
-`node_modules`, are skipped, so a skill or template may not itself be named like one.
+`node_modules`, are skipped, so a skill or template may not itself be named like one. A link the
+file system cannot resolve, such as a pair that lengthens the path at every hop, is refused by name.
 Both checks run before sync or check compares anything, a file sync wrote and no longer renders
 included, so no diff of an outside file is shown.
 

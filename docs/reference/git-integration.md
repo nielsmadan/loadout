@@ -40,7 +40,11 @@ source they declare, the files in its folder and the folders of the artifact typ
 and each permission target's `base` file.
 A link inside the repository on the way to any of these, such as `instructions -> vendor/instr`
 or a source `path` that is a link, brings its target in the same way, and so does a link reached
-through one. A source at the repository root therefore does not write the repository out. Large unrelated assets elsewhere in the
+through one. A project's root files are not read through, so a link among them brings nothing.
+A link is left unresolved, as the file system leaves it, when it resolves through itself, after 40
+links in a chain, or when the path it maps to is longer than 1024 bytes or deeper than 128
+components; the whole walk also stops after a fixed amount of work. A link whose target
+holds a NUL byte cannot be written out, so the staged check refuses it by name. A source at the repository root therefore does not write the repository out. Large unrelated assets elsewhere in the
 repository are listed by path, which is all the staged-output comparison needs, and never read.
 Renderers run in a fresh process with isolated global destinations and a read boundary around
 the snapshot. Repository scripts and skill programs are read as data and never executed.
@@ -122,17 +126,19 @@ The effective hooks directory is classified by why it is or is not this checkout
 
 `install` writes a shared directory as it would a local one, since the generated script finds
 its worktree's top level when it runs. To an external one it writes nothing and exits 0,
-printing each command to add by hand, guarded by this repository. `.git/hooks` is common to every worktree, so adding a worktree after installation turns the
+printing each block to add by hand, guarded by this repository. `.git/hooks` is common to every worktree, so adding a worktree after installation turns the
 directory shared without anything touching the hooks in it.
 
 `uninstall` requires `--yes` when input is not interactive.
 
-Preserved hooks get exact integration commands. Set `repo=$(git rev-parse --show-toplevel)` in the
-existing hook, then add the printed command at the appropriate point in its flow. Pass the Git
-event's arguments through, and propagate a pre-commit failure. Loadout does not replace a hook
-manager or install a dispatcher over an existing script. A hooks directory outside the
-repository, such as a global `core.hooksPath`, may run in every repository on the machine, so
-install prints each command guarded by this one (`[ "$repo" = <repository> ] && …`).
+Preserved hooks get exact integration lines: one setting `repo=$(git rev-parse --show-toplevel)`,
+and the command, each ending `|| exit $?` so a refusal stops the hook wherever the lines sit in
+its flow. Pass the Git event's arguments through. Loadout does not replace a hook manager or
+install a dispatcher over an existing script. A hooks directory outside the repository, such as a
+global `core.hooksPath`, may run in every repository on the machine, so install prints the same
+lines inside `if [ "$(git rev-parse --path-format=absolute --git-common-dir)" = <common git dir> ];
+then … fi`. Every linked worktree of this repository shares its common git dir, so the block runs
+in each of them, and in no other repository, where it leaves the hook's status alone.
 
 Installed scripts invoke `loadout` on PATH and contain no interpreter or checkout-specific
 absolute paths. Install the package on each machine and explicitly run
@@ -146,7 +152,10 @@ integration decision can be made again.
 
 A branch with nothing of loadout's on it, one from before adoption or one without the source
 folder, is no failure: when the `--root` folder holds no loadout config, and for a commit neither
-the index nor HEAD holds one either, each hook prints one line saying so and exits 0.
+the index nor HEAD holds one either, in any letter case, each hook prints one line saying so and
+exits 0. A commit
+that deletes or renames the source folder is checked from the nearest folder above it that still
+exists, so loadout can be retired, or moved, with an ordinary commit.
 
 Post-checkout (branch changes only) and post-merge call normal guarded sync for the recorded
 source and the profile resolved at that moment. External edits cause refusal; regeneration never supplies `--force`. After a failure, the diagnostic explicitly

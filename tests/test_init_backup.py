@@ -1742,6 +1742,8 @@ def test_restore_never_removes_a_user_s_file_named_like_loadout_s(tmp_path: Path
         root / ".loadout-notes.md": "notes\n",
         root / ".claude/.loadout-mine": "mine\n",
         root / ".loadout-tmp-notes.md": "not loadout's shape\n",
+        root / ".loadout-tmp-abc": "too short to be loadout's\n",
+        root / ".loadout-tmp-xxxxxxxx.bak": "loadout's shape and more\n",
         root / "docs/.loadout-tmp-abcdefgh": "no backed-up path beside it\n",
     }
     for path, content in kept.items():
@@ -1770,3 +1772,20 @@ def test_restore_never_removes_a_file_named_like_loadout_s_in_home(
     assert loadout.main(["init", "restore", "--yes", "--json"]) == 0
 
     assert mine.read_text() == "notes\n"
+
+
+def test_a_folder_named_like_an_interrupted_write_stays_and_the_sweep_goes_on(
+    tmp_path: Path, capsys
+) -> None:
+    """Review 6, batch 3 (rs-sweep-isfile): only a file is swept."""
+    root = _project(tmp_path / "p")
+    assert _init_project(root, "--yes") == 0
+    (root / ".loadout-tmp-aaaaaaaa").mkdir()
+    (root / ".loadout-tmp-aaaaaaaa/inside.txt").write_text("mine\n")
+    for name in (".loadout-tmp-zzzzzzzz", ".loadout-tmp-00000000"):
+        (root / name).write_text("half")
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 0
+
+    assert sorted(path.name for path in root.glob(".loadout-tmp-*")) == [".loadout-tmp-aaaaaaaa"]

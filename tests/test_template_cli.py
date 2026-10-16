@@ -653,3 +653,21 @@ def test_a_refused_sync_never_prints_a_token_the_upstream_added(
     captured = capsys.readouterr()
     assert "+push with <redacted>\n" in captured.err
     assert TOKEN not in captured.out + captured.err
+
+
+def test_bare_add_labels_a_vendored_copy_once(
+    bare_project: Path,
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Review 6, batch 3 (tk-avail-vendored): its label came parenthesised twice."""
+    vendored = vendored_path(bare_project, "web")
+    vendored.mkdir(parents=True)
+    (vendored / "permissions.toml").write_text('[shell]\nallow = ["vite"]\n')
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _: "")
+
+    assert main(["template", "add", "--root", str(bare_project)]) == 2
+
+    assert "  1. web  (vendored)\n" in capsys.readouterr().out

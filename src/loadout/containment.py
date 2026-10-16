@@ -193,10 +193,10 @@ def refuse_external_links(root: Path, excluded: frozenset[str] = frozenset()) ->
             if entry.name in excluded and _in_a_skill(path.relative_to(source).parts):
                 continue
             if entry.is_symlink():
-                target = path.resolve()
+                target, is_dir = _resolved(path)
                 if not target.is_relative_to(inputs):
                     escaping.append((path, target))
-                elif target.is_dir():
+                elif is_dir:
                     pending.append((path, target))
             elif entry.is_dir(follow_symlinks=False):
                 pending.append((path, resolved / entry.name))
@@ -208,6 +208,20 @@ def refuse_external_links(root: Path, excluded: frozenset[str] = frozenset()) ->
             f"refusing to read through a link out of {PROJECT_DIR}/: {listed}. Copy the file "
             f"into {PROJECT_DIR}/, or point the link inside it"
         )
+
+
+def _resolved(link: Path) -> tuple[Path, bool]:
+    """Where `link` lands, and whether that is a folder: one the file system cannot
+    resolve, as a loop growing the path each hop leaves it, is refused by name."""
+    try:
+        target = link.resolve()
+        return target, target.is_dir()
+    except (OSError, RuntimeError) as error:
+        reason = error.strerror if isinstance(error, OSError) and error.strerror else str(error)
+        raise LoadoutError(
+            f"refusing to read through the link {link}: it cannot be resolved ({reason}). "
+            f"Point it at a file or folder inside {PROJECT_DIR}/, or remove it"
+        ) from error
 
 
 def _landing(target: Path, boundary: Path) -> str:

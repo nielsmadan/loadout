@@ -28,6 +28,11 @@ LINK = "120000"
 GITLINK = "160000"
 # As the file system gives up on a chain of links (ELOOP).
 MAX_HOPS = 40
+# As the file system refuses a longer path (ENAMETOOLONG): macOS's PATH_MAX, in bytes.
+PATH_MAX = 1024
+MAX_DEPTH = 128
+# Steps a link walk takes, folders looked up and entries reached, before it stops.
+WORK_BUDGET = 1_000_000
 
 
 @dataclass(frozen=True)
@@ -127,12 +132,19 @@ def blobs(
         raise LoadoutError(f"git cat-file exited {code}; repair the supplied Git index")
 
 
-def read_blobs(root: Path, oids: Iterable[str], *, keep_index: bool = False) -> dict[str, bytes]:
-    """Each distinct blob's content, by its oid."""
-    unique = sorted(set(oids))
-    pairs = [(oid, oid) for oid in unique]
-    with contextlib.closing(blobs(root, pairs, keep_index=keep_index)) as contents:
-        return dict(zip(unique, contents, strict=True))
+def read_blobs(
+    root: Path, wanted: Iterable[tuple[str, str]], *, keep_index: bool = False
+) -> dict[str, bytes]:
+    """Each distinct blob's content, by its oid, for (name, oid) pairs; a failure names
+    the first entry that holds the blob."""
+    named: dict[str, str] = {}
+    for name, oid in wanted:
+        named.setdefault(oid, name)
+    pairs = sorted((oid, name) for oid, name in named.items())
+    with contextlib.closing(
+        blobs(root, ((name, oid) for oid, name in pairs), keep_index=keep_index)
+    ) as contents:
+        return dict(zip((oid for oid, _ in pairs), contents, strict=True))
 
 
 def write_snapshot(
@@ -150,6 +162,11 @@ def write_snapshot(
             target = destination / name
             target.parent.mkdir(parents=True, exist_ok=True)
             if entry.mode == LINK:
+                if b"\0" in content:
+                    raise LoadoutError(
+                        f"{name} is a link whose target holds a NUL byte, which no file "
+                        "system can store"
+                    )
                 links.append((target, content))
             elif entry.mode in {"100644", "100755"}:
                 target.write_bytes(content)
@@ -167,7 +184,7 @@ def render_inputs(
     targets read first in one run."""
     base = str(PurePosixPath(relative.as_posix()))
     needed = [
-        entry.oid
+        (name, entry.oid)
         for name, entry in entries.items()
         if entry.mode == LINK or (parent_of(name) == base and name.endswith(".toml"))
     ]
@@ -204,12 +221,16 @@ def select_inputs(
         return parent_of(name) in own or name.startswith(prefixes) or name in files
 
     selected = {name: entry for name, entry in entries.items() if wanted(name)}
+    targets = _link_targets(entries, contents)
+    # A project's render reads no file through a link among its root files.
+    unread = str(base) if project and base not in {folder for folder, _ in sources} else None
     read = [
         *((str(folder), True) for folder in whole),
         *((str(folder), False) for folder, _ in sources),
         *((str(path), True) for path in declared.files),
+        *((name, True) for name in selected if name in targets and parent_of(name) != unread),
     ]
-    return _through_links(entries, selected, read, _link_targets(entries, contents))
+    return _through_links(entries, selected, read, targets)
 
 
 def _link_targets(entries: Mapping[str, Entry], contents: Mapping[str, bytes]) -> dict[str, str]:
@@ -225,43 +246,72 @@ def _link_targets(entries: Mapping[str, Entry], contents: Mapping[str, bytes]) -
 def _through_links(
     entries: Mapping[str, Entry],
     selected: dict[str, Entry],
-    folders: list[tuple[str, bool]],
+    paths: list[tuple[str, bool]],
     targets: Mapping[str, str],
+    *,
+    budget: int = WORK_BUDGET,
 ) -> dict[str, Entry]:
-    """`selected` with what its links inside the repository name: a source folder, an
-    artifact folder or a file that is a link reads its target (review 4, batch 2.3).
-    Each folder is read as `selected` reads it, whole or its files alone. Only the read
-    path and the folders above it are looked up, and a link reached through itself, or
-    past `MAX_HOPS`, is left unresolved as the file system leaves it (review 5, 2.5)."""
+    """`selected` with what the links on its read `paths` name inside the repository: a
+    source folder, an artifact folder or a file that is a link reads its target (review
+    4, batch 2.3). Each folder is read as `selected` reads it, whole or its files alone.
+    Only the read path and the folders above it are looked up. A link reached through
+    itself, past `MAX_HOPS`, or to a path past `PATH_MAX` or `MAX_DEPTH`, is left
+    unresolved as the file system leaves it (review 5, 2.5), and so is what remains once
+    `budget` is spent (review 6, batch 1.3)."""
     if not targets:
         return selected
     names = sorted(entries)
+    folders = {folder for link in targets if _resolvable(link) for folder in _folders_above(link)}
     result = dict(selected)
-    read = [
-        *((path, whole, 0) for path, whole in folders),
-        *((name, True, 0) for name in selected if name in targets),
-    ]
+    read = [(path, whole, 0) for path, whole in paths if _resolvable(path)]
     seen: set[tuple[str, bool]] = set()
-    while read:
+    spent = 0
+    while read and spent < budget:
         path, whole, hops = read.pop()
-        for link in and_above(path):
-            target = targets.get(link)
-            if target is None:
-                continue
+        links, steps = _links_at_or_above(path, targets, folders)
+        spent += steps
+        for link in links:
             result[link] = entries[link]
-            mapped = _join(target, path[len(link) :].lstrip("/"))
-            if hops >= MAX_HOPS or mapped == link or mapped.startswith(link + "/"):
+            mapped = _join(targets[link], path[len(link) :].lstrip("/"))
+            if hops >= MAX_HOPS or not _resolvable(mapped):
                 continue
-            if (mapped, whole) in seen:
+            if mapped == link or mapped.startswith(link + "/") or (mapped, whole) in seen:
                 continue
             seen.add((mapped, whole))
             reached = _under(names, mapped, whole)
+            spent += len(reached)
             result.update({name: entries[name] for name in reached})
             read += [
                 (mapped, whole, hops + 1),
                 *((name, True, hops + 1) for name in reached if name in targets),
             ]
     return result
+
+
+def _resolvable(path: str) -> bool:
+    return len(os.fsencode(path)) <= PATH_MAX and path.count("/") < MAX_DEPTH
+
+
+def _folders_above(name: str) -> list[str]:
+    return [name[:end] for end, character in enumerate(name) if character == "/"]
+
+
+def _links_at_or_above(
+    path: str, targets: Mapping[str, str], folders: set[str]
+) -> tuple[list[str], int]:
+    """The links at `path` or a folder above it, deepest first, and how many folders were
+    looked up: walked down from the top, it stops at the first folder holding no link."""
+    found = []
+    steps = 0
+    end = path.find("/")
+    while True:
+        steps += 1
+        prefix = path if end == -1 else path[:end]
+        if prefix in targets:
+            found.append(prefix)
+        if end == -1 or prefix not in folders:
+            return found[::-1], steps
+        end = path.find("/", end + 1)
 
 
 def _join(folder: str, rest: str) -> str:

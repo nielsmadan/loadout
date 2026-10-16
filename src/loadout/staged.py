@@ -74,8 +74,9 @@ def _inspect(snapshot: Path, check: _Check, entries: dict[str, Entry]) -> tuple[
 
 def check_staged(root: Path, profile: str = "default") -> int:
     root = root.absolute()
+    probe = git_runner.nearest_folder(root)
     # Checked, not `toplevel`: a commit's check says exactly why git could not answer.
-    repository = Path(os.fsdecode(git(root, "rev-parse", "--show-toplevel")).strip()).resolve()
+    repository = Path(os.fsdecode(git(probe, "rev-parse", "--show-toplevel")).strip()).resolve()
     if not root.resolve().is_relative_to(repository):
         raise LoadoutError(f"source root escapes Git repository: {root}")
     relative = root.resolve().relative_to(repository)

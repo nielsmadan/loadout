@@ -4,6 +4,7 @@ temporary file's mode, and a rewrite reverted the user's chmod."""
 from __future__ import annotations
 
 import os
+import stat
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -11,7 +12,7 @@ import pytest
 
 import loadout
 from loadout import files
-from loadout.files import atomic_write, text_mode, write_outputs
+from loadout.files import atomic_write, process_umask, text_mode, write_outputs
 from registration import register
 
 TOKEN = "ghp_" + "a1B2" * 9
@@ -107,3 +108,25 @@ def test_writing_many_outputs_reads_the_umask_once(
     write_outputs({tmp_path / f"out{index}.md": f"{index}\n" for index in range(5)})
 
     assert (len(reads), (tmp_path / "out3.md").stat().st_mode & 0o777) == (1, 0o644)
+
+
+def test_a_new_document_holding_only_a_structural_secret_is_owner_only(tmp_path: Path) -> None:
+    """Review 6, batch 3 (tm-format): the credential check is told the document's
+    format, so an `env` entry only its structure flags counts."""
+    target = tmp_path / "new.json"
+
+    atomic_write(target, '{"env": {"MY_SERVICE": "FAKEabcdef123456"}}\n', umask=0o022)
+
+    assert stat.S_IMODE(target.stat().st_mode) == 0o600
+
+
+def test_reading_the_umask_leaves_it_as_it_was() -> None:
+    """Review 6, batch 3 (tm-restore-umask): reading sets it, so it is set back."""
+    before = os.umask(0o027)
+    try:
+        read = process_umask()
+        after = os.umask(0o027)
+    finally:
+        os.umask(before)
+
+    assert (read, after) == (0o027, 0o027)

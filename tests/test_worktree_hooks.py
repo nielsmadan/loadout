@@ -7,6 +7,7 @@ in-process never sees it; these drive `git` itself.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -14,6 +15,7 @@ from pathlib import Path
 import pytest
 
 import loadout
+from loadout.git_hooks import plan_hooks
 from registration import register
 
 pytestmark = pytest.mark.integration
@@ -148,3 +150,108 @@ def test_a_commit_of_the_index_git_builds_is_the_one_checked(
 
     assert committed.returncode != 0
     assert "loadout.toml" in committed.stderr
+
+
+def _external_hook(project: Path, outside: Path, after: str, capsys) -> None:
+    """Install into a hooks directory outside the repository, and paste the advice it
+    prints into that directory's own pre-commit hook, `after` following it."""
+    capsys.readouterr()
+    assert loadout.main(["integrate", "git-hooks", "install", "--root", str(project)]) == 0
+    out = capsys.readouterr().out
+    advice = out[out.index("Git hook pre-commit") :].splitlines()[1:]
+    hook = outside / "pre-commit"
+    hook.write_text("#!/bin/sh\n" + "".join(f"{line[2:]}\n" for line in advice) + after)
+    hook.chmod(0o755)
+
+
+def _broken(root: Path) -> None:
+    (root / "loadout/config.toml").write_text("harnesses = [\n")
+    assert _git(root, "add", "-A").returncode == 0
+
+
+@pytest.mark.parametrize("after", ["", "true\n"], ids=["advice last", "a command after it"])
+def test_external_hook_advice_guards_by_repository_and_passes_a_refusal_on(
+    tmp_path: Path, after: str, capsys
+) -> None:
+    """Review 6, batch 1.5: as the last line, the `[ … ] && …` guard failed every commit
+    in every other repository; followed by another command, it let a refused commit
+    land; and a linked worktree, whose top level differs, was never checked."""
+    project = tmp_path / "project"
+    (project / "loadout/instructions").mkdir(parents=True)
+    (project / "loadout/config.toml").write_text('harnesses = ["codex"]\ninstructions = ["main"]\n')
+    (project / "loadout/permissions.toml").write_text("")
+    (project / "loadout/instructions/main.md").write_text("Project rules.\n")
+    assert loadout.main(["sync", "--root", str(project)]) == 0
+    _committed(project)
+    outside = tmp_path / "global-hooks"
+    outside.mkdir()
+    other = tmp_path / "other"
+    other.mkdir()
+    (other / "x.txt").write_text("x\n")
+    _committed(other)
+    for root in (project, other):
+        assert _git(root, "config", "core.hooksPath", str(outside)).returncode == 0
+    _external_hook(project, outside, after, capsys)
+    worktree = tmp_path / "project-wt"
+    assert _git(project, "worktree", "add", "-q", str(worktree)).returncode == 0
+    (other / "x.txt").write_text("y\n")
+    (project / "notes.txt").write_text("notes\n")
+    for root in (other, project):
+        assert _git(root, "add", "-A").returncode == 0
+        committed = _git(root, "commit", "-qm", "change")
+        assert committed.returncode == 0, committed.stderr
+
+    _broken(project)
+    _broken(worktree)
+
+    refused = [_git(root, "commit", "-qm", "broken") for root in (project, worktree)]
+    assert [result.returncode for result in refused] == [1, 1]
+    assert [result.stderr.partition("\n")[0] for result in refused] == [
+        "loadout: staged dependency snapshot is incomplete or invalid: "
+        f"{root / 'loadout/config.toml'}: invalid TOML: Invalid value (at end of document)"
+        for root in (project, worktree)
+    ]
+    assert [_git(root, "log", "-1", "--format=%s").stdout for root in (project, worktree)] == [
+        "change\n",
+        "base\n",
+    ]
+
+
+def test_advice_for_an_existing_hook_passes_a_refusal_on(tmp_path: Path, capsys) -> None:
+    """Review 6, batch 1.5: pasted above the hook's own commands, a bare command let a
+    refused commit land."""
+    project = tmp_path / "project"
+    (project / "loadout/instructions").mkdir(parents=True)
+    (project / "loadout/config.toml").write_text('harnesses = ["codex"]\ninstructions = ["main"]\n')
+    (project / "loadout/permissions.toml").write_text("")
+    (project / "loadout/instructions/main.md").write_text("Project rules.\n")
+    assert loadout.main(["sync", "--root", str(project)]) == 0
+    _committed(project)
+    hook = project / ".git/hooks/pre-commit"
+    hook.write_text("#!/bin/sh\ntrue\n")
+    hook.chmod(0o755)
+    capsys.readouterr()
+    assert loadout.main(["integrate", "git-hooks", "install", "--root", str(project)]) == 0
+    out = capsys.readouterr().out
+    advice = out[out.index("Preserved.") :].splitlines()[1:]
+    hook.write_text("#!/bin/sh\n" + "".join(f"{line[2:]}\n" for line in advice) + "true\n")
+    _broken(project)
+
+    refused = _git(project, "commit", "-qm", "broken")
+
+    assert refused.returncode == 1
+    assert refused.stderr.startswith("loadout: staged dependency snapshot is incomplete")
+    assert _git(project, "log", "-1", "--format=%s").stdout == "base\n"
+
+
+def test_a_worktree_whose_folder_was_deleted_still_shares_the_hooks(tmp_path: Path) -> None:
+    """Review 6, batch 3 (hp-wt-missing-dir): asking git about the folder failed."""
+    project = tmp_path / "project"
+    (project / "loadout").mkdir(parents=True)
+    (project / "loadout/config.toml").write_text('harnesses = ["codex"]\n')
+    _committed(project)
+    worktree = tmp_path / "project-wt"
+    assert _git(project, "worktree", "add", "-q", str(worktree)).returncode == 0
+    shutil.rmtree(worktree)
+
+    assert plan_hooks(project).placement == "shared"

@@ -253,7 +253,7 @@ def cmd_sync(root: Path, profile: str, force: bool = False) -> int:
         print(f"added {ignored} entries to .gitignore")
     if unignored:
         print(f"removed {unignored} entries from .gitignore")
-    _report_notices(root, profile)
+    _report_notices(root, profile, context)
     # Reported, never stopped on: sync overwrites nothing there, so stopping would
     # only block the outputs it does own.
     # The state as sync left it: the record from before names what was just retired
@@ -272,7 +272,7 @@ def _sync_summary(outputs: Mapping[Path, Output], written: list[Path], retired: 
     return f"{summary}, {len(retired)} retired" if retired else summary
 
 
-def _report_notices(root: Path, profile: str) -> None:
+def _report_notices(root: Path, profile: str, context: RenderContext) -> None:
     """Advisory findings, on the same terms as a diverged vendored template.
 
     A notice describes a source that rendered successfully while doing less than
@@ -283,12 +283,12 @@ def _report_notices(root: Path, profile: str) -> None:
     Until this existed the four reports behind it reached nobody, and one was
     visible only by opening the generated JavaScript.
     """
-    for notice in collect_notices(root, profile):
+    for notice in collect_notices(root, profile, context=context):
         print(f"note: {notice.render()}")
 
 
-def _check_notes(root: Path, profile: str) -> list[str]:
-    return [notice.render() for notice in collect_notices(root, profile)]
+def _check_notes(root: Path, profile: str, context: RenderContext) -> list[str]:
+    return [notice.render() for notice in collect_notices(root, profile, context=context)]
 
 
 UNMANAGED_ADVICE = (
@@ -320,8 +320,9 @@ DRIFT_ADVICE: dict[DriftKind, str] = {
 
 
 def _check_json(root: Path, profile: str) -> int:
-    drift = classified_drift(root, profile, RenderContext(registration=fixed(registration())))
-    notes = _check_notes(root, profile)
+    context = RenderContext(registration=fixed(registration()))
+    drift = classified_drift(root, profile, context)
+    notes = _check_notes(root, profile, context)
     code = 1 if drift else 0
     result = {
         "status": "drift" if drift else "clean",
@@ -339,8 +340,9 @@ def cmd_check(root: Path, profile: str, *, as_json: bool = False) -> int:
     # `check` used to end every drift with "run `loadout sync`" even where sync was
     # about to refuse, sending the reader in a circle and teaching them --force. Ask
     # the guard the same question sync will, and say which answer applies.
-    drift = classified_drift(root, profile, RenderContext(registration=fixed(registration())))
-    for note in _check_notes(root, profile):
+    context = RenderContext(registration=fixed(registration()))
+    drift = classified_drift(root, profile, context)
+    for note in _check_notes(root, profile, context):
         print(f"note: {note}")
     if not drift:
         print("generated files are up to date")

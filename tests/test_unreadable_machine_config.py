@@ -3,6 +3,7 @@ documented to fall back do (review 4, batch 2.5)."""
 
 from __future__ import annotations
 
+import subprocess
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -125,3 +126,78 @@ def test_a_hook_at_the_global_source_refuses_and_says_the_git_operation_complete
     assert code == 3
     assert err.startswith(f"loadout: {machine}: invalid TOML:")
     assert "Git merge already completed; loadout regeneration failed." in err
+
+
+@pytest.mark.parametrize("shape", ["a folder", "under a file"])
+def test_a_machine_config_that_is_no_file_is_named(
+    tmp_path: Path, fake_home: Path, capsys, shape: str
+) -> None:
+    """Review 6, batch 2.2: both read as no machine config at all, so the advice was to
+    register one, which init then refused."""
+    root = tmp_path / "global"
+    root.mkdir()
+    (root / "loadout.toml").write_text('[[source]]\nname = "s"\npath = "."\n')
+    folder = fake_home / ".config/loadout"
+    if shape == "a folder":
+        (folder / "config.toml").mkdir(parents=True)
+    else:
+        folder.parent.mkdir(parents=True, exist_ok=True)
+        folder.write_text("")
+    reason = "Is a directory" if shape == "a folder" else "Not a directory"
+
+    assert loadout.main(["sync", "--root", str(root)]) == 3
+
+    assert capsys.readouterr().err == (
+        f"loadout: {folder / 'config.toml'}: cannot be read: {reason}\n"
+    )
+
+
+@pytest.mark.parametrize("profile", ["default", "work"])
+def test_a_profile_that_is_not_utf_8_is_named(
+    tmp_path: Path, fake_home: Path, capsys, profile: str
+) -> None:
+    """Review 6, batch 3 (gt-declared-badtoml): reading it raised `UnicodeDecodeError`,
+    and exit 4."""
+    (tmp_path / "global").mkdir()
+    root = register(tmp_path / "global")
+    (root / "loadout.toml").write_text('[[source]]\nname = "s"\npath = "."\n')
+    named = root / ("loadout.toml" if profile == "default" else f"{profile}.toml")
+    named.write_bytes(b'[[source]]\nname = "s"\npath = "."\n# \xff\n')
+    capsys.readouterr()
+
+    assert loadout.main(["check", "--root", str(root), "--profile", profile]) == 3
+
+    assert capsys.readouterr().err == f"loadout: {named}: not UTF-8: invalid start byte\n"
+
+
+def test_a_project_config_that_is_not_utf_8_is_named(tmp_path: Path, capsys) -> None:
+    project = _project(tmp_path / "project")
+    config = project / "loadout/config.toml"
+    config.write_bytes(b'harnesses = ["codex"]\n# \xff\n')
+
+    assert loadout.main(["check", "--root", str(project)]) == 3
+
+    assert capsys.readouterr().err == f"loadout: {config}: not UTF-8: invalid start byte\n"
+
+
+def test_an_unreadable_machine_config_wins_over_a_staged_manifest(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    """Review 6, batch 3 (wa-staged-err): with the config unread, nothing says the folder
+    is not the registered source, so unstaging is not the remedy."""
+    (tmp_path / "global").mkdir()
+    register(tmp_path / "global")
+    machine = fake_home / ".config/loadout/config.toml"
+    clone = tmp_path / "clone"
+    clone.mkdir()
+    (clone / "loadout.toml").write_text('[[source]]\nname = "s"\npath = "."\n')
+    subprocess.run(["git", "-C", str(clone), "init", "-q"], check=True)
+    subprocess.run(["git", "-C", str(clone), "add", "-A"], check=True)
+    machine.chmod(0o000)
+    try:
+        # An explicit profile skips the profile lookup, so the staged gate reads the config.
+        assert loadout.main(["check", "--staged", "--root", str(clone), "--profile", "p"]) == 3
+    finally:
+        machine.chmod(0o600)
+
+    assert capsys.readouterr().err == f"loadout: {machine}: cannot be read: Permission denied\n"

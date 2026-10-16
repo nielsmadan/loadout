@@ -89,6 +89,8 @@ def load_project_config(path: Path) -> ProjectConfig:
     try:
         with path.open("rb") as handle:
             data = tomllib.load(handle)
+    except UnicodeDecodeError as error:
+        raise LoadoutError(f"{path}: not UTF-8: {error.reason}") from error
     except tomllib.TOMLDecodeError as error:
         raise LoadoutError(f"{path}: invalid TOML: {error}") from error
 
