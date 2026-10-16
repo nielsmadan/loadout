@@ -125,9 +125,10 @@ every harness, and so does an allow nothing contradicts. MCP servers combine by 
 write into them. Init adopts every top-level key no slice writes into `loadout/settings/claude.json`,
 `droid.json` or `opencode.json`, and sync renders the file from that source plus the slices. Which
 keys a slice writes is read from its renderer, not listed by hand. A file Git tracks is adopted into
-committed source even when it holds an `env` value, since its content is already in the repository's
-history. An untracked or ignored one keeps the private handling: its original stays in place and its
-settings source is written private and gitignored. Every generated project file init lists in
+committed source even when it holds a secret, since its content is already in the repository's
+history. An untracked or ignored one is private: its original stays in place and its settings source
+is written private and gitignored. An untracked `opencode.jsonc` is still deleted once its keys are
+in that private source, since OpenCode would otherwise read both files. Every generated project file init lists in
 `.gitignore` is also removed from the index, so a clone renders it rather than checking out a stale
 copy. Droid's and Pi's `settings.json` count as partly runtime state only at global scope.
 
@@ -151,8 +152,18 @@ Existing generated destinations are reconstructed in isolation before approval.
 
 ## What init keeps private
 
-A project original is adopted privately, into a gitignored source file that stays on this machine,
-when Git ignores it, when its name holds `.local`, or when its content looks like a credential:
+An original is adopted privately, into a gitignored source file that stays on this machine, when
+Git ignores it or its name holds `.local`. At project scope a co-owned settings file Git does not
+track is private too, since it may hold something personal, while one Git tracks is already in the
+team's history and goes into committed source. Everything else goes into the source it would go to
+anyway, in either scope.
+
+What a file contains does not change where it goes (D-07): a secret stays in the source, adopted
+as it is, and init warns about it. The preview lists each committable source file that
+looks like it holds one, as `Contains a secret: <path>: <reason>`, `--json` lists the same under
+`secrets` (`path`, `reason`), and the closing message says the source's remote should stay private
+and that the `/loadout` skill can move a secret into an environment variable. The reason names what
+was found, never the value. A file looks like it holds a secret when it has:
 
 - a key named like a token, password, secret, API key or authorization holding a literal value;
 - a literal value under `env`, `environment`, `headers` or `http_headers`, other than a number, a
@@ -169,14 +180,10 @@ when Git ignores it, when its name holds `.local`, or when its content looks lik
   `aws_secret_access_key`.
 
 A reference such as `$API_KEY` or `${API_KEY}`, and a documentation placeholder ending in
-`EXAMPLE` or made of x's, is not a credential. The check is a heuristic, so the preview names what
-made each file private, as `Private (stays on this machine): <path>: <reason>`, and the reason is
-in `--json` as `private_reason`. A co-owned project settings file Git already tracks is published
-regardless, since its content is already in the repository's history.
-
-At global scope this applies to the files init carries whole, such as skills; the settings, MCP
-server, hook and instruction documents it splits into source slices are currently written into the
-global source even when flagged.
+`EXAMPLE` or made of x's, is not a secret. The check is a heuristic: it can miss a secret and can
+flag a value that is not one. A private original is listed as
+`Private (stays on this machine): <path>: <reason>`, with the reason in `--json` as
+`private_reason`: its name, Git ignoring it, or Git not tracking it.
 
 A Codex MCP server's keys that the server source cannot hold, such as a literal `http_headers`
 table, are named in the preview as not adopted: the next sync writes the server without them, so

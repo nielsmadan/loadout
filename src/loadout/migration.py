@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Literal
@@ -183,13 +184,7 @@ def _authored(candidate: Candidate, scope: str | None) -> Candidate:
         return candidate
     document = parse_document(candidate.content.decode(), candidate.format)
     content = serialize_document(authored_part(document, candidate.harnesses[0]), candidate.format)
-    reason = credential_material(content, candidate.format)
-    return replace(
-        candidate,
-        content=content,
-        private=bool(reason) or candidate.personal,
-        private_reason=reason or (candidate.private_reason if candidate.personal else ""),
-    )
+    return replace(candidate, content=content)
 
 
 def _choose(inventory: Inventory) -> tuple[tuple[Candidate, ...], tuple[Issue, ...]]:
@@ -1199,12 +1194,23 @@ def plan_migration(inventory: Inventory) -> MigrationPlan:
         ),
         notes=(
             "Native documents may be reformatted; ordered keys, literal values and opaque bytes/modes are validated.",
-            "Credential detection is a heuristic and cannot establish that authored content is secret-free; review which files stay private before approval.",
+            "Secret detection is a heuristic and cannot establish that authored content is secret-free; review the source before pushing it.",
             *builder.notes,
         ),
         unadopted=tuple(builder.unadopted),
+        secrets=_secrets(builder.writes.values()),
     )
     return validate_plan(plan)
+
+
+def _secrets(writes: Iterable[SourceWrite]) -> tuple[tuple[Path, str], ...]:
+    """Each committable source file that looks like it holds a secret, and why (D-07)."""
+    return tuple(
+        (write.path, reason)
+        for write in writes
+        if not write.private
+        and (reason := credential_material(write.content, write.path.suffix[1:])) is not None
+    )
 
 
 def _conflicting_skills(
@@ -1349,6 +1355,8 @@ def _original_entries(
                     "retain",
                     "Its copies disagree across harnesses, so it stays in place for /loadout to merge.",
                 )
+            elif path in builder.absorbed:
+                action, reason = "retire", builder.absorbed[path]
             elif any(entry.is_relative_to(p) for p in private):
                 action, reason = (
                     "retain",
@@ -1356,8 +1364,6 @@ def _original_entries(
                 )
             elif path in builder.retained or any(entry.is_relative_to(p) for p in retained):
                 action, reason = "retain", candidate.reason
-            elif path in builder.absorbed:
-                action, reason = "retire", builder.absorbed[path]
             elif any(planned == p or p.is_relative_to(planned) for p in destinations) or any(
                 record["format"] == "tree" and planned.is_relative_to(layout.normalize(destination))
                 for destination, record in builder.records.items()

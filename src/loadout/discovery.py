@@ -334,18 +334,12 @@ def _excluded(path: Path) -> bool:
     )
 
 
-def _privacy_reason(path: Path, content: bytes, format_name: str) -> str | None:
-    if _private(path):
-        return "its name marks it personal (.local)"
-    return credential_material(content, format_name)
-
-
 def _private(path: Path) -> bool:
     return ".local." in path.name or path.name.endswith(".local")
 
 
 # What a secret's value looks like, wherever it sits. Each group names what it found,
-# so the preview can say why a file is kept private.
+# so the preview can say why a file is reported as holding a secret.
 SECRET_SHAPES = re.compile(
     r"(?P<pem>-----BEGIN [A-Z ]*PRIVATE KEY-----)"
     r"|(?P<token>\b(?:"
@@ -731,7 +725,6 @@ class _InventoryBuilder:
             and destination.suffix in {".json", ".toml"}
         )
         format_name = destination.suffix[1:] if document else "copy"
-        privacy_format = destination.suffix[1:] or path.suffix[1:]
         self.candidates[path, destination] = Candidate(
             path,
             canonical,
@@ -742,10 +735,9 @@ class _InventoryBuilder:
             "Mapped native artifact.",
             content,
             stat.S_IMODE(path.stat().st_mode),
-            bool(reason := _privacy_reason(path, content, privacy_format)),
-            format_name,
             _private(path),
-            reason or "",
+            format_name,
+            "its name marks it personal (.local)" if _private(path) else "",
         )
 
     def _unresolved(
@@ -763,11 +755,25 @@ class _InventoryBuilder:
         self.issues.append(Issue(code, (path,), message))
 
 
-def _published_settings(
+def _privacy(
+    c: Candidate, ignored: frozenset[Path], settings: frozenset[Path], published: frozenset[Path]
+) -> Candidate:
+    if c.path in published:
+        return replace(c, private=False, private_reason="")
+    reason = (
+        c.private_reason
+        or ("Git ignores it" if (c.canonical or c.path) in ignored else "")
+        or ("Git does not track it" if c.path in settings else "")
+    )
+    return replace(c, private=bool(reason), private_reason=reason)
+
+
+def _co_owned_settings(
     builder: _InventoryBuilder, root: Path, agents: tuple[str, ...], scope: str | None
 ) -> frozenset[Path]:
-    """Co-owned project settings files Git already tracks: their content is in the team's
-    history, so adopting it into committed source publishes nothing new (P-48)."""
+    """Project settings files loadout shares with the harness. One Git tracks is in the
+    team's history, so adopting it into committed source publishes nothing new; one it does
+    not track stays on this machine (P-48)."""
     if scope == "global":
         return frozenset()
     co_owned = {
@@ -775,7 +781,7 @@ def _published_settings(
         for agent in agents
         if (spec := PROJECT_PRESET[agent].get("permissions")) is not None and spec.preserve_foreign
     }
-    return tracked_paths(
+    return frozenset(
         c.path
         for c in builder.candidates.values()
         if c.disposition == "migrated" and c.destination in co_owned
@@ -952,19 +958,10 @@ def discover(
     ignored = ignored_paths(
         c.canonical or c.path for c in builder.candidates.values() if c.disposition == "migrated"
     )
-    published = _published_settings(builder, root, harnesses, scope)
+    settings = _co_owned_settings(builder, root, harnesses, scope)
+    published = tracked_paths(settings)
     candidates = tuple(
-        replace(c, private=False, personal=False, private_reason="")
-        if c.path in published
-        else replace(
-            c,
-            private=c.private or (c.canonical or c.path) in ignored,
-            personal=c.personal or (c.canonical or c.path) in ignored,
-            private_reason=c.private_reason
-            or ("Git ignores it" if (c.canonical or c.path) in ignored else ""),
-        )
-        if c.disposition == "migrated"
-        else c
+        _privacy(c, ignored, settings, published) if c.disposition == "migrated" else c
         for c in builder.candidates.values()
     )
     return Inventory(

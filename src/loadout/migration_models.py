@@ -67,7 +67,6 @@ class Candidate:
     mode: int = 0o644
     private: bool = False
     format: str = "copy"
-    personal: bool = False
     private_reason: str = ""
 
     @property
@@ -190,6 +189,10 @@ class Unadopted:
         }
 
 
+def secrets_document(secrets: tuple[tuple[Path, str], ...]) -> list[dict[str, str]]:
+    return [{"path": str(path), "reason": reason} for path, reason in secrets]
+
+
 @dataclass(frozen=True)
 class MigrationPlan:
     inventory: Inventory
@@ -208,6 +211,7 @@ class MigrationPlan:
     categories: tuple[CategoryReadiness, ...] = ()
     destination_routes: tuple[tuple[str, Path], ...] = ()
     unadopted: tuple[Unadopted, ...] = ()
+    secrets: tuple[tuple[Path, str], ...] = ()
 
     @property
     def complete(self) -> bool:
@@ -223,6 +227,7 @@ class MigrationPlan:
                 {"path": str(w.path), "mode": w.mode, "private": w.private}
                 for w in self.source_writes
             ],
+            "secrets": secrets_document(self.secrets),
             "generated_writes": [
                 {
                     "path": str(w.path),

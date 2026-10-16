@@ -195,6 +195,9 @@ A skill or subagent whose copies differ between harnesses, or a project `CLAUDE.
 with `AGENTS.md`, does not stop init: that one item is left in place and reported for the `/loadout`
 skill to merge, and everything else is adopted; see
 [what init leaves out](docs/reference/migration.md#what-init-leaves-out).
+A file holding a secret is adopted as it is: the preview and `--json` (`secrets`) name each source
+file that looks like it holds one, so keep the source's remote private or move the secret into an
+environment variable; see [what init keeps private](docs/reference/migration.md#what-init-keeps-private).
 Unresolved previews exit 2 without mutation. Supported configurations get a read-only preview of
 source and output writes, private exclusions and removals before approval. Before its first write,
 init backs up every path it will touch to `$XDG_STATE_HOME/loadout/backups/` (default

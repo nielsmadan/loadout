@@ -33,7 +33,7 @@ from .migration_backup import (
     restore,
 )
 from .migration_git import index_path
-from .migration_models import Issue, MigrationPlan, SourceWrite, Unadopted
+from .migration_models import Issue, MigrationPlan, SourceWrite, secrets_document
 from .migration_transaction import (
     Delinked,
     MigrationPreparation,
@@ -243,6 +243,8 @@ def _show_changes(plan: MigrationPlan, prepared: MigrationPreparation | None) ->
     for candidate in plan.inventory.candidates:
         if candidate.disposition == "migrated" and candidate.private:
             print(f"Private (stays on this machine): {candidate.path}: {candidate.private_reason}")
+    for path, reason in plan.secrets:
+        print(f"Contains a secret: {path}: {reason}")
     for original in plan.originals:
         print(f"{ACTION_LABELS[original.action]}: {original.path} ({original.reason})")
     for delinked in prepared.delinked() if prepared is not None else ():
@@ -360,7 +362,7 @@ def delinked_notice(delinked: Delinked) -> str:
 def _result(
     result: MigrationResult,
     delinked: tuple[Delinked, ...],
-    unadopted: tuple[Unadopted, ...],
+    plan: MigrationPlan,
     backup: Backup | None,
     *,
     as_json: bool,
@@ -373,7 +375,8 @@ def _result(
         "untracked": list(result.untracked),
         "already_initialized": result.already_initialized,
         "delinked": [d.document() for d in delinked],
-        "unadopted": [u.preview() for u in unadopted],
+        "unadopted": [u.preview() for u in plan.unadopted],
+        "secrets": secrets_document(plan.secrets),
     }
     if as_json:
         print(json.dumps(data, indent=2))
@@ -387,6 +390,11 @@ def _result(
             print(f"Backup of everything init changed: {backup.directory}")
         for each in delinked:
             print(delinked_notice(each))
+        if plan.secrets:
+            print(
+                "Note: the source now contains secrets, so keep its remote private. "
+                "The /loadout skill can move each one into an environment variable."
+            )
 
 
 def run_init(options: InitOptions) -> int:
@@ -448,7 +456,7 @@ def _run_init(options: InitOptions) -> int:
         _result(
             MigrationResult((), (), True),
             prepared.delinked(),
-            plan.unadopted,
+            plan,
             None,
             as_json=options.json,
         )
@@ -531,7 +539,7 @@ def _apply(
     if code:
         return _failed(backup, "the first render was not written", as_json=options.json)
     complete(backup)
-    _result(result, delinked, plan.unadopted, backup, as_json=options.json)
+    _result(result, delinked, plan, backup, as_json=options.json)
     return _after_migration(plan, already=plan.already_initialized, as_json=options.json)
 
 

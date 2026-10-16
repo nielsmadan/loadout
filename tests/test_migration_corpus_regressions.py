@@ -43,7 +43,7 @@ def test_many_siblings_share_privacy_probe(tmp_path: Path, monkeypatch) -> None:
         candidate for candidate in inventory.candidates if candidate.disposition == "migrated"
     ]
     assert len(migrated) == 25
-    assert all(candidate.private and candidate.personal for candidate in migrated)
+    assert {(c.private, c.private_reason) for c in migrated} == {(True, "Git ignores it")}
     assert 0 < len(calls) <= 4
 
 

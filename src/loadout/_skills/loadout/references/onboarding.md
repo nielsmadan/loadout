@@ -94,6 +94,28 @@ left-out skill's folders as `unmanaged` until it is resolved.
 4. Sync. It refuses, because the copies hold content loadout never wrote. Show the diff, and run
    `sync --force` only after the user approves replacing them.
 
+## Secrets in the adopted source
+
+Init adopts a file that holds a secret as it is, into the source it would go to anyway, and lists
+each source file under `secrets` in the JSON (in text: "Contains a secret: <path>: <reason>"). The
+reason names what was found, never the value. The check is a heuristic: it can miss a secret and can
+flag a value that is not one.
+
+Tell the user the source now holds those secrets, so its remote must stay private, and offer to move
+each one into an environment variable:
+
+- An HTTP MCP server's bearer token: replace the literal `Authorization` header in `mcp.toml` with
+  `auth_env_var = "<NAME>"`. Loadout renders the name for each harness: `bearer_token_env_var` for
+  Codex, `Bearer ${NAME}` for Claude and Droid, `{env:NAME}` for OpenCode, `bearerTokenEnv` for Pi.
+- Any other value: use the reference syntax of the harness that reads it (`${NAME}` in Claude and Pi
+  MCP entries, `{env:NAME}` in OpenCode), and only in a source that harness alone reads.
+  `mcp.toml`'s `env`, `args` and `headers` reach every harness as written, so a reference there is
+  read literally by a harness that does not expand that syntax. When no reference fits, say so and
+  leave the value in place.
+
+Ask before each change, and make sure the variable is set where the harness runs before syncing:
+an unset variable leaves the server unauthenticated or the setting empty.
+
 ## Later changes
 
 The same skill handles later configuration using the configuration reference.

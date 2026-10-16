@@ -95,28 +95,22 @@ def test_project_init_leaves_an_agent_file_it_cannot_read_in_place(tmp_path: Pat
     assert all("agents" not in write.path.parts for write in plan.source_writes)
 
 
-def test_credentials_and_personal_sources_are_kept_private(tmp_path: Path) -> None:
+def test_personal_sources_are_kept_private_and_credentials_are_named(tmp_path: Path) -> None:
     secret = "literal-test-token-123"
     mcp = write(
         tmp_path,
         ".mcp.json",
-        json.dumps(
-            {
-                "mcpServers": {
-                    "http": {"headers": {"Authorization": f"Bearer {secret}"}},
-                    "stdio": {"env": {"CUSTOM": secret}},
-                }
-            }
-        ),
+        json.dumps({"mcpServers": {"stdio": {"command": "x", "env": {"CUSTOM": secret}}}}),
     )
     skill = write(tmp_path, ".claude/skills/s/SKILL.md", "# s\n")
     personal = write(tmp_path, ".claude/skills/s/notes.local.md", "personal\n")
     auth = write(tmp_path, ".claude/skills/s/auth.json", secret)
     plan = migration(tmp_path)
-    assert {mcp, personal, auth} <= set(plan.private_paths)
-    assert skill not in set(plan.private_paths)
+    assert {personal, auth} <= set(plan.private_paths)
+    assert {mcp, skill}.isdisjoint(plan.private_paths)
+    assert plan.secrets == ((tmp_path / "loadout/mcp.toml", "env.CUSTOM"),)
+    # The reason names the key, so the preview never repeats the value it found.
     assert secret not in json.dumps(plan.preview())
-    assert all(w.private for w in plan.source_writes if secret.encode() in w.content)
     assert all(c.content == b"" for c in plan.inventory.candidates if c.path == auth)
     assert auth.read_text() == secret
 
@@ -167,8 +161,11 @@ def test_jsonc_at_a_managed_path_is_adopted_as_opencode_json(tmp_path: Path) -> 
     path = write(tmp_path, "opencode.jsonc", '{ // comment\n "theme": "x",\n}\n')
     plan = plan_migration(discover(tmp_path, scope="project", harnesses=("opencode",)))
     assert plan.complete
-    written = {w.path: w.content for w in plan.source_writes}
-    assert json.loads(written[tmp_path / "loadout/settings/opencode.json"]) == {"theme": "x"}
+    written = {w.path: w for w in plan.source_writes}
+    settings = written[tmp_path / "loadout/settings/opencode.json"]
+    assert json.loads(settings.content) == {"theme": "x"}
+    # Untracked, so its keys stay private, and the .jsonc still goes: OpenCode reads both.
+    assert settings.private
     assert path in plan.obsolete
 
 
@@ -319,7 +316,9 @@ def test_symlinked_harness_root_excludes_canonical_runtime_aliases(tmp_path: Pat
 
 
 def test_private_instruction_excludes_canonical_original_and_aliases(tmp_path: Path) -> None:
-    canonical = write(tmp_path, "authoring/private.md", "api_key=literal-review-secret\n")
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    write(tmp_path, ".gitignore", "/authoring/private.md\n")
+    canonical = write(tmp_path, "authoring/private.md", "personal notes\n")
     for name in ("CLAUDE.md", "AGENTS.md"):
         (tmp_path / name).symlink_to(canonical)
     plan = migration(tmp_path, ("claude", "codex"))
@@ -330,7 +329,8 @@ def test_private_instruction_excludes_canonical_original_and_aliases(tmp_path: P
 
 
 def test_private_tree_namespace_ignores_future_entries(tmp_path: Path) -> None:
-    write(tmp_path, ".claude/skills/one/SKILL.md", "api_key=literal-review-secret\n")
+    write(tmp_path, ".claude/skills/one/SKILL.md", "---\nname: one\ndescription: d\n---\n")
+    write(tmp_path, ".claude/skills/one/notes.local.md", "personal\n")
     plan = migration(tmp_path)
     namespace = tmp_path / "loadout/skills/one.local"
     assert namespace in plan.private_paths

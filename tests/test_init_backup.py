@@ -678,6 +678,7 @@ def test_the_preview_carries_exactly_these_fields(tmp_path: Path, fake_home: Pat
         "registration",
         "root",
         "scope",
+        "secrets",
         "source_repository",
         "source_root",
         "source_writes",

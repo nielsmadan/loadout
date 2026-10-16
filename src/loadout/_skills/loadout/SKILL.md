@@ -48,5 +48,8 @@ Edit the declared source for each configured consumer. Generated harness files a
   Run `sync --force` only after showing the diff and getting the user's approval.
 - An init that lists `unadopted` items left copies that disagree across harnesses in place. Merge
   them by “Resolving conflicting copies at init” in [onboarding](references/onboarding.md).
+- An init that lists `secrets` adopted them into the source as they were. Say the source's remote
+  must stay private and offer to move each into an environment variable, by “Secrets in the adopted
+  source” in [onboarding](references/onboarding.md).
 - An interrupted init reports its backup. Ask before restoring it with `loadout init restore`,
   as the onboarding reference describes; a failed init has already restored itself.

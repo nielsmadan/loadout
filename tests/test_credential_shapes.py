@@ -1,6 +1,5 @@
-"""Secret shapes the credential check recognises, so a file holding one is adopted as
-private rather than into committed source (review 1.8), and the ordinary values it must
-leave alone (re-review of 798a4f2)."""
+"""Secret shapes the credential check recognises, so init names each source file holding
+one (review 1.8, D-07), and the ordinary values it must leave alone (re-review of 798a4f2)."""
 
 from __future__ import annotations
 
@@ -124,7 +123,7 @@ def test_a_tracked_skill_mentioning_basic_steps_stays_public(tmp_path, capsys) -
 
 
 @pytest.mark.migration_integration
-def test_the_preview_names_why_a_file_stays_private(tmp_path, fake_home, capsys) -> None:
+def test_the_preview_names_the_secret_in_each_source_file(tmp_path, fake_home, capsys) -> None:
     settings = fake_home / ".claude/settings.json"
     settings.parent.mkdir(parents=True)
     settings.write_text('{"env": {"DEPLOY_KEY": "abc123"}}\n')
@@ -134,7 +133,8 @@ def test_the_preview_names_why_a_file_stays_private(tmp_path, fake_home, capsys)
     argv = ["init", "global", str(source), "--harness", "claude", "--dry-run"]
     assert loadout.main(argv) == 0
 
-    assert f"Private (stays on this machine): {settings}: env.DEPLOY_KEY" in capsys.readouterr().out
+    adopted = source / "loadout/settings/claude.json"
+    assert f"Contains a secret: {adopted}: env.DEPLOY_KEY" in capsys.readouterr().out
 
 
 @pytest.mark.migration_integration
