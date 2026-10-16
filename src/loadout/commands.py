@@ -7,15 +7,15 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal
 
+from .atomic import atomic_install
 from .bundled_skill import bundled_skill_path
-from .credentials import redacted_pair
 from .diffs import diff_lines, report_diff
 from .emit import refuse_unregistered_global, render_all
 from .errors import LoadoutError, UsageError
 from .files import DriftKind, refuse_unparsable
 from .machine import state_dir
 from .notices import collect_notices
-from .output import FrozenFile, Output, atomic_install, output_record_paths
+from .output import FrozenFile, Output, digests, output_record_paths
 from .project import (
     PROJECT_CONFIG_NAME,
     PROJECT_DIR,
@@ -180,12 +180,6 @@ def _abort_sentences(kinds: set[str]) -> list[str]:
     return sentences
 
 
-def _redacted(path: Path, actual: str, expected: str) -> tuple[str, str]:
-    """A diff's two sides as loadout prints them: never repeating a secret either holds,
-    on the terminal or in the file the sync abort leaves (review 3, 1.7)."""
-    return redacted_pair(actual, expected, path.suffix[1:])
-
-
 ABORT_DIFF = "sync-abort.diff"
 
 
@@ -210,9 +204,11 @@ def cmd_sync(root: Path, profile: str, force: bool = False) -> int:
     # The root as sync finds it, before writing anything.
     before = sync_state(root)
     refuse_unparsable_orphans(before, outputs)
+    # Each copied source is hashed once a sync: by the guard, the writer and the record.
+    sources = digests()
     if not force:
         refuse_unparsable(outputs)
-        modified = unaccepted_outputs(before, outputs)
+        modified = unaccepted_outputs(before, outputs, sources)
         if modified:
             full: list[str] = []
             truncated = False
@@ -225,9 +221,7 @@ def cmd_sync(root: Path, profile: str, force: bool = False) -> int:
                 )
                 # Tight context: on a 16k settings.json the one runtime-added entry
                 # should be readable without scrolling past the whole document.
-                lines = diff_lines(
-                    rel, *_redacted(item.path, item.actual, item.expected), context=1
-                )
+                lines = diff_lines(rel, item.actual, item.expected, context=1)
                 full.extend(lines)
                 truncated = report_diff(lines) or truncated
             for sentence in _abort_sentences({item.kind for item in modified}):
@@ -242,7 +236,7 @@ def cmd_sync(root: Path, profile: str, force: bool = False) -> int:
 
     # Read before writing: once deployed, the value a key held is gone.
     managed = newly_managed(before, outputs)
-    written, ignored = deploy(before, outputs)
+    written, ignored = deploy(before, outputs, sources)
     for path in written:
         print(f"wrote {_display(path, root)}")
     for path, key, was in managed:
@@ -261,7 +255,7 @@ def cmd_sync(root: Path, profile: str, force: bool = False) -> int:
     _report_notices(root, profile)
     # Reported, never stopped on: sync overwrites nothing there, so stopping would
     # only block the outputs it does own.
-    for path in unmanaged_entries(root, outputs, profile):
+    for path in unmanaged_entries(before, outputs, profile):
         advice = UNMANAGED_LINK_ADVICE if path.is_symlink() else UNMANAGED_ADVICE
         print(f"WARNING: {_display(path, root)} is {advice}", file=sys.stderr)
     return 0
@@ -351,9 +345,7 @@ def cmd_check(root: Path, profile: str, *, as_json: bool = False) -> int:
     for item in drift:
         rel = _display(item.path, root)
         print(f"DRIFT ({item.kind}): {rel}", file=sys.stderr)
-        report_diff(
-            list(diff_lines(rel, *_redacted(item.path, item.actual, item.expected), context=3))
-        )
+        report_diff(list(diff_lines(rel, item.actual, item.expected, context=3)))
     print(f"\n{len(drift)} generated file(s) out of sync:", file=sys.stderr)
     for kind, advice in DRIFT_ADVICE.items():
         count = sum(1 for item in drift if item.kind == kind)
@@ -469,7 +461,9 @@ def _choose_template(root: Path) -> str:
     options = available_templates(root)
     print("Available templates:")
     for index, option in enumerate(options, 1):
-        print(f"  {index}. {option.name}  ({option.source})")
+        # `(bundled)` and `(vendored)` come parenthesised; a source's name does not.
+        label = option.source if option.source.startswith("(") else f"({option.source})"
+        print(f"  {index}. {option.name}  {label}")
     span = f"1-{len(options)}"
     try:
         choice = input(f"Template [{span}]: ").strip()

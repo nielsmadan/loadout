@@ -5,6 +5,7 @@ import subprocess
 from collections.abc import Iterable
 from pathlib import Path
 
+from . import git_runner
 from .errors import LoadoutError
 
 
@@ -14,18 +15,7 @@ def git(
     index: Path | None = None,
     check: bool = True,
 ) -> subprocess.CompletedProcess[bytes]:
-    environment = dict(os.environ)
-    for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"):
-        environment.pop(key, None)
-    environment["GIT_OPTIONAL_LOCKS"] = "0"
-    if index is not None:
-        environment["GIT_INDEX_FILE"] = str(index)
-    result = subprocess.run(
-        ["git", "-C", str(root), *arguments],
-        capture_output=True,
-        env=environment,
-        check=False,
-    )
+    result = git_runner.run(root, *arguments, index=index)
     if check and result.returncode:
         raise LoadoutError(
             f"Git {' '.join(arguments[:2])} failed in {root}: "

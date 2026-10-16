@@ -146,7 +146,7 @@ def test_check_the_preview_and_sync_agree_on_a_copy_s_mode(tmp_path: Path, capsy
 
 
 def test_a_rewritten_source_is_hashed_again(tmp_path: Path) -> None:
-    """The digest is cached per file stamp, so a change of content must change it."""
+    """A digest is read from the file each time it is asked for, outside a pass's memo."""
     source = tmp_path / "asset.bin"
     source.write_bytes(b"first")
     first = file_sha256(source)
@@ -235,3 +235,31 @@ def test_a_source_copied_to_several_harnesses_is_hashed_once_a_pass(
     sync._entries_for(outputs)
 
     assert (guarded, hashed.count(script)) == (1, 1)
+
+
+def test_a_sync_reads_each_copied_source_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review 4, batch 3.4: in a sync with nothing to write, the guard, the writer and the
+    record each read it again."""
+    root = register(tmp_path / "source")
+    skill = root / "skills/x"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("---\nname: x\ndescription: d\n---\nX\n")
+    script = skill / "run.sh"
+    script.write_text("true\n")
+    (root / "loadout.toml").write_text('[[source]]\nname = "s"\npath = "."\n\n[claude]\n')
+    assert loadout.main(["sync", "--root", str(root)]) == 0
+    reads: list[Path] = []
+    real_open = Path.open
+
+    def recording(self: Path, *args: object, **kwargs: object) -> object:
+        if self == script:
+            reads.append(self)
+        return real_open(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "open", recording)
+
+    assert loadout.main(["sync", "--root", str(root)]) == 0
+
+    assert len(reads) == 1

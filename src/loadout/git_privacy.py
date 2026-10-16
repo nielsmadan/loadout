@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import os
-import subprocess
 from collections.abc import Iterable
 from pathlib import Path
 
+from . import git_runner
 from .errors import LoadoutError
 
 
@@ -42,11 +42,12 @@ def _names(output: bytes) -> list[str]:
 def ignored_paths(paths: Iterable[Path]) -> frozenset[Path]:
     ignored: set[Path] = set()
     for repository, names in _by_repository(paths).items():
-        result = subprocess.run(
-            ["git", "-C", str(repository), "check-ignore", "-z", "--stdin"],
-            input=b"".join(os.fsencode(name) + b"\0" for name in sorted(names)),
-            capture_output=True,
-            check=False,
+        result = git_runner.run(
+            repository,
+            "check-ignore",
+            "-z",
+            "--stdin",
+            data=b"".join(os.fsencode(name) + b"\0" for name in sorted(names)),
         )
         if result.returncode not in {0, 1}:
             if b"not a git repository" in result.stderr:
@@ -60,9 +61,7 @@ def tracked_paths(paths: Iterable[Path]) -> frozenset[Path]:
     tracked: set[Path] = set()
     for repository, names in _by_repository(paths).items():
         # One listing of the index, intersected here, rather than a pathspec per path.
-        result = subprocess.run(
-            ["git", "-C", str(repository), "ls-files", "-z"], capture_output=True, check=False
-        )
+        result = git_runner.run(repository, "ls-files", "-z")
         if result.returncode:
             if b"not a git repository" in result.stderr:
                 continue

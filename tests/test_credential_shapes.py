@@ -270,18 +270,6 @@ def test_a_binary_file_is_not_scanned() -> None:
     assert findings(b"\x89PNG\r\n\x00\x00" + TOKEN) == []
 
 
-def test_a_token_in_text_is_found_however_large_the_file() -> None:
-    assert credential_material(TOKEN + b"\n" + b"x" * (MAX_SCANNED * 2)) == (
-        "a token in a provider's format"
-    )
-
-
-def test_only_the_scanned_prefix_of_a_large_file_is_read() -> None:
-    late = b"x" * MAX_SCANNED + b"\n" + TOKEN
-
-    assert findings(late) == []
-
-
 def _scan_in_a_subprocess(content: bytes, seconds: float) -> str:
     """The findings for `content`, from a child process given `seconds` to finish. A scan
     gone quadratic hangs rather than fails, for 55 minutes once, so the child is killed
@@ -303,6 +291,22 @@ def _scan_in_a_subprocess(content: bytes, seconds: float) -> str:
     return result.stdout.decode().strip()
 
 
+@pytest.mark.integration
+def test_a_token_in_text_is_found_however_large_the_file() -> None:
+    """In a child: 2 MiB in-process ran the unit tier for over 20 minutes once the scan
+    went quadratic (review 4, batch 4.3)."""
+    found = _scan_in_a_subprocess(TOKEN + b"\n" + b"x" * (MAX_SCANNED * 2), 10)
+
+    assert found == repr([("a token in a provider's format", TOKEN.decode())])
+
+
+@pytest.mark.integration
+def test_only_the_scanned_prefix_of_a_large_file_is_read() -> None:
+    """The scan's cap, which detection keeps; redaction reads the whole text."""
+    assert _scan_in_a_subprocess(b"x" * MAX_SCANNED + b"\n" + TOKEN, 10) == "[]"
+
+
+@pytest.mark.integration
 def test_one_long_word_is_scanned_in_linear_time() -> None:
     """A label could start anywhere inside a run of name characters, and each start
     rescanned the rest of the run: 20k characters took 4.4 s, a 1 MB one hours."""
@@ -316,10 +320,12 @@ def test_one_long_word_is_scanned_in_linear_time() -> None:
         # the line, so a 469 KB one-line JSON took 28.7 s.
         "http x " * 60_000,
         # The URL scheme restarted at every word boundary of a dotted run: 100 KB took 3.8 s.
-        "a." * 50_000,
+        # At 500 KB a regression takes minutes, well past the limit (review 4, batch 4.3).
+        "a." * 250_000,
     ],
     ids=["many http on one line", "a long dotted run"],
 )
+@pytest.mark.integration
 def test_a_long_line_is_scanned_in_linear_time(text: str) -> None:
     assert _scan_in_a_subprocess(text.encode(), 10) == "[]"
 

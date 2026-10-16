@@ -107,6 +107,8 @@ def test_a_symlinked_claude_directory_is_adopted_by_de_linking(
             "written_into": ["agents", "skills"],
         }
     ]
+    # The link init replaces is no link it writes through.
+    assert [note for note in preview["notes"] if f"{claude} is a symlink to" in note] == []
     assert claude.is_symlink()
 
     assert _init(source, "--yes") == 0

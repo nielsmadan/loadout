@@ -115,6 +115,9 @@ def test_bare_add_lists_available_templates_and_takes_a_tracked_choice(
     out = capsys.readouterr().out
     assert "Available templates" in out
     assert "web  (ac)" in out
+    # Review 4, batch 2.9: a bundled source's label carries its own parentheses.
+    assert "  (bundled)\n" in out
+    assert "((bundled))" not in out
     assert load_project_config(_config(bare_project)).templates == ("web",)
     assert not (bare_project / "loadout" / "templates").exists()
 
@@ -607,3 +610,46 @@ def test_syncing_an_undeclared_template_says_it_is_not_declared(
         "loadout: web is not declared in loadout/config.toml, so there is nothing to sync; "
         "run `loadout template add web` to add it\n"
     )
+
+
+TOKEN = "ghp_" + "a1B2" * 9
+
+
+def test_sync_never_prints_a_token_the_upstream_added(
+    bare_project: Path,
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Review 4, batch 1.2: the tree diff printed it in clear."""
+    upstream = _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
+    main(["template", "add", "web", "--vendored", "--root", str(bare_project)])
+    (upstream / "notes.md").write_text(f"push with {TOKEN}\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert main(["template", "sync", "web", "--root", str(bare_project)]) == 0
+
+    captured = capsys.readouterr()
+    assert "+push with <redacted>\n" in captured.err
+    assert TOKEN not in captured.out + captured.err
+
+
+def test_a_refused_sync_never_prints_a_token_the_upstream_added(
+    bare_project: Path,
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    upstream = _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
+    main(["template", "add", "web", "--vendored", "--root", str(bare_project)])
+    (bare_project / "loadout/templates/web/permissions.toml").write_text(
+        '[shell]\nallow = ["mine"]\n', encoding="utf-8"
+    )
+    (upstream / "notes.md").write_text(f"push with {TOKEN}\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert main(["template", "sync", "web", "--root", str(bare_project)]) == 1
+
+    captured = capsys.readouterr()
+    assert "+push with <redacted>\n" in captured.err
+    assert TOKEN not in captured.out + captured.err

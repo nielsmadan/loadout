@@ -171,11 +171,12 @@ def test_uninstall_refuses_a_modified_generated_output(tmp_path: Path, fake_home
     root = register(_root(tmp_path))
     bundle = _bundle(tmp_path / "bundle")
     install_skill_source(inspect_skill_source(root, "default", bundle), bundle)
-    write_all(root)
+    # Synced, so a record makes the edit a hand edit rather than one nothing can judge.
+    assert loadout.main(["sync", "--root", str(root)]) == 0
     output = fake_home / ".claude" / "skills" / "loadout" / "SKILL.md"
     output.write_text("my output edit\n", encoding="utf-8")
     location = inspect_skill_source(root, "default", bundle)
-    with pytest.raises(LoadoutError, match="modified outside loadout"):
+    with pytest.raises(LoadoutError, match=r"modified outside loadout \(hand-edited\)"):
         uninstall_skill_source(location, root=root, profile="default")
     assert location.path.is_dir()
     assert output.read_text(encoding="utf-8") == "my output edit\n"

@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from fixture_root import EXPECTED, FIXTURES, build_project_root, build_root
 from loadout.emit import RenderContext, declared_profiles, render_global, render_project
+from loadout.machine import Registration
 from loadout.output import Copied, Merged
 
 
@@ -35,7 +36,7 @@ def render_everything() -> dict[str, str]:
         root = build_root(Path(directory))
         # A fixture, not this machine's source: registering it would rewrite the real
         # machine config, so the render is told it may render global scope instead.
-        context = RenderContext(registered=lambda: root)
+        context = RenderContext(registration=lambda: Registration(root))
         for profile in sorted(declared_profiles(root)):
             for path, rendered in render_global(root, profile, context).items():
                 # A merged output shares its file with the harness; the expected tree

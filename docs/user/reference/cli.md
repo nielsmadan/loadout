@@ -43,8 +43,8 @@ hand edit. `check` compares them with the current source and reports
 drift without rewriting the generated files, so `check` is the preview of `sync`; there is no
 `sync --dry-run`. Each drifted file carries a kind, judged by the same comparison `sync` uses to
 refuse an overwrite: `source-changed` (the source moved on; run `sync`), `hand-edited` (it differs
-from what sync last wrote; port the edit into the source with `/loadout`, or `sync --force` to
-discard it), `owned-key` (a key loadout writes in a file it shares with the harness, such as a
+from what sync last wrote, including bytes that are not UTF-8, which are shown with `�` in
+their place; port the edit into the source with `/loadout`, or `sync --force` to discard it), `owned-key` (a key loadout writes in a file it shares with the harness, such as a
 server in `~/.claude.json`, was edited there; port it with `/loadout`, or `sync --force` to discard
 it), `owned-key-removed` (such a key was removed there; remove it from the source too, or
 `sync --force` to write it back), `unknown` (no record and no committed baseline to judge by;
@@ -54,7 +54,7 @@ review the diff, then port or discard the same way), `missing`,
 skills folder or Codex's rules folder; port it with `/loadout`, then delete it — `sync` warns
 about it and carries on), `unmanaged-link` (a link loadout did not create in such a folder; it has
 nothing to port, so check where it points before deleting it), or `unparsable` (a file loadout shares with a harness, such as
-`~/.claude.json`, no longer parses, or parses but cannot hold loadout's keys, such as a JSON
+`~/.claude.json`, no longer parses, including one that is not even UTF-8, or parses but cannot hold loadout's keys, such as a JSON
 array or a TOML scalar where a table goes: fix or delete it and sync, or `sync --force` replaces it
 outright; plain `sync` refuses with exit 3 and names the file. One the source no longer renders
 has nothing to replace it, so `sync` refuses it with or without `--force` until it is fixed or
@@ -105,7 +105,7 @@ always has `status` and `exit_code`, the code the command exits with:
 | `preview` | 0 | `--dry-run`: the plan, with every planned write, `secrets`, and `outputs`, each with its `change`: `identical`, `normalised` (only loadout's banner or formatting differs), `update` or `create` |
 | `incomplete` | 2 | the plan needs a choice or a fix; `issues` names each |
 | `complete` | 0 | applied; `backup`, `written` (the source), `rendered` (the generated files), `untracked`, `already_initialized`, `delinked`, `unadopted` and `secrets` |
-| `restored` | 1 from init, 0 or 1 from `init restore` | the backup was restored; `kept` and `links` name what stayed, `reasons` says why for each kept path, `backup` is `null` once the backup is spent, and init adds `error` |
+| `restored` | 1 from init, 0 or 1 from `init restore` | the backup was restored; `restored` names what was put back, `kept` and `links` name what stayed, `reasons` says why for each kept path, `backup` is `null` once the backup is spent, and init adds `error` |
 | `interrupted` | 2 | an earlier init did not finish; `backup` names it and `error` says what to do |
 | `error` | 2, 3 or 4 | a usage error (an unknown option or `--harness` name included), a source error, or an unexpected one; `error` holds the message |
 

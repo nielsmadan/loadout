@@ -71,7 +71,8 @@ def test_a_merged_skill_lands_through_the_guard(tmp_path: Path, fake_home: Path,
 
     assert loadout.main(["sync", "--global"]) == 1
 
-    assert f"{claude} was modified outside loadout" in capsys.readouterr().err
+    # The copy left in place was never loadout's: nothing records it (review 4, batch 4.3).
+    assert f"{claude} was modified outside loadout (unknown)" in capsys.readouterr().err
     assert claude.read_text() == CLAUDE_SKILL
     assert loadout.main(["sync", "--global", "--force"]) == 0
     assert "Review carefully." in claude.read_text()
@@ -130,7 +131,7 @@ def test_merged_project_instructions_land_through_the_guard(tmp_path: Path, caps
     assert loadout.main(["sync", "--root", str(root)]) == 1
 
     err = capsys.readouterr().err
-    assert "AGENTS.md was modified outside loadout" in err
+    assert "AGENTS.md was modified outside loadout (unknown)" in err
     assert (root / "AGENTS.md").read_text() == "Agents rules.\n"
     assert loadout.main(["sync", "--root", str(root), "--force"]) == 0
     assert (root / "AGENTS.md").read_text().endswith("Merged rules.\n")

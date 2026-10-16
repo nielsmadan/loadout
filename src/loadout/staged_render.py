@@ -11,6 +11,7 @@ from typing import Any, assert_never
 from . import emit, templates
 from .destinations import resolve_destination
 from .errors import LoadoutError
+from .machine import Registration
 from .manifest import (
     AgentsTarget,
     InstructionTarget,
@@ -173,7 +174,7 @@ class Snapshot:
                 self.destination,
                 self.upstream,
                 self.sources,
-                registered=lambda: self.root if self.registered else None,
+                registration=lambda: Registration(self.root if self.registered else None),
             )
             for path, output in emit.render_all(self.root, profile, context).items():
                 owned.add(path)

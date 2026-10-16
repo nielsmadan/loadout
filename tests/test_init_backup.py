@@ -12,6 +12,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -1409,7 +1410,7 @@ def test_a_folder_init_created_names_the_files_that_keep_it(tmp_path: Path, caps
 
     reasons = json.loads(capsys.readouterr().out)["reasons"]
     assert (
-        reasons[str(folder)] == "a folder init created that now holds files it did not: notes.txt"
+        reasons[str(folder)] == "a folder init created that now holds files it did not (notes.txt)"
     )
 
 
@@ -1558,7 +1559,7 @@ def test_a_write_record_from_before_init_is_cleaned_rather_than_put_back(
     assert loadout.main(["sync", "--root", str(root)]) == 0
     capsys.readouterr()
 
-    loadout.main(["init", "restore", "--yes", "--json"])
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 1
 
     # The record is cleaned, not kept: only what the later sync left stays.
     assert json.loads(capsys.readouterr().out)["kept"] == [
@@ -1593,3 +1594,112 @@ def test_a_backup_whose_manifest_is_not_an_object_is_passed_over(tmp_path: Path)
 
     with pytest.raises(LoadoutError, match="no init backup to restore"):
         workflow.run_restore(yes=True, as_json=True)
+
+
+def test_a_failed_init_never_names_the_backup_its_restore_spent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """Review 4, batch 2.6: the message named a backup restore had just removed."""
+    root = _project(tmp_path / "p")
+    _fail_after_deploy(monkeypatch)
+    capsys.readouterr()
+
+    assert _init_project(root, "--yes") == 1
+
+    err = capsys.readouterr().err
+    assert err == (
+        "loadout: init failed (injected after the first render); what it changed was "
+        "restored, and the spent backup was removed\n"
+    )
+    assert backups() == ()
+
+
+def test_a_kept_path_with_no_recorded_reason_is_not_init_s_to_undo(capsys) -> None:
+    kept = Path("/x/notes.md")
+
+    workflow._print_kept(migration_backup.Restored((kept,), {}, {}, ()), sys.stdout)
+
+    assert capsys.readouterr().out.startswith(f"Kept, not init's to undo: {kept}\n")
+
+
+def test_a_folder_init_created_is_not_blamed_on_the_folders_restore_kept_in_it(
+    tmp_path: Path, capsys
+) -> None:
+    """Review 4, batch 2.6: a child folder init created and restore kept was listed as a
+    file init did not write, and the reason ran into the path with a second colon."""
+    root = _project(tmp_path / "p")
+    assert _init_project(root, "--yes") == 0
+    skill = root / "loadout/skills"
+    created = skill / "review"
+    (created / "notes.txt").write_text("mine\n")
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 1
+
+    reasons = json.loads(capsys.readouterr().out)["reasons"]
+    assert (
+        reasons[str(created)] == "a folder init created that now holds files it did not (notes.txt)"
+    )
+    assert reasons[str(skill)] == "a folder init created, kept for what restore kept inside it"
+
+
+def test_a_write_killed_beside_an_existing_file_leaves_no_temporary_after_restore(
+    tmp_path: Path, capsys
+) -> None:
+    """Review 4, batch 2.6: only folders init created were swept, so a kill at the rename
+    over a file that was already there left its temporary file beside it."""
+    root = _project(tmp_path / "p")
+    assert _init_project(root, "--yes") == 0
+    (root / ".loadout-k1ll3d").write_text("half")
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 0
+
+    assert sorted(path.name for path in root.iterdir() if path.name.startswith(".loadout-")) == []
+    assert (root / "CLAUDE.md").is_file()
+
+
+def test_the_next_init_at_a_terminal_offers_to_finish_a_killed_restore(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """Review 4, batch 4.1: the restore's own wording was pinned only under --json."""
+    root = _project(tmp_path / "p")
+    _kill_restore_after_putting_back(root, capsys)
+    prompts = _terminal(monkeypatch, "n")
+
+    assert _init_project(root) == 2
+
+    assert prompts[0].startswith("An earlier restore did not finish.")
+
+
+def test_a_folder_init_created_names_three_files_and_counts_the_rest(
+    tmp_path: Path, capsys
+) -> None:
+    root = _project(tmp_path / "p")
+    assert _init_project(root, "--yes") == 0
+    folder = written_state_path(root).parent
+    for name in ("a.txt", "b.txt", "c.txt", "d.txt", "e.txt"):
+        (folder / name).write_text("mine\n")
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 1
+
+    reasons = json.loads(capsys.readouterr().out)["reasons"]
+    assert reasons[str(folder)] == (
+        "a folder init created that now holds files it did not (a.txt, b.txt, c.txt and 2 more)"
+    )
+
+
+def test_a_link_named_like_an_interrupted_write_is_never_removed(tmp_path: Path, capsys) -> None:
+    """Only a file of loadout's own is swept: a link there points at someone else's."""
+    root = _project(tmp_path / "p")
+    assert _init_project(root, "--yes") == 0
+    folder = written_state_path(root).parent
+    mine = _write(tmp_path / "mine.txt", "mine\n")
+    link = folder / ".loadout-link"
+    link.symlink_to(mine)
+    capsys.readouterr()
+
+    assert loadout.main(["init", "restore", "--yes", "--json"]) == 1
+
+    assert (link.readlink(), mine.read_text()) == (mine, "mine\n")

@@ -11,6 +11,8 @@ import pytest
 from loadout import sync
 from loadout.containment import (
     first_link,
+    in_git_dir,
+    no_symlinks,
     protected,
     refuse_escaping,
     refuse_external_links,
@@ -18,7 +20,7 @@ from loadout.containment import (
 )
 from loadout.emit import RenderContext, refuse_unregistered_global, render_all
 from loadout.errors import LoadoutError
-from loadout.machine import resolve_profile
+from loadout.machine import Registration, resolve_profile
 from loadout.notices import collect_notices
 from registration import register
 
@@ -277,7 +279,7 @@ def test_the_registered_source_renders_through_a_link(tmp_path: Path, fake_home:
 def test_a_render_context_names_the_root_it_may_render(tmp_path: Path, fake_home: Path) -> None:
     source = _global_source(tmp_path / "source")
 
-    outputs = render_all(source, context=RenderContext(registered=lambda: source))
+    outputs = render_all(source, context=RenderContext(registration=lambda: Registration(source)))
 
     assert list(outputs) == [fake_home / "mine.md"]
 
@@ -321,9 +323,9 @@ def test_within_reads_a_path_through_the_root_or_its_resolved_form(tmp_path: Pat
     alias = tmp_path / "alias"
     alias.symlink_to(real, target_is_directory=True)
 
-    assert within(alias, alias / "a/b") == PurePosixPath("a/b")
-    assert within(alias, real / "a") == PurePosixPath("a")
-    assert within(alias, tmp_path / "elsewhere") is None
+    assert within(alias, alias / "a/b", real) == PurePosixPath("a/b")
+    assert within(alias, real / "a", real) == PurePosixPath("a")
+    assert within(alias, tmp_path / "elsewhere", real) is None
 
 
 @pytest.mark.parametrize(
@@ -384,3 +386,30 @@ def test_an_orphan_recorded_under_the_resolved_path_is_the_project_s(tmp_path: P
     outside = tmp_path / "elsewhere/x.md"
 
     assert sync._in_project(alias, [real / ".claude/x.md", outside]) == [real / ".claude/x.md"]
+
+
+def test_within_compares_whole_path_segments(tmp_path: Path) -> None:
+    root = tmp_path / "p"
+
+    assert within(root, root, root) == PurePosixPath(".")
+    assert within(root, tmp_path / "p-other/a", root) is None
+    assert within(Path("/"), Path("/etc/x"), Path("/")) == PurePosixPath("etc/x")
+
+
+def test_in_git_dir_names_the_git_dir_in_any_case(tmp_path: Path) -> None:
+    assert [in_git_dir(tmp_path / name, tmp_path) for name in (".git/config", ".GIT", "git/x")] == [
+        True,
+        True,
+        False,
+    ]
+
+
+def test_no_symlinks_refuses_a_link_at_the_root_it_stops_at(tmp_path: Path) -> None:
+    """Review 4, batch 4.1: the root is checked too, unlike `first_link`'s."""
+    real = tmp_path / "real"
+    (real / "a").mkdir(parents=True)
+    root = tmp_path / "root"
+    root.symlink_to(real, target_is_directory=True)
+
+    with pytest.raises(LoadoutError, match=f"path is a symlink: {root}$"):
+        no_symlinks(root / "a" / "f", root)

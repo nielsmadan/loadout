@@ -171,12 +171,20 @@ from an original only its owner could read, such as `mcp.toml` from a 0600 `~/.c
 skill file with a secret deploys from that source, so its generated copy is owner-only too. The
 reason names what
 was found, never the value, and the preview's render diff shows each such value as
-`<redacted>`, as every diff loadout prints does, spelled as found or as JSON escapes it; a PEM key
-is redacted from its BEGIN line to its END line, and a label's value to the next space or quote. One vocabulary names a secret wherever it sits (`SECRET_NAMES` in
-`credentials.py`): a key, a flag or a `name = value` label whose last words are token, API key,
-secret, password, passphrase, pass, credential(s), authorization, auth, access key, private key or
-PAT, so `apiKey`, `X-API-KEY`, `--api-key` and `api_key =` all count, and `--api-key-file`,
-`max_tokens` or `auth_env_var` do not. A file looks like it holds a secret when it has:
+`<redacted>`, as every diff loadout prints does. Redaction happens inside `diffs.diff_lines`, so
+no printed diff can skip it, and it reads the whole of both texts, whatever their size or bytes,
+since a diff shows them in full. Each secret is replaced where it lies: a PEM key from its BEGIN
+line to its END line, a token by its shape, a label's value to its closing quote or, unquoted, to
+the end of its line (`password: horse battery staple` shows as `password: <redacted>`), with a
+one-word scheme after an authorization label (`Token`, `Digest`, `ApiKey`) left in view, and a
+value a JSON or TOML document flags at the string literal holding it, however it is escaped. A
+value of eight characters or more is also replaced where the other side shows it bare, but only
+as a whole word, never inside another. One vocabulary names a secret wherever it sits
+(`SECRET_NAMES` in `credentials.py`): a key, a flag or a `name = value` label whose last words are
+token, API key, secret, password, passphrase, pass, credential(s), authorization, auth, access
+key, private key, secret key, client secret, signing key or PAT, or a provider's name followed by
+key (`OPENAI_KEY`, `stripeKey`), so `apiKey`, `X-API-KEY`, `--api-key` and `api_key =` all count,
+and `--api-key-file`, `max_tokens` or `auth_env_var` do not. A file looks like it holds a secret when it has:
 
 - such a key, or such a label in text, holding a literal value;
 - a literal value under `env`, `environment`, `headers` or `http_headers`, other than a number, a
@@ -185,8 +193,9 @@ PAT, so `apiKey`, `X-API-KEY`, `--api-key` and `api_key =` all count, and `--api
 - the value after, or given inline to, such a flag (`--token`, `--api-key`, `--auth`), in an
   argument list or a command line; a value starting with `-` is the next flag;
 - a value shaped like a secret anywhere in the file: a PEM private key; a GitHub (`ghp_`,
-  `github_pat_` and kin), GitLab, npm, OpenAI/Anthropic `sk-`, AWS `AKIA`/`ASIA`, Google `AIza`,
-  Slack or JWT token; credentials or a long token in a URL; a key in a URL query; an
+  `github_pat_` and kin), GitLab, npm, OpenAI/Anthropic `sk-`, Stripe `sk_live_`/`rk_test_` and
+  kin, Hugging Face `hf_`, AWS `AKIA`/`ASIA`, Google `AIza`, Slack or JWT token; a Django
+  `django-insecure-` key; a Slack webhook URL; credentials or a long token in a URL; a key in a URL query; an
   `Authorization: Basic` credential; a user:password given to an HTTP client with `-u` or `--user`
   within 256 characters of the command's name; or an
   `aws_secret_access_key`.
@@ -194,7 +203,7 @@ PAT, so `apiKey`, `X-API-KEY`, `--api-key` and `api_key =` all count, and `--api
 A reference such as `$API_KEY`, `${API_KEY}`, `{env:API_KEY}` or `$env:API_KEY`, a number, a
 switch, a path, and a documentation placeholder ending in `EXAMPLE` or made of x's after its prefix
 (`AKIAXXXXXXXXXXXXXXXX`), is not a secret. A binary file (a NUL in its first 8 KiB) is not
-scanned, and only the first MiB of any other file is. The check is a heuristic: it can miss a
+scanned, and only the first MiB of any other file is; neither limit applies to redacting a diff. The check is a heuristic: it can miss a
 secret and can flag a value that is not one. A private original is listed as
 `Private (stays on this machine): <path>: <reason>`, with the reason in `--json` as
 `private_reason`: its name, Git ignoring it, or Git not tracking it.

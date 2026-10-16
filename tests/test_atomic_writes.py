@@ -7,9 +7,10 @@ from typing import BinaryIO
 
 import pytest
 
-from loadout import output
+from loadout import atomic
+from loadout.atomic import atomic_install, replace_atomically
 from loadout.errors import LoadoutError
-from loadout.output import FrozenFile, atomic_install, replace_atomically
+from loadout.output import FrozenFile
 
 
 def test_a_write_that_fails_leaves_the_target_and_no_temporary_file(tmp_path: Path) -> None:
@@ -42,7 +43,7 @@ def test_an_install_checks_for_a_link_again_just_before_the_rename(
         if len(calls) == 2:
             raise LoadoutError(f"path is a symlink: {path}")
 
-    monkeypatch.setattr(output, "no_symlinks", refuse_second)
+    monkeypatch.setattr(atomic, "no_symlinks", refuse_second)
 
     with pytest.raises(LoadoutError, match="path is a symlink"):
         atomic_install(target, FrozenFile(b"new\n", 0o755), tmp_path)

@@ -59,6 +59,22 @@ def test_the_sync_abort_and_its_full_diff_never_hold_a_token(
     assert TOKEN not in err + kept.read_text()
 
 
+def test_a_token_past_the_scan_s_cap_never_lands_in_the_abort_diff(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    """Review 4, batch 1.3: redaction stopped where the 1 MiB scan did."""
+    output = _synced(tmp_path / "source", fake_home)
+    filler = "".join(f"line {index} {'x' * 100}\n" for index in range(11_000))
+    output.write_text(output.read_text() + filler + f"push with {TOKEN}\n")
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--root", str(tmp_path / "source")]) == 1
+
+    kept = (state_dir() / "sync-abort.diff").read_text()
+    assert "-push with <redacted>\n" in kept
+    assert TOKEN not in capsys.readouterr().err + kept
+
+
 def test_a_successful_sync_removes_the_last_abort_diff(tmp_path: Path, fake_home: Path) -> None:
     root = tmp_path / "source"
     _synced(root, fake_home)

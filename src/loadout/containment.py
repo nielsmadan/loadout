@@ -26,12 +26,26 @@ PROTECTED = frozenset({".git", PROJECT_DIR})
 READ_THROUGH = frozenset({(PurePosixPath("CLAUDE.md"), PurePosixPath("AGENTS.md"))})
 
 
-def within(root: Path, path: Path, boundary: Path | None = None) -> PurePosixPath | None:
-    """`path` relative to `root`, spelled through it or through its resolved `boundary`;
-    None when it is under neither."""
-    for base in (root, root.resolve() if boundary is None else boundary):
-        if path.is_relative_to(base):
-            return PurePosixPath(path.relative_to(base).as_posix())
+def read_through(root: Path, relative: PurePosixPath) -> bool:
+    """Whether `relative` is a link to the output a harness reads through it."""
+    leaf = root / Path(relative)
+    return leaf.is_symlink() and any(
+        source == relative and leaf.resolve() == (root / Path(target)).resolve()
+        for source, target in READ_THROUGH
+    )
+
+
+def within(root: Path, path: Path, boundary: Path) -> PurePosixPath | None:
+    """`path` relative to `root`, spelled through it or through `boundary`, its resolved
+    form; None when it is under neither. Compared as strings: `is_relative_to` on every
+    output was most of a no-op sync's containment check (review 4, batch 3.2)."""
+    spelled = str(path)
+    for base in (str(root), str(boundary)):
+        if spelled == base:
+            return PurePosixPath(".")
+        prefix = base if base.endswith(os.sep) else base + os.sep
+        if spelled.startswith(prefix):
+            return PurePosixPath(Path(spelled[len(prefix) :]).as_posix())
     return None
 
 
@@ -42,10 +56,17 @@ def protected(relative: PurePosixPath) -> str | None:
     return first if first is not None and first.casefold() in PROTECTED else None
 
 
+def in_git_dir(path: Path, boundary: Path) -> bool:
+    """Whether `path` lies in the repository's git dir, `boundary` being its root."""
+    relative = within(boundary, path, boundary)
+    return relative is not None and (protected(relative) or "").casefold() == ".git"
+
+
 def first_link(
     root: Path, path: Path, linked: Callable[[Path], bool] = Path.is_symlink
 ) -> Path | None:
-    """The first link below `root` on the way to `path`, `path` itself included."""
+    """The first link below `root` on the way to `path`, `path` itself included and `root`
+    not: a link at the root is how the project was reached, never one inside it."""
     current = root
     for part in path.relative_to(root).parts:
         current = current / part
@@ -56,7 +77,8 @@ def first_link(
 
 def no_symlinks(path: Path, root: Path | None = None) -> None:
     """Refuse a link at `path` or any folder above it, up to `root` and including it, or
-    up to the file system's root when none is given."""
+    up to the file system's root when none is given. Unlike `first_link`, `root` itself is
+    checked: a write must not land through a link anywhere on its way."""
     current = path
     while True:
         if current.is_symlink():
@@ -72,10 +94,18 @@ def refuse_escaping(root: Path, paths: Iterable[Path], outputs: Iterable[Path] =
     inside it, so no link may sit between the root and a path. The one exception is
     `CLAUDE.md -> AGENTS.md` when this render writes both: Claude reads the shared
     instructions through it (ADR 0027)."""
+    paths = list(paths)
+    if not paths:
+        return
     boundary = root.resolve()
-    written = frozenset(
-        relative for path in outputs if (relative := within(root, path, boundary)) is not None
-    )
+
+    # Only a leaf link asks which outputs this render writes, so they are worked out then.
+    @functools.cache
+    def written() -> frozenset[PurePosixPath]:
+        return frozenset(
+            relative for path in outputs if (relative := within(root, path, boundary)) is not None
+        )
+
     # Many outputs share the folders above them, so each is asked about a link once.
     linked = functools.cache(Path.is_symlink)
     problems = [
@@ -96,7 +126,7 @@ def _unsafe(
     path: Path,
     root: Path,
     boundary: Path,
-    written: frozenset[PurePosixPath],
+    written: Callable[[], frozenset[PurePosixPath]],
     linked: Callable[[Path], bool],
 ) -> str | None:
     relative = within(root, path, boundary)
@@ -116,11 +146,11 @@ def _leaf_link(
     relative: PurePosixPath,
     root: Path,
     boundary: Path,
-    written: frozenset[PurePosixPath],
+    written: Callable[[], frozenset[PurePosixPath]],
 ) -> str | None:
     target = leaf.resolve()
     landing = within(root, target, boundary) if target.is_relative_to(boundary) else None
-    if landing not in written:
+    if landing not in written():
         return f"{leaf} -> {target}, a link sync does not write through" + _outside(
             target, boundary
         )

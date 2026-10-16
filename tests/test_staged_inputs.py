@@ -141,3 +141,58 @@ def test_head_ownership_includes_the_agents_folder(tmp_path: Path) -> None:
     )
 
     assert tree / "codex/agents" in snapshot.global_ownership("default", render=False)
+
+
+def _link(root: Path, name: str, target: str) -> None:
+    (root / name).parent.mkdir(parents=True, exist_ok=True)
+    (root / name).symlink_to(target)
+
+
+def test_a_link_above_a_source_folder_brings_only_what_it_names(tmp_path: Path) -> None:
+    """Review 4, batch 2.3: no link was followed, so a linked source read nothing."""
+    for name, content in {
+        "config/loadout.toml": '[[source]]\nname = "s"\npath = "../lib/src"\nuse = ["instructions"]\n',
+        "real/src/permissions.toml": "[shell]\n",
+        "real/src/instructions/x.md": "x\n",
+        "real/src/skills/s/SKILL.md": "s\n",
+        "real/other/y.md": "y\n",
+    }.items():
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text(content)
+    _link(tmp_path, "lib", "real")
+    root = _repository(tmp_path, {})
+
+    inputs = _render_inputs(root, Path("config"), _entries(root))
+
+    assert sorted(inputs) == [
+        "config/loadout.toml",
+        "lib",
+        "real/src/instructions/x.md",
+        "real/src/permissions.toml",
+    ]
+
+
+def test_links_are_followed_through_the_folders_they_reach(tmp_path: Path) -> None:
+    for name, content in {
+        "config/loadout.toml": '[[source]]\nname = "s"\npath = "../src"\nuse = ["instructions"]\n',
+        "third/vendor/instr/x.md": "x\n",
+        "shared/y.md": "y\n",
+        "shared/z.md": "z\n",
+    }.items():
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text(content)
+    _link(tmp_path, "src/instructions", "../vendor/instr")
+    _link(tmp_path, "vendor", "third/vendor")
+    _link(tmp_path, "third/vendor/instr/y.md", "../../../shared/y.md")
+    root = _repository(tmp_path, {})
+
+    inputs = _render_inputs(root, Path("config"), _entries(root))
+
+    assert sorted(inputs) == [
+        "config/loadout.toml",
+        "shared/y.md",
+        "src/instructions",
+        "third/vendor/instr/x.md",
+        "third/vendor/instr/y.md",
+        "vendor",
+    ]

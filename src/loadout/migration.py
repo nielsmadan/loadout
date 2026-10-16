@@ -10,6 +10,7 @@ from typing import Any, Literal
 import tomlkit
 
 from .composition import HEADER
+from .containment import PROJECT_DIR, refuse_external_links
 from .credentials import credential_material
 from .discovery import (
     PROJECT_ROOTS,
@@ -44,7 +45,7 @@ from .permissions.merge import merge_rules
 from .permissions.rules import Rules
 from .project import PROJECT_CONFIG_NAME, PROJECT_PRESET, load_project_config
 from .servers import serialize_servers
-from .skills import SKILL_DOCUMENT
+from .skills import EXCLUDED_DIRECTORIES, SKILL_DOCUMENT
 from .subagents import NativeAgent, agent_file_name, extract_agent, source_agent
 
 CODEX_RULES_OUTPUT = Path(PROJECT_PRESET["codex"]["permissions"].output or "").name
@@ -1034,6 +1035,15 @@ def _permission_renderer(candidate: Candidate, project: bool) -> str | None:
 def _initialized(inventory: Inventory) -> MigrationPlan:
     assert inventory.initialized is not None
     config_path = inventory.initialized
+    if inventory.scope == "project":
+        # What sync refuses to read is no source adopted as it is (review 4, batch 2.7).
+        try:
+            refuse_external_links(inventory.root, EXCLUDED_DIRECTORIES)
+        except LoadoutError as error:
+            return MigrationPlan(
+                inventory,
+                issues=(Issue("initialized-source", (inventory.root / PROJECT_DIR,), str(error)),),
+            )
     try:
         if inventory.scope == "project":
             config = load_project_config(config_path)

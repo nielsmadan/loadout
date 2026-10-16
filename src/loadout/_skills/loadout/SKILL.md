@@ -54,3 +54,7 @@ Edit the declared source for each configured consumer. Generated harness files a
   source” in [onboarding](references/onboarding.md).
 - An interrupted init reports its backup. Ask before restoring it with `loadout init restore`,
   as the onboarding reference describes; a failed init has already restored itself.
+- In a linked git worktree of the registered global source, the checkout and merge hooks print
+  that nothing was synced: a worktree is not the registered folder, so it never renders global
+  scope. Edit and commit there as usual (its pre-commit check still runs), then sync from the
+  registered source once the change reaches it.

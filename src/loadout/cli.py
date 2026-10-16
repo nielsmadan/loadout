@@ -94,7 +94,7 @@ def build_parser() -> argparse.ArgumentParser:
             "--profile",
             default=None,
             help="active profile to render (default: 'default', or the machine "
-            "config's profile under --global)",
+            "config's profile at the registered source)",
         )
         if name == "sync":
             sub.add_argument(

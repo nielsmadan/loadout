@@ -4,12 +4,13 @@ import os
 import re
 import shlex
 import stat
-import subprocess
 from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from . import git_runner
+from .containment import in_git_dir
 from .errors import LoadoutError
 from .git_privacy import ignored_paths, tracked_paths
 from .harnesses import DROID_AGENTS_DIRECTORY, GLOBAL_PRESET, KNOWN_HARNESSES, SHARED_SKILL_READERS
@@ -287,7 +288,7 @@ def _home_path(value: str, home: Path) -> Path:
 def _excluded(path: Path) -> bool:
     if not path.parts:
         return False
-    if path.parts[0] in RUNTIME_DIRECTORIES or path.name in {".env", ".env.local"}:
+    if path.parts[0] in RUNTIME_DIRECTORIES:
         return True
     if path.parts[:2] in {("plugins", "cache"), ("plugins", "marketplaces")}:
         return True
@@ -492,9 +493,7 @@ class _InventoryBuilder:
             )
         if not path.is_symlink():
             return None
-        boundary = self.allowed[0]
-        parts = canonical.relative_to(boundary).parts if canonical.is_relative_to(boundary) else ()
-        if parts and parts[0].casefold() == ".git":
+        if in_git_dir(canonical, self.allowed[0]):
             return "git-link", (
                 f"{path} links to {canonical}, inside the repository's .git, which holds "
                 "credentials and runs hooks; remove the link, then run init again."
@@ -668,9 +667,7 @@ def _instruction_mappings(
             and d != ".agents"
         )
         paths.update(Path(directory) / name for name in set(files) & INSTRUCTION_FILES)
-    result = subprocess.run(
-        ["git", "-C", str(root), "ls-files", "-z", "--cached"], capture_output=True, check=False
-    )
+    result = git_runner.run(root, "ls-files", "-z", "--cached")
     if result.returncode == 0:
         paths.update(
             root / os.fsdecode(name)

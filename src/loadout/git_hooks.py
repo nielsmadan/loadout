@@ -8,10 +8,11 @@ from pathlib import Path
 from typing import Any, Literal
 
 from . import migration_git
+from .atomic import atomic_install
 from .emit import refuse_unregistered_global
 from .errors import LoadoutError, UsageError
 from .manifest import manifest_path
-from .output import FrozenFile, atomic_install
+from .output import FrozenFile
 from .project import project_config_path
 
 EVENTS = ("pre-commit", "post-checkout", "post-merge")
@@ -82,15 +83,16 @@ def _repository_storage(repository: Path) -> list[Path]:
 
 
 Placement = Literal["local", "shared", "external"]
-HookStatus = Literal["install", "managed", "update", "stale", "occupied", "shared", "external"]
+HookStatus = Literal["install", "managed", "update", "stale", "occupied", "external"]
 
 
 def placement(repository: Path, directory: Path) -> Placement:
-    """Why the directory is or is not ours alone: "local", "shared" or "external".
+    """Whose the directory is: this worktree's ("local"), every worktree's of this
+    repository ("shared"), or not the repository's at all ("external").
 
-    install refuses the last two alike, because the hook body hard-codes this worktree's
-    source path. uninstall must tell them apart: it never wrote outside the repository,
-    but a repo-local directory shared between worktrees still holds loadout's own hook.
+    install writes the first two alike: the hook finds its worktree's top level when it
+    runs, so one hook serves every worktree (review 4, ruling on batch 1). It never
+    writes outside the repository, and uninstall never removes from there.
     """
     inside = directory.is_relative_to(repository) and directory.resolve().is_relative_to(repository)
     if not inside and not any(
@@ -115,10 +117,6 @@ def placement(repository: Path, directory: Path) -> Placement:
     return "local"
 
 
-def local_directory(repository: Path, directory: Path) -> bool:
-    return placement(repository, directory) == "local"
-
-
 @dataclass(frozen=True)
 class Hook:
     event: str
@@ -134,6 +132,7 @@ class HookPlan:
     repository: Path
     source: Path
     directory: Path
+    placement: Placement
     hooks: tuple[Hook, ...]
 
     def preview(self) -> dict[str, Any]:
@@ -141,6 +140,7 @@ class HookPlan:
             "repository": str(self.repository),
             "source": str(self.source),
             "directory": str(self.directory),
+            "placement": self.placement,
             "hooks": [
                 {"event": h.event, "path": str(h.path), "status": h.status, "command": h.command}
                 for h in self.hooks
@@ -165,7 +165,7 @@ def plan_hooks(root: Path, *, regenerate: bool = False) -> HookPlan:
         content = hook_content(event, source)
         owned = written_by_loadout(path, source)
         status: HookStatus
-        if where != "local":
+        if where == "external":
             status = where
         elif path.exists() or path.is_symlink():
             if not owned:
@@ -177,10 +177,20 @@ def plan_hooks(root: Path, *, regenerate: bool = False) -> HookPlan:
         else:
             status = "install"
         hooks.append(Hook(event, path, content, status, hook_command(event, source), owned))
-    return HookPlan(repository, source, directory, tuple(hooks))
+    return HookPlan(repository, source, directory, where, tuple(hooks))
 
 
 def show_hooks(preview: dict[str, Any]) -> None:
+    if preview["placement"] == "shared":
+        print(
+            f"Hooks directory {preview['directory']} is shared by every worktree of this "
+            "repository; the hooks installed there run in each of them."
+        )
+    elif preview["placement"] == "external":
+        print(
+            f"Hooks directory {preview['directory']} is outside this repository; loadout "
+            "writes no hooks there. Add each command below to the hook for its event there."
+        )
     for hook in preview["hooks"]:
         print(f"Git hook {hook['event']}: {hook['status']} ({hook['path']})")
         if hook["status"] == "stale":
@@ -208,8 +218,9 @@ def install_hooks(root: Path, *, regenerate: bool = False, dry_run: bool = False
     for hook in plan.hooks:
         if hook.status not in {"install", "update"}:
             continue
-        if hooks_directory(plan.repository) != plan.directory or not local_directory(
-            plan.repository, plan.directory
+        if (
+            hooks_directory(plan.repository) != plan.directory
+            or placement(plan.repository, plan.directory) == "external"
         ):
             raise LoadoutError("effective hook directory changed; preview installation again")
         if hook.status == "update":
@@ -249,14 +260,13 @@ _STATE = {
 def status_hooks(root: Path) -> int:
     _require_source(root)
     plan = plan_hooks(root, regenerate=True)
-    where = plan.hooks[0].status
     print(f"Hooks directory: {plan.directory}")
-    if where == "external":
+    if plan.placement == "external":
         print("  outside this repository; loadout did not write here")
-    elif where == "shared":
+    elif plan.placement == "shared":
         print("  shared with other worktrees of this repository")
     for hook in plan.hooks:
-        if hook.status in {"shared", "external"}:
+        if hook.status == "external":
             state = "installed by loadout" if hook.owned else _STATE["install"]
             if not hook.owned and (hook.path.exists() or hook.path.is_symlink()):
                 state = _STATE["occupied"]
@@ -281,7 +291,7 @@ def _confirm_removal(directory: Path, yes: bool) -> bool:
 def uninstall_hooks(root: Path, *, yes: bool = False) -> int:
     _require_source(root)
     plan = plan_hooks(root, regenerate=True)
-    if plan.hooks[0].status == "external":
+    if plan.placement == "external":
         raise LoadoutError(
             f"hooks directory is outside this repository: {plan.directory}; "
             "loadout did not write there"
@@ -292,7 +302,7 @@ def uninstall_hooks(root: Path, *, yes: bool = False) -> int:
         return 0
     for hook in removable:
         print(f"remove {hook.event} ({hook.path})")
-    if plan.hooks[0].status == "shared":
+    if plan.placement == "shared":
         print("This hooks directory is shared with other worktrees of this repository.")
     if not _confirm_removal(plan.directory, yes):
         print("declined; no changes made")

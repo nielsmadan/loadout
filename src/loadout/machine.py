@@ -48,14 +48,21 @@ def machine_config_path(env: Mapping[str, str] | None = None) -> Path:
     return config_dir(env) / MACHINE_CONFIG_NAME
 
 
+def _read_config(path: Path) -> dict[str, object]:
+    try:
+        with path.open("rb") as handle:
+            return tomllib.load(handle)
+    except tomllib.TOMLDecodeError as error:
+        raise LoadoutError(f"{path}: invalid TOML: {error}") from error
+    except OSError as error:
+        # As a config that does not parse: the lenient paths fall back (review 4, 2.5).
+        raise LoadoutError(f"{path}: cannot be read: {error.strerror or error}") from error
+
+
 def load_machine_config(path: Path, *, require_source: bool = True) -> MachineConfig | None:
     if not path.is_file():
         return None
-    try:
-        with path.open("rb") as handle:
-            data = tomllib.load(handle)
-    except tomllib.TOMLDecodeError as error:
-        raise LoadoutError(f"{path}: invalid TOML: {error}") from error
+    data = _read_config(path)
 
     unknown = sorted(set(data) - {"source", "profile", "harnesses"})
     if unknown:
@@ -132,18 +139,37 @@ def is_registered(root: Path, source: Path | None) -> bool:
     return source is not None and source.resolve() == root.resolve()
 
 
-def unregistered(root: Path) -> LoadoutError:
-    """Why `root`'s global setup may not render, naming the cause and its remedy. A machine
-    config that does not load is that cause, so its own error is the answer (review 3, 2.6)."""
-    config = load_machine_config(machine_config_path(), require_source=False)
+@dataclass(frozen=True)
+class Registration:
+    """One read of which source this machine registered: none when the machine config is
+    missing or does not load, and then `error` says why it did not."""
+
+    source: Path | None
+    error: LoadoutError | None = None
+
+
+def registration() -> Registration:
+    try:
+        config = load_machine_config(machine_config_path(), require_source=False)
+    except LoadoutError as error:
+        return Registration(None, error)
+    return Registration(None if config is None else config.source)
+
+
+def unregistered(root: Path, found: Registration) -> LoadoutError:
+    """Why `root`'s global setup may not render, naming the cause and its remedy, from the
+    read that decided it (review 4, batch 2.10). A machine config that does not load is
+    that cause, so its own error is the answer (review 3, 2.6)."""
+    if found.error is not None:
+        return found.error
     held = f"{root}: this folder holds a global setup ({MANIFEST_NAME}), but this machine"
     command = f"loadout init global {shlex.quote(str(root))}"
-    if config is None:
+    if found.source is None:
         return LoadoutError(
             f"{held} has no registered source; register this folder with `{command}`"
         )
     return LoadoutError(
-        f"{held}'s registered source is {config.source}; to make this folder the one, run "
+        f"{held}'s registered source is {found.source}; to make this folder the one, run "
         f"`{command} --registration replace`"
     )
 
@@ -151,8 +177,4 @@ def unregistered(root: Path) -> LoadoutError:
 def registered_source() -> Path | None:
     """This machine's registered global source; None when there is no readable machine
     config, so a missing or broken one registers nothing (ADR 0031)."""
-    try:
-        config = load_machine_config(machine_config_path(), require_source=False)
-    except LoadoutError:
-        return None
-    return None if config is None else config.source
+    return registration().source

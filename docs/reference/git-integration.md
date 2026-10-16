@@ -34,10 +34,13 @@ continue to protect retired outputs.
 
 The index and HEAD trees are materialized from Git blobs, so partially staged content and
 staged deletions are independent of the working tree. Only what a render can read is written out,
-streamed from one `cat-file` run: a project's `loadout/` folder and the files at its root, or a
-global source's manifest and profiles and, of each source they declare, the files in its folder and
-the folders of the artifact types its `use` names. A source at the repository root therefore does
-not write the repository out. Large unrelated assets elsewhere in the
+streamed from one `cat-file` run: a project's `loadout/` folder and the files at its root, and,
+when the root also holds a staged manifest, a global source's manifest and profiles and, of each
+source they declare, the files in its folder and the folders of the artifact types its `use` names,
+and each permission target's `base` file.
+A link inside the repository on the way to any of these, such as `instructions -> vendor/instr`
+or a source `path` that is a link, brings its target in the same way, and so does a link reached
+through one. A source at the repository root therefore does not write the repository out. Large unrelated assets elsewhere in the
 repository are listed by path, which is all the staged-output comparison needs, and never read.
 Renderers run in a fresh process with isolated global destinations and a read boundary around
 the snapshot. Repository scripts and skill programs are read as data and never executed.
@@ -81,12 +84,12 @@ install.
 
 Installation uses `git rev-parse --git-path hooks`. It creates only absent hooks in a repository-
 local effective directory, including local custom `core.hooksPath` directories. It preserves
-occupied hooks, symlinked directories and shared/external directories. A linked worktree's default
-common hook directory is shared and is preserved from both the main checkout and linked worktrees.
-Locality is checked against every registered worktree's effective hook directory, including
-absolute custom paths beneath the main checkout. A missing registered worktree prevents proving
-exclusive ownership, so its hooks are preserved until the worktree registration is reconciled.
-A local worktree-specific hooks path can be installed even when its directory does not yet exist.
+occupied hooks, and writes nothing to a directory outside the repository or reached through a
+symlink. A linked worktree's default common hook directory is shared by every worktree, and
+install writes it from any of them: the hook sets `repo=$(git rev-parse --show-toplevel)` when it
+runs, so one hook serves each worktree's own copy of the source, and install says the directory is
+shared. A local worktree-specific hooks path can be installed even when its directory does not yet
+exist.
 Existing exact managed bytes for the same source are recognized as managed when local. A hook for
 another source is occupied and stays untouched. A hook loadout wrote for this source whose bytes
 differ, such as one from an older version that named its profile, is stale: `install
@@ -117,11 +120,10 @@ The effective hooks directory is classified by why it is or is not this checkout
 | `external` | outside the repository, or a symlink in its path | refused; loadout never wrote there |
 | `shared` | repository-local but common to other worktrees | a marked hook is removed, with a notice |
 
-`install` refuses both alike, because the generated script hard-codes this checkout's source
-path and another worktree would inherit it. `uninstall` carries no such risk, so it tells them
-apart. This asymmetry is deliberate. It matters because `.git/hooks` is common to every worktree:
-adding a worktree at any time after installation reclassifies an already-installed hook as
-`shared` without anything touching the file.
+`install` writes a shared directory as it would a local one, since the generated script finds
+its worktree's top level when it runs, and refuses an external one with the commands to add by
+hand. `.git/hooks` is common to every worktree, so adding a worktree after installation turns the
+directory shared without anything touching the hooks in it.
 
 `uninstall` requires `--yes` when input is not interactive.
 
@@ -134,9 +136,9 @@ Installed scripts invoke `loadout` on PATH and contain no interpreter or checkou
 absolute paths. Install the package on each machine and explicitly run
 `loadout integrate git-hooks install` in a new clone. Hook files are local installation state
 and are never added to the index.
-The effective path and sharing are rechecked between preview and installation. A path that
-becomes shared in that window is preserved, and installation refuses so the integration decision
-can be made again.
+The effective path is rechecked between preview and installation. A path that changes, or
+leaves the repository, in that window is written to by nothing, and installation refuses so the
+integration decision can be made again.
 
 ## Regeneration after Git events
 
@@ -153,6 +155,14 @@ The hooks live in the common hook directory, so they also run in every linked wo
 registered source. A worktree is not the registered folder and may not render global scope
 ([0031](../decisions/0031-global-scope-renders-only-from-the-registered-source.md)), so there the
 post-checkout and post-merge hooks sync nothing and print one line saying so; sync from the
-registered source itself. The pre-commit `check --staged` still runs in a worktree: it renders
+registered source itself. The registration gate in `check --staged` asks the index alone whether a manifest is there, so
+`git rm --cached loadout.toml` passes even with the file still on disk. The pre-commit
+`check --staged` still runs in a worktree: it renders
 only into its own sandbox, so it validates the worktree's snapshot without the registration gate.
 A worktree of any other repository, or a clone, is refused like any other unregistered folder.
+Git exports `GIT_DIR` and its other repository-local variables to the hooks it runs, and a git
+started from a hook would inherit them and answer for the hook's repository whatever folder it
+was pointed at. Every git loadout starts drops them first (`git rev-parse --local-env-vars`
+lists them); `check --staged` keeps `GIT_INDEX_FILE`, since the index it was given is the one it
+inspects. Only a different worktree of the registered source's repository counts as one, so a
+registered source that is itself a linked worktree syncs from its own hooks.

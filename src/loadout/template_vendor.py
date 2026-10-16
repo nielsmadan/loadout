@@ -5,8 +5,9 @@ import sys
 import tempfile
 from pathlib import Path
 
+from .atomic import atomic_install, read_file
 from .errors import LoadoutError, UsageError
-from .output import FrozenFile, atomic_install, read_file
+from .output import FrozenFile
 from .project import ProjectConfig, load_project_config, project_config_path
 from .resolve import ResolvedItem
 from .template_catalog import load_catalog
@@ -103,7 +104,7 @@ def _clean(
 
 
 def _preview(
-    root: Path, local: Path, name: str, affected: set[str], desired: dict[Path, FrozenFile | None]
+    root: Path, name: str, affected: set[str], desired: dict[Path, FrozenFile | None]
 ) -> FrozenFile | None:
     with tempfile.TemporaryDirectory(prefix="loadout-template-") as temporary:
         preview = Path(temporary).resolve()
@@ -177,7 +178,7 @@ def vendor_catalog(
     hashes = {manifest: tree_hash(manifest) for manifest in selected.values()}
     for manifest in selected.values():
         before.update({p: read_file(p) for p in load_catalog(manifest).files()})
-    desired[config_path] = _preview(root, local, name, affected, desired)
+    desired[config_path] = _preview(root, name, affected, desired)
     changes = {path: content for path, content in desired.items() if content != before[path]}
     if not changes:
         print(f"{name} is up to date")

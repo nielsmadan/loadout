@@ -1,48 +1,38 @@
-"""Telling a linked worktree of the registered source from any other folder (review 3,
-batch 2.2): it shares the source's repository, so its hooks are the source's, but it is not
-the registered folder and must not render global scope."""
+"""Telling another worktree of the registered source's repository from any other folder
+(review 3, batch 2.2): it shares the source's repository, so its hooks are the source's,
+but it is not the registered folder and must not render global scope."""
 
 from __future__ import annotations
 
 import os
-import subprocess
 from pathlib import Path
 
-from .machine import registered_source
+from . import git_runner
+from .machine import Registration, is_registered, registration
 
 
-def _git_dirs(path: Path) -> tuple[Path, Path] | None:
-    """The git dir and common dir of the repository holding `path`, or None outside one."""
-    try:
-        result = subprocess.run(
-            [
-                "git",
-                "-C",
-                str(path),
-                "rev-parse",
-                "--path-format=absolute",
-                "--git-dir",
-                "--git-common-dir",
-            ],
-            capture_output=True,
-            check=False,
-        )
-    except OSError:
-        return None
+def _worktree(path: Path) -> tuple[Path, Path] | None:
+    """The top level of the worktree holding `path` and its repository's common dir, or
+    None outside a repository. Asked through the one git runner, so a hook's `GIT_DIR`
+    cannot answer for a folder that is not its own (review 4, batch 1.1)."""
+    result = git_runner.run(
+        path, "rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir"
+    )
     match os.fsdecode(result.stdout).splitlines():
-        case [git_dir, common_dir] if not result.returncode:
-            return Path(git_dir).resolve(), Path(common_dir).resolve()
+        case [top, common] if not result.returncode:
+            return Path(top).resolve(), Path(common).resolve()
         case _:
             return None
 
 
-def linked_worktree_source(root: Path) -> Path | None:
-    """The registered source when `root` is in a linked worktree of its repository."""
-    source = registered_source()
-    if source is None or not root.is_dir():
+def linked_worktree_source(root: Path, found: Registration | None = None) -> Path | None:
+    """The registered source, when `root` is in another worktree of its repository:
+    the same repository, a different worktree, whichever of the two is the main one.
+    `found` is a registration already read, so a caller decides from one read."""
+    source = (found or registration()).source
+    if source is None or is_registered(root, source) or not root.is_dir() or not source.is_dir():
         return None
-    here = _git_dirs(root)
-    if here is None or here[0] == here[1]:
+    here, there = _worktree(root), _worktree(source)
+    if here is None or there is None:
         return None
-    registered = _git_dirs(source) if source.is_dir() else None
-    return source if registered is not None and registered[1] == here[1] else None
+    return source if here[1] == there[1] and here[0] != there[0] else None

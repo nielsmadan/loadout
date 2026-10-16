@@ -14,6 +14,7 @@ from typing import Any, assert_never
 from .destinations import resolve_destination
 from .emit import RenderContext, render_all
 from .errors import LoadoutError
+from .machine import Registration
 from .migration_models import GeneratedWrite, Issue, MigrationPlan
 from .native_documents import key_fingerprints, parse_document
 from .output import Copied, FrozenFile, Merged, sha256
@@ -184,7 +185,7 @@ def _worker() -> None:
     try:
         root = Path(request["root"])
         # The planned source, isolated in scratch: init is what registers it.
-        context = RenderContext(isolated_destination, registered=lambda: root)
+        context = RenderContext(isolated_destination, registration=lambda: Registration(root))
         outputs = render_all(root, context=context)
         result: list[dict[str, Any]] = []
         for path, output in outputs.items():

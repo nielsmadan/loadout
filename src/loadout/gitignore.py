@@ -4,8 +4,9 @@ import stat
 from collections.abc import Iterable
 from pathlib import Path
 
+from .atomic import atomic_install
 from .errors import LoadoutError
-from .output import FrozenFile, atomic_install
+from .output import FrozenFile
 
 SPECIAL = "\\*?[] "
 

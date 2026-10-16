@@ -51,7 +51,8 @@ overrides the active profile.
 An ownership marker, `.loadout-bundle.toml` inside the source copy, records the installed content
 hash; the skill renderer never copies it. Reinstalling refreshes an unchanged older copy. A source
 copy you edited or an unowned skill with the same name is reported and left alone, and the command
-exits 1; a generated output edited outside Loadout is refused the same way with exit 3.
+exits 1. A generated output edited outside Loadout stops install's sync with exit 1, as it stops
+any sync, and stops uninstall before it removes anything, with exit 3.
 Uninstall removes only the owned source and the files rendered from it that sync would accept as
 its own (the current render, what was committed, or what sync last wrote); unrelated files in the
 destination directory survive.
@@ -85,8 +86,8 @@ runtime is reported verbatim rather than silently discarded. When the terminal s
 diff, the whole of it goes to `$XDG_STATE_HOME/loadout/sync-abort.diff` (mode 0600), which the
 next such abort replaces and the next sync that completes removes; when that directory cannot be
 written, the abort says so by leaving the line out and still exits 1. Every diff loadout prints,
-there, in `check` and in the init preview, shows a value the credential check recognises as
-`<redacted>`. Port the edit into the source with the bundled `/loadout` skill, or
+there, in `check`, in `template sync` and in the init preview, shows a value the credential
+check recognises as `<redacted>`. Port the edit into the source with the bundled `/loadout` skill, or
 pass `--force` to discard it.
 
 Comparison is by parsed document for JSON targets, not by bytes, so a harness re-serialising
@@ -101,7 +102,8 @@ recorded writing there, is a source change: sync overwrites it and says so, as
 first sync or with the record deleted, a value one of loadout's keys already holds is overwritten
 only when this render or the committed source accounts for it; anything else is refused as
 `unknown`, while a key the file does not hold yet is simply added. A key listed under `$remove` is
-never an edit, since the harness may write it back, and moving it from `$remove` to a value opts it
+never an edit, since the harness may write it back, not even when the file stops being rendered
+and the key is stripped with the rest, and moving it from `$remove` to a value opts it
 in like any newly managed key. When a slice stops rendering into a shared
 file, each of its keys still there is judged the same way before sync strips it, so a server
 added by hand stops the retirement as `owned-key` instead of going with it.
@@ -638,7 +640,8 @@ credentials.
 
 Git hooks are not part of adopting configuration: install them with
 `loadout integrate git-hooks install --root . [--regenerate]`, which reports exact integration
-commands and preserves existing or shared hooks. `--regenerate` also runs guarded sync after
+commands and preserves existing hooks. In a repository with linked worktrees it writes the hooks
+directory they share once, from any of them, and the hooks run in each. `--regenerate` also runs guarded sync after
 checkout and merge, and rewrites an out-of-date hook loadout wrote. A hook resolves its profile
 each time it runs, the way `sync` does. A new clone needs that command explicitly. Manual validation is
 `loadout check --staged`.

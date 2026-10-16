@@ -104,6 +104,8 @@ def _synced_project(root: Path) -> Path:
     (root / "loadout/config.toml").write_text(
         'harnesses = ["claude", "codex"]\ninstructions = ["main"]\n'
     )
+    # Synced, as its name says: a record is what makes an edit a hand edit (review 4, 4.3).
+    assert loadout.main(["sync", "--root", str(root)]) == 0
     return root
 
 
@@ -126,5 +128,5 @@ def test_sync_never_rewrites_a_hand_written_claude_md(tmp_path: Path, capsys) ->
 
     assert loadout.main(["sync", "--root", str(root)]) == 1
 
-    assert "CLAUDE.md was modified outside loadout" in capsys.readouterr().err
+    assert "CLAUDE.md was modified outside loadout (hand-edited)" in capsys.readouterr().err
     assert (root / "CLAUDE.md").read_text() == "Hand-written.\n"

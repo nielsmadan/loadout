@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import difflib
 import sys
+from pathlib import PurePath
 from typing import TextIO
+
+from .credentials import redacted_pair
 
 DIFF_LIMIT = 40
 
@@ -14,11 +17,14 @@ NO_NEWLINE = "\\ No newline at end of file\n"
 
 def diff_lines(rel: str, actual: str, expected: str, context: int) -> list[str]:
     """A unified diff whose every line ends in a newline: a last line that lacks one is
-    terminated and marked, as git marks it, so it never runs into the next."""
+    terminated and marked, as git marks it, so it never runs into the next. Every secret
+    either side holds is redacted here, so no diff loadout prints, on a terminal or in a
+    file, can repeat one (review 4, batch 1.2)."""
+    shown = redacted_pair(actual, expected, PurePath(rel).suffix[1:])
     lines: list[str] = []
     for line in difflib.unified_diff(
-        actual.splitlines(keepends=True),
-        expected.splitlines(keepends=True),
+        shown[0].splitlines(keepends=True),
+        shown[1].splitlines(keepends=True),
         fromfile=f"{rel} (on disk)",
         tofile=f"{rel} (expected)",
         n=context,

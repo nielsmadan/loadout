@@ -18,12 +18,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from .atomic import TEMPORARY_PREFIX, atomic_install
 from .containment import first_link
 from .errors import LoadoutError
 from .machine import state_dir
 from .migration_git import git
 from .migration_images import Image, install, snapshot
-from .output import TEMPORARY_PREFIX, FrozenFile, atomic_install, sha256
+from .output import FrozenFile, sha256
 from .written import forget_written
 
 BACKUP_VERSION = 4
@@ -488,6 +489,10 @@ def restore(backup: Backup) -> Restored:
     restorable, kept = _restorable(plan, frozen, disposable, records)
     for unit in disposable:
         shutil.rmtree(unit)
+    # A write killed at its rename leaves its temporary file beside the path, in a folder
+    # that may have been there before init (review 4, batch 2.6).
+    for folder in sorted({path.parent for path in restorable}):
+        _drop_interrupted_writes(folder)
     removed, unremoved = _remove_created(plan, restorable, records)
     put_back, not_put_back = _put_back(plan, restorable)
     reverted = [*disposable, *removed, *put_back]
@@ -567,7 +572,7 @@ def _remove_created(
                 path.rmdir()
                 removed.append(path)
             except OSError:
-                kept[path] = _blocked(path, records)
+                kept[path] = _blocked(path, records, kept.keys())
         elif plan.ours(path):
             path.unlink()
             removed.append(path)
@@ -596,16 +601,21 @@ def _drop_interrupted_writes(folder: Path) -> None:
 BLOCKERS_SHOWN = 3
 
 
-def _blocked(folder: Path, records: set[Path]) -> str:
-    """Why a folder init created stays, naming what is in the way."""
+def _blocked(folder: Path, records: set[Path], kept: Iterable[Path]) -> str:
+    """Why a folder init created stays, naming what is in the way: never a path restore
+    itself keeps there, which is reported on its own (review 4, batch 2.6)."""
     # The write record is dealt with after this, so it is no reason on its own.
-    others = [entry for entry in sorted(folder.iterdir()) if entry not in records]
+    held = {*records, *kept}
+    entries = sorted(folder.iterdir())
+    others = [entry for entry in entries if entry not in held]
     if not others:
-        return "a folder init created, kept for the write record restore kept in it"
+        if all(entry in records for entry in entries):
+            return "a folder init created, kept for the write record restore kept in it"
+        return "a folder init created, kept for what restore kept inside it"
     names = [entry.name for entry in others[:BLOCKERS_SHOWN]]
     more = len(others) - len(names)
     listed = ", ".join(names) + (f" and {more} more" if more else "")
-    return f"a folder init created that now holds files it did not: {listed}"
+    return f"a folder init created that now holds files it did not ({listed})"
 
 
 def _put_back(plan: _Plan, restorable: Mapping[Path, Image]) -> tuple[list[Path], dict[Path, str]]:

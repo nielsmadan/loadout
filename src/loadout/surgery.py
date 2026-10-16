@@ -55,3 +55,12 @@ def apply_json(existing: str, owned: frozenset[str], document: str) -> str:
     # Match the file's own convention rather than imposing one: Claude writes this
     # file without a trailing newline, and adding one would read as drift forever.
     return rendered + "\n" if existing.endswith("\n") else rendered
+
+
+# What a shared document holds of loadout's when loadout writes nothing into it.
+EMPTY = {"json": "{}", "toml": ""}
+
+
+def apply(format_name: str, existing: str, owned: frozenset[str], document: str) -> str:
+    """`existing` with loadout's `owned` keys set as `document` has them, in its format."""
+    return (apply_json if format_name == "json" else apply_toml)(existing, owned, document)

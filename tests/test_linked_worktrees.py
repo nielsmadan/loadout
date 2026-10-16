@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 import loadout
+from loadout.worktrees import linked_worktree_source
 from registration import register
 
 pytestmark = pytest.mark.integration
@@ -100,3 +101,13 @@ def test_a_linked_worktree_of_another_repository_is_still_refused(tmp_path: Path
     assert loadout.main(["hook-event", "post-merge", "--root", str(elsewhere)]) == 3
 
     assert "but this machine's registered source is" in capsys.readouterr().err
+
+
+def test_another_folder_of_the_source_s_own_worktree_is_not_a_linked_worktree(
+    tmp_path: Path,
+) -> None:
+    """Review 4, batch 1.1: only a different worktree of the source's repository counts."""
+    source, _ = _worktree(tmp_path)
+    (source / "project").mkdir()
+
+    assert linked_worktree_source(source / "project") is None

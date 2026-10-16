@@ -31,15 +31,16 @@ loadout keeps for itself: init's backups and sync's complete diff. It is not the
 `destinations.py:resolve_destination` expands `${VAR}` in a destination against the environment, per
 [0011](../decisions/0011-a-destination-follows-a-relocated-harness.md).
 A render takes an `emit.RenderContext`: the destination resolver, the resolver for a template
-that is not vendored, the manifest source parser, and `registered`, the one root that may render
-global scope. `render_global` refuses any other root before it reads the manifest
+that is not vendored, the manifest source parser, and `registration`, the one root that may render
+global scope, read once with why there is none, so a refusal names what decided it. `render_global` refuses any other root before it reads the manifest
 (`emit.refuse_unregistered_global`, [0031](../decisions/0031-global-scope-renders-only-from-the-registered-source.md));
 by default that root is the source the machine config registers, and init's scratch preview, its
 isolated validation, the staged snapshot and the guard's committed tree name their own copy. The staged-render and migration-validation
 workers pass their own instead of patching modules. The guard (`sync.unaccepted_outputs`),
 `sync.classified_drift` and `notices.collect_notices` render with the default context, since
 nothing renders them for another root; the guard hands its committed tree a copy that may render
-it, and `collect_notices` takes the environment it reads. A template a resolver cannot find is
+it. That tree holds what `staged._render_inputs` names at HEAD, the same set `check --staged`
+writes out, never the whole repository, and `collect_notices` takes the environment it reads. A template a resolver cannot find is
 named with what that resolver offered, never with a fresh read of the machine's sources.
 `written.py` stores the other half beside that config: what `sync` last wrote at each
 destination, which is the third variant the modified-outside-loadout guard compares against and
@@ -64,7 +65,10 @@ which runs `discovery.py`'s inventory through `migration*.py`'s plan, backup and
 `gitignore.py` holds the one escaping rule and the line edits both init and sync use.
 `commands.py` is the CLI's commands; what `sync` decides and does (the guard, writing, retiring)
 is `sync.py`, and returns values for the command to report. `files.py` writes outputs and
-compares them with disk, through any link at the destination. `notices.py` assembles the
+compares them with disk, through any link at the destination. A rendered text output that replaces a
+file keeps that file's mode, so a chmod survives a rewrite; a new one gets `0o666 & ~umask`, or
+0600 when it holds a secret the credential check recognises (`files.text_mode`). Copied and
+frozen files carry their own mode. `notices.py` assembles the
 advisory notices a render reports.
 
 Two comparators answer different questions. `files.check_all` is raw: an output differs when its
@@ -84,17 +88,18 @@ output, so `sync`/`check` regenerate whichever scopes are present.
 | area | modules |
 |---|---|
 | CLI | `__init__.py` and `__main__.py` (the entry points), `cli.py` (arguments, exit codes, `--json` errors), `errors.py` (`LoadoutError` and `UsageError`, exit 3 and 2), `commands.py` (the commands), `diffs.py` (the diffs they show), `completions.py` |
-| render | `emit.py`, `composition.py`, `documents.py` (merging JSON documents), `permissions/` (`rules.py`, `merge.py`, `renderers.py`), `hooks.py`, `adapters.py`, `plugins.py`, `servers.py`, `skills.py`, `subagents.py`, `module_config.py`, `output.py` (the output types) |
+| render | `emit.py`, `composition.py`, `documents.py` (merging JSON documents), `permissions/` (`rules.py`, `merge.py`, `renderers.py`), `hooks.py`, `adapters.py`, `plugins.py`, `servers.py`, `skills.py`, `subagents.py`, `module_config.py`, `output.py` (the output types and file digests) |
 | sources | `harnesses.py` (the global preset), `manifest.py`, `sources.py`, `resolve.py`, `destinations.py`, `machine.py`, `project.py`, `skill_policy.py` |
-| sync | `containment.py` (where loadout may read and write: `within`, `protected`, `first_link` and the project rules built on them), `sync.py` (guard, deploy, retirement, drift), `files.py` (writers, `check_all`), `retirement.py`, `written.py` (the write record), `record.py` (owned key names), `surgery.py` and `toml_paths.py` (writing into shared documents), `notices.py`, `unmanaged.py`, `gitignore.py` |
+| sync | `containment.py` (where loadout may read and write: `within`, `protected`, `first_link` and the project rules built on them), `sync.py` (guard, deploy, retirement, drift), `files.py` (writers, `check_all`), `atomic.py` (`replace_atomically`, the one way a file is replaced, `atomic_install` and `read_file`), `retirement.py`, `written.py` (the write record), `record.py` (owned key names), `surgery.py` and `toml_paths.py` (writing into shared documents), `notices.py`, `unmanaged.py`, `gitignore.py` |
 | init | `init_workflow.py` (preview, apply, restore), `init_options.py` (what was asked for), `discovery.py` (inventory), `credentials.py` (secret warnings), `runtime_paths.py` (what a harness writes for itself, shared with `unmanaged.py`), `migration.py` (plan), `migration_models.py`, `migration_paths.py`, `migration_transaction.py` (apply), `migration_validation.py` (isolated reconstruction), `migration_images.py` (what a path holds, captured and installed), `migration_backup.py` (backup and restore), `migration_git.py`, `git_privacy.py`, `native_documents.py`, `extract.py` (reading native documents back) |
-| git | `staged.py` and `staged_render.py` (`check --staged`), `git_hooks.py` and `git_hook_commands.py`, `worktrees.py` (a linked worktree of the registered source) |
+| git | `git_runner.py` (every git loadout starts, without a hook's repository variables), `staged.py` and `staged_render.py` (`check --staged`), `git_hooks.py` and `git_hook_commands.py`, `worktrees.py` (a linked worktree of the registered source) |
 | templates | `templates.py` (resolution, vendored copies), `template_catalog.py`, `template_discover.py`, `template_vendor.py`, `bundled_templates.py` |
 | bundled skill | `skill_installation.py`, `bundled_skill.py` |
 
 Harness facts live in the presets: `harnesses.py:GLOBAL_PRESET` and `project.py:PROJECT_PRESET`
 say where each slice of each harness goes, `KNOWN_HARNESSES` is the global preset's keys, and
-`discovery.py` (roots, runtime paths) and `migration.py` (dormant routes) restate what adoption
-needs. `tests/test_harness_tables.py` holds the restatements it lists to the presets: the
+`discovery.py` (roots, the runtime documents and keys a harness writes into them),
+`runtime_paths.py` (the files and folders a harness writes for itself) and `migration.py`
+(dormant routes) restate what adoption needs. `tests/test_harness_tables.py` holds the restatements it lists to the presets: the
 per-harness tables, managed paths, runtime keys, which renderers carry a catch-all and where the
 others keep one, and which read a whole folder. A new restatement needs its own test there.

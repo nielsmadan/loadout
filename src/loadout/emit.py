@@ -7,12 +7,12 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .composition import HEADER, load_fragment, render
-from .containment import refuse_escaping, refuse_external_links
+from .containment import read_through, refuse_escaping, refuse_external_links
 from .destinations import resolve_destination
 from .documents import merge_documents
 from .errors import LoadoutError
 from .harnesses import DIRECTORY_SLICES, SHARED_SKILL_READERS
-from .machine import is_registered, registered_source, unregistered
+from .machine import Registration, is_registered, registration, unregistered
 from .manifest import (
     MANIFEST_NAME,
     InstructionTarget,
@@ -91,19 +91,22 @@ class RenderContext:
     destination: Callable[[str, str], Path] = resolve_destination
     upstream: Callable[[str], ResolvedItem] = resolve_upstream_template
     sources: SourceParser = parse_sources
-    registered: Callable[[], Path | None] = registered_source
+    registration: Callable[[], Registration] = registration
 
 
 def refuse_unregistered_global(
-    root: Path, context: RenderContext | None = None, *, held: bool = False
+    root: Path, context: RenderContext | None = None, *, held: bool | None = None
 ) -> None:
     """Global scope writes anywhere under HOME, so it renders only from the source this
     machine registered; a cloned or PR-added `loadout.toml` stops here, before any of it
-    is read (ADR 0031). `held` names a manifest that is not on disk, such as a staged one."""
-    if (held or manifest_path(root).is_file()) and not is_registered(
-        root, (context or RenderContext()).registered()
-    ):
-        raise unregistered(root)
+    is read (ADR 0031). `held` says whether the manifest is in the snapshot a caller
+    renders, such as the index, in place of the disk (review 4, batch 2.3)."""
+    present = manifest_path(root).is_file() if held is None else held
+    if not present:
+        return
+    found = (context or RenderContext()).registration()
+    if not is_registered(root, found.source):
+        raise unregistered(root, found)
 
 
 @dataclass(frozen=True)
@@ -1209,8 +1212,7 @@ CLAUDE_IMPORT = f"{HEADER}\n\n@AGENTS.md\n"
 def _imports_agents(root: Path, config: ProjectConfig) -> bool:
     """A CLAUDE.md linked to AGENTS.md is that document; writing the stub through
     the link would replace the content."""
-    claude = root / "CLAUDE.md"
-    linked = claude.is_symlink() and claude.resolve() == (root / "AGENTS.md").resolve()
+    linked = read_through(root, PurePosixPath("CLAUDE.md"))
     return set(config.harnesses) != {"claude"} and not linked
 
 

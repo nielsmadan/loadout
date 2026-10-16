@@ -15,12 +15,13 @@ from pathlib import Path
 
 import tomlkit
 
+from .atomic import atomic_install, read_file
 from .bundled_skill import SKILL_NAME
 from .destinations import resolve_destination
 from .emit import declared_profiles, render_global
 from .errors import LoadoutError
 from .manifest import Manifest, load_profile
-from .output import FrozenFile, Merged, atomic_install, read_file
+from .output import FrozenFile, Merged
 from .skills import discover_skills
 from .sources import select_overrides
 from .sync import sync_state, unaccepted_outputs
@@ -307,12 +308,14 @@ def _accepted_outputs(root: Path, profile: str) -> dict[Path, bytes]:
         if isinstance(output, Merged) and any(path.is_relative_to(d) for d in directories):
             raise LoadoutError(f"skill output {path} unexpectedly requires a merged document")
     refused = [
-        entry.path
+        entry
         for entry in unaccepted_outputs(sync_state(root), outputs)
         if any(entry.path.is_relative_to(directory) for directory in directories)
     ]
     if refused:
-        raise LoadoutError(f"{refused[0]} was modified outside loadout; no changes made")
+        raise LoadoutError(
+            f"{refused[0].path} was modified outside loadout ({refused[0].kind}); no changes made"
+        )
     return {
         path: path.read_bytes()
         for path in outputs

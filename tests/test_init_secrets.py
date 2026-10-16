@@ -184,3 +184,50 @@ def test_an_owner_only_original_keeps_derived_source_owner_only(
         for name in ("mcp.toml", "permissions.toml", "settings/claude.json")
     }
     assert modes == {"mcp.toml": 0o600, "permissions.toml": 0o644, "settings/claude.json": 0o644}
+
+
+def test_an_owner_only_settings_document_keeps_everything_adopted_from_it_owner_only(
+    tmp_path: Path, fake_home: Path
+) -> None:
+    """Review 4, batch 4.1: only `mcp.toml` pinned the rule; the permissions and the
+    per-agent settings adopted from a 0600 document were unpinned."""
+    (fake_home / ".claude").mkdir()
+    settings = fake_home / ".claude/settings.json"
+    settings.write_text(json.dumps({"permissions": {"allow": ["Bash(ls)"]}, "model": "opus"}))
+    settings.chmod(0o600)
+    source = tmp_path / "source"
+    source.mkdir()
+
+    assert loadout.main(["init", "global", str(source), "--harness", "claude", "--yes"]) == 0
+
+    loadout_dir = source / "loadout"
+    modes = {
+        name: _mode(loadout_dir / name) for name in ("permissions.toml", "settings/claude.json")
+    }
+    assert modes == {"permissions.toml": 0o600, "settings/claude.json": 0o600}
+
+
+def test_an_owner_only_project_settings_document_keeps_its_residual_owner_only(
+    tmp_path: Path, capsys
+) -> None:
+    root = tmp_path / "p"
+    (root / ".claude").mkdir(parents=True)
+    settings = root / ".claude/settings.json"
+    settings.write_text(json.dumps({"permissions": {"allow": ["Bash(ls)"]}, "model": "opus"}))
+    settings.chmod(0o600)
+    # A project document adopted whole as its own category: Droid's hooks.
+    droid = root / ".factory/hooks.json"
+    droid.parent.mkdir()
+    hooks = {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "true"}]}]}
+    droid.write_text(json.dumps({"hooks": hooks}))
+    droid.chmod(0o600)
+    _git(root, "init", "-q")
+
+    harnesses = ["--harness", "claude", "--harness", "droid"]
+    assert loadout.main(["init", "project", "--root", str(root), *harnesses, "--yes"]) == 0
+
+    modes = {
+        name: _mode(root / "loadout" / name)
+        for name in ("hooks.json", "permissions.toml", "settings/claude.json")
+    }
+    assert modes == {"hooks.json": 0o600, "permissions.toml": 0o600, "settings/claude.json": 0o600}

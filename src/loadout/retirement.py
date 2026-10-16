@@ -10,10 +10,19 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
-from .files import Drift, atomic_write, describe_file, document_format, unparsable_as
+from .files import (
+    Drift,
+    UnparsableDocument,
+    atomic_write,
+    describe_file,
+    document_format,
+    read_document,
+    shown_document,
+    unparsable_as,
+)
 from .output import Output
 from .skills import SKILL_DOCUMENT
-from .surgery import apply_json, apply_toml
+from .surgery import EMPTY, apply
 from .written import WrittenEntry
 
 
@@ -25,9 +34,8 @@ def orphaned(
 
 def stripped(path: Path, entry: WrittenEntry, existing: str) -> str:
     """The shared file without the keys loadout recorded writing, and nothing else."""
-    if path.suffix == ".json":
-        return apply_json(existing, frozenset(entry.owned), "{}")
-    return apply_toml(existing, frozenset(entry.owned), "")
+    format_name = document_format(path)
+    return apply(format_name, existing, frozenset(entry.owned), EMPTY[format_name])
 
 
 def orphan_drift(orphans: Mapping[Path, WrittenEntry]) -> list[Drift]:
@@ -41,15 +49,16 @@ def orphan_drift(orphans: Mapping[Path, WrittenEntry]) -> list[Drift]:
         if not path.is_file():
             continue
         if entry.kind == "merged":
-            existing = path.read_text(encoding="utf-8", newline="")
-            if unparsable_as(path, document_format(path), entry.owned):
-                drift.append(Drift(path=path, actual=existing, expected="", kind="unparsable"))
+            existing = read_document(path)
+            if existing is None or unparsable_as(path, document_format(path), entry.owned):
+                # Retiring strips keys, never the document, so no diff says what it does.
+                drift.append(Drift(path=path, actual="", expected="", kind="unparsable"))
                 continue
             remaining = stripped(path, entry, existing)
             if remaining != existing:
                 retires(path, existing, remaining)
         elif entry.kind == "text":
-            retires(path, path.read_text(encoding="utf-8", newline=""), "")
+            retires(path, read_document(path) or shown_document(path), "")
         else:
             retires(path, describe_file(path), "(absent)\n")
     return drift
@@ -66,7 +75,9 @@ def retire(orphans: Mapping[Path, WrittenEntry], recorded: Iterable[Path]) -> li
         if not path.is_file():
             continue
         if entry.kind == "merged":
-            existing = path.read_text(encoding="utf-8", newline="")
+            existing = read_document(path)
+            if existing is None:
+                raise UnparsableDocument(path, document_format(path), orphaned=True)
             remaining = stripped(path, entry, existing)
             if remaining == existing:
                 continue

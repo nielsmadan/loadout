@@ -84,6 +84,22 @@ def test_skill_install_vendors_into_the_global_source_and_syncs(
     assert (fake_home / ".codex" / "skills" / "loadout" / "SKILL.md").is_file()
 
 
+def test_skill_install_over_an_edited_output_stops_its_sync_with_exit_1(
+    tmp_path: Path, monkeypatch, fake_home: Path, capsys
+) -> None:
+    """Review 4, batch 3.6: the README gave this exit 3, which is uninstall's."""
+    _global_skill_root(tmp_path, monkeypatch)
+    assert loadout.main(["integrate", "skill", "install", "--yes"]) == 0
+    output = fake_home / ".claude" / "skills" / "loadout" / "SKILL.md"
+    output.write_text("my edit\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert loadout.main(["integrate", "skill", "install", "--yes"]) == 1
+
+    assert "was modified outside loadout" in capsys.readouterr().err
+    assert output.read_text(encoding="utf-8") == "my edit\n"
+
+
 def test_skill_uninstall_refused_over_an_edited_output_is_a_source_error(
     tmp_path: Path, monkeypatch, fake_home: Path, capsys
 ) -> None:

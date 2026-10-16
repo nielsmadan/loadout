@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import stat
 from pathlib import Path
 
 from loadout.emit import render_all
@@ -25,12 +24,6 @@ def test_atomic_write_replaces_existing_content(tmp_path: Path) -> None:
     target.write_text("old\n")
     atomic_write(target, "new\n")
     assert target.read_text() == "new\n"
-
-
-def test_written_files_are_owner_only(tmp_path: Path) -> None:
-    target = tmp_path / "out.md"
-    atomic_write(target, "hello\n")
-    assert stat.S_IMODE(target.stat().st_mode) == 0o600
 
 
 def test_atomic_write_preserves_a_symlink(tmp_path: Path) -> None:

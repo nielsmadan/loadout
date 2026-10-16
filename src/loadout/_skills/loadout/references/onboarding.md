@@ -70,8 +70,9 @@ path. Ask the user before restoring it:
 loadout init restore --yes --json
 ```
 
-The same command undoes the latest completed adoption when the user asks for that. A path changed
-since that init is kept and listed under `kept` (exit 1); report each one. The backup holds copies
+The same command undoes the latest completed adoption when the user asks for that. What it put
+back is listed under `restored`. A path changed since that init is kept and listed under `kept`
+(exit 1), with why under `reasons`; report each one with its reason. The backup holds copies
 of the user's configuration, so keep it private and never paste its content into the conversation.
 
 ## Resolving conflicting copies at init

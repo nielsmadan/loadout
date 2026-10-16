@@ -54,7 +54,10 @@ there: remove it from the source too, or pass `--force` to write it back.
 tell a source change from a hand edit: read the diff before syncing.
 `unmanaged` is a file loadout did not write in a folder the harness reads whole, such as a skills
 folder; port it and delete it. `unmanaged-link` is a link there; check where it points before
-deleting it. `unparsable` is a shared file that no longer parses: fix or delete it, then sync.
+deleting it. `unparsable` is a shared file that no longer parses, or is not even UTF-8: plain
+`sync` refuses it with exit 3 and names it. Fix or delete it, then sync, or run `sync --force` to
+replace it; one the source no longer renders has nothing to replace it with, so only fixing or
+deleting it helps.
 
 ## Sync or check refuses a global setup
 
@@ -62,8 +65,7 @@ A folder holding a `loadout.toml` renders only if it is this machine's registere
 Anywhere else, `sync` and `check` exit 3 before reading it, and say why: this machine has no
 registered source, so run `loadout init global <folder>` to register this one; or another source
 is registered, so add `--registration replace` to register this one instead. A machine config
-that does not load is reported as its own error; fix the key it names. Repeatedly
-overwriting generated files by hand makes the next sync undo those changes.
+that does not load is reported as its own error; fix the key it names.
 
 ## A skill named README, or a skill that stopped updating
 
@@ -109,7 +111,8 @@ inspecting resolution directly is not available in 1.0.
 ## A template cannot be found
 
 Loadout first checks the project's vendored directory, then the template directories in sources
-declared by the machine's global manifest.
+declared by the machine's global manifest, then the bundled starters (`frontend` and `backend`),
+which ship with loadout and also resolve on a machine with no global configuration.
 
 Run `loadout template list` and inspect those sources. Clone or update an external source using
 your normal git workflow. Loadout does not fetch it automatically.

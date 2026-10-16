@@ -162,6 +162,17 @@ def test_symlink_into_known_runtime_root_is_excluded(tmp_path: Path) -> None:
     assert all(c.content == b"" for c in inventory.candidates)
 
 
+@pytest.mark.parametrize("name", [".env", ".env.local"])
+def test_an_env_file_in_a_skill_is_never_read(tmp_path: Path, name: str) -> None:
+    write(tmp_path, ".claude/skills/s/SKILL.md", "---\nname: s\ndescription: d\n---\nS.\n")
+    env = write(tmp_path, f".claude/skills/s/{name}", "API_TOKEN=never-read\n")
+
+    inventory = discover(tmp_path, scope="project", harnesses=("claude",))
+
+    found = {c.path: (c.disposition, c.content) for c in inventory.candidates}
+    assert found[env] == ("runtime-private exclusion", b"")
+
+
 @pytest.mark.parametrize(
     "name", ["preferences.md", "unrecognized.data", "opencode.jsonc", "config.json.tmpl"]
 )

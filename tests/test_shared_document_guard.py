@@ -249,3 +249,23 @@ def test_a_removal_beside_an_edit_is_named_an_edit(tmp_path: Path, fake_home: Pa
     assert json.loads(capsys.readouterr().out)["drift"] == [
         {"path": str(target), "kind": "owned-key"}
     ]
+
+
+def test_a_shared_document_sync_did_not_create_leaves_the_record(
+    tmp_path: Path, fake_home: Path
+) -> None:
+    """Review 4, batch 2.2: its old entry outlived it, so a key the source managed again
+    once the harness had made the file anew was refused as a removed one."""
+    root = register(build(tmp_path / "source", {"model": "gpt-5"}))
+    assert loadout.main(["sync", "--root", str(root)]) == 0
+    document = fake_home / ".codex/config.toml"
+    document.unlink()
+    (root / "defaults/codex.json").write_text(json.dumps({"$remove": ["developer_instructions"]}))
+    assert loadout.main(["sync", "--root", str(root)]) == 0
+    assert not document.exists()
+    document.write_text('tui = "x"\n')
+    (root / "defaults/codex.json").write_text(json.dumps({"model": "gpt-5"}))
+
+    assert loadout.main(["sync", "--root", str(root)]) == 0
+
+    assert document.read_text() == 'tui = "x"\nmodel = "gpt-5"\n'

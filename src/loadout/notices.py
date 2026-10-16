@@ -460,7 +460,7 @@ def collect_notices(
     """Advisory findings about project setup and global slice fragments."""
     environ = os.environ if environ is None else environ
     found: list[Notice] = [
-        *project_notices(root, environ, RenderContext()),
+        *project_notices(root, environ),
         *template_notices(root),
     ]
     if not manifest_path(root).is_file():
@@ -503,9 +503,7 @@ def collect_notices(
     return tuple(found)
 
 
-def project_notices(
-    root: Path, environ: Mapping[str, str], context: RenderContext
-) -> tuple[Notice, ...]:
+def project_notices(root: Path, environ: Mapping[str, str]) -> tuple[Notice, ...]:
     """What project scope rendered while doing less than its source says.
 
     Three kinds: a permission rule the selected renderer cannot carry, a slice
@@ -535,7 +533,7 @@ def project_notices(
             tuple(h for h in config.harnesses if AGENTS_SUBDIR in PROJECT_PRESET[h]),
         )
     )
-    templates = project_templates(root, config, context)
+    templates = project_templates(root, config, RenderContext())
     rules = project_rules(root, templates)
     permissions: list[Notice] = []
     documents: list[Notice] = []

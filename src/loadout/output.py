@@ -1,19 +1,16 @@
 from __future__ import annotations
 
 import hashlib
-import os
 import stat
-import tempfile
 import unicodedata
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, BinaryIO, Literal
+from typing import Any, Literal
 
 import tomlkit
 from tomlkit.items import Item
 
-from .containment import no_symlinks
 from .errors import LoadoutError
 
 Scope = Literal["project", "global"]
@@ -54,6 +51,12 @@ class Merged:
     # Owned only to be stripped (`$remove`): the harness writing one back is no edit.
     evicted: frozenset[str] = frozenset()
 
+    @property
+    def guarded(self) -> frozenset[str]:
+        """The owned keys loadout writes a value for, and so the only ones an edit can
+        touch: an evicted one is stripped whatever it holds."""
+        return self.owned - self.evicted
+
 
 @dataclass(frozen=True)
 class FrozenFile:
@@ -77,64 +80,6 @@ def output_record_paths(outputs: Mapping[Path, Output]) -> tuple[Path, ...]:
 def entry_path(path: Path) -> Path:
     """The one spelling of an entry: its parent resolved, the entry itself not followed."""
     return path.parent.resolve() / path.name
-
-
-def read_file(path: Path) -> FrozenFile | None:
-    no_symlinks(path)
-    for parent in path.parents:
-        if parent.exists() and not parent.is_dir():
-            raise LoadoutError(f"parent must be a directory: {parent}")
-    if not path.exists():
-        return None
-    metadata = path.stat()
-    if not stat.S_ISREG(metadata.st_mode):
-        raise LoadoutError(f"path must be a regular file: {path}")
-    return FrozenFile(path.read_bytes(), stat.S_IMODE(metadata.st_mode))
-
-
-# The name of a write in progress, which a kill before its rename leaves behind.
-TEMPORARY_PREFIX = ".loadout-"
-
-
-def replace_atomically(
-    path: Path,
-    fill: Callable[[BinaryIO], object],
-    *,
-    mode: int | None = None,
-    durable: bool = False,
-    before_rename: Callable[[], None] = lambda: None,
-) -> None:
-    """The one atomic writer (review 3, batch 4.4): `fill` writes a file beside `path`,
-    which is renamed over it, so a kill never leaves `path` torn. The mode is set before
-    the rename, so an executable never appears without its bit."""
-    descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix=TEMPORARY_PREFIX)
-    try:
-        with os.fdopen(descriptor, "wb") as handle:
-            fill(handle)
-            if mode is not None:
-                os.fchmod(handle.fileno(), mode)
-            if durable:
-                handle.flush()
-                os.fsync(handle.fileno())
-        before_rename()
-        os.replace(temporary, path)
-    except BaseException:
-        Path(temporary).unlink(missing_ok=True)
-        raise
-
-
-def atomic_install(path: Path, frozen: FrozenFile, boundary: Path | None = None) -> None:
-    """Replace `path` with `frozen`, durably, refusing a link between it and `boundary`
-    (or `/`) before the write and again before the rename."""
-    no_symlinks(path, boundary)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    replace_atomically(
-        path,
-        lambda handle: handle.write(frozen.content),
-        mode=frozen.mode,
-        durable=True,
-        before_rename=lambda: no_symlinks(path, boundary),
-    )
 
 
 def sha256(data: bytes) -> str:

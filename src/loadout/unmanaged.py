@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 from collections.abc import Iterable, Mapping
 from pathlib import Path, PurePosixPath
+from typing import TYPE_CHECKING
 
 from .containment import first_link, protected
 from .destinations import resolve_destination
@@ -20,11 +21,14 @@ from .project import PROJECT_PRESET, load_project_config, project_config_path
 from .runtime_paths import RUNTIME_DIRECTORIES, RUNTIME_FILES, UNMANAGED_NAMES
 from .written import every_recorded_path
 
+if TYPE_CHECKING:
+    from .sync import SyncState
+
 WHOLE_FOLDER_RENDERERS = frozenset({"codex", "codex-project"})
 
 
 def managed_folders(
-    root: Path, profile: str = "default"
+    root: Path, profile: str, *, project: bool
 ) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
     """The folders a declared slice writes into and its harness reads whole, and the
     links found in the way of a project's own, which are reported rather than entered."""
@@ -50,17 +54,17 @@ def managed_folders(
                 ),
             )
         ]
-    if project_config_path(root).is_file():
+    if project:
         config = load_project_config(project_config_path(root))
-        project: list[Path] = []
-        project += [
+        inside: list[Path] = []
+        inside += [
             root / spec.output
             for harness in config.harnesses
             for slice_name in DIRECTORY_SLICES
             for spec in (PROJECT_PRESET[harness].get(slice_name),)
             if spec is not None and spec.output is not None
         ]
-        project += [
+        inside += [
             (root / spec.output).parent
             for harness in config.harnesses
             for spec in PROJECT_PRESET[harness].values()
@@ -68,7 +72,7 @@ def managed_folders(
         ]
         # A committed link can make a project folder any folder on the machine, or the
         # git dir, so a project folder is scanned only where sync would write.
-        for folder in project:
+        for folder in inside:
             link = first_link(root, folder)
             if link is not None:
                 links.append(link)
@@ -101,12 +105,12 @@ def _unaccounted(
 
 
 def unmanaged_entries(
-    root: Path, outputs: Mapping[Path, Output], profile: str = "default"
+    state: SyncState, outputs: Mapping[Path, Output], profile: str = "default"
 ) -> list[Path]:
     """Each file, or whole folder, in a managed folder that no output and no root's
-    record of what it wrote accounts for."""
-    folders, links = managed_folders(root, profile)
-    accounted = frozenset(outputs) | every_recorded_path(folders)
+    record of what it wrote accounts for. This root's record is the one `state` read."""
+    folders, links = managed_folders(state.root, profile, project=state.project)
+    accounted = frozenset(outputs) | every_recorded_path(folders, known=(state.root, state.written))
     return [*links, *_scan(folders, accounted)]
 
 

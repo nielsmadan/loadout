@@ -132,6 +132,26 @@ def test_a_removed_key_the_harness_writes_back_is_stripped_again(
     assert tomllib.loads(target.read_text()) == {"model": "gpt-5"}
 
 
+def test_a_removed_key_the_harness_wrote_back_never_blocks_retiring_its_document(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    """Review 4, batch 2.1: the evicted key has no recorded hash, so retirement judged its
+    value the harness wrote back as an edit to an owned key."""
+    register(tmp_path)
+    fragment = {"model": "gpt-5", "$remove": ["developer_instructions"]}
+    target = _codex(tmp_path, fake_home, fragment, 'tui = "x"\n')
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
+    target.write_text('developer_instructions = "x"\n' + target.read_text())
+    (tmp_path / "loadout.toml").write_text('[[source]]\nname = "test"\npath = "."\n\n[claude]\n')
+    capsys.readouterr()
+
+    assert loadout.main(["check", "--root", str(tmp_path), "--json"]) == 1
+    assert {"path": str(target), "kind": "orphaned"} in json.loads(capsys.readouterr().out)["drift"]
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
+
+    assert tomllib.loads(target.read_text()) == {"tui": "x"}
+
+
 def test_moving_a_removed_key_to_a_managed_value_is_opting_it_in(
     tmp_path: Path, fake_home: Path, capsys
 ) -> None:
@@ -192,6 +212,31 @@ def test_a_record_from_before_owned_hashes_refuses_an_unexplained_value(
     assert loadout.main(["sync", "--root", str(tmp_path)]) == 1
 
     assert tomllib.loads(target.read_text())["model"] == "gpt-5"
+
+
+def test_an_orphan_from_before_owned_hashes_still_judges_every_owned_key(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    """With no per-key hash to skip by, every key it owns is judged against the variants."""
+    register(tmp_path)
+    target = _codex(tmp_path, fake_home, {"model": "gpt-5"}, 'tui = "x"\n')
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
+    record = written_state_path(tmp_path)
+    document = json.loads(record.read_text())
+    for entry in document["written"].values():
+        entry.pop("owned_sha256", None)
+    record.write_text(json.dumps(document))
+    target.write_text(target.read_text().replace("gpt-5", "mine"))
+    (tmp_path / "loadout.toml").write_text('[[source]]\nname = "test"\npath = "."\n\n[claude]\n')
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 1
+
+    assert (
+        f"WARNING: {target} was modified outside loadout and is no longer rendered (unknown)"
+        in (capsys.readouterr().err)
+    )
+    assert tomllib.loads(target.read_text())["model"] == "mine"
 
 
 def test_deleting_every_server_is_flagged_rather_than_written_back(root: Path, capsys) -> None:
@@ -287,3 +332,58 @@ def test_the_sync_abort_for_a_removed_key_says_it_would_be_written_back(root: Pa
         "them back." in err
     )
     assert err.count("Sync aborted") == 1
+
+
+def test_with_no_record_a_removed_key_written_back_is_stripped_without_a_note(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    """Review 4, batch 4.1: an evicted key is never judged, record or no record."""
+    register(tmp_path)
+    fragment = {"model": "gpt-5", "$remove": ["developer_instructions"]}
+    target = _codex(tmp_path, fake_home, fragment, "")
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
+    written_state_path(tmp_path).unlink()
+    target.write_text('developer_instructions = "x"\n' + target.read_text())
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
+
+    assert tomllib.loads(target.read_text()) == {"model": "gpt-5"}
+    assert [line for line in capsys.readouterr().out.splitlines() if "now managed" in line] == []
+
+
+def test_a_newly_managed_key_named_as_a_secret_never_shows_its_value(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    """The value reads as plain text; only the key's name marks it."""
+    register(tmp_path)
+    target = _codex(tmp_path, fake_home, {"model": "gpt-5"}, 'api_token = "plainvalue1"\n')
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
+    _fragment(tmp_path, {"model": "gpt-5", "api_token": "theirs"})
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
+
+    assert f"now managed: api_token in {target} (was another value)" in capsys.readouterr().out
+
+
+def test_a_record_from_before_owned_hashes_names_no_key_newly_managed(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    """With no per-key entry the guard has judged every key, so none is new to it."""
+    register(tmp_path)
+    target = _codex(tmp_path, fake_home, {"model": "gpt-5"}, "")
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
+    record = written_state_path(tmp_path)
+    document = json.loads(record.read_text())
+    for entry in document["written"].values():
+        entry.pop("owned_sha256", None)
+    record.write_text(json.dumps(document))
+    target.write_text('model = "mine"\n')
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--root", str(tmp_path), "--force"]) == 0
+
+    out = capsys.readouterr().out
+    assert f"wrote {target}" in out
+    assert [line for line in out.splitlines() if "now managed" in line] == []

@@ -12,9 +12,10 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from .emit import refuse_unregistered_global
+from . import git_runner
+from .emit import RenderContext, refuse_unregistered_global
 from .errors import LoadoutError
-from .machine import is_registered, registered_source
+from .machine import is_registered, registration
 from .manifest import MANIFEST_NAME
 from .project import PROJECT_CONFIG_NAME, PROJECT_DIR
 from .sources import ARTIFACT_TYPES
@@ -22,16 +23,8 @@ from .worktrees import linked_worktree_source
 
 
 def git(root: Path, *arguments: str, data: bytes | None = None) -> bytes:
-    environment = {**os.environ, "GIT_OPTIONAL_LOCKS": "0"}
-    if environment.get("GIT_INDEX_FILE"):
-        environment["GIT_INDEX_FILE"] = str(Path(environment["GIT_INDEX_FILE"]).absolute())
-    result = subprocess.run(
-        ["git", "-C", str(root), *arguments],
-        input=data,
-        capture_output=True,
-        env=environment,
-        check=False,
-    )
+    # The index git was given is the one inspected, so it alone of git's variables stays.
+    result = git_runner.run(root, *arguments, data=data, keep_index=True)
     if result.returncode:
         raise LoadoutError(
             f"Git {' '.join(arguments[:2])} failed: {result.stderr.decode(errors='replace').strip()}"
@@ -78,12 +71,7 @@ def _snapshot(root: Path, destination: Path, entries: dict[str, Entry]) -> None:
     full, and one request per reply waited a round trip per file (review 3, batch 3.2)."""
     destination.mkdir()
     files = {name: entry for name, entry in entries.items() if entry.mode != "160000"}
-    process = subprocess.Popen(
-        ["git", "-C", str(root), "cat-file", "--batch"],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
-    )
+    process = git_runner.start(root, "cat-file", "--batch", keep_index=True)
     assert process.stdin is not None and process.stdout is not None
     requests = process.stdin
 
@@ -96,6 +84,7 @@ def _snapshot(root: Path, destination: Path, entries: dict[str, Entry]) -> None:
     writer = threading.Thread(target=feed, daemon=True)
     writer.start()
     links = []
+    completed = False
     try:
         for name, entry in files.items():
             target = destination / name
@@ -103,10 +92,12 @@ def _snapshot(root: Path, destination: Path, entries: dict[str, Entry]) -> None:
                 case [oid, b"blob", size] if oid.decode() == entry.oid:
                     content = process.stdout.read(int(size))
                 case _:
-                    raise LoadoutError(
-                        f"cannot read staged blob: {name}; repair the supplied Git index"
-                    )
-            process.stdout.read(1)
+                    content = None
+            # A short read is a blob git stopped sending part way (review 4, batch 2.11).
+            if content is None or len(content) != int(size) or process.stdout.read(1) != b"\n":
+                raise LoadoutError(
+                    f"cannot read staged blob: {name}; repair the supplied Git index"
+                )
             target.parent.mkdir(parents=True, exist_ok=True)
             if entry.mode == "120000":
                 links.append((target, content))
@@ -115,14 +106,19 @@ def _snapshot(root: Path, destination: Path, entries: dict[str, Entry]) -> None:
                 target.chmod(0o755 if entry.mode == "100755" else 0o644)
             else:
                 raise LoadoutError(f"unsupported staged mode {entry.mode}: {name}")
+        completed = True
     finally:
         process.stdout.close()
-        if process.poll() is None and writer.is_alive():
+        # Only a read that failed part way stops git: once every reply is read, the writer
+        # may not have closed git's input yet, and git exits on its own when it does.
+        if not completed and process.poll() is None:
             process.kill()
-        process.wait()
         writer.join()
+        code = process.wait()
         with contextlib.suppress(BrokenPipeError):
             requests.close()
+    if code:
+        raise LoadoutError(f"git cat-file exited {code}; repair the supplied Git index")
     for path, content in links:
         path.symlink_to(os.fsdecode(content))
 
@@ -138,22 +134,90 @@ def _render_inputs(root: Path, relative: Path, entries: dict[str, Entry]) -> dic
     artifact types it uses (review 3, batch 3.2: a source at the repository root wrote
     the whole repository out). Nothing else of the repository is written out."""
     base = PurePosixPath(relative.as_posix())
-    if str(base / PROJECT_DIR / PROJECT_CONFIG_NAME) in entries:
-        source = _prefix(base / PROJECT_DIR)
-
-        def in_project(name: str) -> bool:
-            return (name.rpartition("/")[0] or ".") == str(base) or name.startswith(source)
-
-        return {name: entry for name, entry in entries.items() if in_project(name)}
-    sources = _declared_sources(root, base, entries)
-    own = {str(base), *(str(folder) for folder, _ in sources)}
-    prefixes = tuple(_prefix(folder / kind) for folder, use in sources for kind in sorted(use))
+    project = str(base / PROJECT_DIR / PROJECT_CONFIG_NAME) in entries
+    own = {str(base)}
+    # Folders read whole: a project's `loadout/`, and each source's artifact folders.
+    whole = [base / PROJECT_DIR] if project else []
+    # A dual-scope root renders its global sources too, wherever they sit (review 4, 2.3).
+    declared = (
+        _declared(root, base, entries)
+        if not project or str(base / MANIFEST_NAME) in entries
+        else _Declared([], [])
+    )
+    sources = declared.sources
+    files = {str(path) for path in declared.files}
+    own.update(str(folder) for folder, _ in sources)
+    whole += [folder / kind for folder, use in sources for kind in sorted(use)]
+    prefixes = tuple(_prefix(folder) for folder in whole)
 
     def wanted(name: str) -> bool:
         parent = name.rpartition("/")[0] or "."
-        return parent in own or name.startswith(prefixes)
+        return parent in own or name.startswith(prefixes) or name in files
 
-    return {name: entry for name, entry in entries.items() if wanted(name)}
+    selected = {name: entry for name, entry in entries.items() if wanted(name)}
+    read = [
+        *((folder, True) for folder in whole),
+        *((folder, False) for folder, _ in sources),
+        *((path, True) for path in declared.files),
+    ]
+    return _through_links(root, entries, selected, read)
+
+
+def _through_links(
+    root: Path,
+    entries: dict[str, Entry],
+    selected: dict[str, Entry],
+    folders: list[tuple[PurePosixPath, bool]],
+) -> dict[str, Entry]:
+    """`selected` with what its links inside the repository name: a source folder, an
+    artifact folder or a file that is a link reads its target (review 4, batch 2.3).
+    Each folder is read as `selected` reads it, whole or its files alone."""
+    links = {
+        PurePosixPath(name): entry for name, entry in entries.items() if entry.mode == "120000"
+    }
+    if not links:
+        return selected
+    result = dict(selected)
+    read = [
+        *folders,
+        *((PurePosixPath(name), True) for name in selected if entries[name].mode == "120000"),
+    ]
+    seen: set[tuple[PurePosixPath, bool]] = set()
+    while read:
+        path, whole = read.pop()
+        for link, entry in links.items():
+            if link != path and link not in path.parents:
+                continue
+            # One leaving the repository names no entry; the render refuses it itself.
+            target = posixpath.normpath(str(link.parent / os.fsdecode(_read_blob(root, entry))))
+            mapped = PurePosixPath(target) / path.relative_to(link)
+            result[str(link)] = entry
+            if (mapped, whole) in seen:
+                continue
+            seen.add((mapped, whole))
+            reached = {
+                name: found for name, found in entries.items() if _under(name, mapped, whole)
+            }
+            result.update(reached)
+            read += [
+                (mapped, whole),
+                *((PurePosixPath(n), True) for n, e in reached.items() if e.mode == "120000"),
+            ]
+    return result
+
+
+def _under(name: str, folder: PurePosixPath, whole: bool) -> bool:
+    """Whether `name` is `folder` itself, or in it: anywhere when read whole, else as a
+    file of its own."""
+    if name == str(folder):
+        return True
+    return name.startswith(_prefix(folder)) if whole else name.rpartition("/")[0] == str(folder)
+
+
+def _and_above(name: str) -> list[str]:
+    """`name` and each folder above it, as index entries spell them."""
+    parts = name.split("/")
+    return ["/".join(parts[:end]) for end in range(len(parts), 0, -1)]
 
 
 def _prefix(folder: PurePosixPath) -> str:
@@ -168,28 +232,42 @@ def _ownership_inputs(relative: Path, entries: dict[str, Entry]) -> dict[str, En
     config = str(base / PROJECT_DIR / PROJECT_CONFIG_NAME)
 
     def wanted(name: str) -> bool:
-        path = PurePosixPath(name)
-        return name == config or (path.parent == base and path.suffix == ".toml")
+        parent = name.rpartition("/")[0] or "."
+        return name == config or (parent == str(base) and name.endswith(".toml"))
 
     return {name: entry for name, entry in entries.items() if wanted(name)}
 
 
-def _declared_sources(
-    root: Path, base: PurePosixPath, entries: dict[str, Entry]
-) -> list[tuple[PurePosixPath, frozenset[str]]]:
-    """Each source the manifest or a profile beside it declares, with the artifact types
-    it uses. One that does not parse declares nothing here; the render says why."""
+@dataclass(frozen=True)
+class _Declared:
+    """What the manifest and the profiles beside it name for a render to read: each
+    source with the artifact types it uses, and each permission target's `base` file."""
+
+    sources: list[tuple[PurePosixPath, frozenset[str]]]
+    files: list[PurePosixPath]
+
+
+def _declared(root: Path, base: PurePosixPath, entries: dict[str, Entry]) -> _Declared:
+    """One that does not parse declares nothing here; the render says why."""
     profiles = [
         name
         for name in entries
         if (name.rpartition("/")[0] or ".") == str(base) and name.endswith(".toml")
     ]
     found: list[tuple[PurePosixPath, frozenset[str]]] = []
+    files: list[PurePosixPath] = []
     for name in profiles:
         try:
             document = tomllib.loads(_read_blob(root, entries[name]).decode())
         except (UnicodeDecodeError, tomllib.TOMLDecodeError):
             continue
+        targets = document.get("permissions", {})
+        # A base file outside every source folder (review 4, batch 2.4).
+        files += [
+            PurePosixPath(posixpath.normpath(str(base / block["base"])))
+            for block in (targets.values() if isinstance(targets, dict) else [])
+            if isinstance(block, dict) and isinstance(block.get("base"), str)
+        ]
         sources = document.get("source", [])
         for entry in sources if isinstance(sources, list) else []:
             if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
@@ -201,7 +279,7 @@ def _declared_sources(
                 else ARTIFACT_TYPES
             )
             found.append((PurePosixPath(posixpath.normpath(str(base / entry["path"]))), use))
-    return found
+    return _Declared(found, files)
 
 
 @dataclass(frozen=True)
@@ -263,15 +341,19 @@ def check_staged(root: Path, profile: str = "default") -> int:
     head = _entries(repository, head_ref) if head_ref else {}
     # Case-folded: on a case-insensitive disk the snapshot reads `Loadout.toml` as the manifest.
     # A linked worktree of the registered source renders only into the sandbox below.
-    worktree = linked_worktree_source(root) is not None
+    # One read decides every question about the registration (review 4, batch 2.10).
+    found = registration()
+    worktree = linked_worktree_source(root, found) is not None
     manifest = str(relative / MANIFEST_NAME).casefold()
     if not worktree:
         refuse_unregistered_global(
-            # The index alone: a commit that removes the manifest is what fixes it.
+            # The index alone, never the disk: a commit that removes the manifest, even
+            # one left on disk by `git rm --cached`, is what fixes it.
             root,
+            RenderContext(registration=lambda: found),
             held=any(name.casefold() == manifest for name in staged),
         )
-    registered = worktree or is_registered(root, registered_source())
+    registered = worktree or is_registered(root, found.source)
     check = _Check(repository, relative, profile, registered)
     configs = {str(relative / MANIFEST_NAME), str(relative / PROJECT_DIR / PROJECT_CONFIG_NAME)}
     if not configs.intersection(staged.keys() | head.keys()):
@@ -286,13 +368,13 @@ def check_staged(root: Path, profile: str = "default") -> int:
         _snapshot(repository, head_tree, _ownership_inputs(relative, head))
         owned = set(_inspect(head_tree, check, head))
         owned.update(_inspect(index_tree, check, staged))
-        # A staged path is generated when it, or a folder above it, is an output.
-        generated = {Path(output) for output in owned}
+        # A staged path is generated when it, or a folder above it, is an output. As
+        # strings: a Path and its parents per entry was most of a large index's check.
+        generated = {posixpath.normpath(output) for output in owned}
         changed = [
             path
             for path, entry in staged.items()
-            if head.get(path) != entry
-            and not generated.isdisjoint((Path(path), *Path(path).parents))
+            if head.get(path) != entry and not generated.isdisjoint(_and_above(path))
         ]
         if changed:
             commands = "\n".join(f"  {path}" for path in sorted(changed))

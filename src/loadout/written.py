@@ -31,8 +31,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from .atomic import replace_atomically
 from .machine import config_dir
-from .output import entry_path, file_sha256, replace_atomically, sha256
+from .output import Merged, entry_path, file_sha256, sha256
 from .toml_paths import key_path
 
 VERSION = 1
@@ -161,11 +162,15 @@ def _entry(raw: object) -> WrittenEntry | None:
 
 
 def every_recorded_path(
-    within: Iterable[Path], env: Mapping[str, str] | None = None
+    within: Iterable[Path],
+    env: Mapping[str, str] | None = None,
+    *,
+    known: tuple[Path, Mapping[Path, WrittenEntry]] | None = None,
 ) -> frozenset[Path]:
     """Every destination inside `within` that any root's record names, so one root never
     mistakes another's output there for a file loadout did not write. Only those names
-    become paths: the rest of a record is never scanned."""
+    become paths: the rest of a record is never scanned. `known` is one root's record
+    already read, which is used rather than read again."""
     prefixes = tuple(f"{folder}{os.sep}" for folder in within)
     if not prefixes:
         return frozenset()
@@ -174,7 +179,12 @@ def every_recorded_path(
     except OSError:
         return frozenset()
     paths: set[Path] = set()
+    skipped = written_state_path(known[0], env) if known is not None else None
+    if known is not None:
+        paths.update(path for path in known[1] if str(path).startswith(prefixes))
     for record in records:
+        if record == skipped:
+            continue
         document = _document(record)
         root = _root(document)
         if root is not None and written_state_path(root, env) == record:
@@ -341,17 +351,15 @@ def copied_entry(source: Path, digest: Callable[[Path], str] = file_sha256) -> W
     return WrittenEntry(kind="copied", sha256=digest(source))
 
 
-def merged_entry(
-    owned: Iterable[str], document: str, format_name: str, evicted: Iterable[str] = ()
-) -> WrittenEntry:
-    """`owned` names every key retirement strips; only those loadout writes a value for are
-    hashed, since an evicted key the harness writes back is no edit, and moving it to a
-    managed value is opting it in (review 3, batch 2.1)."""
-    owned = tuple(owned)
-    removed = frozenset(evicted)
-    hashes = owned_hashes(document, [key for key in owned if key not in removed], format_name) or {}
+def merged_entry(merged: Merged) -> WrittenEntry:
+    """Every owned key, which retirement strips; only the guarded ones are hashed, since
+    an evicted key the harness writes back is no edit, and moving it to a managed value is
+    opting it in (review 3, batch 2.1)."""
+    hashes = owned_hashes(merged.document, merged.guarded, merged.format) or {}
     return WrittenEntry(
-        kind="merged", owned=tuple(sorted(owned)), owned_sha256=tuple(sorted(hashes.items()))
+        kind="merged",
+        owned=tuple(sorted(merged.owned)),
+        owned_sha256=tuple(sorted(hashes.items())),
     )
 
 

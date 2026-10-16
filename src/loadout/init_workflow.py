@@ -13,8 +13,7 @@ from typing import Any, Literal, TextIO
 
 import tomlkit
 
-from .containment import refuse_escaping
-from .credentials import redacted_pair
+from .containment import first_link, refuse_escaping
 from .diffs import diff_lines, report_diff
 from .discovery import discover, initialized_project_path, project_root
 from .emit import RenderContext, refuse_unregistered_global, render_all, render_project
@@ -22,6 +21,7 @@ from .errors import LoadoutError, UsageError
 from .harnesses import KNOWN_HARNESSES
 from .init_options import InitOptions
 from .machine import (
+    Registration,
     is_registered,
     load_machine_config,
     machine_config_path,
@@ -181,23 +181,15 @@ def written_through(plan: MigrationPlan, machine: SourceWrite | None) -> tuple[s
         *((machine.path,) if machine else ()),
     )
     links = dict.fromkeys(
-        link for path in destinations if (link := _link_above(path, boundary)) is not None
+        link
+        for path in destinations
+        if path.parent.is_relative_to(boundary)
+        and (link := first_link(boundary, path.parent)) is not None
     )
     return tuple(
         f"{link} is a symlink to {link.resolve()}; loadout writes through it, so the files it "
         f"writes under {link} land in {link.resolve()}."
         for link in links
-    )
-
-
-def _link_above(path: Path, boundary: Path) -> Path | None:
-    return next(
-        (
-            ancestor
-            for ancestor in reversed(path.parents)
-            if ancestor != boundary and ancestor.is_relative_to(boundary) and ancestor.is_symlink()
-        ),
-        None,
     )
 
 
@@ -296,8 +288,8 @@ def _show_render(changes: tuple[RenderedChange, ...]) -> None:
     if updates:
         print(f"Render changes {len(updates)} existing file(s); applying overwrites them:")
         for change in updates:
-            actual, expected = _redacted(change)
-            report_diff(diff_lines(str(change.path), actual, expected, context=1), sys.stdout)
+            lines = diff_lines(str(change.path), change.actual, change.expected, context=1)
+            report_diff(lines, sys.stdout)
     elif not any(c.kind == "normalised" for c in changes):
         print("Render: loadout reproduces your setup exactly.")
     for change in changes:
@@ -305,12 +297,6 @@ def _show_render(changes: tuple[RenderedChange, ...]) -> None:
             print(f"Normalise: {change.path} (only loadout's banner or formatting changes)")
         if change.kind == "create":
             print(f"Create: {change.path}")
-
-
-def _redacted(change: RenderedChange) -> tuple[str, str]:
-    """Both sides of a change with every secret either holds replaced: the preview warns
-    about a secret by name, and its diff must not print the value beside the warning."""
-    return redacted_pair(change.actual, change.expected, change.path.suffix[1:])
 
 
 def _render_profile(plan: MigrationPlan) -> str:
@@ -361,7 +347,7 @@ def _planned_render(
         path.write_bytes(write.content)
         path.chmod(write.mode)
     # init registers the source it plans, so its scratch copy may render global scope.
-    context = RenderContext(registered=lambda: scratch)
+    context = RenderContext(registration=lambda: Registration(scratch))
     rendered = list(_render(plan, scratch, profile, context))
     if plan.inventory.scope == "project":
         # Before an original is copied in: a link in the project would be read through.
@@ -656,7 +642,13 @@ def _planned(
 
 def _failed(backup: Backup, reason: str, *, as_json: bool) -> int:
     restored = restore(backup)
-    message = f"init failed ({reason}); what it changed was restored from {backup.directory}"
+    # Never a backup the restore spent (review 4, batch 2.6).
+    where = (
+        f"restored from {backup.directory}"
+        if backup.directory.exists()
+        else "restored, and the spent backup was removed"
+    )
+    message = f"init failed ({reason}); what it changed was {where}"
     if as_json:
         _envelope("restored", 1, error=reason, **_restore_report(restored, backup))
     print(f"loadout: {message}", file=sys.stderr)
@@ -678,7 +670,7 @@ def _restore_report(restored: Restored, backup: Backup) -> dict[str, object]:
 def _print_kept(restored: Restored, stream: TextIO) -> None:
     for path in restored.kept:
         if path not in restored.links:
-            print(f"Kept, {restored.reasons.get(path, 'not init to undo')}: {path}", file=stream)
+            print(f"Kept, {restored.reasons.get(path, "not init's to undo")}: {path}", file=stream)
     for path, target in restored.links.items():
         print(f"{path} used to link to {target}; it stays a directory for now.", file=stream)
     if restored.kept:

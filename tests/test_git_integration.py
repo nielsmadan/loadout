@@ -288,48 +288,79 @@ def test_hook_installation_preserves_occupied_shared_and_other_source_hooks(repo
 
 
 @pytest.mark.parametrize("custom", [False, True])
-def test_main_checkout_preserves_hooks_shared_with_linked_worktrees(
-    repo, tmp_path_factory, capsys, custom
+@pytest.mark.parametrize("from_linked", [False, True])
+def test_install_writes_a_hooks_directory_shared_with_linked_worktrees(
+    repo, tmp_path_factory, capsys, custom, from_linked
 ):
+    """Review 4, ruling on batch 1: the shared directory was preserved from every
+    worktree with exit 0, so a repository with worktrees never got its hooks. The hook
+    finds its worktree's top level when it runs, so one install serves them all."""
     _project(repo)
     _commit(repo, "loadout")
     directory = repo / ("custom-hooks" if custom else ".git/hooks")
     if custom:
         _git(repo, "config", "core.hooksPath", str(directory))
     linked = tmp_path_factory.mktemp("shared-main-hooks") / "linked"
-    _git(repo, "worktree", "add", "--no-checkout", "-qb", "linked", str(linked))
+    _git(repo, "worktree", "add", "-qb", "linked", str(linked))
     main_plan, linked_plan = plan_hooks(repo), plan_hooks(linked)
     assert main_plan.directory == linked_plan.directory == directory
-    assert main_plan.hooks[0].status == "shared"
-    assert linked_plan.hooks[0].status == "shared"
-    install_hooks(repo)
-    diagnostic = capsys.readouterr().out
-    assert main_plan.hooks[0].command in diagnostic
-    assert "repo=$(git rev-parse --show-toplevel)" in diagnostic
-    assert not (directory / "pre-commit").exists()
+    assert (main_plan.placement, main_plan.hooks[0].status) == ("shared", "install")
+
+    assert install_hooks(linked if from_linked else repo) == 0
+
+    out = capsys.readouterr().out
+    assert f"Hooks directory {directory} is shared by every worktree of this repository" in out
+    assert (directory / "pre-commit").read_bytes() == main_plan.hooks[0].content
+    assert [plan_hooks(r).hooks[0].status for r in (repo, linked)] == ["managed", "managed"]
+
+
+def test_a_worktree_specific_hooks_path_is_this_worktree_s_alone(repo, tmp_path_factory):
+    _project(repo)
+    _commit(repo, "loadout")
+    linked = tmp_path_factory.mktemp("own-hooks") / "linked"
+    _git(repo, "worktree", "add", "--no-checkout", "-qb", "linked", str(linked))
     _git(repo, "config", "extensions.worktreeConfig", "true")
     _git(linked, "config", "--worktree", "core.hooksPath", ".linked-hooks")
-    assert plan_hooks(repo).hooks[0].status == "install"
+
+    assert plan_hooks(repo).placement == "local"
     install_hooks(repo)
     assert plan_hooks(repo).hooks[0].status == "managed"
-    assert (directory / "pre-commit").read_bytes() == main_plan.hooks[0].content
 
 
-def test_standalone_install_rechecks_hook_sharing_after_preview(
+def test_standalone_install_rechecks_the_hooks_directory_after_preview(
     repo, tmp_path_factory, monkeypatch
 ):
     _project(repo)
     _commit(repo, "loadout")
-    linked = tmp_path_factory.mktemp("late-sharing") / "linked"
+    outside = tmp_path_factory.mktemp("late-external")
 
-    def share(preview):
+    def move(preview):
         assert preview["hooks"][0]["status"] == "install"
-        _git(repo, "worktree", "add", "--no-checkout", "-qb", "linked", str(linked))
+        _git(repo, "config", "core.hooksPath", str(outside))
 
-    monkeypatch.setattr("loadout.git_hooks.show_hooks", share)
+    monkeypatch.setattr("loadout.git_hooks.show_hooks", move)
     with pytest.raises(LoadoutError, match="effective hook directory changed"):
         install_hooks(repo)
     assert not (repo / ".git/hooks/pre-commit").exists()
+    assert list(outside.iterdir()) == []
+
+
+def test_standalone_install_rechecks_a_directory_linked_away_after_preview(
+    repo, tmp_path_factory, monkeypatch
+):
+    """The configured path, now a link out of the repository: git reports it resolved."""
+    _project(repo)
+    _commit(repo, "loadout")
+    _git(repo, "config", "core.hooksPath", "custom-hooks")
+    outside = tmp_path_factory.mktemp("linked-away")
+
+    def link(preview):
+        (repo / "custom-hooks").symlink_to(outside)
+
+    monkeypatch.setattr("loadout.git_hooks.show_hooks", link)
+    with pytest.raises(LoadoutError, match="effective hook directory changed"):
+        install_hooks(repo)
+    assert not (outside / "pre-commit").exists()
 
 
 def test_missing_loadout_on_path_explains_completed_checkout(repo, tmp_path_factory):
@@ -386,8 +417,12 @@ def test_uninstall_still_removes_a_hook_after_a_worktree_is_added(repo, tmp_path
 
     linked = tmp_path_factory.mktemp("added-later") / "linked"
     _git(repo, "worktree", "add", "--no-checkout", "-qb", "linked", str(linked))
-    planned = plan_hooks(repo).hooks[0]
-    assert (planned.status, planned.owned) == ("shared", True)
+    plan = plan_hooks(repo)
+    assert (plan.placement, plan.hooks[0].status, plan.hooks[0].owned) == (
+        "shared",
+        "managed",
+        True,
+    )
     assert hook.read_bytes() == written
 
     assert uninstall_hooks(repo, yes=True) == 0

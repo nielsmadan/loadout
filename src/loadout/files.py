@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import stat
 from collections.abc import Callable, Iterable, Mapping
@@ -9,9 +10,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO, Literal, assert_never
 
+from .atomic import replace_atomically
+from .credentials import credential_material
 from .errors import LoadoutError
-from .output import Copied, FrozenFile, Merged, Output, file_sha256, replace_atomically, sha256
-from .surgery import apply_json, apply_toml
+from .output import Copied, FrozenFile, Merged, Output, file_sha256, sha256
+from .surgery import apply
 from .written import owned_values
 
 # What the guard refuses an output for, so sync and check name a refusal alike.
@@ -35,25 +38,62 @@ class Drift:
     kind: DriftKind
 
 
-def _write_through(path: Path, fill: Callable[[BinaryIO], object], mode: int | None) -> None:
+def _target(path: Path) -> Path:
     # A destination is often a symlink into the user's config repo (the pre-loadout
     # deployment mechanism). os.replace() on a symlink replaces the link itself, not
     # its target — write through the link instead, so the symlink survives sync.
-    target = path.resolve() if path.is_symlink() else path
-    replace_atomically(target, fill, mode=mode)
+    return path.resolve() if path.is_symlink() else path
+
+
+def _write_through(path: Path, fill: Callable[[BinaryIO], object], mode: int) -> None:
+    replace_atomically(_target(path), fill, mode=mode)
+
+
+SECRET_MODE = 0o600
+
+
+def text_mode(existing: int | None, content: bytes, format_name: str, umask: int) -> int:
+    """A text output's mode (review 4, batch 1.4): a file replaced keeps the mode it has,
+    so a chmod survives; a new one gets what the umask allows, or owner-only when it
+    holds a secret the credential check recognises."""
+    if existing is not None:
+        return existing
+    if credential_material(content, format_name) is not None:
+        return SECRET_MODE
+    return 0o666 & ~umask
+
+
+def _existing_mode(path: Path) -> int | None:
+    try:
+        return stat.S_IMODE(path.stat().st_mode)
+    except FileNotFoundError:
+        return None
+
+
+def process_umask() -> int:
+    """The umask, which can only be read by setting it, so it is set straight back."""
+    mask = os.umask(0o077)
+    os.umask(mask)
+    return mask
 
 
 def atomic_write(path: Path, content: str) -> None:
-    _write_through(path, lambda handle: handle.write(content.encode("utf-8")), None)
+    target = _target(path)
+    data = content.encode("utf-8")
+    mode = text_mode(_existing_mode(target), data, target.suffix[1:], process_umask())
+    replace_atomically(target, lambda handle: handle.write(data), mode=mode)
 
 
-def write_outputs(outputs: Mapping[Path, Output]) -> list[Path]:
+def write_outputs(
+    outputs: Mapping[Path, Output], sources: Callable[[Path], str] | None = None
+) -> list[Path]:
+    """`sources` is a digest of copied sources a caller already reads them through."""
     frozen: dict[Path, str | FrozenFile | Copied] = {}
     for path, content in outputs.items():
         frozen.update(_frozen(path, content))
     written: list[Path] = []
     for path, frozen_content in frozen.items():
-        if _unchanged(path, frozen_content):
+        if _unchanged(path, frozen_content, sources):
             continue
         path.parent.mkdir(parents=True, exist_ok=True)
         match frozen_content:
@@ -81,11 +121,13 @@ def _frozen(path: Path, content: Output) -> dict[Path, str | FrozenFile | Copied
             assert_never(content)
 
 
-def _unchanged(path: Path, content: str | FrozenFile | Copied) -> bool:
+def _unchanged(
+    path: Path, content: str | FrozenFile | Copied, sources: Callable[[Path], str] | None
+) -> bool:
     """Same bytes already there, so rewriting would only move the mtime."""
     match content:
         case Copied() | FrozenFile():
-            return copy_matches(path, content)
+            return copy_matches(path, content, sources)
         case str():
             return path.is_file() and path.read_bytes() == content.encode("utf-8")
         case _:
@@ -101,8 +143,10 @@ def check_all(outputs: Mapping[Path, Output]) -> list[Drift]:
         drift.append(Drift(path=path, actual=actual, expected=expected, kind="source-changed"))
 
     def text_differs(path: Path, expected: str, newline: str | None = "") -> None:
-        actual = path.read_text(encoding="utf-8", newline=newline) if path.is_file() else ""
-        if actual != expected:
+        actual = read_document(path, newline) if path.is_file() else ""
+        if actual is None:
+            differs(path, shown_document(path), expected)
+        elif actual != expected:
             differs(path, actual, expected)
 
     for path, expected in outputs.items():
@@ -112,7 +156,7 @@ def check_all(outputs: Mapping[Path, Output]) -> list[Drift]:
                     differs(path, describe_file(path), describe_copy(expected))
             case Merged():
                 if unparsable(path, expected):
-                    actual = path.read_text(encoding="utf-8", newline="")
+                    actual = shown_document(path)
                     replacement = applied_document(path, expected, replace_unparsable=True)
                     drift.append(
                         Drift(path=path, actual=actual, expected=replacement, kind="unparsable")
@@ -133,16 +177,24 @@ def check_all(outputs: Mapping[Path, Output]) -> list[Drift]:
 CHUNK = 1 << 20
 
 
-def copy_matches(path: Path, copy: Copied | FrozenFile) -> bool:
+def copy_matches(
+    path: Path, copy: Copied | FrozenFile, sources: Callable[[Path], str] | None = None
+) -> bool:
     """Whether `path` already holds `copy`: its bytes and every mode bit. The one rule
-    check, the preview and the writer share, so none of them disagrees about a copy."""
+    check, the preview and the writer share, so none of them disagrees about a copy.
+    With `sources`, a copy's source is compared by the digest it already has, so a sync
+    reads each source once (review 4, batch 3.4)."""
     if not path.is_file():
         return False
     if stat.S_IMODE(path.stat().st_mode) != _mode(copy):
         return False
     if isinstance(copy, FrozenFile):
         return path.read_bytes() == copy.content
-    return _same_bytes(path, copy.source)
+    if sources is None:
+        return _same_bytes(path, copy.source)
+    return path.stat().st_size == copy.source.stat().st_size and file_sha256(path) == sources(
+        copy.source
+    )
 
 
 def _mode(copy: Copied | FrozenFile) -> int:
@@ -216,6 +268,21 @@ def document_format(path: Path) -> str:
     return "json" if path.suffix == ".json" else "toml"
 
 
+def read_document(path: Path, newline: str | None = "") -> str | None:
+    """The one reader of a document loadout shares with a harness: its text, or None when
+    it is not UTF-8, which no parser reads and every caller takes as unparsable (review 4,
+    batch 1.5)."""
+    try:
+        return path.read_text(encoding="utf-8", newline=newline)
+    except UnicodeDecodeError:
+        return None
+
+
+def shown_document(path: Path) -> str:
+    """A shared document as a diff shows it, whatever bytes it holds."""
+    return path.read_bytes().decode("utf-8", errors="replace")
+
+
 def unparsable(path: Path, merged: Merged) -> bool:
     """Whether the shared document on disk can no longer hold loadout's keys."""
     return unparsable_as(path, merged.format, merged.owned)
@@ -224,11 +291,8 @@ def unparsable(path: Path, merged: Merged) -> bool:
 def unparsable_as(path: Path, format_name: str, owned: Iterable[str]) -> bool:
     if not path.is_file():
         return False
-    try:
-        text = path.read_text(encoding="utf-8", newline="")
-    except UnicodeDecodeError:
-        return True
-    return owned_values(text, owned, format_name) is None
+    text = read_document(path)
+    return text is None or owned_values(text, owned, format_name) is None
 
 
 def refuse_unparsable(outputs: Mapping[Path, Output]) -> None:
@@ -256,10 +320,9 @@ def applied_document(path: Path, merged: Merged, *, replace_unparsable: bool = F
     """The destination with loadout's keys written in. The caller reads the file;
     the renderer that produced `merged` never did (ADR 0001). A document that does not
     parse has nothing to preserve, so it is replaced only when asked to be."""
-    existing = path.read_text(encoding="utf-8", newline="") if path.is_file() else ""
-    if unparsable(path, merged):
+    existing = read_document(path) if path.is_file() else ""
+    if existing is None or unparsable(path, merged):
         if not replace_unparsable:
             raise UnparsableDocument(path, merged.format)
         existing = ""
-    apply = apply_json if merged.format == "json" else apply_toml
-    return apply(existing, merged.owned, merged.document)
+    return apply(merged.format, existing, merged.owned, merged.document)
