@@ -1,7 +1,8 @@
 # Releasing Loadout
 
-Loadout's release flow is adapted from Splashdown. `just release` prepares a version and
-pushes its tag. GitHub Actions tests the package, publishes a GitHub Release and updates
+Loadout's release flow is adapted from Splashdown. `just release` runs
+[curtains](https://github.com/nielsmadan/curtaincall), which prepares a version and pushes its
+tag. GitHub Actions tests the package, publishes a GitHub Release and updates
 `Formula/loadout.rb` in `nielsmadan/homebrew-tap`. PyPI publication is not part of this flow:
 the PyPI name `loadout` belongs to another project.
 
@@ -22,10 +23,13 @@ The tap repository itself must exist and allow the token to push to `main`.
 
 ## Preview and release
 
-Use a clean `main` checkout with complete Git history and local tags matching origin. The
-checkout must include all origin commits. Python 3.13+, Git, Just and uv/uvx are required. The
-release runs on Git alone and needs no GitHub CLI or API access. Run a release only when
-publication is intended.
+Install curtains first with `brew install nielsmadan/tap/curtaincall` (see
+[curtaincall](https://github.com/nielsmadan/curtaincall)). Use a clean `main` checkout with
+complete Git history. Every `vMAJOR.MINOR.PATCH` tag, not just the latest, must exist both
+locally and on origin and point to the same commit. Curtains never fetches: the fetched
+`origin/main` must be an ancestor of `HEAD`, so fetch deliberately before releasing. Python
+3.13+, Git 2.45+, Just and uv/uvx are required. The release runs on Git alone and needs no
+GitHub CLI or API access. Run a release only when publication is intended.
 
 ```sh
 just release --dry-run
@@ -34,19 +38,22 @@ just release patch
 just release 0.1.0
 ```
 
-The dry run inspects Git state and prints the proposal without running checks or changing
-files. A normal release runs `just check` and `just build-docs`, then shows the proposed
-version, files and publication steps. Enter `y` to proceed, another version or bump to revise
-the proposal, or Enter to cancel. `--yes` explicitly bypasses the prompt for automation.
+The dry run inspects Git state and prints the proposal without changing files. It skips the
+tool check and every policy command, including the checks and the git-cliff version suggestion,
+so its proposal is curtains' built-in conventional-commit estimate. A normal release runs
+`just check` and `just build-docs`, then shows the proposed version, files and publication
+steps. Enter `y` to proceed, another version or bump to revise the proposal, or Enter to cancel.
+`--yes` explicitly bypasses the prompt for automation.
 
 The first release defaults to `0.1.0`. Later proposals use git-cliff: `feat` produces a minor
 bump, `fix` a patch, and breaking changes a minor bump while the version is `0.x`.
 
-After confirmation, the script updates both version fields, refreshes `uv.lock`, generates
-`CHANGELOG.md`, commits those files, creates an annotated `vVERSION` tag and atomically pushes
-the branch and that tag. Existing local commits are included and counted in the preview.
-The command returns once the push succeeds and prints the workflow and release URLs; publication
-then runs asynchronously on GitHub. A successful command confirms the push, not the publication.
+After confirmation, curtains runs `scripts/prepare_release.py` to update both version fields,
+refreshes `uv.lock`, generates `CHANGELOG.md`, commits those files, creates an annotated
+`vVERSION` tag and atomically pushes the branch and that tag. Existing local commits are
+included and counted in the preview. The command returns once the push succeeds and prints the
+workflow and release URLs; publication then runs asynchronously on GitHub. A successful command
+confirms the push, not the publication.
 
 `CHANGELOG.md` is generated from commit history through `cliff.toml`; do not edit it by hand.
 Use `just changelog` to regenerate it. Update the lockfile before committing the version.
@@ -99,20 +106,21 @@ uv tool install --python 3.13 git+https://github.com/nielsmadan/loadout.git@v0.1
 
 ## Maintenance and recovery
 
-`scripts/release.json` configures the release driver. `scripts/prepare_release.py` maintains
+`scripts/release.json` is the curtains release policy. `scripts/prepare_release.py` maintains
 the versions, and `scripts/homebrew.py` renders `scripts/loadout.rb.in` using the lockfile.
 The template and lockfile are the formula source; subsequent releases replace the tap copy.
 Update the template's Python dependency when changing the supported Homebrew runtime.
 
-Use `just build` to check packaging locally. Tests for release preparation and publication
-safeguards live in `tests/test_release*.py`; formula generation is covered by
-`tests/test_homebrew.py`. Release-driver tests publish only to disposable local Git repositories.
+Use `just build` to check packaging locally. Version preparation is tested in
+`tests/test_release_prepare.py`, and `tests/test_release_config.py` checks that the policy's
+checks name real Justfile recipes; formula generation is covered by `tests/test_homebrew.py`.
 
-A failed preparation or push leaves local changes, commits and tags available for inspection.
-A failed GitHub workflow leaves the remote tag in place. Fix the cause, then use **Re-run
-failed jobs** on that workflow. If the tap update fails after publication, rerun only its
-failed job; the GitHub release already exists. Do not rerun the successful publication job
-or replace a public tag. Changes that require new source code need a new release tag.
+A failed preparation or push leaves local changes, commits and tags available for inspection;
+curtains does not automatically resume. A failed GitHub workflow leaves the remote tag in place.
+Fix the cause, then use **Re-run failed jobs** on that workflow. If the tap update fails after
+publication, rerun only its failed job; the GitHub release already exists. Do not rerun the
+successful publication job or replace a public tag. Changes that require new source code need a
+new release tag.
 
 GitHub retains build outputs as workflow artifacts. Routine verification results stay in
 the workflow logs and conversation, rather than dated reports in the repository.
