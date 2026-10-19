@@ -92,21 +92,33 @@ loadout init global ~/agent-config
 Scope is a subcommand: `init project` for a repository, `init global` for machine-wide
 configuration. `init global [DIR]` takes the directory as an optional argument, like
 `git init [dir]`, and defaults to the current directory, so a bare `init global` adopts the cwd. `--root` exists only on `init project`; `--registration keep|replace` only on `init global`. At the registered global source that also holds a project, `init project` previews, compares and writes the project's outputs alone; the global ones stay for `sync`. Keeping another registration while init sets up a new source exits 3 before writing anything: the first sync renders global scope, which only the registered source may.
-`loadout init restore [--yes] [--json]` puts back everything the latest init changed, from the
-backup it took first; a path changed since that init is kept and reported, and the exit code is 1.
-An init that was killed part way is offered for restore by the next `init`, which otherwise exits
-2 with `"status": "interrupted"` under `--json`.
+Init either converts or puts everything back. It backs up every path it will touch first and
+deletes that backup when it succeeds. If applying or the first render fails, Ctrl-C included,
+it puts every path back from the backup, deletes it and exits 1. After such a failure, and when
+the plan cannot complete (exit 2), it recommends doing the conversion with the bundled `/loadout`
+skill. At a terminal it asks whether to copy the skill into the user skills folder of each
+harness being converted; without one, or under `--json`, it prints the command instead. A refusal
+that only needs `--harness`, a scope or `--registration` names that option and not the skill.
+An init killed part way leaves its backup, and the next `init` puts it back before anything else:
+at a terminal it asks first, and without one it exits 2 with `"status": "interrupted"`.
 
-Under `--json`, `init` and `init restore` print one JSON object on stdout, whatever happens. It
-always has `status` and `exit_code`, the code the command exits with:
+`loadout integrate skill copy --harness NAME` (repeatable) copies the bundled skill as it is into
+`~/.claude/skills/loadout` for Claude, `~/.factory/skills/loadout` for Droid and
+`~/.agents/skills/loadout` for Codex, OpenCode and Pi, following `CLAUDE_CONFIG_DIR` and
+`FACTORY_HOME_OVERRIDE`. It is a plain copy: no source holds it and `sync` never touches it. An
+identical copy already there is left as it is; one that differs is refused before anything is
+copied, exit 3. It then says how to start the skill in each harness.
+
+Under `--json`, `init` prints one JSON object on stdout, whatever happens. It always has
+`status` and `exit_code`, the code the command exits with:
 
 | `status` | `exit_code` | When |
 | --- | --- | --- |
 | `preview` | 0 | `--dry-run`: the plan, with every planned write, `secrets`, and `outputs`, each with its `change`: `identical`, `normalised` (only loadout's banner or formatting differs), `update` or `create` |
-| `incomplete` | 2 | the plan needs a choice or a fix; `issues` names each |
-| `complete` | 0 | applied; `backup`, `written` (the source), `rendered` (the generated files), `untracked`, `already_initialized`, `delinked`, `unadopted` and `secrets` |
-| `restored` | 1 from init, 0 or 1 from `init restore` | the backup was restored; `restored` names what was put back, `kept` and `links` name what stayed, `reasons` says why for each kept path, `backup` is `null` once the backup is spent, and init adds `error` |
-| `interrupted` | 2 | an earlier init did not finish; `backup` names it and `error` says what to do |
+| `incomplete` | 2 | the plan needs a choice or a fix; `issues` names each, and unless every issue is a choice an option makes, `recommendation` and `install_command` name the skill and the command that copies it |
+| `complete` | 0 | applied; `written` (the source), `rendered` (the generated files), `untracked`, `already_initialized`, `delinked`, `unadopted` and `secrets` |
+| `restored` | 1 | init failed and put every path back; `error` says why, `restored` names what was put back, and `recommendation` and `install_command` are as for `incomplete` |
+| `interrupted` | 2, or 1 | an earlier init was killed part way (2), or this one failed and could not put everything back (1); `backup` names the backup and `error` says what to do |
 | `error` | 2, 3 or 4 | a usage error (an unknown option or `--harness` name included), a source error, or an unexpected one; `error` holds the message |
 
 Fresh project initialisation uses explicit `--harness` options, then the machine configuration's
@@ -170,9 +182,10 @@ loadout integrate skill install
 loadout integrate skill install --yes
 loadout integrate skill status
 loadout integrate skill uninstall
+loadout integrate skill copy --harness claude --harness codex
 ```
 
-All three commands accept `--profile NAME` and `--source NAME`. `--source` names a declared
+`install`, `status` and `uninstall` accept `--profile NAME` and `--source NAME`. `--source` names a declared
 `[[source]]` from the manifest; it is not a directory.
 
 `install` and `uninstall` accept `--yes` to apply the displayed change without a prompt.
@@ -180,6 +193,9 @@ They operate on the global source and synchronise the selected profile.
 
 Installation and removal protect edited skill copies. An unchanged installed copy can be
 upgraded or removed; a conflicting local edit is reported for review.
+
+`copy` needs no source: it copies the skill into each named harness's user skills folder for a
+conversion `init` could not do, as [Initialise](#initialise) describes.
 
 ### Git hooks
 

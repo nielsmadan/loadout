@@ -22,7 +22,6 @@ from loadout.written import (
     accepts_bytes,
     accepts_text,
     every_recorded_path,
-    forget_written,
     normalise,
     owned_values,
     read_written,
@@ -161,17 +160,6 @@ def test_a_record_write_that_fails_leaves_the_last_record_whole(
     assert sorted(p.name for p in written_state_path(tmp_path).parent.iterdir()) == [
         written_state_path(tmp_path).name
     ]
-
-
-def test_forgetting_leaves_a_record_from_another_version_alone(tmp_path: Path) -> None:
-    """Review 2, 4.1: the record has one reader's rules, the version check included."""
-    record = tmp_path / "record.json"
-    document = {"version": 99, "written": {str(tmp_path / "a"): {"kind": "text"}}}
-    record.write_text(json.dumps(document))
-
-    forget_written(record, [tmp_path / "a"], created=True)
-
-    assert json.loads(record.read_text()) == document
 
 
 def test_only_the_recorded_paths_inside_the_folders_asked_about_are_read(tmp_path: Path) -> None:

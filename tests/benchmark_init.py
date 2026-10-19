@@ -52,9 +52,6 @@ def run_case(directory: Path, count: int) -> dict:
     )
     if result["timeout"]:
         result["correctness"] = "not completed; censored failure"
-        result["restore"] = command(
-            ["init", "restore", "--yes", "--json"], environment, logs, "restore"
-        )
         return result
     assert_exit(result)
     for name, content in expected.items():

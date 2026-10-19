@@ -41,6 +41,7 @@ Install the version-matched `loadout` skill into the configured global Loadout s
     loadout integrate skill install --yes    # non-interactive
     loadout integrate skill status
     loadout integrate skill uninstall        # remove the owned source copy and generated outputs
+    loadout integrate skill copy --harness claude  # a plain copy for each harness, outside any source
 
 The command reads the machine config and active profile and vendors a normal `skills/loadout/`
 source copy. An existing copy is selected using the same declared overrides as rendering;
@@ -229,9 +230,13 @@ Unresolved previews exit 2 without mutation. Supported configurations get a read
 source and output writes, private exclusions and removals before approval. Before its first write,
 init backs up every path it will touch to `$XDG_STATE_HOME/loadout/backups/` (default
 `~/.local/state`): file contents and modes, symlinks, directories, and the Git index when it
-untracks generated files. If init fails it restores that backup itself; if it is killed, the next
-init offers the restore. `loadout init restore --yes` undoes the latest adoption, keeping any path
-changed since. Init commits nothing and stages nothing: in a project it only removes the generated
+untracks generated files. The backup lasts one run: init either converts or puts everything back.
+A success deletes it, and a failure puts every path back from it, removes a repository or folder
+init created, and exits 1. After a failure, or a preview init cannot complete, init recommends
+doing the conversion with the bundled `/loadout` skill; at a terminal it offers to copy the skill
+into each harness's user skills folder, and otherwise prints the command that does,
+`loadout integrate skill copy --harness NAME`. If init is killed part way, the next init puts the
+backup back first, asking at a terminal and refusing without one. Init commits nothing and stages nothing: in a project it only removes the generated
 files it adds to `.gitignore` from the index, and it never creates a project's repository. A new
 global source gets its own repository, and init suggests the commit. Choose a dedicated directory;
 a new source repository at HOME or the filesystem root is refused.
@@ -924,7 +929,7 @@ Full detail, including the content-hash definition: [docs/reference/templates.md
 | Code | Meaning |
 | ---- | ------- |
 | 0 | clean — nothing to do, or drift check found no differences |
-| 1 | drift, refused safe update, an init that failed and restored itself, or a restore that kept paths |
-| 2 | usage error, unresolved init choices, missing noninteractive approval, or an interrupted init found by the next one |
+| 1 | drift, refused safe update, or an init that failed and put everything back |
+| 2 | usage error, an init plan that cannot complete, missing noninteractive approval, or an init killed part way, found by the next one |
 | 3 | source error — missing or invalid input, unsafe destination, or ownership collision |
 | 4 | internal error — an unexpected exception; a traceback is printed to stderr |

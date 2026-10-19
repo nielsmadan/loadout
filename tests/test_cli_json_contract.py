@@ -69,23 +69,6 @@ def test_init_without_yes_under_json_is_a_usage_error_object(tmp_path: Path, cap
     }
 
 
-def test_init_restore_without_yes_under_json_is_a_usage_error_object(
-    tmp_path: Path, capsys
-) -> None:
-    (tmp_path / "AGENTS.md").write_text("rules\n")
-    init = ["init", "project", "--root", str(tmp_path), "--harness", "codex", "--yes"]
-    assert loadout.main(init) == 0
-    capsys.readouterr()
-
-    assert loadout.main(["init", "restore", "--json"]) == 2
-
-    assert _one_object(capsys) == {
-        "status": "error",
-        "exit_code": 2,
-        "error": "init restore requires --yes",
-    }
-
-
 def test_an_argument_error_in_check_json_prints_the_object(capsys) -> None:
     assert loadout.main(["check", "--json", "--bogus"]) == 2
 

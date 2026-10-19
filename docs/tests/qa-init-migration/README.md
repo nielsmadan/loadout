@@ -1,6 +1,6 @@
 # Init migration CLI QA
 
-Run this after changing onboarding, backup and restore behavior, source routing or bundled
+Run this after changing onboarding, what init puts back on failure, source routing or bundled
 skill installation. It exercises the current checkout through `python -m loadout`, using
 disposable repositories and the existing fake-home fixtures in
 [conftest.py](../../../tests/conftest.py). It never installs into real agent destinations.
@@ -40,7 +40,7 @@ The records identify init backups by path but do not copy their private contents
 | PTY decline and SIGINT at confirmation | Actual pending prompt appears; either cancellation leaves source and Git unchanged |
 
 Tests stop their own child processes. Failed fixture state is retained by pytest for inspection;
-do not reset or clean the development checkout. A failed or killed init is restored from its
+do not reset or clean the development checkout. A failed or killed init is put back from its
 backup; `tests/test_init_backup.py` covers that, so this procedure has no fault scenarios.
 
 ## Complementary evidence

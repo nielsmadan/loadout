@@ -33,7 +33,7 @@ from typing import Any, Literal
 
 from .atomic import replace_atomically
 from .machine import config_dir
-from .output import Merged, entry_path, file_sha256, sha256
+from .output import Merged, file_sha256, sha256
 from .toml_paths import key_path
 
 VERSION = 1
@@ -305,30 +305,6 @@ def _write_record(path: Path, document: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps(document, indent=2) + "\n"
     replace_atomically(path, lambda handle: handle.write(text.encode("utf-8")))
-
-
-def forget_written(record: Path, reverted: Iterable[Path], *, created: bool) -> None:
-    """Drop the reverted destinations from a write record, keeping everything else it
-    says, so a file init wrote that stays is still known as loadout's. A record that
-    does not parse is left alone: without one the guard accepts less, never more. One
-    `created` with the run and emptied by this is removed."""
-    document = _document(record)
-    if (
-        not isinstance(document, dict)
-        or document.get("version") != VERSION
-        or not isinstance(document.get("written"), dict)
-    ):
-        return
-    gone = {entry_path(path) for path in reverted}
-    remaining = {
-        key: value
-        for key, value in document["written"].items()
-        if entry_path(Path(key)) not in gone
-    }
-    if not remaining and created:
-        record.unlink()
-        return
-    _write_record(record, {**document, "written": remaining})
 
 
 def accepts_text(entry: WrittenEntry | None, path: Path, actual: str) -> bool:

@@ -31,9 +31,10 @@ from .git_hook_commands import run_hook
 from .git_hooks import EVENTS, install_hooks, status_hooks, uninstall_hooks
 from .harnesses import KNOWN_HARNESSES
 from .init_options import InitOptions
-from .init_workflow import run_init, run_restore
+from .init_workflow import run_init
 from .machine import load_machine_config, machine_config_path, profile_for, resolve_profile
 from .project import project_config_path
+from .skill_copy import cmd_skill_copy
 from .staged import check_staged
 
 
@@ -116,17 +117,12 @@ def build_parser() -> argparse.ArgumentParser:
     init_subparsers = init.add_subparsers(
         dest="init_command",
         required=True,
-        metavar="{project,global,restore}",
+        metavar="{project,global}",
     )
     _add_init_project(init_subparsers.add_parser("project", help="adopt project configuration"))
     _add_init_global(
         init_subparsers.add_parser(
             "global", help="adopt global configuration and register its source on this machine"
-        )
-    )
-    _add_init_restore(
-        init_subparsers.add_parser(
-            "restore", help="undo the latest init from its backup, or finish an interrupted one"
         )
     )
 
@@ -177,7 +173,7 @@ def build_parser() -> argparse.ArgumentParser:
         "integrate", help="wire loadout into another system so it runs automatically"
     )
     integrate_subparsers = integrate.add_subparsers(dest="integrate_command")
-    skill_help = "manage the bundled loadout skill in this machine's global source"
+    skill_help = "manage the bundled loadout skill"
     _add_skill(integrate_subparsers.add_parser("skill", help=skill_help, description=skill_help))
     _add_git_hooks(
         integrate_subparsers.add_parser(
@@ -231,6 +227,18 @@ def _add_skill(parser: argparse.ArgumentParser) -> None:
                 action="store_true",
                 help="apply the displayed source change without confirmation",
             )
+    copy = commands.add_parser(
+        "copy",
+        help="copy the skill into each harness's user skills folder, outside any source",
+    )
+    copy.add_argument(
+        "--harness",
+        dest="harnesses",
+        action="append",
+        required=True,
+        choices=sorted(KNOWN_HARNESSES),
+        help="harness to copy the skill for (repeatable)",
+    )
 
 
 def _resolve_root_and_profile(args: argparse.Namespace) -> tuple[Path, str]:
@@ -362,16 +370,7 @@ def _add_init_global(parser: argparse.ArgumentParser) -> None:
     _add_init_choices(parser)
 
 
-def _add_init_restore(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "--yes", action="store_true", help="approve the operation without confirmation"
-    )
-    parser.add_argument("--json", action="store_true", help="emit machine-readable result")
-
-
 def _dispatch_init(args: argparse.Namespace) -> int:
-    if args.init_command == "restore":
-        return run_restore(yes=args.yes, as_json=args.json)
     if args.init_command == "global":
         source = (
             args.directory.expanduser().absolute()
@@ -402,6 +401,8 @@ def _dispatch_init(args: argparse.Namespace) -> int:
 
 
 def _dispatch_skill(args: argparse.Namespace) -> int:
+    if args.skill_command == "copy":
+        return cmd_skill_copy(tuple(args.harnesses))
     root, profile = _resolve_global(args.profile)
     if args.skill_command == "status":
         return cmd_skill_status(root, profile, args.source)

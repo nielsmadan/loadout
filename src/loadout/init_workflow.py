@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal, TextIO
+from typing import Any, Literal
 
 import tomlkit
 
@@ -29,22 +29,7 @@ from .machine import (
     resolve_profile,
 )
 from .migration import plan_migration
-from .migration_backup import (
-    Backup,
-    Declared,
-    Restored,
-    Untracked,
-    complete,
-    create_backup,
-    expect,
-    fresh_repository,
-    interrupted_backup,
-    latest_backup,
-    mark_applied,
-    record,
-    restore,
-)
-from .migration_git import index_path
+from .migration_backup import Backup, create_backup, discard, interrupted_backup, restore
 from .migration_models import Issue, MigrationPlan, SourceWrite, secrets_document
 from .migration_transaction import (
     Delinked,
@@ -55,6 +40,7 @@ from .migration_transaction import (
 )
 from .output import Merged, Output
 from .project import PROJECT_DIR, gitignore_entries
+from .skill_copy import cmd_skill_copy, copy_command
 from .state import sync_state
 from .sync import RenderedChange, compare_with_disk, deploy
 from .written import written_state_path
@@ -240,10 +226,15 @@ def _envelope(status: InitStatus, code: int, **fields: object) -> int:
 
 
 def _show(
-    preview: Preview, *, as_json: bool, status: InitStatus = "preview", exit_code: int = 0
+    preview: Preview,
+    *,
+    as_json: bool,
+    status: InitStatus = "preview",
+    exit_code: int = 0,
+    extra: Mapping[str, object] | None = None,
 ) -> None:
     if as_json:
-        _envelope(status, exit_code, **preview.document())
+        _envelope(status, exit_code, **preview.document(), **(extra or {}))
         return
     plan, prepared = preview.plan, preview.prepared
     inventory = plan.inventory
@@ -387,18 +378,13 @@ def _render(
 
 def _first_sync(
     plan: MigrationPlan, profile: str, approved: tuple[RenderedChange, ...], *, as_json: bool
-) -> list[Path] | None:
-    """The paths the first render wrote, or None when it was not written."""
+) -> list[Path]:
+    """The paths the first render wrote."""
     root = _render_root(plan).absolute()
     outputs = _render(plan, root, profile, RenderContext())
     rendered = {change.path: change.expected for change in compare_with_disk(outputs)}
     if rendered != {change.path: change.expected for change in approved}:
-        print(
-            "loadout: rendered output changed after the preview, so nothing was written; "
-            "review it with `loadout check`, then run `loadout sync`",
-            file=sys.stderr,
-        )
-        return None
+        raise LoadoutError("the first render differs from the preview, so it was not written")
     written, _ = deploy(sync_state(root), outputs)
     if not as_json:
         print(f"Rendered {len(written)} generated file(s).")
@@ -430,12 +416,10 @@ def _result(
     result: MigrationResult,
     delinked: tuple[Delinked, ...],
     plan: MigrationPlan,
-    backup: Backup | None,
     *,
     as_json: bool,
 ) -> None:
     fields = {
-        "backup": str(backup.directory) if backup else None,
         "written": [str(p) for p in result.written],
         "rendered": [str(p) for p in result.rendered],
         "untracked": list(result.untracked),
@@ -452,8 +436,6 @@ def _result(
         )
     else:
         print("Migration complete; nothing was committed or staged.")
-        if backup is not None:
-            print(f"Backup of everything init changed: {backup.directory}")
         for each in delinked:
             print(delinked_notice(each))
         if plan.secrets:
@@ -473,15 +455,15 @@ def run_init(options: InitOptions) -> int:
 
 def interrupted_document(backup: Backup) -> dict[str, object]:
     error = (
-        "an earlier restore did not finish; finish it with `loadout init restore`"
-        if backup.restoring
-        else "an earlier init did not finish; restore it with `loadout init restore`"
+        "an earlier init was stopped part way and left what it changed in place; "
+        "run init again at a terminal to put that back first"
     )
     return {"backup": str(backup.directory), "error": error}
 
 
 def _interrupted(options: InitOptions) -> int | None:
-    """An init killed part way leaves its backup marked in progress; offer it first."""
+    """A run killed part way leaves its backup marked in progress, and nothing else
+    happens until it is put back."""
     backup = interrupted_backup()
     if backup is None:
         return None
@@ -489,18 +471,19 @@ def _interrupted(options: InitOptions) -> int | None:
         document = interrupted_document(backup)
         if options.json:
             return _envelope("interrupted", 2, **document)
-        else:
-            print(f"loadout: {document['error']} (backup {backup.directory})", file=sys.stderr)
+        print(f"loadout: {document['error']} (backup {backup.directory})", file=sys.stderr)
         return 2
-    unfinished = "restore" if backup.restoring else "init"
+    root = backup.manifest()["root"]
     answer = _answer(
-        f"An earlier {unfinished} did not finish. Restore everything init changed from "
-        f"{backup.directory}? [y/N] "
+        f"An earlier init of {root} was stopped part way. Put back everything it changed? "
+        "Edits made since to those files are lost. [y/N] "
     )
     if answer.lower() not in {"y", "yes"}:
-        print("declined; the backup stays. Restore it later with `loadout init restore`.")
+        print("declined; nothing was changed, and init stops here until that is put back.")
         return 2
-    return _restored(backup, as_json=False)
+    put_back = restore(backup)
+    print(f"Put back {len(put_back)} path(s) as they were before that init; run init again.")
+    return 0
 
 
 def _run_init(options: InitOptions) -> int:
@@ -514,7 +497,17 @@ def _run_init(options: InitOptions) -> int:
     if issue:
         plan = replace(plan, issues=(*plan.issues, issue))
     if not plan.complete:
-        _show(Preview(plan), as_json=options.json, status="incomplete", exit_code=2)
+        harnesses = plan.inventory.harnesses
+        converts = any(issue.code not in CHOICES for issue in plan.issues)
+        _show(
+            Preview(plan),
+            as_json=options.json,
+            status="incomplete",
+            exit_code=2,
+            extra=_skill_fields(harnesses) if converts else None,
+        )
+        if converts and not options.json:
+            _offer_skill(harnesses, options)
         return 2
     _refuse_unregistered_render(plan, machine)
     profile = _render_profile(plan)
@@ -528,13 +521,7 @@ def _run_init(options: InitOptions) -> int:
     if (stopped := _preview(options, prepared, machine, render)) is not None:
         return stopped
     if not prepared.operations:
-        _result(
-            MigrationResult((), (), True),
-            prepared.delinked(),
-            plan,
-            None,
-            as_json=options.json,
-        )
+        _result(MigrationResult((), (), True), prepared.delinked(), plan, as_json=options.json)
         return _after_migration(plan, already=True, as_json=options.json)
     return _apply(options, prepared, profile, render)
 
@@ -573,37 +560,15 @@ def _apply(
     profile: str,
     render: tuple[RenderedChange, ...],
 ) -> int:
-    """Back up every path init can touch, apply, render, and restore on any failure."""
+    """Back up every path init can touch, apply and render; on any failure put every
+    path back, and on success drop the backup."""
     plan = prepared.plan
     delinked = prepared.delinked()
-    label = {"scope": plan.inventory.scope, "root": str(plan.inventory.root)}
-    root = _render_root(plan).absolute()
-    untracked = (
-        Untracked(
-            prepared.canonical(index_path(prepared.repository)),
-            prepared.repository,
-            prepared.untracked,
-        )
-        if prepared.repository is not None and prepared.untracked
-        else None
+    backup = create_backup(
+        _touched(prepared, render), now=datetime.now(UTC), root=plan.inventory.root
     )
-    declared = Declared(
-        _planned(prepared, render),
-        records=(prepared.canonical(written_state_path(root)),),
-        untracked=untracked,
-        repository=prepared.new_repository,
-    )
-    backup = create_backup(_touched(prepared, render), declared, now=datetime.now(UTC), label=label)
     try:
-        if prepared.new_repository is not None:
-            git_dir = prepared.canonical(prepared.new_repository / ".git")
-            expect(backup, fresh_repository(git_dir))
-        mark_applied(backup)
         result = apply_migration(prepared)
-        record(backup, (prepared.canonical(path) for path in prepared.touched()))
-        if prepared.new_repository is not None:
-            created = prepared.canonical(prepared.new_repository / ".git")
-            record(backup, (created, *sorted(created.rglob("*"))), created=True)
         rendered = (
             []
             if plan.already_initialized
@@ -611,14 +576,13 @@ def _apply(
         )
     except BaseException as error:
         # Whatever stopped it, the paths go back before anything else happens.
-        code = _failed(backup, str(error) or type(error).__name__, as_json=options.json)
-        if not isinstance(error, Exception):
+        interrupted = not isinstance(error, Exception)
+        code = _failed(backup, plan, options, str(error) or type(error).__name__, interrupted)
+        if interrupted:
             raise
         return code
-    if rendered is None:
-        return _failed(backup, "the first render was not written", as_json=options.json)
-    complete(backup)
-    _result(replace(result, rendered=tuple(rendered)), delinked, plan, backup, as_json=options.json)
+    discard(backup)
+    _result(replace(result, rendered=tuple(rendered)), delinked, plan, as_json=options.json)
     return _after_migration(plan, already=plan.already_initialized, as_json=options.json)
 
 
@@ -634,58 +598,66 @@ def _touched(prepared: MigrationPreparation, render: tuple[RenderedChange, ...])
     return list(dict.fromkeys(prepared.canonical(path) for path in paths))
 
 
-def _planned(
-    prepared: MigrationPreparation, render: tuple[RenderedChange, ...]
-) -> dict[Path, list[str]]:
-    """Every shape init may leave at each path it writes: what each operation writes,
-    then what the first render writes, which can differ for the same file."""
-    planned: dict[Path, list[str]] = {}
-    for operation in prepared.operations:
-        planned.setdefault(prepared.canonical(operation.path), []).append(operation.after.shape())
-    for change in render:
-        planned.setdefault(prepared.canonical(change.path), []).append(f"file:{change.sha256}")
-    return planned
-
-
-def _failed(backup: Backup, reason: str, *, as_json: bool) -> int:
-    restored = restore(backup)
-    # Never a backup the restore spent (review 4, batch 2.6).
-    where = (
-        f"restored from {backup.directory}"
-        if backup.directory.exists()
-        else "restored, and the spent backup was removed"
-    )
-    message = f"init failed ({reason}); what it changed was {where}"
-    if as_json:
-        _envelope("restored", 1, error=reason, **_restore_report(restored, backup))
-    print(f"loadout: {message}", file=sys.stderr)
-    _print_kept(restored, sys.stderr)
+def _failed(
+    backup: Backup, plan: MigrationPlan, options: InitOptions, reason: str, interrupted: bool
+) -> int:
+    try:
+        put_back = restore(backup)
+    except (OSError, LoadoutError) as error:
+        message = (
+            f"init failed ({reason}), and putting back what it changed failed too ({error}); "
+            "the next init puts it back first"
+        )
+        if options.json:
+            return _envelope("interrupted", 1, error=message, backup=str(backup.directory))
+        print(f"loadout: {message} (backup {backup.directory})", file=sys.stderr)
+        return 1
+    harnesses = plan.inventory.harnesses
+    if options.json:
+        restored = [str(path) for path in put_back]
+        return _envelope("restored", 1, error=reason, restored=restored, **_skill_fields(harnesses))
+    print(f"loadout: init failed ({reason}); everything it changed was put back", file=sys.stderr)
+    # Stopped by the user: advise, but ask nothing more of them.
+    _offer_skill(harnesses, options, ask=not interrupted)
     return 1
 
 
-def _restore_report(restored: Restored, backup: Backup) -> dict[str, object]:
+# Issues a flag answers: the choice is the user's, and the skill cannot make it for them.
+CHOICES = frozenset({"harnesses-required", "scope-required", "registration-conflict"})
+
+SKILL_ADVICE = (
+    "loadout could not convert this setup on its own. The /loadout skill can do the "
+    "conversion with you: install it into your current setup and start it there."
+)
+
+
+def _skill_fields(harnesses: tuple[str, ...]) -> dict[str, object]:
     return {
-        # Gone once spent: naming a deleted directory would send the reader after nothing.
-        "backup": str(backup.directory) if backup.directory.exists() else None,
-        "restored": [str(path) for path in restored.restored],
-        "kept": [str(path) for path in restored.kept],
-        "reasons": {str(path): why for path, why in restored.reasons.items()},
-        "links": {str(path): target for path, target in restored.links.items()},
+        "recommendation": SKILL_ADVICE,
+        "install_command": copy_command(harnesses or ("<harness>",)),
     }
 
 
-def _print_kept(restored: Restored, stream: TextIO) -> None:
-    for path in restored.kept:
-        if path not in restored.links:
-            print(f"Kept, {restored.reasons.get(path, "not init's to undo")}: {path}", file=stream)
-    for path, target in restored.links.items():
-        print(f"{path} used to link to {target}; it stays a directory for now.", file=stream)
-    if restored.kept:
-        print(
-            "The backup now holds only what was kept; run `loadout init restore` again "
-            "once those paths are dealt with.",
-            file=stream,
-        )
+def _offer_skill(harnesses: tuple[str, ...], options: InitOptions, *, ask: bool = True) -> None:
+    """Recommend the skill, and at a terminal offer to copy it into the harnesses' user
+    skills folders; otherwise print the command that does."""
+    print(SKILL_ADVICE, file=sys.stderr)
+    if ask and harnesses and not options.dry_run and sys.stdin.isatty():
+        try:
+            answer = _answer(
+                "Install the /loadout skill into your current setup so you can run the "
+                "conversion with it? [y/N] "
+            )
+        except _Cancelled:
+            answer = ""
+        if answer.lower() not in {"y", "yes"}:
+            return
+        try:
+            cmd_skill_copy(harnesses)
+        except (OSError, LoadoutError) as error:
+            print(f"loadout: {error}", file=sys.stderr)
+        return
+    print(f"To install it: {copy_command(harnesses or ('<harness>',))}", file=sys.stderr)
 
 
 def _after_migration(plan: MigrationPlan, *, already: bool, as_json: bool) -> int:
@@ -712,44 +684,3 @@ def _commit_hint(plan: MigrationPlan) -> str:
         "Nothing was committed. To commit the new source: "
         f"git -C {root} add -A && git -C {root} commit -m 'chore: adopt agent configuration'"
     )
-
-
-def _restored(backup: Backup, *, as_json: bool) -> int:
-    resumed = backup.restoring
-    restored = restore(backup)
-    if as_json:
-        return _envelope("restored", 1 if restored.kept else 0, **_restore_report(restored, backup))
-    print(_restore_summary(restored, backup, resumed=resumed))
-    _print_kept(restored, sys.stdout)
-    return 1 if restored.kept else 0
-
-
-def _restore_summary(restored: Restored, backup: Backup, *, resumed: bool) -> str:
-    """One line on what this restore did, never naming a backup it has spent."""
-    if restored.restored:
-        if backup.directory.exists():
-            return f"Restored what init changed, from {backup.directory}."
-        return "Restored what init changed; the backup is spent and was removed."
-    if resumed:
-        return "The earlier restore had already put back everything it could."
-    if restored.kept:
-        return "Nothing could be restored."
-    return "Nothing needed restoring; every path was already as before init."
-
-
-def run_restore(*, yes: bool, as_json: bool) -> int:
-    """Undo the latest adoption, or finish undoing one that was interrupted."""
-    backup = interrupted_backup() or latest_backup()
-    if backup is None:
-        raise LoadoutError("no init backup to restore; a backup is spent once it is restored")
-    if not yes:
-        if as_json or not sys.stdin.isatty():
-            raise UsageError("init restore requires --yes")
-        try:
-            answer = _answer(f"Restore everything init changed, from {backup.directory}? [y/N] ")
-        except _Cancelled:
-            answer = ""
-        if answer.lower() not in {"y", "yes"}:
-            print("declined; no changes made")
-            return 0
-    return _restored(backup, as_json=as_json)

@@ -62,18 +62,17 @@ conflicts. Existing initialized sources are recognized
 and left as source; repeat init reports no migration. Registration can still be explicitly changed.
 Use normal check/sync for subsequent source edits.
 
-If init fails it restores the backup itself (`"status": "restored"`, exit 1); report the error.
-If an earlier init was killed, the next one exits 2 with `"status": "interrupted"` and the backup
-path. Ask the user before restoring it:
+If init fails it puts every path back itself and deletes the backup (`"status": "restored"`,
+exit 1, with what it put back under `restored`); report the error. Success deletes the backup too,
+so a finished adoption is undone through Git and the user's own copies, not by loadout. A failed or
+incomplete init answers with `recommendation` and `install_command`, which name this skill: you are
+already running it, so leave the command alone and work through the error or `issues` with the user.
 
-```sh
-loadout init restore --yes --json
-```
-
-The same command undoes the latest completed adoption when the user asks for that. What it put
-back is listed under `restored`. A path changed since that init is kept and listed under `kept`
-(exit 1), with why under `reasons`; report each one with its reason. The backup holds copies
-of the user's configuration, so keep it private and never paste its content into the conversation.
+If an earlier init was killed, every later one exits 2 with `"status": "interrupted"` and the
+backup path, and changes nothing. Putting it back needs a terminal: ask the user to run
+`loadout init project` (or `init global`) there and answer yes, which loses any edit made since to
+the paths that init changed, then run init again. The backup holds copies of the user's
+configuration, so keep it private and never paste its content into the conversation.
 
 ## Resolving conflicting copies at init
 

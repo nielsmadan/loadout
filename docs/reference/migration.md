@@ -221,73 +221,55 @@ A Codex MCP server's literal `http_headers` go into `mcp.toml` as `headers` and 
 hold, such as `env_http_headers`, are named in the preview as not adopted: the next sync writes the
 server without them.
 
-## Backup and restore
+## Convert or put everything back
 
 Before its first write, init records a before-image of every path it will touch in
 `$XDG_STATE_HOME/loadout/backups/<timestamp>/` (`~/.local/state` when unset): the source it writes,
 the originals it retires or de-links, `.gitignore`, the machine registration, the first render's
-outputs, the write record, a new source repository, and the Git index when it untracks generated
-files. Each missing ancestor a write could create is recorded as absent. Every path is recorded in
-one spelling: beneath a harness root it replaces it stays at the harness path, and anywhere else
-its parent is resolved, so a link above a harness root (written through, ADR 0023) is followed to
-where the file really is. Alongside each before-image the manifest keeps what init planned to
-write there and, as init goes, what it left; an `in-progress` marker is cleared on success.
-Each before-image's content is its own file under `images/`, named by its SHA-256, which the
-manifest records; restore checks every image against that digest before changing anything, and
-refuses with nothing restored if one is damaged or missing.
+outputs, the write record, a new source repository's `.git`, and the Git index when it untracks
+generated files. Each missing ancestor a write could create is recorded as absent. Every path is
+recorded in one spelling: beneath a harness root it replaces it stays at the harness path, and
+anywhere else its parent is resolved, so a link above a harness root (written through, ADR 0023) is
+followed to where the file really is. Beneath a link init replaces, nothing more is recorded:
+putting the link back restores everything under it. Each before-image's content is its own file
+under `images/`, named by its SHA-256, and is checked against that digest before anything is put
+back; a damaged or missing one refuses with nothing restored. An `in-progress` marker is written
+last, so a marker always has a complete manifest beside it.
 
-Restore reverts only what is still init's: a path holding its before-image, what init planned, or
-what init left. A file that existed before init and has since been deleted counts too: putting it
-back overwrites nothing. Anything else is someone else's, stays as it is and is listed under
-`kept`, and the exit code is then 1. A folder init created goes once empty. A write killed
-before its rename leaves a temporary file beside its target, named `.loadout-tmp-` and eight
-random characters; restore removes a file of exactly that shape, and only beside a path in the
-backup, so any other file, a `.loadout-notes.md` or a skill's `.loadout-bundle.toml`, is someone
-else's and stays. A folder that stays
-names what keeps it, or says it holds only the write record restore kept. A path that held
-something before init stays listed, and its
-before-image stays in the backup, until a restore has put it back. A directory init created is removed only once empty. A link init replaced with
-a directory comes back only if everything in that directory is init's; otherwise the whole
-directory stays as it is and is reported, with the target the link used to have, rather than being
-emptied around a file the harness wrote since. A source repository init created is treated the
-same way, so a commit made in it since keeps it whole. The Git index counts as init's while it
-differs from its before-image only by the generated files init untracked; it is declared before Git
-runs, so a run killed straight after still restores it. A repository init created counts as init's
-only while every entry under its `.git` is one init recorded and still as init left it, so a hook, a
-remote or a commit added since keeps the whole repository. What `git init` writes is recorded
-before it runs, from a run of it in scratch, so a kill straight after still removes it. While the
-repository has no index and no ref, what read-only git writes on its own (fsmonitor's
-`fsmonitor--daemon*`, `FETCH_HEAD`, `packed-refs`, `info/refs`, `objects/info/*` and lock files)
-does not count against it, so a `git status` or a fetch never makes a clean undo impossible. Every path is checked before anything is
-removed: one now reached through a link that was added since, such as a project moved behind a
-symlink, is kept rather than written through. That holds for the write record too: one reached
-through a link added since init is kept and reported, never rewritten. The write record loses only the entries for paths
-restore put back, so a file synced since init is still known as loadout's; a record that no longer
-parses is left as it is, and kept. Every write of the record is a rename over it, so a killed sync
-never leaves it torn.
+The backup lasts one run:
 
-- A failure restores the backup straight away and exits 1, naming it and what it kept.
-- A killed init leaves the marker. The next `init` offers the restore, or exits 2 with
-  `"status": "interrupted"` under `--json` or without a terminal. A restore sets the marker again
-  before its first change, so a killed restore is offered the same way, and named as an
-  unfinished restore rather than an unfinished init. `--json` lists what a restore put back under
-  `restored` and what it left under `kept`; the text names the backup only while it still exists.
-- `loadout init restore --yes` restores the interrupted backup, or else the latest completed one.
-  A backup counts only once its run began applying, which init marks with an `applied` file, and
-  only with a readable manifest: a run killed before either changed nothing, and its directory is
-  passed over rather than hiding the backup before it.
-- A backup is spent once restored. With nothing kept it is deleted, and restoring again reports
-  there is nothing to restore. With something kept it shrinks to the kept paths and the write
-  records it updates, so the undo can be finished once they are dealt with and can never replay
-  over them. A backup missing a write record's image is refused before anything changes. Only the
-  latest completed backup is kept. A backup written by another version of loadout is refused, naming the directory
-  to delete.
+- **A success deletes it.** Nothing remains to undo the adoption with; the source is uncommitted,
+  so Git shows what init wrote.
+- **A failure puts every path back** straight away, whatever stopped the run, Ctrl-C included, and
+  deletes the backup. What init created goes first, deepest first: a file, or a folder with
+  everything in it, such as a new source repository or a link init replaced with a directory. Then
+  what it replaced comes back, shallowest first: file bytes and modes, links, folders and the Git
+  index. This runs in the same process right after the failure, so nothing is checked for later
+  edits. A write killed before its rename leaves a temporary file beside its target, named
+  `.loadout-tmp-` and eight random characters; a file of exactly that shape beside a path in the
+  backup is removed, and any other file, a `.loadout-notes.md` included, stays. Init exits 1,
+  with `"status": "restored"` under `--json`. If putting back fails too, the backup stays marked
+  and init exits 1 with `"status": "interrupted"`.
+- **A run killed part way** leaves the marker. The next `init`, of any scope or root, puts that
+  backup back before anything else: at a terminal it asks first, and says that edits made since
+  to those paths are lost; under `--json`, `--dry-run` or without a terminal it exits 2 with
+  `"status": "interrupted"` and changes nothing. A backup written by another version of loadout is
+  refused, naming the directory to delete.
+
+After a failure that was put back, and when the plan cannot complete (exit 2), init recommends
+doing the conversion with the bundled `/loadout` skill. At a terminal it asks whether to copy the
+skill into the user skills folder of each harness being converted, and on yes runs
+`loadout integrate skill copy` for them: a plain copy, outside any source, that refuses rather than
+overwrite a differing `loadout` folder. Without a terminal, or under `--json` (as
+`recommendation` and `install_command`), it gives the command instead. After Ctrl-C it recommends
+the skill without asking. A refusal whose every issue is a choice an option makes
+(`harnesses-required`, `scope-required`, `registration-conflict`) names that option instead.
 
 Init commits nothing and stages nothing. In a project it never creates a repository, and the only
 index change is removing the files it adds to `.gitignore`. A new global source gets its own
 repository, uncommitted. A before-image keeps content, mode and kind, not modification times,
 extended attributes, ownership or hard links. See
-[0028](../decisions/0028-init-protects-an-adoption-with-a-backup-folder.md).
+[0033](../decisions/0033-init-converts-or-puts-everything-back.md).
 
 When reading an existing permission document loses something, such as an entry a trailing `*`
 shadows or a Codex `justification`, the preview names it, file first, before anything is

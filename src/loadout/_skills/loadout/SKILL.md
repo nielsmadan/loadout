@@ -30,7 +30,7 @@ Edit the declared source for each configured consumer. Generated harness files a
 ## Examples
 
 - “Set up Loadout here” previews discovery, resolves the scope and configured harnesses, and shows
-  writes and removals before applying. Success leaves editable, uncommitted source and a backup.
+  writes and removals before applying. Success leaves editable, uncommitted source.
 - “Allow `just test` for me” edits the existing personal permissions producer and syncs. If the
   project has no personal producer, ask before changing committed ownership.
 - “Change the global Pi model” follows the settings fragment Pi's agent block names, edits its
@@ -54,8 +54,8 @@ Edit the declared source for each configured consumer. Generated harness files a
 - An init that lists `secrets` adopted them into the source as they were. Say the source's remote
   must stay private and offer to move each into an environment variable, by “Secrets in the adopted
   source” in [onboarding](references/onboarding.md).
-- An interrupted init reports its backup. Ask before restoring it with `loadout init restore`,
-  as the onboarding reference describes; a failed init has already restored itself.
+- A failed init has already put everything back. An init killed part way stops every later init
+  until it is put back, which needs the user at a terminal, as the onboarding reference describes.
 - In a linked git worktree of the registered global source, the checkout and merge hooks print
   that nothing was synced: a worktree is not the registered folder, so it never renders global
   scope. Edit and commit there as usual (its pre-commit check still runs), then sync from the

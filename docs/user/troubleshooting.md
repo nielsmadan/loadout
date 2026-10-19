@@ -148,6 +148,25 @@ For OpenCode skills, check
 [`OPENCODE_DISABLE_CLAUDE_CODE_SKILLS`](reference/harnesses.md#opencode-skills).
 After installing new skills or changing agent startup configuration, restart the agent session.
 
+## Init could not convert a setup
+
+When init fails part way it puts every file it changed back and exits 1. Your setup is as it was
+before, and init kept no backup. When it cannot plan the conversion, it exits 2 without changing
+anything. Either way it recommends the bundled `/loadout` skill, which can do the conversion with
+you. At a terminal it offers to copy the skill into your current setup. Without one, it prints the
+command instead, for example `loadout integrate skill copy --harness claude`. Then start the skill
+in that harness and ask it to set up loadout. A different `loadout` skill already in one of those
+folders is refused rather than overwritten; remove it, or use the copy that is there.
+
+## An earlier init was stopped part way
+
+An init killed before it finished leaves its changes in place and a backup in
+`$XDG_STATE_HOME/loadout/backups/`, and every later init stops there until it is put back. Run
+`loadout init project` or `loadout init global` at a terminal and answer yes: it puts back every
+path that init changed, losing any edit made to those paths since, and then exits. Run init again
+to adopt. Without a terminal, init exits 2 and says so. A backup from another version of loadout
+cannot be put back; init names its directory, which you delete.
+
 ## Unexpected internal error
 
 Exit code `4` includes a traceback. Report it in the

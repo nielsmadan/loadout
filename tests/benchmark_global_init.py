@@ -57,9 +57,6 @@ def run_case(directory: Path, count: int) -> dict:
     write_json(directory / "result.json", result)
     if result["timeout"]:
         result["correctness"] = "not completed; censored failure"
-        result["restore"] = command(
-            ["init", "restore", "--yes", "--json"], environment, logs, "restore"
-        )
         write_json(directory / "result.json", result)
         return result
     assert_exit(result)

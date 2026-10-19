@@ -821,8 +821,10 @@ def test_sync_and_check_help_name_both_scopes(command: str, capsys) -> None:
     assert "a project's generated files, or this machine's with --global" in _help(capsys, command)
 
 
-def test_integrate_skill_help_names_the_global_source(capsys) -> None:
-    assert "in this machine's global source" in _help(capsys, "integrate", "skill")
+def test_integrate_skill_help_names_the_copy_outside_any_source(capsys) -> None:
+    help_text = _help(capsys, "integrate", "skill")
+
+    assert "copy the skill into each harness's user skills folder, outside any source" in help_text
 
 
 def test_a_template_command_outside_a_project_says_where_templates_are_authored(
