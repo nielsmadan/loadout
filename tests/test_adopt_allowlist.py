@@ -169,3 +169,66 @@ def test_opencode_plugin_directory_is_read_under_either_spelling(
     plan = plan_migration(discover(source, scope="global", harnesses=("opencode",)))
 
     assert {singular, plural} <= {c.path for c in plan.inventory.candidates}
+
+
+@pytest.mark.parametrize("relocated", [False, True])
+def test_entries_the_harnesses_write_themselves_stay_in_place_and_out_of_the_source(
+    tmp_path: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch, capsys, relocated: bool
+) -> None:
+    claude, droids = fake_home / ".claude", fake_home / ".factory/droids"
+    if relocated:
+        claude, droids = tmp_path / "claude-config", tmp_path / "factory-home/.factory/droids"
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude))
+        monkeypatch.setenv("FACTORY_HOME_OVERRIDE", str(tmp_path / "factory-home"))
+    review = claude / "skills/review/SKILL.md"
+    auditor = droids / "auditor.md"
+    synced = claude / "skills/synced"
+    bucket = synced / "org_account"
+    mission = (droids / "scrutiny-feature-reviewer.md", droids / "user-testing-flow-validator.md")
+    elsewhere = (review.parent / "scrutiny-feature-reviewer.md", review.parent / "synced/notes.md")
+    files = {
+        review: "---\nname: review\ndescription: r\n---\nReview it.\n",
+        elsewhere[0]: "Mine.\n",
+        elsewhere[1]: "Notes.\n",
+        auditor: "---\nname: auditor\ndescription: a\n---\nAudit.\n",
+        synced / ".bucket-org_account": "",
+        bucket / "manifest.json": "{}\n",
+        bucket / "pdf/SKILL.md": "---\nname: pdf\ndescription: p\n---\nAccount skill.\n",
+        **{
+            path: f"---\nname: {path.stem}\ndescription: m\n---\nUsed only within missions.\n"
+            for path in mission
+        },
+    }
+    for path, content in files.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+    before = {path: path.read_bytes() for path in files}
+    source = tmp_path / "agent-config"
+    source.mkdir()
+    init = ["init", "global", str(source), "--harness", "claude", "--harness", "droid"]
+
+    assert loadout.main([*init, "--dry-run", "--json"]) == 0
+    preview = json.loads(capsys.readouterr().out)
+    assert {
+        c["path"]
+        for c in preview["candidates"]
+        if c["disposition"] == "runtime-private exclusion"
+        and Path(c["path"]).is_relative_to(claude.parent)
+    } >= {str(synced), *map(str, mission)}
+
+    assert loadout.main([*init, "--yes"]) == 0
+
+    assert {
+        path.relative_to(source / "loadout").as_posix()
+        for path in (source / "loadout").rglob("*.md")
+        if "skills" in path.parts or "agents" in path.parts
+    } == {
+        "skills/review/SKILL.md",
+        "skills/review/scrutiny-feature-reviewer.md",
+        "skills/review/synced/notes.md",
+        "agents/auditor.md",
+    }
+    left = [path for path in files if path in mission or path.is_relative_to(synced)]
+    assert {path: path.read_bytes() for path in left} == {path: before[path] for path in left}
+    capsys.readouterr()
+    assert loadout.main(["check", "--global"]) == 0

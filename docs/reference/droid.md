@@ -133,6 +133,20 @@ both `enabledPlugins` and `extraKnownMarketplaces` to `settings.json`; settings 
 keys beside them remain intact. Removing a portable plugin reference removes its enablement on
 the next render.
 
+## Mission droids
+
+Droid writes two droids of its own into `${FACTORY_HOME_OVERRIDE:-~}/.factory/droids/`,
+`scrutiny-feature-reviewer.md` and `user-testing-flow-validator.md`, and writes them again after
+they are deleted (observed on this machine, 2026-10-22). Verified 2026-10-22 in the installed
+0.244.0 binary, which hard-codes the pair as
+`new Set(["scrutiny-feature-reviewer","user-testing-flow-validator"])` and ships their
+"Used only within missions" text.
+
+Neither `check` nor `init` treats them as the user's: they are not reported as `unmanaged` and
+not adopted into the source as agents. The exemption is for those two file names directly in
+Droid's droids folder; the same name in another harness's agents folder is the user's
+(`HARNESS_RUNTIME_ENTRIES` in `runtime_paths.py`).
+
 ## Extraction and migration
 
 Shell permissions, hooks, MCP definitions, and plugin declarations all have inverse

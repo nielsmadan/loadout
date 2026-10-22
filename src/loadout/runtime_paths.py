@@ -3,6 +3,8 @@ unmanaged scan reports: shared by discovery and `unmanaged.py` (review 3, batch 
 
 from __future__ import annotations
 
+from .harnesses import DROID_AGENTS_DIRECTORY
+
 RUNTIME_DIRECTORIES = frozenset(
     {
         ".git",
@@ -51,3 +53,15 @@ RUNTIME_FILES = frozenset(
 )
 # Written by the OS into any folder, never by a harness.
 UNMANAGED_NAMES = frozenset({".DS_Store"})
+# Entries a harness writes into a folder loadout writes too, exempt in that folder only:
+# Claude Code's sync of the claude.ai account's skills, and Droid's mission droids. The
+# evidence is in docs/reference/claude-code.md and droid.md.
+HARNESS_RUNTIME_ENTRIES = frozenset(
+    {
+        "${CLAUDE_CONFIG_DIR:-~/.claude}/skills/synced",
+        *(
+            f"${{FACTORY_HOME_OVERRIDE:-~}}/.factory/{DROID_AGENTS_DIRECTORY}/{name}.md"
+            for name in ("scrutiny-feature-reviewer", "user-testing-flow-validator")
+        ),
+    }
+)

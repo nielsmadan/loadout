@@ -157,7 +157,8 @@ it. A folder of files is reported once, as the folder. A link there is reported 
 project folder reached through a link, such as `.claude/agents -> ../.git`, is reported the same
 way and never scanned. A file another loadout
 source wrote is not reported, nor is a dot entry such as `.DS_Store` or Codex's own `.system`
-skills.
+skills, nor what a harness writes there itself: Claude Code's `skills/synced`, its copy of your
+claude.ai account's skills, and Droid's two mission droids in `~/.factory/droids/`.
 
 ## Shell completions
 

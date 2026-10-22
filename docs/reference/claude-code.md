@@ -138,6 +138,27 @@ real source while reporting success (anthropics/claude-code#78162).
 
 `CLAUDE.md`, `hooks/` and `skills/` are symlinks; only `settings.json` is merged.
 
+## Account skills: `skills/synced`
+
+Claude Code syncs the skills of the signed-in claude.ai account into
+`${CLAUDE_CONFIG_DIR:-~/.claude}/skills/synced/`: a `.bucket-<org>_<account>` marker beside an
+`<org>_<account>` folder that holds one folder per skill, `manifest.json`, `.staging` and
+`.last-complete-round` (this machine, 2026-10-22). Verified 2026-10-22 in the installed 2.1.307
+binary:
+
+- the folder name is reserved, beside the sync's other names:
+  `var QW="synced",E$r=".trash",hJ=".staging"`;
+- the sync claims the folder as its own, beside its trash and staging folders:
+  `syncOwnedPrefixes:[...s].flatMap((y)=>[wp(y,QW)+f_,wp(y,E$r)+f_,wp(y,".staging")+f_])`;
+- the user skills are loaded from the bucket folder under their own source,
+  `IL(wp(s,QW,xt),"userSettings","syncedSkills")`, and tagged `loadedFrom==="syncedSkills"`;
+- the bucket marker prefix is `var dn=".bucket-"`.
+
+Claude Code writes the folder itself, so neither `check` nor `init` treats it as the user's: it
+is not reported as `unmanaged` and not adopted into the source. The exemption is for that one
+folder, directly in Claude's skills folder; a `synced` anywhere else, such as in Codex's skills
+folder or inside a skill, is the user's (`HARNESS_RUNTIME_ENTRIES` in `runtime_paths.py`).
+
 ## Gotcha: byte comparison against the live file always fails
 
 Generated and live `claude/settings.json` are semantically equal but byte-different,

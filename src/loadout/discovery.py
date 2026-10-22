@@ -20,7 +20,12 @@ from .migration_paths import DestinationLayout
 from .native_documents import jsonc_to_json, parse_document
 from .output import Scope, entry_path, sha256
 from .project import PROJECT_DIR, PROJECT_PRESET, project_config_path
-from .runtime_paths import RUNTIME_DIRECTORIES, RUNTIME_FILES, UNMANAGED_NAMES
+from .runtime_paths import (
+    HARNESS_RUNTIME_ENTRIES,
+    RUNTIME_DIRECTORIES,
+    RUNTIME_FILES,
+    UNMANAGED_NAMES,
+)
 
 # The harnesses whose project instructions are AGENTS.md, from the preset.
 AGENTS_MD_READERS = tuple(
@@ -297,6 +302,13 @@ def _excluded(path: Path) -> bool:
     )
 
 
+def _harness_runtime(relative: Path, mapping: RootMapping) -> bool:
+    return (
+        mapping.destination_template is not None
+        and f"{mapping.destination_template}/{relative.as_posix()}" in HARNESS_RUNTIME_ENTRIES
+    )
+
+
 def _private(path: Path) -> bool:
     return ".local." in path.name or path.name.endswith(".local")
 
@@ -441,7 +453,7 @@ class _InventoryBuilder:
             for root in self.runtime_roots
             if canonical.is_relative_to(root)
         )
-        if _excluded(relative) or canonical_excluded:
+        if _excluded(relative) or canonical_excluded or _harness_runtime(relative, mapping):
             self.remember(path, read=False)
             self.candidates[path, destination] = Candidate(
                 path,

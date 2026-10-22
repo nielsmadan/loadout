@@ -8,6 +8,7 @@ the source. `check` fails on it and `sync` names it; the /loadout skill ports it
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -192,3 +193,85 @@ def test_a_runtime_file_in_a_managed_folder_is_harness_state_not_unmanaged(
     (fake_home / ".codex/rules/auth.json").write_text('{"token": "x"}\n')
 
     assert _check_json(root, capsys) == (0, {})
+
+
+BUCKET = "41a07887-org_dabe1acb-account"
+MISSION_DROIDS = ("scrutiny-feature-reviewer.md", "user-testing-flow-validator.md")
+
+
+def _account_skills(skills: Path) -> Path:
+    """Claude Code's sync of the claude.ai account's skills, as 2.1.307 lays it out."""
+    synced = skills / "synced"
+    (synced / BUCKET / ".staging").mkdir(parents=True)
+    (synced / f".bucket-{BUCKET}").write_text("")
+    (synced / BUCKET / "manifest.json").write_text("{}\n")
+    (synced / BUCKET / "pdf").mkdir()
+    (synced / BUCKET / "pdf/SKILL.md").write_text("---\nname: pdf\n---\nAccount skill.\n")
+    return synced
+
+
+def _mission_droids(droids: Path) -> tuple[Path, ...]:
+    droids.mkdir(parents=True, exist_ok=True)
+    for name in MISSION_DROIDS:
+        (droids / name).write_text(
+            f"---\nname: {Path(name).stem}\n---\nUsed only within missions.\n"
+        )
+    return tuple(droids / name for name in MISSION_DROIDS)
+
+
+@pytest.mark.parametrize("relocated", [False, True])
+def test_entries_the_harnesses_write_themselves_are_not_flagged_in_their_own_folder(
+    tmp_path: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch, capsys, relocated: bool
+) -> None:
+    claude, factory = fake_home / ".claude", fake_home
+    if relocated:
+        claude, factory = tmp_path / "claude-config", tmp_path / "factory-home"
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude))
+        monkeypatch.setenv("FACTORY_HOME_OVERRIDE", str(factory))
+    source = _global_source(tmp_path / "source")
+    (source / "loadout.toml").write_text(SOURCE + "\n[droid]\n")
+    _synced(register(source), capsys)
+    _account_skills(claude / "skills")
+    _mission_droids(factory / ".factory/droids")
+    foreign = claude / "skills/foreign"
+    foreign.mkdir()
+    (foreign / "SKILL.md").write_text("---\nname: foreign\n---\nForeign.\n")
+
+    assert loadout.main(["check", "--global", "--json"]) == 1
+    drift = json.loads(capsys.readouterr().out)["drift"]
+    assert {entry["path"]: entry["kind"] for entry in drift} == {str(foreign): "unmanaged"}
+
+    shutil.rmtree(foreign)
+    assert loadout.main(["check", "--global"]) == 0
+
+
+def test_the_names_harnesses_write_themselves_are_flagged_anywhere_else(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    source = _global_source(tmp_path / "source")
+    (source / "loadout.toml").write_text(SOURCE + "\n[droid]\n")
+    _synced(register(source), capsys)
+    elsewhere = (
+        _account_skills(fake_home / ".codex/skills"),
+        _account_skills(fake_home / ".factory/skills"),
+        _account_skills(fake_home / ".claude/skills/review"),
+        *_mission_droids(fake_home / ".claude/agents"),
+    )
+
+    code, kinds = _check_json(source, capsys)
+
+    assert code == 1
+    assert kinds == {str(path): "unmanaged" for path in elsewhere}
+
+
+def test_a_harness_variable_that_does_not_resolve_leaves_the_other_folders_scanned(
+    tmp_path: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    source = _global_source(tmp_path / "source")
+    (source / "loadout.toml").write_text('[[source]]\nname = "test"\npath = "."\n\n[codex]\n')
+    _synced(register(source), capsys)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", "relative/claude")
+    approvals = fake_home / ".codex/rules/default.rules"
+    approvals.write_text('prefix_rule(pattern=["ls"], decision="allow")\n')
+
+    assert _check_json(source, capsys) == (1, {str(approvals): "unmanaged"})

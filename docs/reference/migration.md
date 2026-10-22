@@ -71,7 +71,10 @@ move it.
 
 The selected directory is never scanned. A dotfiles copy there (`claude/`, `.claude/`, an installer,
 a `Makefile`) is not read; init always adopts the live deployment. Runtime state inside a listed
-tree, such as `node_modules/` or `.env`, is still excluded.
+tree, such as `node_modules/` or `.env`, is still excluded, and so is what a harness writes into
+its own skills or agents folder, each only in that folder: Claude Code's `skills/synced`
+([claude-code.md](claude-code.md#account-skills-skillssynced)) and Droid's two mission droids
+([droid.md](droid.md#mission-droids)).
 
 ## What init refuses
 
