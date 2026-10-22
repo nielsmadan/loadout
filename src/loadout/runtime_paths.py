@@ -3,6 +3,10 @@ unmanaged scan reports: shared by discovery and `unmanaged.py` (review 3, batch 
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from pathlib import Path
+
+from .errors import LoadoutError
 from .harnesses import DROID_AGENTS_DIRECTORY
 
 RUNTIME_DIRECTORIES = frozenset(
@@ -53,15 +57,30 @@ RUNTIME_FILES = frozenset(
 )
 # Written by the OS into any folder, never by a harness.
 UNMANAGED_NAMES = frozenset({".DS_Store"})
-# Entries a harness writes into a folder loadout writes too, exempt in that folder only:
-# Claude Code's sync of the claude.ai account's skills, and Droid's mission droids. The
+# Entries a harness writes into a folder loadout writes too, and that harness: exempt in
+# that folder only, and refused as a source skill or agent that would land on one. The
 # evidence is in docs/reference/claude-code.md and droid.md.
-HARNESS_RUNTIME_ENTRIES = frozenset(
-    {
-        "${CLAUDE_CONFIG_DIR:-~/.claude}/skills/synced",
-        *(
-            f"${{FACTORY_HOME_OVERRIDE:-~}}/.factory/{DROID_AGENTS_DIRECTORY}/{name}.md"
-            for name in ("scrutiny-feature-reviewer", "user-testing-flow-validator")
-        ),
+HARNESS_RUNTIME_ENTRIES = {
+    "${CLAUDE_CONFIG_DIR:-~/.claude}/skills/synced": "Claude Code",
+    **{
+        f"${{FACTORY_HOME_OVERRIDE:-~}}/.factory/{DROID_AGENTS_DIRECTORY}/{name}.md": "Droid"
+        for name in ("scrutiny-feature-reviewer", "user-testing-flow-validator")
+    },
+}
+
+
+def harness_owned(resolve: Callable[[str, str], Path]) -> dict[Path, str]:
+    """Where each of those entries is on this machine, and its harness. One whose variable
+    does not resolve is in a folder no target can write either."""
+    return {
+        path: owner
+        for template, owner in HARNESS_RUNTIME_ENTRIES.items()
+        if (path := _resolved(resolve, template)) is not None
     }
-)
+
+
+def _resolved(resolve: Callable[[str, str], Path], template: str) -> Path | None:
+    try:
+        return resolve(template, template)
+    except LoadoutError:
+        return None

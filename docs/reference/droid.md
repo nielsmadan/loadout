@@ -145,7 +145,9 @@ they are deleted (observed on this machine, 2026-10-22). Verified 2026-10-22 in 
 Neither `check` nor `init` treats them as the user's: they are not reported as `unmanaged` and
 not adopted into the source as agents. The exemption is for those two file names directly in
 Droid's droids folder; the same name in another harness's agents folder is the user's
-(`HARNESS_RUNTIME_ENTRIES` in `runtime_paths.py`).
+(`HARNESS_RUNTIME_ENTRIES` in `runtime_paths.py`). A source agent of either name is refused with
+exit 3 by `sync`, `check` and `init` wherever it would render into Droid's droids folder, such as
+a Claude agent `init` would adopt for both harnesses; rename the agent.
 
 ## Extraction and migration
 

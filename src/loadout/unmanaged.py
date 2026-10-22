@@ -13,17 +13,11 @@ from pathlib import Path, PurePosixPath
 
 from .containment import first_link, protected
 from .destinations import resolve_destination
-from .errors import LoadoutError
 from .harnesses import DIRECTORY_SLICES
 from .manifest import load_profile, manifest_path
 from .output import Output
 from .project import PROJECT_PRESET, load_project_config, project_config_path
-from .runtime_paths import (
-    HARNESS_RUNTIME_ENTRIES,
-    RUNTIME_DIRECTORIES,
-    RUNTIME_FILES,
-    UNMANAGED_NAMES,
-)
+from .runtime_paths import RUNTIME_DIRECTORIES, RUNTIME_FILES, UNMANAGED_NAMES, harness_owned
 from .state import SyncState
 from .written import every_recorded_path
 
@@ -116,24 +110,9 @@ def unmanaged_entries(
     accounted = (
         frozenset(outputs)
         | every_recorded_path(folders, known_root=state.root, known=state.written)
-        | _harness_runtime()
+        | frozenset(harness_owned(resolve_destination))
     )
     return [*links, *_scan(folders, accounted)]
-
-
-def _harness_runtime() -> frozenset[Path]:
-    """Where each entry a harness writes for itself is on this machine; one whose variable
-    does not resolve is a folder no target can write either."""
-    return frozenset(
-        path for template in HARNESS_RUNTIME_ENTRIES if (path := _resolved(template)) is not None
-    )
-
-
-def _resolved(template: str) -> Path | None:
-    try:
-        return resolve_destination(template, template)
-    except LoadoutError:
-        return None
 
 
 def _scan(folders: Iterable[Path], accounted: frozenset[Path]) -> list[Path]:

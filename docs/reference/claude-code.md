@@ -158,6 +158,8 @@ Claude Code writes the folder itself, so neither `check` nor `init` treats it as
 is not reported as `unmanaged` and not adopted into the source. The exemption is for that one
 folder, directly in Claude's skills folder; a `synced` anywhere else, such as in Codex's skills
 folder or inside a skill, is the user's (`HARNESS_RUNTIME_ENTRIES` in `runtime_paths.py`).
+A source skill named `synced` that would render into Claude's skills folder is refused with exit 3
+by `sync`, `check` and `init`, since it would land on the account's skills; rename the skill.
 
 ## Gotcha: byte comparison against the live file always fails
 

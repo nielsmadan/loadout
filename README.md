@@ -158,7 +158,8 @@ project folder reached through a link, such as `.claude/agents -> ../.git`, is r
 way and never scanned. A file another loadout
 source wrote is not reported, nor is a dot entry such as `.DS_Store` or Codex's own `.system`
 skills, nor what a harness writes there itself: Claude Code's `skills/synced`, its copy of your
-claude.ai account's skills, and Droid's two mission droids in `~/.factory/droids/`.
+claude.ai account's skills, and Droid's two mission droids in `~/.factory/droids/`. A source skill
+or agent that would render onto one of those is refused with exit 3; rename it.
 
 ## Shell completions
 

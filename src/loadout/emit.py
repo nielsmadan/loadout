@@ -53,6 +53,7 @@ from .project import (
 )
 from .record import owned_now, read_record, render_record
 from .resolve import INSTRUCTIONS, SETTINGS, ResolvedItem, json_slice, resolve_item
+from .runtime_paths import harness_owned
 from .servers import SERVERS_SOURCE, Server, parse_servers
 from .skill_policy import SkillPolicy, render_skill_for, selected_skill_agents
 from .skills import (
@@ -570,6 +571,14 @@ class _Expansion:
     claimed: dict[Path, str]
 
 
+def _refuse_owned(path: Path, kind: str, name: str, owned: Mapping[Path, str]) -> None:
+    if (harness := owned.get(path)) is not None:
+        raise LoadoutError(
+            f"{harness} writes {path} itself; rename the {kind} {name!r} so the two do not "
+            "overwrite each other"
+        )
+
+
 def _claim(path: Path, owner: str, claimed: dict[Path, str]) -> None:
     previous = claimed.get(path)
     if previous is not None:
@@ -784,6 +793,7 @@ def _expand_skills(
     context: RenderContext,
 ) -> None:
     available = tuple(item.harness for item in manifest.skills)
+    owned = harness_owned(context.destination)
     for destination in target.destinations:
         base = context.destination(str(destination), f"{target.harness}.skills")
         for skill in trees:
@@ -791,6 +801,7 @@ def _expand_skills(
                 skill.name, available, manifest.skill_policies
             ):
                 continue
+            _refuse_owned(base / skill.name, "skill", skill.name, owned)
             render = render_skill_for(skill.name, manifest.skill_policies)
             _write_skill(skill, target.harness, base, state, render=render)
 
@@ -833,11 +844,12 @@ def _expand_agents(
     context: RenderContext,
 ) -> None:
     agents = source_agents(manifest) if manifest.agents else ()
+    owned = harness_owned(context.destination)
     for target in manifest.agents:
         label = f"{target.harness}.{AGENTS_SUBDIR}"
         for destination in target.destinations:
             base = context.destination(str(destination), label)
-            _write_agents(agents, target.harness, base, state)
+            _write_agents(agents, target.harness, base, state, owned)
 
 
 def _write_agents(
@@ -845,10 +857,12 @@ def _write_agents(
     harness: str,
     base: Path,
     state: _Expansion,
+    owned: Mapping[Path, str] | None = None,
 ) -> None:
     outputs, claimed = state.outputs, state.claimed
     for agent in agents:
         path = base / agent_file_name(agent.name, harness)
+        _refuse_owned(path, "agent", agent.name, owned or {})
         _claim(path, f"{harness}.{AGENTS_SUBDIR}", claimed)
         outputs[path] = render_agent(agent, harness)
 
