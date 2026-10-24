@@ -384,11 +384,28 @@ def _managed(relative: Path, entries: tuple[str, ...], *, directory: bool) -> bo
     return False
 
 
-def _agents_for(relative: Path, mapping: RootMapping) -> tuple[str, ...]:
+# The harnesses whose skills loadout renders into the shared `.agents/skills`, per scope.
+SHARED_SKILL_WRITERS = {
+    "global": frozenset(
+        harness
+        for harness, slices in GLOBAL_PRESET.items()
+        if "skills" in slices and slices["skills"].destination == "~/.agents/skills"
+    ),
+    "project": frozenset(
+        harness
+        for harness, slices in PROJECT_PRESET.items()
+        if "skills" in slices and slices["skills"].output == ".agents/skills"
+    ),
+}
+
+
+def _agents_for(relative: Path, mapping: RootMapping, scope: str) -> tuple[str, ...]:
+    """A shared file is adopted only for a harness loadout renders it back for; the
+    others read it where it is, so it stays there."""
     if mapping.kind != "shared":
         return mapping.harnesses
     supported = {
-        "skills": set(SHARED_SKILL_READERS),
+        "skills": SHARED_SKILL_WRITERS[scope],
         "plugins": {"codex"},
         "mcp.json": {"pi"},
         "mcp": {"pi"},
@@ -530,7 +547,7 @@ class _InventoryBuilder:
         mapping: RootMapping,
     ) -> None:
         relative = path.relative_to(mapping.source) if mapping.kind != "file" else Path(path.name)
-        agents = _agents_for(relative, mapping)
+        agents = _agents_for(relative, mapping, self.scope)
         category = mapping.category or _category(relative, agents[0] if agents else "")
         if not path.is_file() or not agents or category is None:
             return

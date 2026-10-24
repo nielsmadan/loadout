@@ -41,7 +41,7 @@ Global scope:
 | `$OPENCODE_CONFIG` | the file itself |
 | `${PI_CODING_AGENT_DIR:-~/.pi/agent}` | `AGENTS.md`, `settings.json`, `mcp.json`, `extensions/pi-permission-system/config.json`, `skills/`, `agents/`, `plugins/`, `hooks/`, `rules/`, `scripts/` |
 | `${XDG_CONFIG_HOME:-~/.config}/mcp/mcp.json` | the file itself (Pi) |
-| `~/.agents` | `skills/`, `mcp.json`, `mcp/mcp.json` |
+| `~/.agents` | `mcp.json`, `mcp/mcp.json` (Pi); `skills/` is left in place, see below |
 
 OpenCode's `plugin/` is read because OpenCode scans `"{plugin,plugins}/*.{ts,js}"` in every config
 directory (`packages/opencode/src/config/plugin.ts:21`, 1.19.0); its docs name only `plugins/`.
@@ -60,8 +60,17 @@ Project scope, relative to the repository root:
 | `.factory` | `settings.json`, `hooks.json`, `mcp.json`, `skills/`, `droids/` |
 | `.opencode` | `skills/`, `agents/` |
 | `.pi` | `extensions/pi-permission-system/config.json`, `skills/`, `agents/` |
-| `.agents` | `skills/` |
+| `.agents` | `skills/`, for Codex only, see below |
 | repository | `opencode.json`, `opencode.jsonc`, `.mcp.json`, and every `AGENTS.md`, `AGENTS.override.md`, `CLAUDE.md`, `CLAUDE.local.md` and `opencode.md` outside the harness roots |
+
+Codex, OpenCode and Pi all read `.agents/skills`, but init adopts a shared file only for a harness
+whose loadout output is that folder, since anything else renders to another one and the
+reconstruction would find the original missing. That is Codex in project scope, whose project
+skills render to `.agents/skills`, and no harness in global scope, where every skill renders to
+the harness's own folder (`SHARED_SKILL_WRITERS` in `discovery.py`, derived from the presets).
+So `~/.agents/skills` stays where it is and the harnesses that read it keep reading it there, and a
+project's `.agents/skills` is adopted for Codex alone; OpenCode and Pi go on reading the copy
+loadout renders there.
 
 One more kind of read goes beyond the table. A file that an adopted document references, such as
 a hook script named by a command, is read when it lies under a selected root. A reference that is
