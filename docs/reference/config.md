@@ -497,9 +497,52 @@ details from it that no other harness documents:
 
 - Discovery differs by directory. In `~/.pi/agent/skills/` and `.pi/skills/`, a bare root `.md`
   file is discovered as a skill; in `~/.agents/skills/` and `.agents/skills/` root `.md` files
-  are **ignored** and each skill must be a directory.
+  are **ignored** and each skill must be a directory. Pi 1.4.0's `docs/skills.md:63` no longer
+  says so, only "Pi accepts some standalone Markdown skills"; the rule is now in its code (below).
 - Project `.agents/skills/` is searched in `cwd` **and every ancestor** up to the git repo root,
   or the filesystem root outside a repo.
+
+### What a harness loads from a skills or agents folder
+
+`check` reports an entry loadout did not write in a skills or agents folder as `unmanaged`, because
+the harness would load it beside the source. An entry no harness reading the folder can load as an
+item is not reported, and init leaves it in place (`_ignored_by` in `unmanaged.py`). Verified
+2026-10-24 against Claude Code 2.1.310 and Droid 0.249.0 (binaries), Pi 1.4.0 (shipped `dist`),
+and Codex 0.164.0 (`rust-v0.164.0` source; one of its strings, "skills scan reached its traversal
+limit", is in the installed binary) and OpenCode 2.1.4 (`v2.1.4` source; the installed binary is
+not readable from the sandbox, so its build from that tag is unconfirmed).
+
+| entry at the top of the folder | Claude | Codex | Droid | OpenCode | Pi |
+|---|---|---|---|---|---|
+| a regular file in `skills/` | ignored | ignored, except `SKILL.md` | ignored | **a `*.md` is loaded** | **loaded** with a `description`, in its own folders |
+| a folder with no `SKILL.md` at any depth | ignored | ignored | ignored | ignored | ignored, except `.md` files in `.agents` folders |
+| an agent `.md` without frontmatter | skipped | not checked | **loaded** | not checked | not checked |
+
+- Claude reads each skill folder's own `SKILL.md`, one level deep:
+  `if(!Se.isDirectory()&&!Se.isSymbolicLink())return null;`. An agent whose frontmatter has no
+  `name` is skipped: `if(!ve){if(!Se.name)return null;`.
+- Codex collects every `SKILL.md` up to six levels down (`loader/mod.rs:24`,
+  `MAX_SCAN_DEPTH: usize = 6`), matched by name only: `discovery.rs:144`,
+  `if entry.path.basename().as_deref() == Some(SKILLS_FILENAME)`.
+- Droid lists only folders and links in a skills folder,
+  `filter((d)=>d.isDirectory()||d.isSymbolicLink())`, and recurses until a `SKILL.md`. It loads every
+  `.md` in `droids/`, `filter((f)=>f.endsWith(".md"))`, naming one without frontmatter after its
+  file: `name:u.name||$t.basename(a,".md")`.
+- OpenCode loads root `.md` files as skills, with or without frontmatter
+  (`core/src/config/plugin/skill-scan.ts:34`, `if (item.depth === 0)`), and `SKILL.md` up to six
+  levels down (`:7`, `const MAX_DEPTH = 6`). Its `skills.mdx` says only `skills/*/SKILL.md`; the
+  code wins. The same scan covers `.claude/skills` and `.agents/skills`.
+- Pi collects root `.md` files in its own folders and `.md` files below the root in `.agents`
+  folders (`dist/core/package-manager.js:258`,
+  `((mode === "pi" && dir === root) || (mode === "agents" && dir !== root))`), and keeps one only
+  with a description (`dist/core/skills.js:233`, `if (!isDeclaredSkill && !hasDescription) {`).
+
+So a loose file is unreported in a Claude, Codex or Droid skills folder, and in OpenCode's only when
+it is not a `.md`; a folder holding no `SKILL.md` is unreported everywhere except as a folder of
+`.md` files in an `.agents/skills` folder, which Pi reads; and an agent file without frontmatter is
+unreported only in Claude's agents folder. Each harness reading the folder must ignore the entry, so
+`.agents/skills` counts Codex, OpenCode and Pi. In global scope the scan follows a link at the top
+of the folder, which init's de-link leaves for each entry it does not write.
 
 Pi also accepts extra skill directories in settings, and documents `~/.claude/skills` and
 `~/.codex/skills` as the intended values.

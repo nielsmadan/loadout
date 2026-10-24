@@ -10,7 +10,10 @@ known slice destination for it.
 - settings owned by a supported settings slice
 - hook and plugin declarations
 - MCP server definitions
-- skills
+- skills: each folder holding a `SKILL.md`. A loose file or a folder without one beside them, such
+  as a `README.md` or a `shared/` folder, is no skill and stays in place; `check` reports it only
+  where a harness reading the folder would load it
+  ([config.md](config.md#what-a-harness-loads-from-a-skills-or-agents-folder))
 - subagents: each harness's top-level agent files become one source agent per name, with a
   per-harness `model` map, and an `effort` word or map, recording what differed. A file adoption
   cannot read (such as a Codex agent holding a table) or whose name differs from its file name

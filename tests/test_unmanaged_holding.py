@@ -35,16 +35,17 @@ def test_sync_and_check_name_a_retired_skill_s_leftovers_alike(
     tmp_path: Path, fake_home: Path, capsys
 ) -> None:
     """Review 5, batch 2.6: sync scanned with the record from before it retired the skill,
-    so it named the file inside and check, the folder."""
+    so it named the file inside and check, the folder. The leftover is a .md Pi would load
+    from a folder of `.agents/skills` without SKILL.md, so both report it."""
     root = tmp_path / "p"
     for name in ("x", "y"):
         (root / f"loadout/skills/{name}").mkdir(parents=True)
         (root / f"loadout/skills/{name}/SKILL.md").write_text(
             f"---\nname: {name}\ndescription: d\n---\n{name}\n"
         )
-    (root / "loadout/config.toml").write_text('harnesses = ["claude"]\n')
+    (root / "loadout/config.toml").write_text('harnesses = ["codex"]\n')
     assert loadout.main(["sync", "--root", str(root)]) == 0
-    (root / ".claude/skills/x/notes.txt").write_text("mine\n")
+    (root / ".agents/skills/x/notes.md").write_text("mine\n")
     shutil.rmtree(root / "loadout/skills/x")
     capsys.readouterr()
 
@@ -54,6 +55,6 @@ def test_sync_and_check_name_a_retired_skill_s_leftovers_alike(
     drifted = [line for line in capsys.readouterr().err.splitlines() if line.startswith("DRIFT")]
 
     assert (warned, drifted) == (
-        ["WARNING: .claude/skills/x"],
-        ["DRIFT (unmanaged): .claude/skills/x"],
+        ["WARNING: .agents/skills/x"],
+        ["DRIFT (unmanaged): .agents/skills/x"],
     )

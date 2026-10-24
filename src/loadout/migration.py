@@ -312,50 +312,6 @@ class _PlanBuilder:
                 self.records.pop(candidate.destination, None)
         self.unadopted.append(Unadopted(kind, name, tuple(sorted(originals.items()))))
 
-    def source(
-        self,
-        category: str,
-        agents: tuple[str, ...],
-        destination: Path,
-        *,
-        private: bool = False,
-    ) -> Path:
-        if self.inventory.scope == "project":
-            relative = destination.relative_to(self.inventory.root)
-        else:
-            mapping = next(
-                (
-                    m
-                    for m in sorted(
-                        self.inventory.mappings,
-                        key=lambda m: len(m.destination.parts),
-                        reverse=True,
-                    )
-                    if destination.is_relative_to(m.destination)
-                ),
-                None,
-            )
-            relative = (
-                destination.relative_to(mapping.destination)
-                if mapping and mapping.kind != "file"
-                else Path(destination.name)
-            )
-            if mapping and mapping.destination_template in {
-                "${OPENCODE_CONFIG}",
-                "${OPENCODE_CONFIG_DIR}",
-            }:
-                relative = (
-                    Path(
-                        "supplemental-file" if mapping.kind == "file" else "supplemental-directory"
-                    )
-                    / relative
-                )
-            elif mapping and mapping.destination_template is None:
-                relative = (
-                    Path("mapped-" + sha256(str(mapping.destination).encode())[:12]) / relative
-                )
-        return Path(category) / ("local" if private else "native") / "+".join(agents) / relative
-
     def write(
         self,
         relative: Path,
@@ -711,28 +667,6 @@ class _PlanBuilder:
                     blocks[agent][directory] = True
         return blocks
 
-    def tree(
-        self,
-        destination: Path,
-        agents: tuple[str, ...],
-        category: str,
-        candidates: tuple[Candidate, ...],
-    ) -> None:
-        private = any(c.private for c in candidates)
-        source = self.source(category, agents, destination, private=private)
-        for candidate in candidates:
-            assert candidate.destination is not None
-            self.write(
-                source / candidate.destination.relative_to(destination),
-                candidate.content,
-                mode=candidate.mode,
-                private=private,
-            )
-            self.expect(candidate)
-        record = self.record(destination, agents, "tree")
-        record["category"] = category
-        self.records[destination] = record
-
     def catalog_skill_tree(
         self,
         destination: Path,
@@ -822,7 +756,7 @@ class _PlanBuilder:
                 self.handle_project_tree(category, entries)
             ):
                 agents = tuple(dict.fromkeys(a for c in entries for a in c.harnesses))
-                self.original_tree(target, agents, category, entries)
+                self.original_tree(target, agents, entries)
             for candidate in entries:
                 remaining.pop(candidate.destination)
 
@@ -877,21 +811,14 @@ class _PlanBuilder:
             self.global_slices[agent].add("module-config")
 
     def original_tree(
-        self,
-        target: Path,
-        agents: tuple[str, ...],
-        category: str,
-        entries: tuple[Candidate, ...],
+        self, target: Path, agents: tuple[str, ...], entries: tuple[Candidate, ...]
     ) -> None:
-        if category != "skills":
-            self.tree(target, agents, category, entries)
-            return
         by_name: dict[str, list[Candidate]] = {}
         for candidate in entries:
             assert candidate.destination is not None
             relative = candidate.destination.relative_to(target)
             by_name.setdefault(relative.parts[0], []).append(candidate)
-        for name, grouped in by_name.items():
+        for grouped in by_name.values():
             candidates = tuple(grouped)
             if any(
                 candidate.destination is not None and candidate.destination.name == SKILL_DOCUMENT
@@ -899,8 +826,8 @@ class _PlanBuilder:
             ):
                 self.catalog_skill_tree(target, agents, candidates)
                 continue
-            destination = target / name
-            self.tree(destination, agents, category, candidates)
+            # No skill: a loose file or a folder without SKILL.md stays where it is.
+            self.retained.update(path for c in candidates for path in _original_paths(c))
 
     def dormant(
         self, destination: Path, agents: tuple[str, ...], category: str, format_name: str = "copy"

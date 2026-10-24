@@ -159,7 +159,11 @@ way and never scanned. A file another loadout
 source wrote is not reported, nor is a dot entry such as `.DS_Store` or Codex's own `.system`
 skills, nor what a harness writes there itself: Claude Code's `skills/synced`, its copy of your
 claude.ai account's skills, and Droid's two mission droids in `~/.factory/droids/`. A source skill
-or agent that would render onto one of those is refused with exit 3; rename it.
+or agent that would render onto one of those is refused with exit 3; rename it. Nor is an entry no
+harness reading the folder would load, such as a `README.md` beside the skills in a Claude, Codex
+or Droid skills folder, a folder holding no `SKILL.md`, or a Claude agent file without
+frontmatter; init leaves those in place too. The rule per harness is in
+[docs/reference/config.md](docs/reference/config.md#what-a-harness-loads-from-a-skills-or-agents-folder).
 
 ## Shell completions
 
