@@ -350,7 +350,8 @@ and drops the link from the index. The folder the link led to stays as it was. A
 that loadout does not render is left behind rather than linked back, since a link back would be
 committed; that is safe only for an entry the harness would not load, such as a folder with no
 `SKILL.md` ([config.md](config.md#what-a-harness-loads-from-a-skills-or-agents-folder)), so for
-any other init refuses before changing anything.
+any other init refuses before changing anything
+([0034](../decisions/0034-init-de-links-a-project-skills-folder-linked-inside-the-repository.md)).
 
 A global harness root that is a link is
 still de-linked ([0023](../decisions/0023-adoption-de-links-a-symlinked-deployment.md)). The preview checks its outputs against the project's links before
