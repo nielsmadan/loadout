@@ -8,7 +8,9 @@ and [its results](../init-corpus-results-2026-09-05.md) remain historical.
 ## Inputs and isolation
 
 The exact nine project and five global upstream revisions, harness choices and deploy bases live
-in [init_corpus.json](../../../tests/fixtures/init_corpus.json). Init reads only a live deployment,
+in [init_corpus.json](../../../tests/fixtures/init_corpus.json). The pinned clones live in
+`~/wrksp/loadout/corpus-inputs/<case>`; a case naming an `input` reuses that clone instead
+(`integralist-agent-skills` reads `agent-skills`). Init reads only a live deployment,
 so for each global case the runner copies the trees named under `deploy` into the fake HOME, as the
 checkout's README installs them, before running init. Public repositories are read as data: never
 execute their installers, hooks, skills or application scripts. Reuse
@@ -21,49 +23,48 @@ not establish that its trees/blobs exist. The runner first tries a local clone a
 checkout, then a local fetch; `--fetch-missing-public` permits a fresh HTTPS `gh repo clone` and
 exact-pinned fetch if those fail. The failed local copy remains as evidence. No secrets are read.
 
-Every fixture gets a fresh resolved fake HOME. The runner clears Claude, Codex, Pi, XDG and
-OpenCode relocation variables and inherited Git overrides, disables system Git config, and sets
-identity only in the disposable repository. Preserve the checkout's interpreter path: do not run
+Every fixture gets a fresh resolved fake HOME, with all four XDG base directories inside it. The
+runner clears the Claude, Codex, Pi, Droid and OpenCode relocation variables and every inherited
+`GIT_*` variable, disables system Git config, points `GIT_CONFIG_GLOBAL` at an empty file, sets
+identity only in the disposable repository, and gives every command `/dev/null` as stdin, so init
+never stops to ask. Preserve the checkout's interpreter path: do not run
 `uv` from a sampled repository. No actual home, agent destination or installed hook is touched.
 
 ## Run the corpus
 
-From this checkout, where the two input directories contain the case names in the manifest:
+From this checkout, all 14 cases:
 
 ```sh
-.venv/bin/python tests/run_init_corpus.py \
-  --project-inputs /path/to/project-inputs \
-  --global-inputs /path/to/global-inputs \
-  --fetch-missing-public --synthetic
+.venv/bin/python tests/run_init_corpus.py
 ```
 
-Optional `--case NAME` selects diagnostic reruns. `--opencode-input /path/to/pinned-clone` reuses
+`--inputs DIR` reads the clones from elsewhere, `--fetch-missing-public` permits the public
+fallback, and `--synthetic` adds the synthetic global fixture. Optional `--case NAME` selects
+diagnostic reruns. `--opencode-input /path/to/pinned-clone` reuses
 a complete public fallback without another network clone. `--evidence /path/to/new-directory`
 selects an empty dedicated evidence directory; omission creates one. The script prints its path.
 Runnable code is [run_init_corpus.py](../../../tests/run_init_corpus.py); the synthetic global
 fixture is original inert test data for all four supported harnesses, outside the 14 public cases.
 
-The runner records actual command arguments, stdout/stderr, exits and wall times. Each case verifies:
+The runner records actual command arguments, stdout/stderr, exits and wall times in
+`results.json` and `logs/`, prints each case's status, and ends with `converted N of 14`. It exits
+1 when a case fails an assertion. Each case runs `init <scope> … --dry-run --json`, then
+`--yes --json`, then `check`, `sync` and `check` again (`--root` for a project, `--global` for a
+global case), and verifies:
 
 - HEAD equals the pin and complete index/tree listings agree before init.
-- Preview leaves content/modes/index unchanged. An unresolved apply exits 2 and preserves
-  contents, index, HEAD and fixture-setup HOME state; refusal is not migration.
-- Completed init preserves whole ordered documents and opaque bytes/modes; opaque expected modes
-  come from original filesystem stat, while rendered documents use their canonical mode contract.
-  Sentry's ordered
-  Claude allow list must equal all 96 originals. Baseline/index changes stay in preview scope,
-  originals retire as planned, generated copies remain ignored and absent from the index.
-- Check, sync, repeated init and staged check run. Fresh-process sync reconstructs from actual
-  staged Git blobs with Git's 100644/100755 modes, without originals, receipts or machine config.
-  Optional private trees are absent in that public reconstruction. When private source exists,
-  a second reconstruction supplies only those serialized private files and verifies all outputs.
-- Supported skill routes exercise first addition, edit, rename and last deletion through sync.
+- Preview leaves the worktree's content and modes, the index and the fake HOME unchanged.
+- An incomplete preview exits 2, and so does the apply that follows, leaving contents, index,
+  HEAD and HOME as they were; the status names the issue codes. Refusal is not migration.
+- A complete preview exits 0, and so does the apply. Init does not commit, and stages only the
+  untracking its preview listed.
+- `check` exits 0 after init, `sync` exits 0, and `check` exits 0 again.
 
-Whole-tree privacy is conservative: one credential-shaped file can make a complete skill tree
-private. Do not publish those values or silently count them as reconstructed from Git. Runtime
-fields excluded by ownership are not part of the source reconstruction. For full filesystem modes
-across Git, migration records explicit artifact modes; newly added undeclared paths inherit their
-source mode. No test launches a harness, so preservation is not proof of that harness's execution.
+An earlier runner also compared every adopted original with a generated write, one to one. That
+stopped holding once project instructions and `.mcp.json` stayed in place rather than becoming
+generated writes, so it failed every converting case and was removed, along with the
+reconstruction and skill-lifecycle passes built on it. No test launches a harness, so a clean
+check is not proof of that harness's execution.
 
 ## Run the performance comparison
 

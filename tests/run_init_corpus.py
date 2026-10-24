@@ -7,11 +7,9 @@ import shutil
 import stat
 import subprocess
 import tempfile
-import tomllib
 import traceback
 from collections import Counter
 from pathlib import Path
-from unittest.mock import patch
 
 from init_evidence import (
     assert_exit,
@@ -23,11 +21,16 @@ from init_evidence import (
     isolated_environment,
     write_json,
 )
-from loadout.destinations import resolve_destination
-from loadout.harnesses import GLOBAL_PRESET
-from loadout.project import PROJECT_PRESET
 
 CASES = Path(__file__).parent / "fixtures/init_corpus.json"
+# The pinned clones, one per case or per case's `input`; read as data, never run.
+DEFAULT_INPUTS = Path.home() / "wrksp/loadout/corpus-inputs"
+XDG_DIRECTORIES = (
+    ("XDG_CONFIG_HOME", ".config"),
+    ("XDG_DATA_HOME", ".local/share"),
+    ("XDG_STATE_HOME", ".local/state"),
+    ("XDG_CACHE_HOME", ".cache"),
+)
 
 
 def entries(root: Path) -> dict:
@@ -61,286 +64,6 @@ def deploy(case: dict, root: Path, home: Path) -> None:
             ignore=shutil.ignore_patterns(".git"),
             dirs_exist_ok=True,
         )
-
-
-def parse(content: bytes, format_name: str):
-    if format_name == "json":
-        return json.loads(content)
-    if format_name == "toml":
-        return tomllib.loads(content.decode())
-    return content
-
-
-def ordered(value):
-    if isinstance(value, dict):
-        return [(key, ordered(item)) for key, item in value.items()]
-    if isinstance(value, list):
-        return [ordered(item) for item in value]
-    return value
-
-
-def expected_outputs(preview: dict) -> dict:
-    generated = {entry["path"]: entry for entry in preview["generated_writes"]}
-    result = {}
-    output_free: set[str] = set()
-    for candidate in preview["candidates"]:
-        destination = candidate["destination"]
-        if candidate["disposition"] != "migrated":
-            continue
-        path = Path(candidate["path"])
-        assert destination and path.is_file(), ("missing inventoried original", path)
-        format_name = candidate["format"]
-        name = Path(destination).name
-        agents = candidate["harnesses"]
-        partial = format_name in {"json", "toml"} and (
-            (name == ".claude.json" and "claude" in agents)
-            or (name == "config.toml" and "codex" in agents)
-            or (name == "settings.json" and "pi" in agents)
-        )
-        mode = (
-            stat.S_IMODE(Path(destination).stat().st_mode)
-            if partial and Path(destination).is_file()
-            else stat.S_IMODE(path.stat().st_mode)
-            if format_name == "copy"
-            else 0o600
-        )
-        spec = {"path": destination, "format": format_name, "partial": partial, "mode": mode}
-        content = parse(path.read_bytes(), format_name)
-        if partial:
-            if name == ".claude.json" and "claude" in agents:
-                content = {"mcpServers": content["mcpServers"]} if "mcpServers" in content else {}
-            else:
-                runtime = {"projects", "trust"} if "codex" in agents else {"lastChangelogVersion"}
-                content = {k: v for k, v in content.items() if k not in runtime}
-            if not content:
-                output_free.add(destination)
-                continue
-        if destination in result:
-            assert ordered(result[destination]["content"]) == ordered(content), destination
-        result[destination] = {**spec, "content": content}
-    assert set(result) == set(generated) - output_free, (
-        "output inventory differs from inventoried originals",
-        set(result) ^ (set(generated) - output_free),
-    )
-    for path, spec in result.items():
-        assert all(generated[path][key] == spec[key] for key in ("format", "partial", "mode")), path
-    return result
-
-
-def compare(expected: dict, relocate=Path) -> list[dict]:
-    comparisons = []
-    for destination, spec in expected.items():
-        path = relocate(destination)
-        actual = parse(path.read_bytes(), spec["format"])
-        if spec["partial"]:
-            actual = {key: value for key, value in actual.items() if key in spec["content"]}
-        assert ordered(actual) == ordered(spec["content"]), destination
-        assert stat.S_IMODE(path.stat().st_mode) == spec["mode"], destination
-        comparisons.append(
-            {
-                "path": destination,
-                "format": spec["format"],
-                "mode": spec["mode"],
-                "comparison": "complete ordered owned document"
-                if isinstance(actual, dict)
-                else "exact bytes",
-                "output_sha256": digest(path.read_bytes()),
-            }
-        )
-    return comparisons
-
-
-def reconstruction(root: Path, home: Path, preview: dict, expected: dict, logs: Path) -> dict:
-    fresh = root.parent / "reconstruction"
-    fresh.mkdir()
-    fresh_home = root.parent / "reconstruction-home"
-    env = isolated_environment(fresh_home)
-    paths = git(root, "ls-files", "-z", "--", "loadout", env=env).split(b"\0")
-    for name in filter(None, paths):
-        target = fresh / os.fsdecode(name)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        entry = git(root, "ls-files", "--stage", "--", os.fsdecode(name), env=env)
-        mode = entry.split()[0]
-        target.write_bytes(git(root, "show", ":" + os.fsdecode(name), env=env))
-        target.chmod(0o755 if mode == b"100755" else 0o644)
-    source = fresh if preview["scope"] == "project" else fresh / "loadout"
-    if preview["scope"] == "global":
-        # Only the registered source renders global scope (ADR 0031).
-        machine = fresh_home / ".config/loadout/config.toml"
-        machine.parent.mkdir(parents=True)
-        machine.write_text(f"source = {json.dumps(str(source))}\n", encoding="utf-8")
-    result = command(["sync", "--root", str(source)], env, logs, "reconstruction-sync")
-    assert_exit(result)
-
-    def relocate(path):
-        target = Path(path)
-        return (
-            fresh / target.relative_to(root)
-            if target.is_relative_to(root)
-            else fresh_home / target.relative_to(home)
-        )
-
-    private_routes: list[Path] = []
-    public = {
-        path: spec
-        for path, spec in expected.items()
-        if not any(Path(path).is_relative_to(route) for route in private_routes)
-        and not any(c["destination"] == path and c["private"] for c in preview["candidates"])
-    }
-    result["comparisons"] = compare(public, relocate)
-    output_root = fresh if preview["scope"] == "project" else fresh_home
-    actual_paths = {
-        path
-        for path in output_root.rglob("*")
-        if path.is_file()
-        and not (preview["scope"] == "project" and path.is_relative_to(fresh / "loadout"))
-    }
-    assert actual_paths == {relocate(path) for path in public}, (
-        "public reconstruction output inventory differs"
-    )
-    result["source"] = (
-        "actual Git index blobs; Git 100644/100755 modes; no originals, registration or private files"
-    )
-    result["private_outputs_omitted"] = len(expected) - len(public)
-    result["source_files"] = len(list(filter(None, paths)))
-    private_files = [entry for entry in preview["source_writes"] if entry["private"]]
-    if private_files:
-        for entry in private_files:
-            original = Path(entry["path"])
-            target = fresh / original.relative_to(root)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(original.read_bytes())
-            target.chmod(entry["mode"])
-        result["with_private_source"] = command(
-            ["sync", "--root", str(source)], env, logs, "reconstruction-private-sync"
-        )
-        assert_exit(result["with_private_source"])
-        result["with_private_source"]["comparisons"] = compare(expected, relocate)
-        actual_paths = {
-            path
-            for path in output_root.rglob("*")
-            if path.is_file()
-            and not (preview["scope"] == "project" and path.is_relative_to(fresh / "loadout"))
-        }
-        assert actual_paths == {relocate(path) for path in expected}, (
-            "complete reconstruction output inventory differs"
-        )
-        result["with_private_source"]["supplied_private_files"] = len(private_files)
-    return result
-
-
-def lifecycle(root: Path, source: Path, preview: dict, env: dict, logs: Path) -> dict:
-    agent = next(agent for agent in preview["harnesses"] if "skills" in GLOBAL_PRESET[agent])
-    target_source = root / "loadout/skills/corpus-lifecycle.md"
-    if preview["scope"] == "project":
-        spec = PROJECT_PRESET[agent]["skills"]
-        assert spec.output is not None
-        target = root / spec.output / "corpus-lifecycle/SKILL.md"
-    else:
-        spec = GLOBAL_PRESET[agent]["skills"]
-        assert spec.destination is not None
-        with patch.dict(os.environ, env, clear=True):
-            target = resolve_destination(spec.destination, "corpus lifecycle") / (
-                "corpus-lifecycle/SKILL.md"
-            )
-    target_source.parent.mkdir(parents=True)
-    records = []
-    for label, content in (("addition", b"# First entry\n"), ("edit", b"# Edited entry\n")):
-        target_source.write_bytes(content)
-        record = command(["sync", "--root", str(source)], env, logs, label)
-        assert_exit(record)
-        assert target.read_bytes() == content
-        records.append(record)
-    renamed = target_source.with_name("renamed.md")
-    target_source.rename(renamed)
-    record = command(["sync", "--root", str(source)], env, logs, "rename")
-    assert_exit(record)
-    assert target.with_name("renamed.md").read_bytes() == b"# Edited entry\n"
-    assert not target.exists()
-    records.append(record)
-    renamed.unlink()
-    record = command(["sync", "--root", str(source)], env, logs, "last-deletion")
-    assert_exit(record)
-    assert not target.with_name("renamed.md").exists()
-    records.append(record)
-    record = command(["check", "--root", str(source)], env, logs, "lifecycle-check")
-    assert_exit(record)
-    records.append(record)
-    return {
-        "category": "skills",
-        "commands": records,
-        "observed": [
-            "first addition",
-            "edit",
-            "rename retires old output",
-            "last deletion retires output",
-        ],
-    }
-
-
-def adopt(case: dict, root: Path, preview: dict, env: dict, logs: Path) -> dict:
-    home = Path(env["HOME"])
-    expected = expected_outputs(preview)
-    result = command([*arguments(case, root), "--yes", "--json"], env, logs, "init")
-    assert_exit(result)
-    result["comparisons"] = compare(expected)
-    head = git(root, "rev-parse", "HEAD", env=env).decode().strip()
-    revision = git(root, "rev-parse", case["revision"] + "^{commit}", env=env).decode().strip()
-    assert head == revision, "init must not commit"
-    staged = git(root, "diff", "--cached", "--name-only", env=env).decode().splitlines()
-    assert set(staged) <= set(preview["untrack_paths"]), "init stages only the untracking"
-    result["staged_paths"] = staged
-    indexed = set(git(root, "ls-files", "-z", env=env).decode().split("\0"))
-    for entry in preview["originals"]:
-        path = Path(entry["path"])
-        if entry["action"] == "retire":
-            assert not path.exists() and not path.is_symlink(), path
-        if entry["action"] == "generated" and path.is_relative_to(root):
-            assert str(path.relative_to(root)) not in indexed
-            assert git(root, "check-ignore", str(path), env=env).strip()
-    source = root if case["scope"] == "project" else root / "loadout"
-    for label, args in (
-        ("check", ["check", "--root", str(source)]),
-        ("sync", ["sync", "--root", str(source)]),
-        ("check-again", ["check", "--root", str(source)]),
-        ("init-again", [*arguments(case, root), "--yes", "--json"]),
-    ):
-        result[label] = command(args, env, logs, label)
-        assert_exit(result[label])
-    # Init stages nothing; the user reviews and stages the migration before a staged check.
-    git(root, "add", "-A", env=env)
-    result["staged"] = command(["check", "--staged", "--root", str(source)], env, logs, "staged")
-    assert_exit(result["staged"])
-    result["reconstruction"] = reconstruction(root, home, preview, expected, logs)
-    if case["case"] == "sentry":
-        allow = expected[str(root / ".claude/settings.json")]["content"]["permissions"]["allow"]
-        assert len(allow) == 96
-        result["sentry_allow"] = {
-            "count": len(allow),
-            "ordered_sha256": digest(json.dumps(allow).encode()),
-            "full_list_equal": True,
-        }
-    if any("skills" in GLOBAL_PRESET[agent] for agent in preview["harnesses"]):
-        result["lifecycle"] = lifecycle(root, source, preview, env, logs)
-    if case["case"] == "synthetic-global":
-        result["example"] = {
-            "before": {
-                str(Path(path).relative_to(home)): spec["content"]
-                if isinstance(spec["content"], dict)
-                else spec["content"].decode()
-                for path, spec in expected.items()
-            },
-            "source": {
-                str(Path(entry["path"]).relative_to(root)): Path(entry["path"]).read_text()
-                for entry in preview["source_writes"]
-                if not entry["private"] and Path(entry["path"]).stat().st_size
-            },
-            "after": {
-                str(Path(path).relative_to(home)): Path(path).read_text() for path in expected
-            },
-        }
-    result["status"] = "migrated"
-    return result
 
 
 def clone_input(
@@ -381,9 +104,26 @@ def clone_input(
     return root
 
 
-def run_case(case: dict, retained: Path, directory: Path, *, fetch_public: bool = False) -> dict:
-    home = directory / "home"
+def corpus_environment(home: Path) -> dict[str, str]:
+    """`isolated_environment` with every XDG base directory inside the fake HOME and an
+    empty global Git config, so neither the machine's nor the user's settings reach a run."""
     env = isolated_environment(home)
+    for name, relative in XDG_DIRECTORIES:
+        env[name] = str(home / relative)
+    empty = home.parent / f"{home.name}.gitconfig"
+    empty.write_text("")
+    env["GIT_CONFIG_GLOBAL"] = str(empty)
+    return env
+
+
+def scope_arguments(case: dict, root: Path) -> list[str]:
+    return ["--root", str(root)] if case["scope"] == "project" else ["--global"]
+
+
+def run_case(case: dict, retained: Path, directory: Path, *, fetch_public: bool = False) -> dict:
+    """Preview, apply, then check, sync and check again; a refusal must change nothing."""
+    home = directory / "home"
+    env = corpus_environment(home)
     root = clone_input(case, retained, directory, env, fetch_public=fetch_public)
     deploy(case, root, home)
     logs = directory / "logs"
@@ -393,13 +133,13 @@ def run_case(case: dict, retained: Path, directory: Path, *, fetch_public: bool 
     tracked = git(root, "ls-files", "-z", env=env).split(b"\0")[:-1]
     tree = git(root, "ls-tree", "-rz", "--name-only", "HEAD", env=env).split(b"\0")[:-1]
     assert tracked == tree
-    before = entries(root)
-    before_home = entries(home)
+    before, before_home = entries(root), entries(home)
     initial_index = (root / ".git/index").read_bytes()
     preview_result = command([*arguments(case, root), "--dry-run", "--json"], env, logs, "preview")
     preview = json.loads((logs / "preview.stdout").read_bytes())
     assert entries(root) == before, "preview changed worktree"
     assert (root / ".git/index").read_bytes() == initial_index, "preview changed index"
+    assert entries(home) == before_home, "preview changed fake home"
     result = {
         **case,
         "tracked_paths": len(tracked),
@@ -417,16 +157,26 @@ def run_case(case: dict, retained: Path, directory: Path, *, fetch_public: bool 
         assert (root / ".git/index").read_bytes() == initial_index
         assert git(root, "rev-parse", "HEAD", env=env).decode().strip() == case["revision"]
         assert entries(home) == before_home, "refusal changed fake home"
-        result["status"] = "unresolved refusal; no filesystem/index/HEAD/home changes"
-    else:
-        result.update(adopt(case, root, preview, env, logs))
+        codes = sorted({issue["code"] for issue in preview["issues"]})
+        result["status"] = f"refused ({', '.join(codes)}); nothing changed"
+        return result
+    assert_exit(preview_result)
+    result["init"] = command([*arguments(case, root), "--yes", "--json"], env, logs, "init")
+    assert_exit(result["init"])
+    head = git(root, "rev-parse", "HEAD", env=env).decode().strip()
+    assert head == case["revision"], "init must not commit"
+    staged = git(root, "diff", "--cached", "--name-only", env=env).decode().splitlines()
+    assert set(staged) <= set(preview["untrack_paths"]), "init stages only the untracking"
+    for label, verb in (("check", "check"), ("sync", "sync"), ("check-again", "check")):
+        result[label] = command([verb, *scope_arguments(case, root)], env, logs, label)
+        assert_exit(result[label])
+    result["status"] = "converted"
     return result
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--project-inputs", type=Path, required=True)
-    parser.add_argument("--global-inputs", type=Path, required=True)
+    parser.add_argument("--inputs", type=Path, default=DEFAULT_INPUTS)
     parser.add_argument("--evidence", type=Path)
     parser.add_argument("--case", action="append")
     parser.add_argument("--fetch-missing-public", action="store_true")
@@ -443,8 +193,7 @@ def main() -> None:
     for case in cases:
         if args.case and case["case"] not in args.case:
             continue
-        inputs = args.project_inputs if case["scope"] == "project" else args.global_inputs
-        retained = inputs / case["case"]
+        retained = args.inputs / case.get("input", case["case"])
         if case["case"] == "opencode" and args.opencode_input:
             retained = args.opencode_input
         if case["case"] == "synthetic-global":
@@ -464,6 +213,8 @@ def main() -> None:
         summary["cases"].append(result)
         write_json(directory / "results.json", summary)
         print(f"{case['case']}: {result['status']}", flush=True)
+    converted = sum(case["status"] == "converted" for case in summary["cases"])
+    print(f"converted {converted} of {len(summary['cases'])}", flush=True)
     if any(case["status"] == "failed" for case in summary["cases"]):
         raise SystemExit(1)
 

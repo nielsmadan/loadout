@@ -96,6 +96,8 @@ def command(arguments: list[str], env: dict[str, str], logs: Path, label: str, t
             [*CLI, *arguments],
             cwd=CHECKOUT,
             env=env,
+            # Never a terminal, so init cannot stop to ask.
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             timeout=timeout,
             check=False,
