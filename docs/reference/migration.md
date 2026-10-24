@@ -99,7 +99,7 @@ fix it on disk and run init again. An incomplete preview exits 2 and changes not
 | `symlink-target`, `symlink-cycle` | a link at a read path is missing its target or loops |
 | `external-symlink` | in project scope, a harness root links outside the repository; its content would become committed source. There is no override: share it as a loadout template, or replace the link with a real copy (`cp -RL`) and run init again ([0026](../decisions/0026-a-project-root-linked-outside-the-repository-has-no-override.md)) |
 | `git-link` | in project scope, a link points into the repository's `.git`, which holds credentials such as a token in `.git/config` and runs hooks; init reports it and never reads through it |
-| `linked-folder`, `linked-file` | in project scope, a harness folder that is itself a link inside the repository, such as `.claude -> config/claude`, or a link inside one, such as `.claude/skills/x/scripts -> ../../../tools`; project sync never writes through one, so init reports it instead of walking it. Replace it with a real copy (`cp -RL`) and run init again |
+| `linked-folder`, `linked-file` | in project scope, a harness folder that is itself a link inside the repository, such as `.claude -> config/claude`, or a link inside one, such as `.claude/skills/x/scripts -> ../../../tools`; project sync never writes through one, so init reports it instead of walking it. Replace it with a real copy (`cp -RL`) and run init again. A harness skills folder linked to a real folder in the repository is the exception (below) |
 | `opencode-both-formats` | `opencode.json` and `opencode.jsonc` side by side: OpenCode reads both and merges them, the `.jsonc`'s keys winning; combine them into one file |
 | `invalid-native-document` | a document at a read path does not parse |
 | `dependency-activation` | an adopted declaration references a de-linked original instead of the copy loadout deploys |
@@ -338,7 +338,21 @@ Still refused: a symlink cycle, and in project scope a harness root linked outsi
 whose content would otherwise become committed project source. That refusal has no override; it
 names the link's target and the two remedies, a loadout template or a real copy made with `cp -RL`.
 In project scope init also refuses each link project sync would refuse: any link into `.git`, a
-harness folder that is a link, and any link inside one. A global harness root that is a link is
+harness folder that is a link, and any link inside one.
+
+The exception is a harness `skills` folder that links to a real folder in the same repository,
+outside `.git`, such as `.claude/skills -> ../.agents/skills`: three of the nine project setups in
+the init corpus share their skills this way. If the harness reads that folder itself, as OpenCode
+and Pi read `.agents/skills`, init retires the link and the harness goes on reading the folder.
+Otherwise init reads through the link, and at apply replaces it with a real folder that the first
+render fills, using the global de-link's topology (`_topology` in `migration_transaction.py`),
+and drops the link from the index. The folder the link led to stays as it was. An entry there
+that loadout does not render is left behind rather than linked back, since a link back would be
+committed; that is safe only for an entry the harness would not load, such as a folder with no
+`SKILL.md` ([config.md](config.md#what-a-harness-loads-from-a-skills-or-agents-folder)), so for
+any other init refuses before changing anything.
+
+A global harness root that is a link is
 still de-linked ([0023](../decisions/0023-adoption-de-links-a-symlinked-deployment.md)). The preview checks its outputs against the project's links before
 it copies a single original into its scratch render, and a refusal there names the project's own
 paths.

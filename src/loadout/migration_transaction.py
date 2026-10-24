@@ -17,6 +17,7 @@ from .migration_paths import DestinationLayout, inventory_layout
 from .migration_validation import validate_plan
 from .output import entry_path
 from .surgery import DocumentFormat, apply
+from .unmanaged import harness_ignores
 
 
 @dataclass(frozen=True)
@@ -203,10 +204,35 @@ def _mirror(
             continue
         original = originals.get(child) or originals.get(entry_path(child))
         if original is None or original.action == "retain":
+            if plan.inventory.scope == "project":
+                _left_behind(child, path, plan)
+                continue
             target = entry_path(child)
             if any(target.is_relative_to(p) for p in retired):
                 raise LoadoutError(f"retained entry depends on a retired source: {child}")
             builder.put(child, Image("symlink", os.fsencode(target), 0o777), "topology")
+
+
+def _left_behind(child: Path, folder: Path, plan: MigrationPlan) -> None:
+    """In a project, a replaced skills folder holds only what loadout renders, since a link
+    back would be committed. Anything else stays in the folder the link led to, which works
+    only for an entry the harness would not load from here."""
+    harness = next(
+        (
+            m.harnesses[0]
+            for m in plan.inventory.mappings
+            if m.kind == "harness" and entry_path(folder).is_relative_to(entry_path(m.destination))
+        ),
+        None,
+    )
+    # The link is still on disk while this is planned; a folder below it is not one.
+    top = folder.is_symlink()
+    if not top or harness is None or not harness_ignores(child, "skills", harness):
+        raise LoadoutError(
+            f"{child} is not one of the skills loadout renders, so it would be lost when init "
+            f"replaces the link {folder} with a real folder; move it into its own skill "
+            "folder, or replace the link with a real copy, then run init again"
+        )
 
 
 def _as_found(path: Path) -> Image:
@@ -256,10 +282,25 @@ def _ignored_outputs(plan: MigrationPlan) -> tuple[Path, ...]:
     if plan.inventory.scope != "project":
         return ()
     return tuple(
-        plan.inventory.root / pattern.strip("/")
+        plan.inventory.root.resolve() / pattern.strip("/")
         for pattern in plan.ignores
         if not pattern.endswith("/")
     )
+
+
+def _replaced_links(plan: MigrationPlan) -> tuple[Path, ...]:
+    """The project skills folder links init replaces with real folders, spelled under the
+    resolved root: the index drops each, as a folder of generated files takes its place."""
+    if plan.inventory.scope != "project":
+        return ()
+    root = plan.inventory.root.resolve()
+    return tuple(
+        root / _relative(link, plan.inventory.root) for link in _links(plan, _rendered_paths(plan))
+    )
+
+
+def _relative(path: Path, root: Path) -> Path:
+    return path.relative_to(root) if path.is_relative_to(root) else path.relative_to(root.resolve())
 
 
 def _filesystem_plan(plan: MigrationPlan, machine_write: SourceWrite | None) -> _Builder:
@@ -288,7 +329,8 @@ def _filesystem_plan(plan: MigrationPlan, machine_write: SourceWrite | None) -> 
         target = entry_path(path)
         if target in rendered or target in builder.images:
             continue
-        if not _retirable(plan, target) or target.is_dir():
+        # Retiring a link removes the link alone, whatever it leads to.
+        if not _retirable(plan, target) or (target.is_dir() and not target.is_symlink()):
             raise LoadoutError(f"retirement must name an individual adopted source: {path}")
         builder.put(target, Image(), "retire")
     if machine_write is not None:
@@ -339,7 +381,9 @@ def prepare_migration(
         )
         repository = migration_git.repository(plan.inventory.root.resolve())
         if repository is not None and plan.inventory.scope == "project":
-            untracked = migration_git.tracked(repository, _ignored_outputs(plan))
+            untracked = migration_git.tracked(
+                repository, (*_ignored_outputs(plan), *_replaced_links(plan))
+            )
         if repository is None and plan.inventory.scope == "global":
             new_repository = migration_git.new_source_repository(plan.inventory.root.resolve())
     return MigrationPreparation(

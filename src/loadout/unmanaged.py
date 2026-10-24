@@ -113,10 +113,10 @@ def _inert(entry: Path, readers: Readers, *, follow_links: bool) -> bool:
     one back into the original folder."""
     if entry.is_symlink() and not (follow_links and entry.is_dir()):
         return False
-    return bool(readers) and all(_ignored_by(entry, *reader) for reader in readers)
+    return bool(readers) and all(harness_ignores(entry, *reader) for reader in readers)
 
 
-def _ignored_by(entry: Path, slice_name: str, harness: str) -> bool:
+def harness_ignores(entry: Path, slice_name: str, harness: str) -> bool:
     if slice_name == "agents":
         return harness == "claude" and entry.suffix == ".md" and not _frontmatter(entry)
     if slice_name != "skills":

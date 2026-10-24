@@ -349,8 +349,10 @@ def _planned_render(
     rendered = list(_render(plan, scratch, profile, context))
     if plan.inventory.scope == "project":
         # Before an original is copied in: a link in the project would be read through.
+        # The skills folder links apply replaces with real folders are the exception.
+        replaced = {p for w in plan.generated_writes for p in w.path.parents if p.is_symlink()}
         written = [real / path.relative_to(scratch) for path in rendered]
-        refuse_escaping(real, written, written)
+        refuse_escaping(real, [p for p in written if replaced.isdisjoint(p.parents)], written)
     for path in rendered:
         original = real / path.relative_to(scratch) if path.is_relative_to(scratch) else None
         if original is None or not original.is_file() or path.exists() or path.is_symlink():

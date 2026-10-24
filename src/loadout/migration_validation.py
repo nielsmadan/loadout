@@ -44,8 +44,16 @@ def validate_plan(plan: MigrationPlan) -> MigrationPlan:
     return replace(
         plan,
         validated=True,
-        generated_writes=() if plan.inventory.scope == "project" else generated,
+        generated_writes=generated
+        if plan.inventory.scope != "project"
+        else tuple(w for w in generated if _beneath_link(w.path, plan.inventory.root)),
     )
+
+
+def _beneath_link(path: Path, root: Path) -> bool:
+    """A project output under a skills folder link, which init replaces with a real
+    folder before the first render writes into it."""
+    return any(parent.is_symlink() for parent in path.parents if parent.is_relative_to(root))
 
 
 def _reconstruct(plan: MigrationPlan) -> tuple[GeneratedWrite, ...]:

@@ -13,6 +13,7 @@ from .composition import HEADER
 from .containment import PROJECT_DIR
 from .credentials import credential_material
 from .discovery import (
+    LINKED_SKILLS,
     PROJECT_ROOTS,
     RUNTIME_DOCUMENTS,
     authored_part,
@@ -1067,6 +1068,9 @@ def plan_migration(inventory: Inventory) -> MigrationPlan:
     if issues:
         return MigrationPlan(inventory, preconditions=inventory.preconditions, issues=issues)
     builder = _PlanBuilder(inventory)
+    builder.absorbed.update(
+        (c.path, c.reason) for c in inventory.candidates if c.category == LINKED_SKILLS
+    )
     for name, conflicting in _conflicting_skills(inventory, candidates).items():
         builder.leave_out("skill", name, conflicting)
     try:
@@ -1375,6 +1379,9 @@ def _original_entries(
                 action, reason = "retain", candidate.reason
             elif planned in holding or _within_any(planned, trees):
                 action, reason = "generated", "This entry remains a required generated destination."
+            elif inventory.scope == "project" and path != candidate.path:
+                # Read through a skills folder link init replaces: the folder it led to stays.
+                action, reason = "retain", "The link to it becomes a real folder; this stays."
             elif not entry.is_relative_to(inventory.root.resolve()):
                 action, reason = (
                     "retain",

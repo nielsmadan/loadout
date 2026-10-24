@@ -50,11 +50,13 @@ def index_path(root: Path) -> Path:
 
 
 def tracked(root: Path, paths: Iterable[Path]) -> tuple[str, ...]:
-    """The repository-relative names of `paths` the index holds."""
+    """The repository-relative names of `paths`, each spelled under `root`, that the index
+    holds. A path is never resolved: under a link init replaces, that would name the file
+    the link led to."""
     names = [
-        path.resolve().relative_to(root).as_posix()
+        path.relative_to(root).as_posix()
         for path in paths
-        if path.resolve().is_relative_to(root) and path.resolve() != root
+        if path.is_relative_to(root) and path != root
     ]
     if not names:
         return ()

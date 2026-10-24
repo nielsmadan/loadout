@@ -384,6 +384,13 @@ def _managed(relative: Path, entries: tuple[str, ...], *, directory: bool) -> bo
     return False
 
 
+SKILLS_FOLDER = "skills"
+SHARED_SKILLS = ".agents/skills"
+LINKED_SKILLS = "linked-skills"
+RETIRED_SKILLS_LINK = (
+    "Its harness reads the folder this links to itself, so the link is retired and the "
+    "folder stays."
+)
 # The harnesses whose skills loadout renders into the shared `.agents/skills`, per scope.
 SHARED_SKILL_WRITERS = {
     "global": frozenset(
@@ -484,9 +491,7 @@ class _InventoryBuilder:
             )
             return
         self.remember(path, read=False)
-        if self.confined and (refused := self._refused_link(path, canonical, mapping)):
-            code, message = refused
-            self._unresolved(path, destination, mapping.harnesses, code, message)
+        if self.confined and self._stops_at_link(path, canonical, destination, mapping):
             return
         self.remember(canonical, read=False)
         if canonical in ancestors:
@@ -505,6 +510,46 @@ class _InventoryBuilder:
                 self._walk(child, mapping, (*ancestors, canonical))
         else:
             self._file(path, canonical, destination, mapping)
+
+    def _stops_at_link(
+        self, path: Path, canonical: Path, destination: Path, mapping: RootMapping
+    ) -> bool:
+        """Whether a project walk stops at `path`, recording why: a skills folder link it
+        retires, or a link it refuses."""
+        shared = self._shared_skills_link(path, canonical, mapping)
+        if shared:
+            self.candidates[path, destination] = Candidate(
+                path,
+                canonical,
+                destination,
+                mapping.harnesses,
+                LINKED_SKILLS,
+                "retained dependency",
+                RETIRED_SKILLS_LINK,
+            )
+            return True
+        if shared is None and (refused := self._refused_link(path, canonical, mapping)):
+            code, message = refused
+            self._unresolved(path, destination, mapping.harnesses, code, message)
+            return True
+        return False
+
+    def _shared_skills_link(self, path: Path, canonical: Path, mapping: RootMapping) -> bool | None:
+        """For a project harness skills folder that links to a real folder in the same
+        repository, outside `.git`: whether the harness reads that folder itself, so the
+        link is retired, or not, so init reads through it and replaces it with a real
+        folder. None for every other path, which `_refused_link` judges."""
+        root = self.allowed[0]
+        if not (
+            path.is_symlink()
+            and mapping.kind == "harness"
+            and path.relative_to(mapping.source) == Path(SKILLS_FOLDER)
+            and canonical.is_dir()
+            and canonical.is_relative_to(root)
+            and not in_git_dir(root, canonical)
+        ):
+            return None
+        return canonical == root / SHARED_SKILLS and mapping.harnesses[0] in SHARED_SKILL_READERS
 
     def _refused_link(
         self, path: Path, canonical: Path, mapping: RootMapping
