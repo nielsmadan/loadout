@@ -183,3 +183,22 @@ def test_a_skill_reached_through_a_link_inside_a_folder_is_still_flagged(
     (group / "lint").symlink_to(elsewhere)
 
     assert _check(["--global"], capsys) == (1, {str(group): "unmanaged"})
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("scope", ["project", "global"])
+def test_opencode_selected_reads_claude_s_skills_folder_so_a_root_markdown_is_flagged(
+    tmp_path: Path, fake_home: Path, capsys, scope: str
+) -> None:
+    """OpenCode scans Claude's skills folders too, and loads any root .md there."""
+    if scope == "project":
+        root = tmp_path / "project"
+        _write(root / "loadout/config.toml", 'harnesses = ["claude", "opencode"]\n')
+        args, readme = ["--root", str(root)], root / ".claude/skills/README.md"
+    else:
+        root = _global_source(tmp_path / "source", ("claude", "opencode"))
+        args, readme = ["--global"], fake_home / ".claude/skills/README.md"
+    assert loadout.main(["sync", "--root", str(root)]) == 0
+    _write(readme, README)
+
+    assert _check(args, capsys) == (1, {str(readme): "unmanaged"})

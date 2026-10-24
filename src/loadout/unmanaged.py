@@ -87,15 +87,29 @@ def managed_folders(
                 links.append(link)
             elif protected(PurePosixPath(folder.relative_to(root).as_posix())) is None:
                 folders.append((folder, slice_name, harness))
+    selected = frozenset(harness for _, _, harness in folders)
     readers: dict[Path, set[tuple[str, str]]] = {}
     for folder, slice_name, harness in folders:
-        shared = slice_name == "skills" and folder.parts[-2:] == (".agents", "skills")
-        for reader in SHARED_SKILL_READERS if shared else (harness,):
+        for reader in _readers(folder, slice_name, harness, selected):
             readers.setdefault(folder, set()).add((slice_name, reader))
     return (
         {folder: frozenset(found) for folder, found in readers.items()},
         tuple(dict.fromkeys(links)),
     )
+
+
+def _readers(
+    folder: Path, slice_name: str, harness: str, selected: frozenset[str]
+) -> tuple[str, ...]:
+    """Every harness that reads `folder`: Codex, OpenCode and Pi all read `.agents/skills`,
+    and OpenCode, when selected, also scans Claude's skills folders."""
+    if slice_name != "skills":
+        return (harness,)
+    if folder.parts[-2:] == (".agents", "skills"):
+        return SHARED_SKILL_READERS
+    if harness == "claude" and "opencode" in selected:
+        return ("claude", "opencode")
+    return (harness,)
 
 
 def _ignored(relative: Path) -> bool:

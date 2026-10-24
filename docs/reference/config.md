@@ -541,7 +541,11 @@ So a loose file is unreported in a Claude, Codex or Droid skills folder, and in 
 it is not a `.md`; a folder holding no `SKILL.md` is unreported everywhere except as a folder of
 `.md` files in an `.agents/skills` folder, which Pi reads; and an agent file without frontmatter is
 unreported only in Claude's agents folder. Each harness reading the folder must ignore the entry, so
-`.agents/skills` counts Codex, OpenCode and Pi. In global scope the scan follows a link at the top
+`.agents/skills` counts Codex, OpenCode and Pi, and Claude's skills folders count OpenCode too when
+it is selected: its compatibility scan runs the same skill scan over each Claude and `.agents`
+root's `skills` (`core/src/config/plugin/compatibility.ts:43`,
+`[...roots.claude, ...roots.agents].map((root) => path.join(root, "skills"))`), so a root `.md` in
+`.claude/skills` is an OpenCode skill. In global scope the scan follows a link at the top
 of the folder, which init's de-link leaves for each entry it does not write.
 
 Pi also accepts extra skill directories in settings, and documents `~/.claude/skills` and
