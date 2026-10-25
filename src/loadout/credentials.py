@@ -188,6 +188,7 @@ PLAIN_VARIABLE = re.compile(
 )
 PLAIN_VALUE = re.compile(r"(?i)^(?:-?\d+(?:\.\d+)?|true|false|yes|no|on|off|[~.]?/.*)$")
 LABELLED_REASON = "a value labelled as a secret"
+BEARER_LENGTH = 20
 # A NUL this early is binary content, the check git itself uses; past the cap a file is
 # an asset or a dump, and reading all of it cost more than the rest of init together.
 BINARY_PROBE = 8192
@@ -292,12 +293,19 @@ def credential_material(content: bytes, format_name: str = "copy") -> str | None
     return next((why for why, _ in findings(content, format_name)), None)
 
 
+def _token_like(value: str) -> bool:
+    """Whether the word after `bearer` is a token rather than prose: "the bearer is"."""
+    return len(value) >= BEARER_LENGTH or any(character.isdigit() for character in value)
+
+
 def _labelled_values(text: str) -> Iterator[str]:
     """Each labelled secret's value: the word that decides it, or unquoted, its whole
     value (review 4, batch 1.3). After an authorization label a one-word scheme, such as
     `Token` or `Digest`, is skipped."""
     for match in _LABELLED.finditer(text):
         if match.group("bearer") is not None:
+            if not _token_like(match.group("bearer")):
+                continue
             decided, start, quote = match.group("bearer"), match.start("bearer"), ""
         elif names_a_secret(match.group("label")):
             decided, start, quote = match.group("value"), match.start("value"), match.group("quote")

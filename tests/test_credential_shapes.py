@@ -68,6 +68,7 @@ SECRETS = {
     "a header value": ("json", {"headers": {"X-Custom": "FAKEVALUE1"}}),
     "a Codex header value": ("toml", '[mcp_servers.x.http_headers]\nX-Custom = "FAKEVALUE1"\n'),
     "a bearer value in prose": ("copy", "Send it as Bearer abcdef1234567890 on each call.\n"),
+    "a client secret beside its variable name": ("copy", "GOOGLE_CLIENT_SECRET=abc123def456\n"),
 }
 
 NOT_SECRETS = {
@@ -108,6 +109,13 @@ NOT_SECRETS = {
     "a PowerShell env reference": ("json", {"env": {"API_TOKEN": "$env:API_TOKEN"}}),
     "a braced env reference": ("json", {"env": {"API_TOKEN": "${API_TOKEN}"}}),
     "a bearer reference": ("json", {"headers": {"Authorization": "Bearer ${API_TOKEN}"}}),
+    # dreamhack/app1's AGENTS.md: prose about the bearer, and a documented variable name.
+    "the bearer in prose": ("copy", "the bearer is stored with `react-native-keychain`.\n"),
+    "bearer tokens in prose": ("copy", "Bearer tokens expire after an hour.\n"),
+    "a documented client id": (
+        "copy",
+        "- `GOOGLE_WEB_CLIENT_ID` - Google server/web OAuth client used as the ID-token audience\n",
+    ),
 }
 
 

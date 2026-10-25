@@ -207,6 +207,8 @@ key (`OPENAI_KEY`, `stripeKey`), so `apiKey`, `X-API-KEY`, `--api-key` and `api_
 and `--api-key-file`, `max_tokens` or `auth_env_var` do not. A file looks like it holds a secret when it has:
 
 - such a key, or such a label in text, holding a literal value;
+- a word after `Bearer` in text that has a digit or is at least 20 characters long, so prose
+  such as "the bearer is stored in the keychain" is not one;
 - a literal value under `env`, `environment`, `headers` or `http_headers`, other than a number, a
   switch such as `true` or `on`, a path, or a name that never holds a secret (`PATH`, `*_ENV`,
   `DISABLE_*`, `Content-Type` and the like), read from such an object's text when a JSON
