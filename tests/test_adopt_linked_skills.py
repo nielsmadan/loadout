@@ -3,8 +3,9 @@
 Sharing one skills folder by linking `.claude/skills` to `.agents/skills` is common. init
 reads through such a link and, at apply, replaces it with a real folder loadout renders,
 since sync never writes through a link. A link to a folder the same harness already reads,
-such as `.opencode/skills` to `.agents/skills`, is retired instead. Every other link stays
-refused: out of the repository, into `.git`, or anything but a harness skills folder.
+such as `.opencode/skills` to `.agents/skills`, is retired instead. So is a skill folder that
+links to the same skill in another skills folder init reads. Every other link stays refused: out
+of the repository, into `.git`, or anything but a harness skills folder or such a skill.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -107,14 +109,50 @@ def test_a_link_to_a_folder_the_harness_already_reads_is_retired(tmp_path: Path,
 
 
 @pytest.mark.parametrize(
+    ("link", "target", "harnesses"),
+    [
+        # dreamhack/app1: the shared folder links to Claude's copy.
+        (".agents/skills/review", "../../.claude/skills/review", ("claude", "codex", "pi")),
+        (".claude/skills/review", "../../.agents/skills/review", ("claude", "codex")),
+        (".opencode/skills/review", "../../.claude/skills/review", ("claude", "opencode")),
+    ],
+    ids=["shared-to-claude", "claude-to-shared", "opencode-to-claude"],
+)
+def test_a_skill_linked_to_the_same_skill_in_another_skills_folder_is_read_once(
+    tmp_path: Path, capsys, link: str, target: str, harnesses: tuple[str, ...]
+) -> None:
+    root = tmp_path / "project"
+    real = root / Path(link).parent / target
+    real.mkdir(parents=True)
+    (real / "SKILL.md").write_text(SKILL.format(name="review"))
+    (root / link).parent.mkdir(parents=True, exist_ok=True)
+    (root / link).symlink_to(target)
+    _git(root, "init", "-q")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-qm", "base")
+
+    assert loadout.main([*_init(root, *harnesses, mode="--dry-run"), "--json"]) == 0
+    originals = json.loads(capsys.readouterr().out)["originals"]
+    assert [o["action"] for o in originals if o["path"] == str(root / link)] == ["retire"]
+
+    assert loadout.main(_init(root, *harnesses)) == 0
+
+    assert (root / "loadout/skills/review/SKILL.md").read_text() == SKILL.format(name="review")
+    assert (root / link).is_symlink() is False
+    assert (root / link / "SKILL.md").read_text().endswith("Body.\n")
+    assert _converted(root, capsys) == (0, 0, 0)
+
+
+@pytest.mark.parametrize(
     ("link", "target", "code"),
     [
         (".claude/skills", "{outside}", "external-symlink"),
         (".claude/skills", "../.git/info", "git-link"),
         (".claude/agents", "../.agents/skills", "linked-folder"),
+        # Only Codex reads `.agents/skills`, so without it nothing would adopt the target.
         (".claude/skills/review", "../../.agents/skills/review", "linked-folder"),
     ],
-    ids=["out-of-the-repository", "into-git", "not-a-skills-folder", "inside-a-skills-folder"],
+    ids=["out-of-the-repository", "into-git", "not-a-skills-folder", "to-a-folder-not-read"],
 )
 def test_every_other_link_is_still_refused(
     tmp_path: Path, capsys, link: str, target: str, code: str
@@ -135,6 +173,66 @@ def test_every_other_link_is_still_refused(
     issues = json.loads(capsys.readouterr().out)["issues"]
     assert [(issue["code"], issue["paths"][0]) for issue in issues] == [(code, str(root / link))]
     assert os.readlink(root / link) == before
+
+
+def test_a_linked_skill_reaches_only_the_harnesses_reading_the_link_s_folder(
+    tmp_path: Path, capsys
+) -> None:
+    """Droid does not read `.agents/skills`, so the link brings it nothing."""
+    root = tmp_path / "project"
+    (root / ".claude/skills/review").mkdir(parents=True)
+    (root / ".claude/skills/review/SKILL.md").write_text(SKILL.format(name="review"))
+    (root / ".agents/skills").mkdir(parents=True)
+    (root / ".agents/skills/review").symlink_to("../../.claude/skills/review")
+    _git(root, "init", "-q")
+
+    assert loadout.main(_init(root, "claude", "codex", "droid")) == 0
+
+    config = tomllib.loads((root / "loadout/config.toml").read_text())
+    assert config["skills"]["review"]["agents"] == ["claude", "codex"]
+
+
+def test_a_link_to_a_skill_left_out_for_conflicting_copies_is_refused(
+    tmp_path: Path, capsys
+) -> None:
+    """Retiring the link would drop the skill for the harnesses that read it there."""
+    root = tmp_path / "project"
+    for folder, body in ((".claude", "Body.\n"), (".opencode", "Other.\n")):
+        (root / folder / "skills/review").mkdir(parents=True)
+        (root / folder / "skills/review/SKILL.md").write_text(
+            SKILL.format(name="review").replace("Body.\n", body)
+        )
+    (root / ".agents/skills").mkdir(parents=True)
+    (root / ".agents/skills/review").symlink_to("../../.claude/skills/review")
+    _git(root, "init", "-q")
+
+    assert (
+        loadout.main([*_init(root, "claude", "codex", "opencode", mode="--dry-run"), "--json"]) == 2
+    )
+
+    [issue] = json.loads(capsys.readouterr().out)["issues"]
+    assert (issue["code"], str(root / ".agents/skills/review") in issue["message"]) == (
+        "source-composition",
+        True,
+    )
+
+
+def test_a_skill_linked_to_a_differently_named_skill_is_still_refused(
+    tmp_path: Path, capsys
+) -> None:
+    root = tmp_path / "project"
+    (root / ".claude/skills/review").mkdir(parents=True)
+    (root / ".claude/skills/review/SKILL.md").write_text(SKILL.format(name="review"))
+    (root / ".agents/skills").mkdir(parents=True)
+    (root / ".agents/skills/lint").symlink_to("../../.claude/skills/review")
+    _git(root, "init", "-q")
+
+    assert loadout.main([*_init(root, "claude", "codex", mode="--dry-run"), "--json"]) == 2
+
+    issues = json.loads(capsys.readouterr().out)["issues"]
+    assert [(i["code"], i["paths"][0]) for i in issues] == [
+        ("linked-folder", str(root / ".agents/skills/lint"))
+    ]
 
 
 def test_a_linked_folder_holding_what_its_harness_loads_but_loadout_does_not_render_is_refused(

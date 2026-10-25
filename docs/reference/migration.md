@@ -105,7 +105,7 @@ fix it on disk and run init again. An incomplete preview exits 2 and changes not
 | `symlink-target`, `symlink-cycle` | a link at a read path is missing its target or loops |
 | `external-symlink` | in project scope, a harness root links outside the repository; its content would become committed source. There is no override: share it as a loadout template, or replace the link with a real copy (`cp -RL`) and run init again ([0026](../decisions/0026-a-project-root-linked-outside-the-repository-has-no-override.md)) |
 | `git-link` | in project scope, a link points into the repository's `.git`, which holds credentials such as a token in `.git/config` and runs hooks; init reports it and never reads through it |
-| `linked-folder`, `linked-file` | in project scope, a harness folder that is itself a link inside the repository, such as `.claude -> config/claude`, or a link inside one, such as `.claude/skills/x/scripts -> ../../../tools`; project sync never writes through one, so init reports it instead of walking it. Replace it with a real copy (`cp -RL`) and run init again. A harness skills folder linked to a real folder in the repository is the exception (below) |
+| `linked-folder`, `linked-file` | in project scope, a harness folder that is itself a link inside the repository, such as `.claude -> config/claude`, or a link inside one, such as `.claude/skills/x/scripts -> ../../../tools`; project sync never writes through one, so init reports it instead of walking it. Replace it with a real copy (`cp -RL`) and run init again. A harness skills folder linked to a real folder in the repository, and a skill linked to the same skill in another skills folder, are the exceptions (below) |
 | `opencode-both-formats` | `opencode.json` and `opencode.jsonc` side by side: OpenCode reads both and merges them, the `.jsonc`'s keys winning; combine them into one file |
 | `invalid-native-document` | a document at a read path does not parse |
 | `dependency-activation` | an adopted declaration references a de-linked original instead of the copy loadout deploys |
@@ -361,6 +361,15 @@ committed; that is safe only for an entry the harness would not load, such as a 
 `SKILL.md` ([config.md](config.md#what-a-harness-loads-from-a-skills-or-agents-folder)), so for
 any other init refuses before changing anything
 ([0034](../decisions/0034-init-de-links-a-project-skills-folder-linked-inside-the-repository.md)).
+
+The same holds one level down. A skill folder that links to the same-named skill in another
+harness's skills folder in the repository, such as `.agents/skills/rn-upgrade ->
+../../.claude/skills/rn-upgrade`, is read once, through its real folder, and the harnesses reading
+the link's folder are added to the skill's `agents`. Init retires the link at apply and the first
+render writes the skill there. The target must be a skill (`SKILL.md`) in a folder this init
+adopts skills from: `.agents/skills` only with Codex selected, a harness's own folder only with
+that harness. A link to a differently named skill, or to a folder init does not read, is still
+refused.
 
 A global harness root that is a link is
 still de-linked ([0023](../decisions/0023-adoption-de-links-a-symlinked-deployment.md)). The preview checks its outputs against the project's links before

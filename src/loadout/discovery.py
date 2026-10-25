@@ -395,6 +395,10 @@ RETIRED_SKILLS_LINK = (
     "Its harness reads the folder this links to itself, so the link is retired and the "
     "folder stays."
 )
+RETIRED_SKILL_LINK = (
+    "It links to the same skill in another harness's skills folder, which init adopts, so the "
+    "link is retired and the skill is rendered here."
+)
 # The harnesses whose skills loadout renders into the shared `.agents/skills`, per scope.
 SHARED_SKILL_WRITERS = {
     "global": frozenset(
@@ -422,6 +426,12 @@ def _agents_for(relative: Path, mapping: RootMapping, scope: str) -> tuple[str, 
         "mcp": {"pi"},
     }
     return tuple(a for a in mapping.harnesses if a in supported.get(relative.parts[0], set()))
+
+
+def _skill_readers(mapping: RootMapping) -> tuple[str, ...]:
+    if mapping.kind == "shared":
+        return tuple(h for h in mapping.harnesses if h in SHARED_SKILL_READERS)
+    return mapping.harnesses
 
 
 class _InventoryBuilder:
@@ -544,15 +554,17 @@ class _InventoryBuilder:
         """Whether a project walk stops at `path`, recording why: a skills folder link it
         retires, or a link it refuses."""
         shared = self._shared_skills_link(path, canonical, mapping)
-        if shared:
+        sibling = self._sibling_skill_link(path, canonical, mapping)
+        if shared or sibling:
+            # The skill a sibling link leads to is adopted on its own, not kept for the link.
             self.candidates[path, destination] = Candidate(
                 path,
-                canonical,
+                None if sibling else canonical,
                 destination,
-                mapping.harnesses,
+                _skill_readers(mapping) if sibling else mapping.harnesses,
                 LINKED_SKILLS,
                 "retained dependency",
-                RETIRED_SKILLS_LINK,
+                RETIRED_SKILL_LINK if sibling else RETIRED_SKILLS_LINK,
             )
             return True
         if shared is None and (refused := self._refused_link(path, canonical, mapping)):
@@ -560,6 +572,40 @@ class _InventoryBuilder:
             self._unresolved(path, destination, mapping.harnesses, code, message)
             return True
         return False
+
+    def _sibling_skill_link(self, path: Path, canonical: Path, mapping: RootMapping) -> bool:
+        """Whether `path` is a skill folder linking to the same-named skill in another
+        skills folder this init reads, so the skill is read once, through its real folder."""
+        if (
+            not path.is_symlink()
+            or mapping.kind == "file"
+            or not (canonical / "SKILL.md").is_file()
+        ):
+            return False
+        if path.relative_to(mapping.source).parent != Path(SKILLS_FOLDER):
+            return False
+        root = self.allowed[0]
+        others = self._read_skill_folders() - {root / path.parent.relative_to(self.root)}
+        return canonical.name == path.name and canonical.parent in others
+
+    def _read_skill_folders(self) -> frozenset[Path]:
+        """The project skills folders this init adopts skills from, as canonical paths."""
+        root = self.allowed[0]
+        return frozenset(
+            root / mapping.source.relative_to(self.root) / SKILLS_FOLDER
+            for mapping in self.layout.mappings
+            if (
+                mapping.kind == "shared" and SHARED_SKILL_WRITERS[self.scope] & {*mapping.harnesses}
+            )
+            or (
+                mapping.kind == "harness"
+                and _managed(
+                    Path(SKILLS_FOLDER),
+                    managed_paths(self.scope, mapping) or (),
+                    directory=True,
+                )
+            )
+        )
 
     def _shared_skills_link(self, path: Path, canonical: Path, mapping: RootMapping) -> bool | None:
         """For a project harness skills folder that links to a real folder in the same

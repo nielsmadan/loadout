@@ -858,6 +858,19 @@ class _PlanBuilder:
         else:
             self.opaque(candidate, existing=False)
 
+    def linked_skill(self, link: Candidate) -> None:
+        """A skill folder linking to the same skill in another skills folder: its readers
+        get the skill adopted from there, rendered where the link was."""
+        assert link.destination is not None
+        policy = self.skill_policies.get(link.path.name)
+        if policy is None:
+            raise LoadoutError(
+                f"{link.path} links to a skill init leaves out, so retiring the link would "
+                "drop it; merge the skill's copies with /loadout, then run init again"
+            )
+        policy["agents"] = list(dict.fromkeys((*policy["agents"], *link.harnesses)))
+        self.project_skill_route(link.destination, link.harnesses)
+
     def project_skill_route(self, destination: Path, agents: tuple[str, ...]) -> None:
         record = self.record(destination, agents, "tree")
         record.update(category="skills")
@@ -1081,6 +1094,9 @@ def plan_migration(inventory: Inventory) -> MigrationPlan:
             if c.category != "agents" and not builder.unadopted_paths & {c.path}
         )
         builder.originals(candidates)
+        for link in inventory.candidates:
+            if link.category == LINKED_SKILLS and link.canonical is None:
+                builder.linked_skill(link)
         builder.dormant_routes()
     except (LoadoutError, UnicodeError, ValueError, TypeError) as error:
         return MigrationPlan(

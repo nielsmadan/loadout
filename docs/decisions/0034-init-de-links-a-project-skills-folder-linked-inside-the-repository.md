@@ -32,13 +32,21 @@ A project harness `skills` folder that links to a real folder in the same reposi
   [config.md](../reference/config.md#what-a-harness-loads-from-a-skills-or-agents-folder), so for
   any other init refuses at preview, exit 3, with nothing changed.
 
+A skill folder that links to the same-named skill in another harness's skills folder in the same
+repository, such as `.agents/skills/rn-upgrade -> ../../.claude/skills/rn-upgrade` in a React
+Native app, is the same sharing one level down. Init reads the skill once, through its real
+folder, adds the harnesses reading the link's folder to the skill's `agents`, and retires the link
+at apply; the first render writes the skill in its place. The target must be a skill in a folder
+init adopts skills from, so nothing it led to is lost.
+
 Every other project link refusal stays:
 
 - **Out of the repository** (`external-symlink`): adopting it would copy external content into
   committed source ([0026](0026-a-project-root-linked-outside-the-repository-has-no-override.md)).
 - **Into `.git`** (`git-link`): `.git` holds credentials, such as a token in `.git/config`, and
   runs hooks; init never reads through it.
-- **Any other linked harness folder, and any link inside one** (`linked-folder`, `linked-file`).
+- **Any other linked harness folder, and any link inside one** (`linked-folder`, `linked-file`),
+  including a skill linked to a differently named skill or to a folder init does not read.
   A skills folder is the one place where every entry is either a skill loadout renders or one its
   harness ignores, so a real folder of rendered skills replaces the link without losing anything.
   A folder such as `.claude` or `agents/` mixes loadout's files with the user's own, and replacing
