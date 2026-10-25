@@ -161,7 +161,8 @@ The same algorithm `resolve_fragment` uses, one level up:
    `company/web` to disambiguate.
 
 Given `~/ac/loadout.toml` declaring `[[source]] path = "loadout"`, templates resolve from
-`~/ac/loadout/templates/<name>/`. Everything under a source belongs to loadout, which is what
+`~/ac/loadout/templates/<name>.toml` manifests, or from a directory template's
+`~/ac/loadout/templates/<name>/` folder. Everything under a source belongs to loadout, which is what
 makes "where do I edit" answerable from the path.
 
 ## Bundled templates and native projects

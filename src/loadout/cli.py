@@ -305,8 +305,9 @@ def _resolve_global(profile: str | None) -> tuple[Path, str]:
 
 
 TEMPLATE_OUTSIDE_PROJECT = (
-    "template commands manage a project's templates; to author one, create "
-    "`templates/<name>/` in your global source."
+    "template commands manage a project's templates; to author one, add a "
+    "`templates/<name>.toml` manifest to your global source. To see the templates your "
+    "sources offer, run `loadout template add` with no name in a project."
 )
 
 

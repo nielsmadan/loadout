@@ -830,11 +830,13 @@ def test_integrate_skill_help_names_the_copy_outside_any_source(capsys) -> None:
 def test_a_template_command_outside_a_project_says_where_templates_are_authored(
     tmp_path: Path, capsys
 ) -> None:
+    """A global source authors a template as a `templates/<name>.toml` manifest."""
     (tmp_path / "loadout.toml").write_text('[[source]]\nname = "s"\npath = "."\n')
 
     assert loadout.main(["template", "list", "--root", str(tmp_path)]) == 3
 
     assert capsys.readouterr().err.strip() == (
-        "loadout: template commands manage a project's templates; to author one, create "
-        "`templates/<name>/` in your global source."
+        "loadout: template commands manage a project's templates; to author one, add a "
+        "`templates/<name>.toml` manifest to your global source. To see the templates your "
+        "sources offer, run `loadout template add` with no name in a project."
     )
