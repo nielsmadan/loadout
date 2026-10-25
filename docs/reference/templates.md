@@ -180,6 +180,9 @@ modified-copy refusal during `template sync`.
 
 Project instruction fragments come first, then the template instructions, trimmed and concatenated
 in template order, so the document opens with what is specific to the project (ruling D-11).
+When two of those fragments bring the same heading, `check` and `sync` print a note naming the
+heading and both fragments, such as a section copied by hand into the project's instructions that
+a template now supplies; it never fails either command.
 Template permissions, skills and MCP servers enter the same project slices as directly authored
 sources; project source wins within each slice. Project skills replace a same-named template skill as a
 whole, including supporting files. MCP project entries replace whole servers. Portable permission

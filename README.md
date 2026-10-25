@@ -771,7 +771,7 @@ instructions = ["conventions", "testing"]
 ```
 
 A template contributes instructions after project fragments, so the document opens with the
-project's own prose.
+project's own prose. A heading two fragments both bring is named in a `check` and `sync` note.
 Harness-owned multi-purpose JSON files preserve foreign top-level keys; Loadout replaces only the
 keys belonging to its slices.
 

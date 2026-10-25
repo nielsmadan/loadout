@@ -1258,23 +1258,27 @@ def _imports_agents(root: Path, config: ProjectConfig) -> bool:
     return set(config.harnesses) != {"claude"} and not linked
 
 
-def project_instructions(
+def project_instruction_sources(
     root: Path, config: ProjectConfig, templates: ProjectTemplates
-) -> str | None:
-    """The project's instruction document, or None when it declares none.
+) -> tuple[Path, ...]:
+    """The fragments of the project's instruction document, in order.
 
     The project's own fragments come first and the templates' parts after, in
     template order, so the document opens with what is specific to this project
     (ruling D-11). Selecting a template includes its instruction parts automatically.
     """
     source = Source(name=PROJECT_DIR, path=root / PROJECT_DIR, use=frozenset({INSTRUCTIONS.use}))
-    blocks = [
-        *(
-            load_fragment(resolve_item((source,), name, INSTRUCTIONS).path)
-            for name in config.instructions
-        ),
-        *(load_fragment(contributed) for contributed in templates.contributions("instructions")),
-    ]
+    return (
+        *(resolve_item((source,), name, INSTRUCTIONS).path for name in config.instructions),
+        *templates.contributions("instructions"),
+    )
+
+
+def project_instructions(
+    root: Path, config: ProjectConfig, templates: ProjectTemplates
+) -> str | None:
+    """The project's instruction document, or None when it declares none."""
+    blocks = [load_fragment(path) for path in project_instruction_sources(root, config, templates)]
     if not blocks:
         return None
     return "\n\n".join([HEADER, *blocks]) + "\n"

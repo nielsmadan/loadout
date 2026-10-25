@@ -22,12 +22,14 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from .adapters import OPENCODE_MAPPINGS, PI_MAPPINGS
+from .composition import load_fragment
 from .destinations import resolve_destination
 from .emit import (
     PROJECT_DOCUMENTS,
@@ -36,6 +38,7 @@ from .emit import (
     global_rules,
     global_servers,
     project_agents,
+    project_instruction_sources,
     project_rules,
     project_skill_trees,
     project_slice_document,
@@ -552,10 +555,55 @@ def project_notices(root: Path, environ: Mapping[str, str]) -> tuple[Notice, ...
         *found,
         *permissions,
         *documents,
+        *_repeated_heading_notices(root, project_instruction_sources(root, config, templates)),
         *_claude_skill_race(
             trees, config.harnesses, config.skill_policies, environ, ".claude/skills"
         ),
         *_codex_skill_race(trees, config.harnesses, config.skill_policies, environ),
+    )
+
+
+_HEADING = re.compile(r"#{1,6}[ \t]+\S")
+
+
+def _headings(text: str) -> list[str]:
+    """The Markdown headings in `text`, outside fenced code, where `#` starts a comment."""
+    found: list[str] = []
+    fenced = False
+    for line in text.splitlines():
+        if line.lstrip().startswith(("```", "~~~")):
+            fenced = not fenced
+        elif not fenced and _HEADING.match(line):
+            found.append(line.rstrip())
+    return found
+
+
+def repeated_headings(fragments: Iterable[tuple[str, str]]) -> dict[str, tuple[str, ...]]:
+    """Each heading more than one of `fragments`, as (label, text), brings into the
+    document they compose, with the labels of those that do, in order."""
+    sources: dict[str, list[str]] = {}
+    for label, text in fragments:
+        for heading in dict.fromkeys(_headings(text)):
+            sources.setdefault(heading, []).append(label)
+    return {heading: tuple(labels) for heading, labels in sources.items() if len(labels) > 1}
+
+
+def _repeated_heading_notices(root: Path, sources: tuple[Path, ...]) -> tuple[Notice, ...]:
+    fragments = (
+        (
+            str(path.relative_to(root)) if path.is_relative_to(root) else str(path),
+            load_fragment(path),
+        )
+        for path in sources
+    )
+    return tuple(
+        Notice(
+            "project",
+            "instructions",
+            f'the instruction document repeats the heading "{heading}", from '
+            f"{', '.join(labels[:-1])} and {labels[-1]}; keep one section, with /loadout",
+        )
+        for heading, labels in repeated_headings(fragments).items()
     )
 
 
