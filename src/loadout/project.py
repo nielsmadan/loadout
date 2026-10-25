@@ -271,20 +271,31 @@ def gitignore_entries(root: Path, written: Iterable[Path]) -> tuple[str, ...]:
     to stay visible to git beside them. Every harness's skills directory counts, so
     a retired harness's skill folder maps to the entry that was added for it.
     """
+    return tuple(
+        escape(f"/{unit}/" if folder else f"/{unit}") for unit, folder in _units(root, written)
+    )
+
+
+def generated_units(root: Path, written: Iterable[Path]) -> tuple[str, ...]:
+    """The root-relative paths `gitignore_entries` ignores, a skill folder for its files."""
+    return tuple(unit for unit, _ in _units(root, written))
+
+
+def _units(root: Path, written: Iterable[Path]) -> tuple[tuple[str, bool], ...]:
     skill_dirs = tuple(
         PurePosixPath(spec.output)
         for _, name, spec in project_slices(PROJECT_PRESET)
         if name == "skills" and spec.output is not None
     )
 
-    def entry(path: Path) -> str:
+    def unit(path: Path) -> tuple[str, bool]:
         relative = PurePosixPath(path.relative_to(root).as_posix())
         for directory in skill_dirs:
             if relative.is_relative_to(directory) and relative != directory:
-                return escape(f"/{directory}/{relative.relative_to(directory).parts[0]}/")
-        return escape(f"/{relative}")
+                return f"{directory}/{relative.relative_to(directory).parts[0]}", True
+        return str(relative), False
 
-    return tuple(dict.fromkeys(entry(path) for path in written if path.is_relative_to(root)))
+    return tuple(dict.fromkeys(unit(path) for path in written if path.is_relative_to(root)))
 
 
 def project_outputs(

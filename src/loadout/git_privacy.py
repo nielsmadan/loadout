@@ -68,3 +68,14 @@ def tracked_paths(paths: Iterable[Path]) -> frozenset[Path]:
             raise LoadoutError(f"could not read which originals Git tracks: {repository}")
         tracked.update(names[name] for name in _names(result.stdout) if name in names)
     return frozenset(tracked)
+
+
+def still_tracked(root: Path, units: Iterable[str]) -> tuple[str, ...]:
+    """Each of `units`, root-relative files or folders, that the index holds or holds
+    files beneath. Sync and check run without Git, and a listing that fails lists none."""
+    names = tuple(units)
+    if not names:
+        return ()
+    result = git_runner.run(root, "ls-files", "-z", "--", *(f":(literal){n}" for n in names))
+    listed = _names(result.stdout)
+    return tuple(n for n in names if any(f == n or f.startswith(f"{n}/") for f in listed))

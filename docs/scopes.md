@@ -152,7 +152,8 @@ Consequences:
   into `loadout/`, writes `config.toml` and `permissions.toml`, and adds every generated output to
   `.gitignore`, untracking the ones it adopted; a harness added later is a `harnesses` edit in
   `loadout/config.toml`, and `sync` extends `.gitignore` the same way, and drops an entry when it
-  retires the output the entry names. A
+  retires the output the entry names. Sync leaves the index alone, so a newly generated path Git
+  still tracks is named with the command that untracks it. A
   committed `.gitignore` rather than `.git/info/exclude`, which is per-clone and silently fails
   to apply on a fresh checkout. A tracked `CLAUDE.md` or `AGENTS.md` is adopted as an
   instruction fragment and generated from then on; copies that disagree across harnesses stay in

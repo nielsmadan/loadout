@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import contextlib
 import json
+import shlex
 import sys
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Literal
 
@@ -13,12 +14,14 @@ from .diffs import diff_lines, report_diff
 from .emit import RenderContext, refuse_unregistered_global, render_all
 from .errors import LoadoutError, UsageError
 from .files import DriftKind, refuse_unparsable
+from .git_privacy import still_tracked
 from .machine import fixed, registration, state_dir
 from .notices import collect_notices
 from .output import FrozenFile, Output, digests, output_record_paths
 from .project import (
     PROJECT_CONFIG_NAME,
     PROJECT_DIR,
+    generated_units,
     load_project_config,
     project_config_path,
 )
@@ -261,7 +264,20 @@ def cmd_sync(root: Path, profile: str, force: bool = False) -> int:
     for path in unmanaged_entries(sync_state(root), outputs, profile):
         advice = UNMANAGED_LINK_ADVICE if path.is_symlink() else UNMANAGED_ADVICE
         print(f"WARNING: {_display(path, root)} is {advice}", file=sys.stderr)
+    for unit in _tracked_outputs(root, outputs) if before.project else ():
+        print(f"WARNING: {still_tracked_note(unit)}", file=sys.stderr)
     return 0
+
+
+def still_tracked_note(unit: str) -> str:
+    return (
+        f"{unit} is generated but Git still tracks it, so it shows loadout's writes as "
+        f"changes; untrack it and keep the files with `git rm -r --cached -- {shlex.quote(unit)}`"
+    )
+
+
+def _tracked_outputs(root: Path, written: Iterable[Path]) -> tuple[str, ...]:
+    return still_tracked(root, generated_units(root, written))
 
 
 def _sync_summary(outputs: Mapping[Path, Output], written: list[Path], retired: list[Path]) -> str:
@@ -288,7 +304,14 @@ def _report_notices(root: Path, profile: str, context: RenderContext) -> None:
 
 
 def _check_notes(root: Path, profile: str, context: RenderContext) -> list[str]:
-    return [notice.render() for notice in collect_notices(root, profile, context=context)]
+    """Advisory findings, then each generated path Git still tracks: the files are as
+    rendered, so that is a note rather than drift, as it is for sync."""
+    state = sync_state(root)
+    tracked = _tracked_outputs(root, state.written) if state.project else ()
+    return [
+        *(notice.render() for notice in collect_notices(root, profile, context=context)),
+        *map(still_tracked_note, tracked),
+    ]
 
 
 UNMANAGED_ADVICE = (

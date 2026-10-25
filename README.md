@@ -722,7 +722,11 @@ Generated project files are ignored and removed from the final index while remai
 the harness. `.gitignore` lists exactly what sync wrote: with no `mcp.toml` there is no `.mcp.json`
 entry, so one written by `claude mcp add` stays committable, and a skill is listed by its own folder
 (`/.claude/skills/review/`), never the skills directory, so a skill installed there by hand stays
-visible to git. Re-running init does not reinterpret an existing source; edit it and use `check` or
+visible to git. Ignoring a path does not untrack it, and sync never changes the index: a path it
+writes that Git still tracks, such as a skill copied by hand before a template rendered it, is
+named in a `WARNING` with the `git rm -r --cached -- <path>` that untracks it, and `check` reports
+the same as a note, not drift, since the file is as rendered. Re-running init does not reinterpret
+an existing source; edit it and use `check` or
 `sync`. Repositories adopted by an older route-based build should restore any command or subagent
 files from `loadout/` to their harness paths and run init again. Sync leaves stale `.gitignore`
 entries from older versions in place rather than guessing which user-authored entries to delete.
