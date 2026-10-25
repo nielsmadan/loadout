@@ -49,6 +49,9 @@ Edit the declared source for each configured consumer. Generated harness files a
   Run `sync --force` only after showing the diff and getting the user's approval. A file holding a
   secret is never diffed: loadout names it and counts the lines that differ. Read the file on disk
   and the source directly to see the change, or move the secret to an environment variable.
+- A `project.instructions` note that the document repeats a heading, or a `template add` line
+  naming a project skill the template already supplies, marks guidance held twice. Resolve it by
+  the template comparison in [configuration routing](references/configuration.md).
 - An init that lists `unadopted` items left copies that disagree across harnesses in place. Merge
   them by “Resolving conflicting copies at init” in [onboarding](references/onboarding.md).
 - An init that lists `secrets` adopted them into the source as they were. Say the source's remote

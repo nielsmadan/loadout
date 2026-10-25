@@ -1168,17 +1168,22 @@ def project_slice_document(
     return merge_documents(*(_load_base(path) for path in paths)), bool(paths)
 
 
-def project_skill_trees(root: Path, templates: ProjectTemplates) -> tuple[Skill, ...]:
-    """Collect skill trees in template order, then replace matching names from the project."""
-    collected: dict[str, Skill] = {}
-    for template in templates.paths:
-        skills = (
+def template_skills(templates: ProjectTemplates) -> dict[str, Skill]:
+    """Each template's skill trees by name, in template order, a later template's winning."""
+    return {
+        skill.name: skill
+        for template in templates.paths
+        for skill in (
             templates.catalogs[template].skills()
             if template in templates.catalogs
             else discover_skills(template / SKILLS_SUBDIR)
         )
-        for skill in skills:
-            collected[skill.name] = skill
+    }
+
+
+def project_skill_trees(root: Path, templates: ProjectTemplates) -> tuple[Skill, ...]:
+    """Collect skill trees in template order, then replace matching names from the project."""
+    collected = template_skills(templates)
     for skill in discover_skills(root / PROJECT_DIR / SKILLS_SUBDIR):
         collected[skill.name] = skill
     return tuple(sorted(collected.values(), key=lambda s: s.name))

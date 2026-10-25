@@ -11,7 +11,14 @@ from typing import Literal
 from .atomic import atomic_install
 from .bundled_skill import bundled_skill_path
 from .diffs import diff_lines, report_diff
-from .emit import RenderContext, refuse_unregistered_global, render_all
+from .emit import (
+    SKILLS_SUBDIR,
+    ProjectTemplates,
+    RenderContext,
+    refuse_unregistered_global,
+    render_all,
+    template_skills,
+)
 from .errors import LoadoutError, UsageError
 from .files import DriftKind, refuse_unparsable
 from .git_privacy import still_tracked
@@ -33,6 +40,7 @@ from .skill_installation import (
     install_skill_source,
     uninstall_skill_source,
 )
+from .skills import SKILL_DOCUMENT, Skill, discover_skills
 from .state import sync_state
 from .sync import (
     classified_drift,
@@ -42,6 +50,7 @@ from .sync import (
     retire_orphans,
     unaccepted_outputs,
 )
+from .template_catalog import load_catalogs
 from .template_discover import available_templates
 from .template_vendor import vendor_catalog
 from .templates import (
@@ -420,7 +429,47 @@ def cmd_template_list(root: Path) -> int:
 def cmd_template_add(
     root: Path, name: str | None, mode: TemplateMode | None, *, yes: bool = False
 ) -> int:
-    """Choose a template and how this project uses it.
+    chosen, code = _add_template(root, name, mode, yes=yes)
+    if code == 0:
+        for skill in _identical_skills(root, chosen):
+            print(identical_skill_note(chosen, skill))
+    return code
+
+
+def identical_skill_note(template: str, skill: str) -> str:
+    copy = f"{PROJECT_DIR}/{SKILLS_SUBDIR}/{skill}"
+    return (
+        f"{copy} is byte for byte the skill {template} already supplies; while it is there it "
+        f"replaces the template's and stops following it, so delete it to take the "
+        f"template's: rm -r {copy}"
+    )
+
+
+def _identical_skills(root: Path, name: str) -> tuple[str, ...]:
+    """The project skills `name` supplies with the same files and bytes."""
+    path = resolve_template(name, root).path
+    offered = template_skills(ProjectTemplates((path,), load_catalogs((path,))))
+    return tuple(
+        skill.name
+        for skill in discover_skills(root / PROJECT_DIR / SKILLS_SUBDIR)
+        if skill.name in offered and _skill_bytes(skill) == _skill_bytes(offered[skill.name])
+    )
+
+
+def _skill_bytes(skill: Skill) -> dict[Path, bytes]:
+    return {
+        Path(SKILL_DOCUMENT): skill.document.read_bytes(),
+        **{
+            relative: (skill.supporting_root / relative).read_bytes()
+            for relative in skill.supporting
+        },
+    }
+
+
+def _add_template(
+    root: Path, name: str | None, mode: TemplateMode | None, *, yes: bool = False
+) -> tuple[str, int]:
+    """Choose a template and how this project uses it, and the name chosen.
 
     Bare `add` enumerates every resolvable template and prompts for a name and a
     mode; with a name, `--tracked` or `--vendored` pins the mode for scripts.
@@ -452,7 +501,7 @@ def cmd_template_add(
 
     if mode == "tracked":
         if declared and is_vendored:
-            return _make_tracked(root, name)
+            return name, _make_tracked(root, name)
         if is_vendored:
             raise LoadoutError(
                 f"{name} has a vendored copy at {_display(local, root)} but is not "
@@ -462,12 +511,12 @@ def cmd_template_add(
             found = resolve_template(name, root)
             print(f"{name} is already tracked; resolves from source {found.source}")
             print(f"    {_display(found.path, root)}")
-            return 0
+            return name, 0
         found = resolve_template(name, root)
         declare(root, name)
         print(f"declared {name} in {PROJECT_DIR}/{PROJECT_CONFIG_NAME}")
         print(f"resolves from source {found.source}: {_display(found.path, root)}")
-        return 0
+        return name, 0
 
     if is_vendored:
         if declared:
@@ -480,8 +529,8 @@ def cmd_template_add(
         if config.vendored_hash(name) is None:
             record_hash(root, name, tree_hash(local))
         print(f"adopted the existing vendored copy of {name} at {_display(local, root)}")
-        return 0
-    return _make_vendored(root, name, yes=yes)
+        return name, 0
+    return name, _make_vendored(root, name, yes=yes)
 
 
 def _choose_template(root: Path) -> str:

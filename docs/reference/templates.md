@@ -106,6 +106,10 @@ stands alone. This is what an open-source project whose contributors do not inst
 The mode is a property of the declaration. `template add <name> --vendored` on an already
 declared template changes it to vendored, copying the tree and recording its hash;
 `--tracked` on a vendored one switches back once the source can still resolve the name.
+After either, `template add` names each project skill the template supplies with the same files
+and bytes, `loadout/skills/<name> is byte for byte the skill <template> already supplies`, with the
+`rm -r` that takes the template's copy instead. It never deletes the copy itself: the project's
+skill replaces the template's as a whole, so keeping it pins the project to this version.
 Bare `template add` lists every template this machine can resolve, vendored copies first, then
 each declared source's, then the bundled starters, and prompts for a number and
 a mode; without a terminal it requires both as arguments. Neither prompt has a default: an empty

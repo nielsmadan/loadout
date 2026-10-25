@@ -131,6 +131,16 @@ supporting files beside it; that is the only form, and a loose file in `skills/`
 declared by name; use `loadout template add <name> --tracked`, `--vendored`, or
 `template sync <name>` when that command exactly expresses the request.
 
+After adding a template, and whenever you edit a project's instructions while it declares one,
+compare the template's instruction parts (`loadout template list` shows where each template
+resolves) with the project's fragments. Look for a section with the same heading text and for
+bullets that restate the same rule, even in other words. Propose deleting those duplicates from
+the project fragment, never from the template, and keep every rule specific to the project: its
+names, paths, versions and exceptions. Show the proposed deletions and apply them only once the
+user approves. A `project.instructions` note that the document repeats a heading points at one
+such pair. When `template add` reports that a project skill is byte for byte the one the template
+supplies, offer to delete `loadout/skills/<name>/` so the project follows the template's copy.
+
 Agents (subagents) are `agents/<name>.md` in a global source, or `loadout/agents/<name>.md` in a
 project, and reach every configured harness: Claude, Codex (as TOML), Droid (as a custom droid),
 OpenCode and Pi (which needs the `pi-subagents` package). The frontmatter takes `description`
