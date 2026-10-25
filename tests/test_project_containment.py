@@ -3,6 +3,7 @@ points at (review 1.5)."""
 
 from __future__ import annotations
 
+import errno
 import os
 from pathlib import Path
 
@@ -826,8 +827,10 @@ def test_a_link_inside_loadout_that_cannot_be_resolved_is_refused_by_name(
 
     assert loadout.main([command, "--root", str(root)]) == 3
 
-    assert capsys.readouterr().err == (
+    # macOS gives up on the path's length, Linux on the number of hops.
+    assert capsys.readouterr().err in {
         f"loadout: refusing to read through the link {root / 'loadout/q0'}: it cannot be "
-        "resolved (File name too long). Point it at a file or folder inside loadout/, or "
+        f"resolved ({os.strerror(code)}). Point it at a file or folder inside loadout/, or "
         "remove it\n"
-    )
+        for code in (errno.ENAMETOOLONG, errno.ELOOP)
+    }

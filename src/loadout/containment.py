@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import functools
 import os
+import stat
 from collections.abc import Callable, Iterable
 from pathlib import Path, PurePosixPath
 
@@ -215,13 +216,23 @@ def _resolved(link: Path) -> tuple[Path, bool]:
     resolve, as a loop growing the path each hop leaves it, is refused by name."""
     try:
         target = link.resolve()
-        return target, target.is_dir()
+        return target, _is_folder(target)
     except (OSError, RuntimeError) as error:
         reason = error.strerror if isinstance(error, OSError) and error.strerror else str(error)
         raise LoadoutError(
             f"refusing to read through the link {link}: it cannot be resolved ({reason}). "
             f"Point it at a file or folder inside {PROJECT_DIR}/, or remove it"
         ) from error
+
+
+def _is_folder(target: Path) -> bool:
+    """Whether `target` is a folder: a link that lands nowhere is not one, and any other
+    failure raises, where `Path.is_dir` would read a loop's `Too many levels of symbolic
+    links` as False and let it through as a file."""
+    try:
+        return stat.S_ISDIR(target.stat().st_mode)
+    except (FileNotFoundError, NotADirectoryError):
+        return False
 
 
 def _landing(target: Path, boundary: Path) -> str:
