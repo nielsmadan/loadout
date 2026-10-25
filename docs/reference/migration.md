@@ -24,6 +24,12 @@ known slice destination for it.
 Project command trees and other harness-specific files are left in place. They keep
 working because init neither moves them nor adds their paths to `.gitignore`.
 
+A project's `.claude/settings.local.json` is left in place too, since loadout renders no
+settings.local.json ([0024](../decisions/0024-discovery-reads-an-allowlist.md)). Claude still
+applies its permissions and enabled servers, so the preview names it, `Keep in place:
+.claude/settings.local.json`, with a pointer to `/loadout`, which can move its permissions into
+`loadout/permissions.local.toml`.
+
 ## What discovery reads
 
 Discovery is an allowlist. Under each harness root it reads only the paths below, and everything

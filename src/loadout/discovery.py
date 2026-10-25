@@ -384,6 +384,10 @@ def _managed(relative: Path, entries: tuple[str, ...], *, directory: bool) -> bo
     return False
 
 
+CLAUDE_LOCAL_SETTINGS = (
+    "Claude's personal settings for this repository, which loadout does not render and Claude "
+    "still applies; /loadout can move its permissions into loadout/permissions.local.toml"
+)
 SKILLS_FOLDER = "skills"
 SHARED_SKILLS = ".agents/skills"
 LINKED_SKILLS = "linked-skills"
@@ -453,7 +457,9 @@ class _InventoryBuilder:
     def _walk(self, path: Path, mapping: RootMapping, ancestors: tuple[Path, ...]) -> None:
         relative = path.relative_to(mapping.source) if mapping.kind != "file" else Path(path.name)
         entries = managed_paths(self.scope, mapping)
-        if entries is not None and not _managed(relative, entries, directory=path.is_dir()):
+        if self._claude_local_settings(path, relative, mapping) or (
+            entries is not None and not _managed(relative, entries, directory=path.is_dir())
+        ):
             return
         if not path.exists() and not path.is_symlink():
             self.remember(path, read=False)
@@ -510,6 +516,27 @@ class _InventoryBuilder:
                 self._walk(child, mapping, (*ancestors, canonical))
         else:
             self._file(path, canonical, destination, mapping)
+
+    def _claude_local_settings(self, path: Path, relative: Path, mapping: RootMapping) -> bool:
+        """A project's personal Claude settings, kept in place and named in the preview."""
+        if (
+            self.scope != "project"
+            or mapping.harnesses != ("claude",)
+            or relative != Path("settings.local.json")
+            or not path.is_file()
+        ):
+            return False
+        self.remember(path, read=False)
+        self.candidates[path, None] = Candidate(
+            path,
+            path.resolve(),
+            None,
+            mapping.harnesses,
+            "settings",
+            "retained dependency",
+            CLAUDE_LOCAL_SETTINGS,
+        )
+        return True
 
     def _stops_at_link(
         self, path: Path, canonical: Path, destination: Path, mapping: RootMapping

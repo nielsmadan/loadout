@@ -29,6 +29,11 @@ instruction seeds with empty categories, vendored with content-hash provenance. 
 cannot activate them. Template instructions, permissions, skills and MCP servers compose through
 the project's standard slices.
 
+Init keeps a project's `.claude/settings.local.json` in place, and Claude still applies it. After
+init, offer to move the permissions it still needs into `loadout/permissions.local.toml`, ask
+about each entry that looks stale, and delete the file once the user agrees nothing in it is
+left to keep.
+
 Init installs no Git hooks. Offer them separately, after init, with
 `loadout integrate git-hooks install --root <source-root> [--regenerate]`.
 Installation validates the staged dependency snapshot at pre-commit; `--regenerate` also runs
