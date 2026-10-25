@@ -115,8 +115,10 @@ def test_a_link_to_a_folder_the_harness_already_reads_is_retired(tmp_path: Path,
         (".agents/skills/review", "../../.claude/skills/review", ("claude", "codex", "pi")),
         (".claude/skills/review", "../../.agents/skills/review", ("claude", "codex")),
         (".opencode/skills/review", "../../.claude/skills/review", ("claude", "opencode")),
+        # OpenCode reads the shared copy loadout renders, so its own copy is retired too.
+        (".agents/skills/review", "../../.opencode/skills/review", ("codex", "opencode")),
     ],
-    ids=["shared-to-claude", "claude-to-shared", "opencode-to-claude"],
+    ids=["shared-to-claude", "claude-to-shared", "opencode-to-claude", "shared-to-opencode"],
 )
 def test_a_skill_linked_to_the_same_skill_in_another_skills_folder_is_read_once(
     tmp_path: Path, capsys, link: str, target: str, harnesses: tuple[str, ...]

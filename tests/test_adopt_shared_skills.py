@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 import loadout
+from loadout.migration import SHARED_SKILL_COPY
 
 pytestmark = pytest.mark.migration_integration
 
@@ -82,3 +83,65 @@ def test_a_project_shared_skills_folder_is_adopted_for_codex_which_loadout_write
     assert (root / "loadout/skills/review/SKILL.md").read_text() == SKILL.format(name="review")
     capsys.readouterr()
     assert loadout.main(["check", "--root", str(root)]) == 0
+
+
+@pytest.mark.parametrize("reader", ["opencode", "pi"])
+def test_identical_copies_in_a_reader_s_folder_and_the_shared_folder_are_adopted_once(
+    tmp_path: Path, capsys, reader: str
+) -> None:
+    """Loadout renders one `.agents/skills` copy that Codex and the reader both read, so the
+    reader's own copy is retired rather than rendered."""
+    root = tmp_path / "project"
+    shared = _write(root / ".agents/skills/review/SKILL.md", SKILL.format(name="review"))
+    own = _write(root / f".{reader}/skills/review/SKILL.md", SKILL.format(name="review"))
+    _write(root / f".{reader}/skills/review/notes.md", "Notes.\n")
+    _write(root / ".agents/skills/review/notes.md", "Notes.\n")
+    _git(root, "init", "-q")
+    init = ["init", "project", "--root", str(root), "--harness", "codex", "--harness", reader]
+
+    assert loadout.main([*init, "--dry-run", "--json"]) == 0
+    originals = json.loads(capsys.readouterr().out)["originals"]
+    assert [(o["action"], o["reason"]) for o in originals if o["path"] == str(own)] == [
+        ("retire", SHARED_SKILL_COPY)
+    ]
+    assert loadout.main([*init, "--yes"]) == 0
+
+    assert (root / "loadout/skills/review/notes.md").read_text() == "Notes.\n"
+    ignored = (root / ".gitignore").read_text().splitlines()
+    assert [line for line in ignored if "skills" in line] == [
+        "/.agents/skills/review",
+        "/.agents/skills/review/",
+    ]
+    assert shared.read_text().endswith("Body.\n")
+    assert (own.exists(), (own.parent / "notes.md").exists()) == (False, False)
+    capsys.readouterr()
+    for command in ("check", "sync", "check"):
+        assert loadout.main([command, "--root", str(root)]) == 0
+
+
+def test_differing_copies_in_a_reader_s_folder_and_the_shared_folder_stay_a_conflict(
+    tmp_path: Path, capsys
+) -> None:
+    root = tmp_path / "project"
+    _write(root / ".agents/skills/review/SKILL.md", SKILL.format(name="review"))
+    _write(root / ".opencode/skills/review/SKILL.md", SKILL.format(name="review") + "More.\n")
+    _git(root, "init", "-q")
+    init = ["init", "project", "--root", str(root), "--harness", "codex", "--harness", "opencode"]
+
+    assert loadout.main([*init, "--dry-run", "--json"]) == 0
+
+    unadopted = json.loads(capsys.readouterr().out)["unadopted"]
+    assert [(u["kind"], u["name"]) for u in unadopted] == [("skill", "review")]
+
+
+def test_without_codex_a_reader_s_own_copy_becomes_generated(tmp_path: Path, capsys) -> None:
+    """Only Codex's render goes to `.agents/skills`, so OpenCode keeps its own folder."""
+    root = tmp_path / "project"
+    own = _write(root / ".opencode/skills/review/SKILL.md", SKILL.format(name="review"))
+    _git(root, "init", "-q")
+    init = ["init", "project", "--root", str(root), "--harness", "claude", "--harness", "opencode"]
+
+    assert loadout.main([*init, "--dry-run", "--json"]) == 0
+
+    originals = json.loads(capsys.readouterr().out)["originals"]
+    assert [o["action"] for o in originals if o["path"] == str(own)] == ["generated"]

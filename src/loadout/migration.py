@@ -22,7 +22,7 @@ from .discovery import (
 from .emit import PROJECT_SETTINGS_DIR, project_owned_keys, refuse_project_inputs
 from .errors import LoadoutError
 from .extract import extract, extract_codex_plugins, extract_codex_servers, extract_value
-from .harnesses import DIRECTORY_SLICES, GLOBAL_PRESET, KNOWN_HARNESSES
+from .harnesses import DIRECTORY_SLICES, GLOBAL_PRESET, KNOWN_HARNESSES, SHARED_SKILL_READERS
 from .manifest import MANIFEST_NAME, load_manifest
 from .migration_models import (
     Candidate,
@@ -49,6 +49,10 @@ from .servers import serialize_servers
 from .skills import SKILL_DOCUMENT
 from .subagents import NativeAgent, agent_file_name, extract_agent, source_agent
 
+SHARED_SKILL_COPY = (
+    "Its harness reads the one .agents/skills copy loadout renders for every harness that "
+    "reads that folder, so this copy is retired."
+)
 CODEX_RULES_OUTPUT = Path(PROJECT_PRESET["codex"]["permissions"].output or "").name
 OWNERS: dict[str, dict[str, tuple[str, ...]]] = {
     "claude": {
@@ -871,6 +875,30 @@ class _PlanBuilder:
         policy["agents"] = list(dict.fromkeys((*policy["agents"], *link.harnesses)))
         self.project_skill_route(link.destination, link.harnesses)
 
+    def shared_skill_copies(self) -> None:
+        """With Codex, the emitter writes one `.agents/skills` copy for every reader of that
+        folder whose copy would be the same bytes, which an adopted skill's always are, since
+        init adopts it unrendered. A reader's own copy is then retired rather than expected."""
+        if self.inventory.scope != "project":
+            return
+        for name, policy in self.skill_policies.items():
+            agents = set(policy["agents"])
+            readers = agents.intersection(SHARED_SKILL_READERS) - {"codex"}
+            if "codex" not in agents:
+                continue
+            for reader in sorted(readers):
+                folder = self.inventory.root / str(PROJECT_PRESET[reader]["skills"].output) / name
+                self.records.pop(folder, None)
+                for path in [p for p in self.expected if p.is_relative_to(folder)]:
+                    del self.expected[path]
+                self.absorbed.update(
+                    (path, SHARED_SKILL_COPY)
+                    for candidate in self.inventory.candidates
+                    if candidate.destination is not None
+                    and candidate.destination.is_relative_to(folder)
+                    for path in _original_paths(candidate)
+                )
+
     def project_skill_route(self, destination: Path, agents: tuple[str, ...]) -> None:
         record = self.record(destination, agents, "tree")
         record.update(category="skills")
@@ -1097,6 +1125,7 @@ def plan_migration(inventory: Inventory) -> MigrationPlan:
         for link in inventory.candidates:
             if link.category == LINKED_SKILLS and link.canonical is None:
                 builder.linked_skill(link)
+        builder.shared_skill_copies()
         builder.dormant_routes()
     except (LoadoutError, UnicodeError, ValueError, TypeError) as error:
         return MigrationPlan(

@@ -81,6 +81,12 @@ So `~/.agents/skills` stays where it is and the harnesses that read it keep read
 project's `.agents/skills` is adopted for Codex alone; OpenCode and Pi go on reading the copy
 loadout renders there.
 
+With Codex selected, loadout renders one `.agents/skills` copy of a skill for every reader of
+that folder whose copy would be the same bytes, which an adopted skill's always are. So a skill
+copied by hand into `.opencode/skills` or `.pi/skills` as well as `.agents/skills` is adopted once,
+and the reader's own copy is retired rather than rendered back. Copies that differ are still left
+in place as conflicting copies, for `/loadout` to merge.
+
 One more kind of read goes beyond the table. A file that an adopted document references, such as
 a hook script named by a command, is read when it lies under a selected root. A reference that is
 missing, outside the roots, dynamic (`$VAR/…`), a glob or a directory is left as written: the
