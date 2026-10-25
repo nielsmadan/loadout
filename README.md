@@ -568,6 +568,10 @@ declared where it applies.
 
 `substitute` also works in `[instructions.<name>]` targets.
 
+When two fragments of one instruction document bring the same heading, `check` and `sync` print
+a note naming the heading and both fragments, for each document the active profile renders. It
+never fails either command.
+
 The older spelling below still parses, so both work during the transition.
 
 Both `[instructions.<agent>]` and `[permissions.<name>]` targets accept an optional `profile`
@@ -771,7 +775,8 @@ instructions = ["conventions", "testing"]
 ```
 
 A template contributes instructions after project fragments, so the document opens with the
-project's own prose. A heading two fragments both bring is named in a `check` and `sync` note.
+project's own prose. A heading two fragments both bring is named in a `check` and `sync` note,
+as it is for a global document.
 Harness-owned multi-purpose JSON files preserve foreign top-level keys; Loadout replaces only the
 keys belonging to its slices.
 

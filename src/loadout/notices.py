@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from .adapters import OPENCODE_MAPPINGS, PI_MAPPINGS
-from .composition import load_fragment
+from .composition import fragment_paths, load_fragment
 from .destinations import resolve_destination
 from .emit import (
     PROJECT_DOCUMENTS,
@@ -493,6 +493,14 @@ def collect_notices(
         for source in manifest.sources
         if AGENTS_SUBDIR not in source.use and discover_agents(source.path / AGENTS_SUBDIR)
     )
+    found.extend(
+        notice
+        for target in manifest.targets
+        if selected_target(target, profile)
+        for notice in _repeated_heading_notices(
+            root, fragment_paths(target, manifest), target.name or "all"
+        )
+    )
     found.extend(_permission_notices(manifest, profile))
     found.extend(_unpermitted_servers(manifest))
     for target in manifest.permissions:
@@ -588,7 +596,9 @@ def repeated_headings(fragments: Iterable[tuple[str, str]]) -> dict[str, tuple[s
     return {heading: tuple(labels) for heading, labels in sources.items() if len(labels) > 1}
 
 
-def _repeated_heading_notices(root: Path, sources: tuple[Path, ...]) -> tuple[Notice, ...]:
+def _repeated_heading_notices(
+    root: Path, sources: tuple[Path, ...], owner: str = "project"
+) -> tuple[Notice, ...]:
     fragments = (
         (
             str(path.relative_to(root)) if path.is_relative_to(root) else str(path),
@@ -598,7 +608,7 @@ def _repeated_heading_notices(root: Path, sources: tuple[Path, ...]) -> tuple[No
     )
     return tuple(
         Notice(
-            "project",
+            owner,
             "instructions",
             f'the instruction document repeats the heading "{heading}", from '
             f"{', '.join(labels[:-1])} and {labels[-1]}; keep one section, with /loadout",

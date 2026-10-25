@@ -23,10 +23,14 @@ def load_fragment(path: Path) -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
-def render(target: InstructionTarget, manifest: Manifest) -> str:
+def fragment_paths(target: InstructionTarget, manifest: Manifest) -> tuple[Path, ...]:
+    """The fragments a target's document composes, in its order, swaps applied."""
     swaps = dict(target.substitute)
-    blocks = [
-        load_fragment(resolve_fragment(manifest.sources, swaps.get(name, name)).path)
-        for name in target.fragments
-    ]
+    return tuple(
+        resolve_fragment(manifest.sources, swaps.get(name, name)).path for name in target.fragments
+    )
+
+
+def render(target: InstructionTarget, manifest: Manifest) -> str:
+    blocks = [load_fragment(path) for path in fragment_paths(target, manifest)]
     return "\n\n".join([HEADER, *blocks]) + "\n"
