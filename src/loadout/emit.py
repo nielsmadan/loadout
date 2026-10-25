@@ -1263,18 +1263,17 @@ def project_instructions(
 ) -> str | None:
     """The project's instruction document, or None when it declares none.
 
-    Templates concatenate first and the project's own fragments after, matching
-    the permission tiers: a template describes a kind of work and anything the
-    project itself says outranks it — which for prose means it comes last and is
-    read last. Selecting a template includes its instruction parts automatically.
+    The project's own fragments come first and the templates' parts after, in
+    template order, so the document opens with what is specific to this project
+    (ruling D-11). Selecting a template includes its instruction parts automatically.
     """
     source = Source(name=PROJECT_DIR, path=root / PROJECT_DIR, use=frozenset({INSTRUCTIONS.use}))
     blocks = [
-        *(load_fragment(contributed) for contributed in templates.contributions("instructions")),
         *(
             load_fragment(resolve_item((source,), name, INSTRUCTIONS).path)
             for name in config.instructions
         ),
+        *(load_fragment(contributed) for contributed in templates.contributions("instructions")),
     ]
     if not blocks:
         return None

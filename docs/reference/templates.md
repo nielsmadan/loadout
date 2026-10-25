@@ -177,9 +177,10 @@ They add no dependency installs, permissive rules, model choices or credentials.
 editable source at `loadout/templates/<name>/instructions.md`; later local edits use normal
 modified-copy refusal during `template sync`.
 
-Template instructions are trimmed and concatenated before project instruction fragments. Template
-permissions, skills and MCP servers enter the same project slices as directly authored sources;
-project source wins within each slice. Project skills replace a same-named template skill as a
+Project instruction fragments come first, then the template instructions, trimmed and concatenated
+in template order, so the document opens with what is specific to the project (ruling D-11).
+Template permissions, skills and MCP servers enter the same project slices as directly authored
+sources; project source wins within each slice. Project skills replace a same-named template skill as a
 whole, including supporting files. MCP project entries replace whole servers. Portable permission
 rules retain deny-wins and project-tier precedence.
 

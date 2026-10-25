@@ -765,7 +765,8 @@ document is generated.
 instructions = ["conventions", "testing"]
 ```
 
-A template contributes instructions before project fragments, so project prose is read last.
+A template contributes instructions after project fragments, so the document opens with the
+project's own prose.
 Harness-owned multi-purpose JSON files preserve foreign top-level keys; Loadout replaces only the
 keys belonging to its slices.
 

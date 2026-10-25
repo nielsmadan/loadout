@@ -437,16 +437,16 @@ def test_a_claude_md_linked_to_agents_md_receives_the_same_content(project: Path
     assert "Declared first while sorting second" in rendered[project / "CLAUDE.md"]
 
 
-def test_instruction_blocks_appear_in_declared_order_below_the_template(project: Path) -> None:
+def test_instruction_blocks_appear_in_declared_order_above_the_template(project: Path) -> None:
     """All three positions are asserted, not just the winner: an assertion that
     only pins the first block passes against a render that dropped the rest, and
     `testing` before `conventions` is the reverse of the sorted order, so a
     directory listing cannot produce this."""
     document = render_project(project)[project / "AGENTS.md"]
-    template = document.index("Contributed by the `web` template")
     testing = document.index("Declared first while sorting second")
     conventions = document.index("Declared second while sorting first")
-    assert template < testing < conventions
+    template = document.index("Contributed by the `web` template")
+    assert testing < conventions < template
 
 
 def test_a_project_declaring_no_instructions_generates_neither_document(
@@ -484,7 +484,22 @@ def test_a_template_contributes_instructions_without_being_named(bare_project: P
     _instruct(bare_project, "own")
 
     document = render_project(bare_project)[bare_project / "AGENTS.md"]
-    assert document.index("From the template.") < document.index("From the project.")
+    assert document.index("From the project.") < document.index("From the template.")
+
+
+def test_template_instructions_follow_the_project_s_in_template_order(bare_project: Path) -> None:
+    """Ruling D-11: the project's own heading leads the document, and the templates keep
+    the order the project declares them in."""
+    for name in ("web", "api"):
+        tree = _vendor(bare_project, name, "[shell]\nallow = []\n")
+        (tree / "instructions.md").write_text(f"From {name}.", encoding="utf-8")
+    _declare(bare_project, "web", "api")
+    _fragment(bare_project, "own", "# The project")
+    _instruct(bare_project, "own")
+
+    document = render_project(bare_project)[bare_project / "AGENTS.md"]
+    order = [document.index(text) for text in ("# The project", "From web.", "From api.")]
+    assert order == sorted(order)
 
 
 def test_an_unknown_instruction_fragment_fails_the_render(bare_project: Path) -> None:

@@ -69,7 +69,8 @@ instructions = ["project"]
 templates = ["python"]
 ```
 
-Template instructions come before project fragments. Permissions merge with the project's
+Project fragments come before template instructions, so the document opens with what is specific
+to the project. Permissions merge with the project's
 shared and personal rules. The [composition rules](composition.md#how-content-combines) explain
 what happens when two sources overlap.
 

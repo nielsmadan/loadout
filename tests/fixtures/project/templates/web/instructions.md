@@ -1,5 +1,5 @@
 # Template block
 
-Contributed by the `web` template as one unnamed block. It must appear before
-anything the project itself declares, so that a project fragment saying the
-opposite wins by being read last.
+Contributed by the `web` template as one unnamed block. It must appear after
+everything the project itself declares, so the document opens with what is
+specific to the project.
