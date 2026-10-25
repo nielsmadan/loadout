@@ -243,8 +243,9 @@ init created, and exits 1. After a failure, or a preview init cannot complete, i
 doing the conversion with the bundled `/loadout` skill; at a terminal it offers to copy the skill
 into each harness's user skills folder, and otherwise prints the command that does,
 `loadout integrate skill copy --harness NAME`. If init is killed part way, the next init puts the
-backup back first, asking at a terminal and refusing without one. Init commits nothing and stages nothing: in a project it only removes the generated
-files it adds to `.gitignore` from the index, and it never creates a project's repository. A new
+backup back first, asking at a terminal and refusing without one. Init commits nothing: in a project it only removes the generated files it adds to
+`.gitignore` from the index, which stages their removal and is named in its closing line, and it
+never creates a project's repository. A new
 global source gets its own repository, and init suggests the commit. Choose a dedicated directory;
 a new source repository at HOME or the filesystem root is refused.
 

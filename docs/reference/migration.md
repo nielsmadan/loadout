@@ -282,10 +282,11 @@ overwrite a differing `loadout` folder. Without a terminal, or under `--json` (a
 the skill without asking. A refusal whose every issue is a choice an option makes
 (`harnesses-required`, `scope-required`, `registration-conflict`) names that option instead.
 
-Init commits nothing and stages nothing. In a project it never creates a repository, and the only
-index change is removing the files it adds to `.gitignore`. A new global source gets its own
-repository, uncommitted. A before-image keeps content, mode and kind, not modification times,
-extended attributes, ownership or hard links. See
+Init commits nothing. In a project it never creates a repository, and the only index change is
+removing the files it adds to `.gitignore`, which leaves each removal staged; the closing line
+names them, `N adopted file(s) loadout now generates were removed from the index`. A new global
+source gets its own repository, uncommitted. A before-image keeps content, mode and kind, not
+modification times, extended attributes, ownership or hard links. See
 [0033](../decisions/0033-init-converts-or-puts-everything-back.md).
 
 When reading an existing permission document loses something, such as an entry a trailing `*`

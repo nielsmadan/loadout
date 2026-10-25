@@ -52,8 +52,9 @@ formatting may change as described in preview notes; opaque bytes and modes rema
 
 Apply the same resolved arguments with `--yes` after approval, omitting `--dry-run`. Init first
 backs up every path it will touch to `$XDG_STATE_HOME/loadout/backups/`, then writes source and
-outputs and retires mapped originals. It commits nothing and stages nothing: in a project it only
-untracks the generated files it ignores, and it never creates a project repository. A new global
+outputs and retires mapped originals. It commits nothing: in a project it only untracks the
+generated files it ignores, which leaves those removals staged, and it never creates a project
+repository. A new global
 source gets an uncommitted repository; offer the user the commit, never make it unasked.
 
 Global registration points `source` to the actual manifest directory. A conflicting registration

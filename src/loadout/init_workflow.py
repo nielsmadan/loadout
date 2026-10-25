@@ -414,6 +414,17 @@ def delinked_notice(delinked: Delinked) -> str:
     )
 
 
+def closing_message(untracked: tuple[str, ...]) -> str:
+    if not untracked:
+        return "Migration complete; nothing was committed or staged."
+    heading = (
+        f"Migration complete; nothing was committed. {len(untracked)} adopted file(s) "
+        "loadout now generates were removed from the index, so `git status` shows them "
+        "as staged deletions:"
+    )
+    return "\n".join([heading, *(f"  {name}" for name in untracked)])
+
+
 def _result(
     result: MigrationResult,
     delinked: tuple[Delinked, ...],
@@ -437,7 +448,7 @@ def _result(
             "Existing source adopted; no migration needed. Use loadout check/sync for managed outputs."
         )
     else:
-        print("Migration complete; nothing was committed or staged.")
+        print(closing_message(result.untracked))
         for each in delinked:
             print(delinked_notice(each))
         if plan.secrets:
