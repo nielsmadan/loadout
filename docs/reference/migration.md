@@ -368,6 +368,8 @@ committed; that is safe only for an entry the harness would not load, such as a 
 `SKILL.md` ([config.md](config.md#what-a-harness-loads-from-a-skills-or-agents-folder)), so for
 any other init refuses before changing anything
 ([0034](../decisions/0034-init-de-links-a-project-skills-folder-linked-inside-the-repository.md)).
+After applying, init says that the folder is now a real one loadout renders, that nothing in it
+links back, and that the target stays as it was.
 
 The same holds one level down. A skill folder that links to the same-named skill in another
 harness's skills folder in the repository, such as `.agents/skills/rn-upgrade ->

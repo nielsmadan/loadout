@@ -94,6 +94,20 @@ def test_a_claude_skills_folder_linked_into_the_repository_becomes_a_real_folder
     assert _converted(root, capsys) == (0, 0, 0)
 
 
+def test_the_closing_notice_says_nothing_links_back_in_a_project(tmp_path: Path, capsys) -> None:
+    """ADR 0034: a project link back would be committed, so init leaves none."""
+    root = _shared(tmp_path / "project", ".claude/skills")
+
+    assert loadout.main(_init(root, "claude", "pi")) == 0
+
+    link, target = root / ".claude/skills", root / ".agents/skills"
+    assert (
+        f"{link} was a symlink into {target}. It is now a real folder that loadout renders, "
+        f"and nothing in it links back; {target} stays as it was, and an entry added to it "
+        "later will not appear here."
+    ) in capsys.readouterr().out.splitlines()
+
+
 def test_a_link_to_a_folder_the_harness_already_reads_is_retired(tmp_path: Path, capsys) -> None:
     """CodelyTV/agent-harness: OpenCode reads `.agents/skills` itself."""
     root = _shared(tmp_path / "project", ".claude/skills", ".opencode/skills")

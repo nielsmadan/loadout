@@ -393,7 +393,13 @@ def _first_sync(
     return written
 
 
-def delinked_notice(delinked: Delinked) -> str:
+def delinked_notice(delinked: Delinked, *, project: bool = False) -> str:
+    if project:
+        return (
+            f"{delinked.link} was a symlink into {delinked.target}. It is now a real folder "
+            f"that loadout renders, and nothing in it links back; {delinked.target} stays as "
+            "it was, and an entry added to it later will not appear here."
+        )
     if not delinked.directory:
         return (
             f"{delinked.link} was a symlink to {delinked.target}. It is now a real file "
@@ -450,7 +456,7 @@ def _result(
     else:
         print(closing_message(result.untracked))
         for each in delinked:
-            print(delinked_notice(each))
+            print(delinked_notice(each, project=plan.inventory.scope == "project"))
         if plan.secrets:
             print(
                 "Note: the source now contains secrets, so keep its remote private. "
