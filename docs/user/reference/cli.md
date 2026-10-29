@@ -193,7 +193,10 @@ loadout integrate skill copy --harness claude --harness codex
 They operate on the global source and synchronise the selected profile.
 
 Installation and removal protect edited skill copies. An unchanged installed copy can be
-upgraded or removed; a conflicting local edit is reported for review.
+upgraded or removed; a conflicting local edit is reported for review. A source copy loadout does
+not own but that is byte for byte the bundled skill, such as one `copy` made that a later `init`
+adopted, shows as `identical copy` and `install` takes it over; a copy that differs stays
+`conflicting` and is refused.
 
 `copy` needs no source: it copies the skill into each named harness's user skills folder for a
 conversion `init` could not do, as [Initialise](#initialise) describes.

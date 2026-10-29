@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import pytest
 
 import loadout
+from loadout.bundled_skill import bundled_skill_path
 from loadout.errors import LoadoutError
 from loadout.skill_installation import (
     OWNER_MARKER,
@@ -99,6 +101,59 @@ def test_an_existing_unowned_skill_is_a_conflict(tmp_path: Path) -> None:
     with pytest.raises(LoadoutError, match="not owned"):
         install_skill_source(location, bundle)
     assert (existing / "SKILL.md").read_text(encoding="utf-8") == "mine\n"
+
+
+def test_install_takes_over_an_unowned_copy_identical_to_the_bundle(tmp_path: Path) -> None:
+    """A copy `integrate skill copy` made, which a later init adopted as a source skill."""
+    root = _root(tmp_path)
+    bundle = _bundle(tmp_path / "bundle")
+    existing = root / "primary" / "skills" / "loadout"
+    shutil.copytree(bundle, existing)
+
+    location = inspect_skill_source(root, "default", bundle)
+    assert location.state is SourceSkillState.IDENTICAL
+    assert install_skill_source(location, bundle)
+
+    installed = inspect_skill_source(root, "default", bundle)
+    assert installed.state is SourceSkillState.INSTALLED
+    assert (installed.path / OWNER_MARKER).is_file()
+
+
+def test_an_unowned_copy_that_differs_from_the_bundle_stays_refused(tmp_path: Path) -> None:
+    root = _root(tmp_path)
+    bundle = _bundle(tmp_path / "bundle")
+    existing = _bundle(root / "primary" / "skills" / "loadout", "v1, edited\n")
+
+    location = inspect_skill_source(root, "default", bundle)
+    assert location.state is SourceSkillState.CONFLICTING
+    with pytest.raises(LoadoutError, match="not owned"):
+        install_skill_source(location, bundle)
+    assert "edited" in (existing / "SKILL.md").read_text(encoding="utf-8")
+
+
+def test_uninstall_refuses_an_identical_copy_loadout_does_not_own(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = register(_root(tmp_path))
+    existing = root / "primary" / "skills" / "loadout"
+    shutil.copytree(bundled_skill_path(), existing)
+
+    assert loadout.main(["integrate", "skill", "uninstall", "--yes"]) == 1
+
+    assert f"loadout: {existing} exists and is not owned by loadout" in capsys.readouterr().err
+    assert (existing / "SKILL.md").is_file()
+
+
+def test_uninstalling_an_identical_unowned_copy_raises(tmp_path: Path) -> None:
+    root = _root(tmp_path)
+    bundle = _bundle(tmp_path / "bundle")
+    existing = root / "primary" / "skills" / "loadout"
+    shutil.copytree(bundle, existing)
+    location = inspect_skill_source(root, "default", bundle)
+
+    with pytest.raises(LoadoutError, match="not owned"):
+        uninstall_skill_source(location, root=root, profile="default")
+    assert (existing / "SKILL.md").is_file()
 
 
 def test_install_vendors_the_bundle_as_a_normal_source_skill(tmp_path: Path) -> None:

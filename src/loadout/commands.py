@@ -139,7 +139,7 @@ def cmd_skill_uninstall(
     if location.state is SourceSkillState.MISSING:
         print("loadout skill is not installed; no changes made")
         return 0
-    if _refused(location):
+    if _refused(location, owned=True):
         return 1
     if not _confirm_skill_change("uninstall", location.path, yes):
         print("declined; no changes made")
@@ -152,13 +152,15 @@ def cmd_skill_uninstall(
     return cmd_sync(root, profile=profile)
 
 
-def _refused(location: SkillSourceLocation) -> bool:
-    """Report a source copy loadout may not change, one it does not own or that was edited."""
-    if location.state not in {SourceSkillState.CONFLICTING, SourceSkillState.MODIFIED}:
+def _refused(location: SkillSourceLocation, *, owned: bool = False) -> bool:
+    """Report a source copy loadout may not change, one it does not own or that was edited.
+    Install takes over a copy identical to the bundle; `owned` refuses it too."""
+    unowned = {SourceSkillState.CONFLICTING} | ({SourceSkillState.IDENTICAL} if owned else set())
+    if location.state not in {*unowned, SourceSkillState.MODIFIED}:
         return False
     detail = (
         "exists and is not owned by loadout"
-        if location.state is SourceSkillState.CONFLICTING
+        if location.state in unowned
         else "was modified after installation"
     )
     print(f"loadout: {location.path} {detail}; no changes made", file=sys.stderr)

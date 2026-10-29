@@ -40,6 +40,7 @@ class SourceSkillState(StrEnum):
     INSTALLED = "installed"
     UPDATE_AVAILABLE = "update available"
     MODIFIED = "modified"
+    IDENTICAL = "identical copy, install takes it over"
     CONFLICTING = "conflicting"
 
 
@@ -92,7 +93,8 @@ def _classify(path: Path, bundle_hash: str) -> tuple[SourceSkillState, str | Non
         return SourceSkillState.CONFLICTING, None
     recorded = _read_marker(path)
     if recorded is None:
-        return SourceSkillState.CONFLICTING, None
+        identical = tree_hash(path) == bundle_hash
+        return (SourceSkillState.IDENTICAL if identical else SourceSkillState.CONFLICTING), None
     if tree_hash(path) != recorded:
         return SourceSkillState.MODIFIED, recorded
     if recorded == bundle_hash:
@@ -438,7 +440,7 @@ def uninstall_skill_source(
     state, _ = _classify(location.path, location.bundle_hash)
     if state is SourceSkillState.MISSING:
         return ()
-    if state is SourceSkillState.CONFLICTING:
+    if state in {SourceSkillState.CONFLICTING, SourceSkillState.IDENTICAL}:
         raise LoadoutError(f"{location.path} exists and is not owned by loadout")
     if state is SourceSkillState.MODIFIED:
         raise LoadoutError(f"{location.path} was modified after installation; left unchanged")

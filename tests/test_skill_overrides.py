@@ -102,6 +102,7 @@ def test_skill_override_preserves_source_ownership_guards(
         (winner / "SKILL.md").write_text("user edits\n")
     else:
         (winner / legacy.OWNER_MARKER).unlink()
+        (winner / "SKILL.md").write_text("a hand copy\n")
     manifest = (root / "loadout.toml").read_bytes()
     source = (winner / "SKILL.md").read_bytes()
     output = fake_home / ".claude/skills/loadout/SKILL.md"
