@@ -123,7 +123,7 @@ def parse_sources(entries: list[dict[str, object]], base: Path) -> tuple[Source,
         raw_path = entry.get("path")
         if not isinstance(raw_path, str) or not raw_path:
             raise LoadoutError(f"source {name!r} is missing a path")
-        path = Path(raw_path)
+        path = Path(raw_path).expanduser()
         resolved = (path if path.is_absolute() else base / path).resolve()
         if not resolved.is_dir():
             raise LoadoutError(f"source {name!r} directory not found: {resolved}")

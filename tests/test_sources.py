@@ -21,6 +21,14 @@ def test_absolute_path_is_kept(tmp_path: Path) -> None:
     assert sources[0].path == other.resolve()
 
 
+def test_a_home_relative_path_is_expanded(tmp_path: Path, fake_home: Path) -> None:
+    (fake_home / "src/company").mkdir(parents=True)
+
+    (source,) = parse_sources([{"name": "company", "path": "~/src/company"}], tmp_path)
+
+    assert source.path == (fake_home / "src/company").resolve()
+
+
 def test_omitting_use_takes_every_artifact_type(tmp_path: Path) -> None:
     (tmp_path / "a").mkdir()
     sources = parse_sources([{"name": "a", "path": "a"}], tmp_path)
