@@ -13,6 +13,7 @@ import pytest
 
 import loadout
 import loadout.init_workflow as workflow
+from loadout.bundled_skill import bundled_skill_path
 from loadout.credentials import (
     BINARY_PROBE,
     MAX_SCANNED,
@@ -557,3 +558,31 @@ def test_a_provider_names_a_key_only_directly_before_it() -> None:
         True,
         False,
     ]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "api_key: <your-key>",
+        "API_KEY=<token>",
+        'token: "<token>"',
+        '(in text: "Contains a secret: <path>: <reason>")',
+    ],
+)
+def test_an_angle_bracket_placeholder_is_not_a_secret(text: str) -> None:
+    assert findings(text.encode()) == []
+
+
+@pytest.mark.parametrize("text", ["token: abc<def>", "password: <pw> hunter2"])
+def test_a_value_beyond_its_placeholder_is_still_a_secret(text: str) -> None:
+    assert [why for why, _ in findings(text.encode())] == ["a value labelled as a secret"]
+
+
+def test_the_bundled_skill_holds_no_secret() -> None:
+    skill = bundled_skill_path()
+    files = sorted(path for path in skill.rglob("*") if path.is_file())
+
+    assert len(files) > 1
+    assert {path.name: findings(path.read_bytes()) for path in files} == {
+        path.name: [] for path in files
+    }

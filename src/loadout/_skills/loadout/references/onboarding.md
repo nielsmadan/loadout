@@ -103,8 +103,8 @@ left-out skill's folders as `unmanaged` until it is resolved.
 ## Secrets in the adopted source
 
 Init adopts a file that holds a secret as it is, into the source it would go to anyway, and lists
-each source file under `secrets` in the JSON (in text: "Contains a secret: <path>: <reason>"). The
-reason names what was found, never the value. The check is a heuristic: it can miss a secret and can
+each source file under `secrets` in the JSON; the text output gives each one a "Contains a
+secret" line with its path and a reason. The reason names what was found, never the value. The check is a heuristic: it can miss a secret and can
 flag a value that is not one.
 
 Tell the user the source now holds those secrets, so its remote must stay private, and offer to move

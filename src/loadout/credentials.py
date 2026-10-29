@@ -212,10 +212,18 @@ def reference(value: str) -> bool:
     return bool(ENV_REFERENCE.fullmatch(value))
 
 
+_ANGLE_PLACEHOLDERS = re.compile(r"(?:<[A-Za-z][\w .-]*>|[^\w<>])+")
+
+
 def _placeholder(found: str) -> bool:
-    """A documentation stand-in: AWS's `…EXAMPLE` keys, or a run of x's after a prefix."""
+    """A documentation stand-in: AWS's `…EXAMPLE` keys, a run of x's after a prefix, or
+    angle-bracket names such as `<path>: <reason>` with nothing but punctuation between."""
     core = next((found[len(p) :] for p in _PREFIXES if found.startswith(p)), found)
-    return found.endswith("EXAMPLE") or set(core.replace("-", "").replace("_", "")) <= {"x", "X"}
+    return (
+        found.endswith("EXAMPLE")
+        or set(core.replace("-", "").replace("_", "")) <= {"x", "X"}
+        or (found.startswith("<") and _ANGLE_PLACEHOLDERS.fullmatch(found) is not None)
+    )
 
 
 def _secret_value(value: str) -> bool:
