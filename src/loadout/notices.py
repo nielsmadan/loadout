@@ -89,8 +89,8 @@ __all__ = [
 CATCH_ALL_ELSEWHERE = {
     "claude": "Claude's is permissions.defaultMode, hand-maintained through the settings slice",
     "claude-project": "Claude's is permissions.defaultMode, hand-maintained through the settings slice",
-    "codex": "Codex's is approval_policy in config.toml, which loadout does not write",
-    "codex-project": "Codex's is approval_policy in config.toml, which loadout does not write",
+    "codex": "Codex's is approval_policy in config.toml, which the defaults slice sets",
+    "codex-project": "Codex's is approval_policy in .codex/config.toml, which loadout does not write",
     "droid": "Droid's unmatched-command behavior comes from the session autonomy level",
 }
 

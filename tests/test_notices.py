@@ -20,6 +20,7 @@ from loadout.notices import (
     notices_for,
     opencode_skills_race,
     unpermitted_servers,
+    unreached_catch_all,
     unsupported_shell_globs,
 )
 from loadout.permissions.rules import Rules
@@ -207,3 +208,18 @@ def test_a_harness_that_matches_exactly_reports_nothing_about_exact_entries(
 ) -> None:
     rules = Rules(allow=("=git status",), deny=("=git push",))
     assert inexact_shell_entries("agent", renderer, rules) == ()
+
+
+@pytest.mark.parametrize(
+    ("renderer", "where"),
+    [
+        ("codex", "approval_policy in config.toml, which the defaults slice sets"),
+        ("codex-project", "approval_policy in .codex/config.toml, which loadout does not write"),
+    ],
+)
+def test_a_codex_catch_all_names_where_its_approval_policy_is_set(
+    renderer: str, where: str
+) -> None:
+    (notice,) = unreached_catch_all("codex", renderer, "ask")
+
+    assert f"Codex's is {where};" in notice.message

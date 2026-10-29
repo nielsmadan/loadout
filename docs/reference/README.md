@@ -117,7 +117,7 @@ of where each keeps one and who owns that key:
 | OpenCode | `permission.bash["*"]`, first key of the map it renders | authors it |
 | Pi | `permission.bash["*"]`, same | authors it; at project scope only when the source states one, since the project map is merged over the global one |
 | Claude | `permissions.defaultMode`, in the same `settings.json` | **preserves** it — hand-maintained through the settings slice, and `render_claude` copies it back rather than writing a second spelling |
-| Codex | `approval_policy` in `config.toml` | does not write that file at all |
+| Codex | `approval_policy` in `config.toml` | writes the global file's `mcp_servers`, plugin tables and `defaults`, so a `defaults/codex.json` fragment sets it there; the project's `.codex/config.toml` it does not write |
 | Droid | session autonomy level | reports that the portable default is not represented |
 
 Claude's is a deliberate narrowing, not an inability: `defaultMode` sits inside the very map
