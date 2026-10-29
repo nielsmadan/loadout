@@ -506,7 +506,7 @@ details from it that no other harness documents:
 
 `check` reports an entry loadout did not write in a skills or agents folder as `unmanaged`, because
 the harness would load it beside the source. An entry no harness reading the folder can load as an
-item is not reported, and init leaves it in place (`_ignored_by` in `unmanaged.py`). Verified
+item is not reported, and init leaves it in place (`harness_ignores` in `unmanaged.py`). Verified
 2026-10-24 against Claude Code 2.1.310 and Droid 0.249.0 (binaries), Pi 1.4.0 (shipped `dist`),
 and Codex 0.164.0 (`rust-v0.164.0` source; one of its strings, "skills scan reached its traversal
 limit", is in the installed binary) and OpenCode 2.1.4 (`v2.1.4` source; the installed binary is
@@ -537,8 +537,9 @@ not readable from the sandbox, so its build from that tag is unconfirmed).
   `((mode === "pi" && dir === root) || (mode === "agents" && dir !== root))`), and keeps one only
   with a description (`dist/core/skills.js:233`, `if (!isDeclaredSkill && !hasDescription) {`).
 
-So a loose file is unreported in a Claude, Codex or Droid skills folder, and in OpenCode's only when
-it is not a `.md`; a folder holding no `SKILL.md` is unreported everywhere except as a folder of
+So a loose file is unreported in a Claude, Codex or Droid skills folder, in OpenCode's and Pi's own
+only when it is not a `.md`, and in `.agents/skills`, where Pi reads no root file, when OpenCode
+would not load it either; a folder holding no `SKILL.md` is unreported everywhere except as a folder of
 `.md` files in an `.agents/skills` folder, which Pi reads; and an agent file without frontmatter is
 unreported only in Claude's agents folder. Each harness reading the folder must ignore the entry, so
 `.agents/skills` counts Codex, OpenCode and Pi, and Claude's skills folders count OpenCode too when

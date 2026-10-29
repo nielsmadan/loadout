@@ -135,12 +135,15 @@ def harness_ignores(entry: Path, slice_name: str, harness: str) -> bool:
         return harness == "claude" and entry.suffix == ".md" and not _frontmatter(entry)
     if slice_name != "skills":
         return False
+    shared = entry.parent.parts[-2:] == (".agents", "skills")
     if entry.is_file():
-        return (harness in ROOT_FILES_IGNORED and entry.name != SKILL_DOCUMENT) or (
-            harness == "opencode" and entry.suffix != ".md"
+        # Pi collects root .md files in its own skills folders, never in an `.agents` one.
+        return (
+            (harness in ROOT_FILES_IGNORED and entry.name != SKILL_DOCUMENT)
+            or (harness == "opencode" and entry.suffix != ".md")
+            or (harness == "pi" and (shared or entry.suffix != ".md"))
         )
     # Pi collects .md files from a folder without SKILL.md in an `.agents` skills folder.
-    shared = entry.parent.parts[-2:] == (".agents", "skills")
     pattern = "*.md" if harness == "pi" and shared else SKILL_DOCUMENT
     return entry.is_dir() and not _holds(entry, pattern)
 

@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 import loadout
-from loadout.unmanaged import _holding
+from loadout.unmanaged import _holding, harness_ignores
 
 
 def test_every_directory_above_an_output_holds_one() -> None:
@@ -58,3 +58,55 @@ def test_sync_and_check_name_a_retired_skill_s_leftovers_alike(
         ["WARNING: .agents/skills/x"],
         ["DRIFT (unmanaged): .agents/skills/x"],
     )
+
+
+def _skill_project(root: Path, harnesses: str) -> Path:
+    (root / "loadout/skills/x").mkdir(parents=True)
+    (root / "loadout/skills/x/SKILL.md").write_text("---\nname: x\ndescription: d\n---\nx\n")
+    (root / "loadout/config.toml").write_text(f"harnesses = {harnesses}\n")
+    assert loadout.main(["sync", "--root", str(root)]) == 0
+    return root
+
+
+@pytest.mark.integration
+def test_a_root_file_in_an_agents_skills_folder_is_loaded_by_no_reader(
+    tmp_path: Path, capsys
+) -> None:
+    """Pi ignores root files in `.agents` folders; Codex and OpenCode ignore a `.txt`."""
+    root = _skill_project(tmp_path / "p", '["codex", "opencode"]')
+    (root / ".agents/skills/notes.txt").write_text("mine\n")
+    capsys.readouterr()
+
+    assert loadout.main(["check", "--root", str(root)]) == 0
+    assert capsys.readouterr().out.splitlines()[-1] == "generated files are up to date"
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(("name", "status"), [("notes.txt", 0), ("notes.md", 1)])
+def test_pi_loads_a_root_md_file_in_its_own_skills_folder(
+    tmp_path: Path, capsys, name: str, status: int
+) -> None:
+    root = _skill_project(tmp_path / "p", '["pi"]')
+    (root / ".pi/skills" / name).write_text("---\ndescription: d\n---\nmine\n")
+    capsys.readouterr()
+
+    assert loadout.main(["check", "--root", str(root)]) == status
+
+
+@pytest.mark.parametrize(
+    ("folder", "name", "ignored"),
+    [
+        (".agents/skills", "notes.md", True),
+        (".agents/skills", "notes.txt", True),
+        (".pi/skills", "notes.txt", True),
+        (".pi/skills", "notes.md", False),
+    ],
+)
+def test_pi_reads_root_md_files_only_in_its_own_skills_folders(
+    tmp_path: Path, folder: str, name: str, ignored: bool
+) -> None:
+    entry = tmp_path / folder / name
+    entry.parent.mkdir(parents=True)
+    entry.write_text("---\ndescription: d\n---\nmine\n")
+
+    assert harness_ignores(entry, "skills", "pi") is ignored
