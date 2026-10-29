@@ -658,7 +658,7 @@ def test_init_global_without_source_defaults_to_cwd_and_requires_agents(
     assert loadout.main(["init", "global"]) == 2
 
     err = capsys.readouterr().err
-    assert "harnesses-required" in err
+    assert "harnesses-required: Select the configured harnesses with --harness NAME" in err
     assert not (tmp_path / "cfg" / "loadout" / "config.toml").exists()
 
 

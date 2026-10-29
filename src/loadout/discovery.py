@@ -876,7 +876,7 @@ def discover(
             Issue(
                 "harnesses-required",
                 (root,),
-                "Select the configured harnesses; shared instructions and installed binaries do not establish membership.",
+                "Select the configured harnesses with --harness NAME, once for each; shared instructions and installed binaries do not establish membership.",
             )
         )
     automatic = (
