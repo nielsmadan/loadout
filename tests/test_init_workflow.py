@@ -448,7 +448,6 @@ def test_global_init_seeds_servers_and_one_readme_and_nothing_else(tmp_path, fak
     assert tomllib.loads((source / "mcp.toml").read_text()) == {}
     assert "[context7]" in (source / "mcp.toml").read_text()
     assert "## Add hooks, plugins or settings" in (source / "README.md").read_text()
-    assert "mcp" in tomllib.loads((source / "loadout.toml").read_text())["source"][0]["use"]
     assert sorted(p.name for p in tmp_path.rglob("README.md")) == ["README.md"]
     assert list(tmp_path.rglob(".gitkeep")) == []
 
@@ -456,6 +455,24 @@ def test_global_init_seeds_servers_and_one_readme_and_nothing_else(tmp_path, fak
     synced = _home_files(fake_home)
     assert loadout.main(["sync", "--global"]) == 0
     assert _home_files(fake_home) == synced
+
+
+def test_global_init_admits_every_category_so_the_guides_work(tmp_path, fake_home, capsys):
+    """It wrote a `use` list of what it adopted, so adding instructions to the source
+    afterwards failed with "instructions not found in any source"."""
+    _repo(tmp_path)
+    (fake_home / ".claude").mkdir()
+    (fake_home / ".claude/settings.json").write_text('{"permissions": {"allow": ["Bash(ls)"]}}\n')
+    assert loadout.main(["init", "global", str(tmp_path), "--harness", "claude", "--yes"]) == 0
+    source = tmp_path / "loadout"
+    (source / "instructions").mkdir()
+    (source / "instructions/team.md").write_text("Be brief.\n")
+    manifest = source / "loadout.toml"
+    manifest.write_text(manifest.read_text() + '\n[all]\ninstructions = ["team"]\n')
+
+    assert tomllib.loads(manifest.read_text())["source"] == [{"name": "migrated", "path": "."}]
+    assert loadout.main(["sync", "--global"]) == 0
+    assert "Be brief." in (fake_home / ".claude/CLAUDE.md").read_text()
 
 
 def test_a_comment_only_mcp_toml_renders_exactly_as_none(tmp_path, fake_home):
@@ -466,10 +483,7 @@ def test_a_comment_only_mcp_toml_renders_exactly_as_none(tmp_path, fake_home):
     seeded = render_all(source)
 
     (source / "mcp.toml").unlink()
-    manifest = source / "loadout.toml"
-    manifest.write_text(manifest.read_text().replace('"mcp", ', ""))
 
-    assert "mcp" not in tomllib.loads(manifest.read_text())["source"][0]["use"]
     assert fake_home / ".claude.json" in seeded
     assert render_all(source) == seeded
 

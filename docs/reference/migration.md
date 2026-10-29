@@ -176,7 +176,8 @@ globally, `config/paths.ts` in a project), so init refuses when both exist rathe
 
 Project init writes `loadout/config.toml` plus the canonical project slice sources it found.
 Global init writes `loadout/loadout.toml`, canonical global slice sources, and registers that
-directory in the machine config. Neither scope writes `artifacts.toml`.
+directory in the machine config. Its one source, `migrated`, has no `use` list, so a slice added
+to it later, such as instructions or a template, is read like any other.
 
 Existing generated destinations are reconstructed in isolation before approval.
 

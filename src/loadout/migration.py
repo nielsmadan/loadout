@@ -1093,31 +1093,7 @@ def _project_config(inventory: Inventory, builder: _PlanBuilder) -> dict[str, An
 def _global_config(inventory: Inventory, builder: _PlanBuilder) -> dict[str, Any]:
     builder.write_global_sources()
     blocks = builder.global_blocks()
-    offered = {
-        relative.parts[0].removesuffix(".toml").removesuffix(".json")
-        for path in builder.writes
-        if (relative := path.relative_to(inventory.source_root)).parts
-    }
-    use = [
-        category
-        for category in (
-            "instructions",
-            "permissions",
-            "mcp",
-            "settings",
-            "hooks",
-            "plugins",
-            "skills",
-            "agents",
-            "module-config",
-        )
-        if category in offered
-        or category == "agents"
-        or any(category in slices for slices in builder.global_slices.values())
-    ]
-    config: dict[str, Any] = {
-        "source": [{"name": "migrated", "path": ".", "use": use}],
-    }
+    config: dict[str, Any] = {"source": [{"name": "migrated", "path": "."}]}
     for agent in inventory.harnesses:
         config[agent] = blocks.get(agent, {})
     return config
