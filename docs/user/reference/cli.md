@@ -94,7 +94,7 @@ configuration. `init global [DIR]` takes the directory as an optional argument, 
 `git init [dir]`, and defaults to the current directory, so a bare `init global` adopts the cwd. `--root` exists only on `init project`; `--registration keep|replace` only on `init global`. At the registered global source that also holds a project, `init project` previews, compares and writes the project's outputs alone; the global ones stay for `sync`. Keeping another registration while init sets up a new source exits 3 before writing anything: the first sync renders global scope, which only the registered source may.
 Init either converts or puts everything back. It backs up every path it will touch first and
 deletes that backup when it succeeds. If applying or the first render fails, Ctrl-C included,
-it puts every path back from the backup, deletes it and exits 1. After such a failure, and when
+it puts every path back from the backup, deletes it and exits 1, or 130 after Ctrl-C. After such a failure, and when
 the plan cannot complete (exit 2), it recommends doing the conversion with the bundled `/loadout`
 skill. At a terminal it asks whether to copy the skill into the user skills folder of each
 harness being converted; without one, or under `--json`, it prints the command instead. A refusal
@@ -117,8 +117,8 @@ Under `--json`, `init` prints one JSON object on stdout, whatever happens. It al
 | `preview` | 0 | `--dry-run`: the plan, with every planned write, `secrets`, and `outputs`, each with its `change`: `identical`, `normalised` (only loadout's banner or formatting differs), `update` or `create` |
 | `incomplete` | 2 | the plan needs a choice or a fix; `issues` names each, and unless every issue is a choice an option makes, `recommendation` and `install_command` name the skill and the command that copies it |
 | `complete` | 0 | applied; `written` (the source), `rendered` (the generated files), `untracked`, `already_initialized`, `delinked`, `unadopted` and `secrets` |
-| `restored` | 1 | init failed and put every path back; `error` says why, `restored` names what was put back, and `recommendation` and `install_command` are as for `incomplete` |
-| `interrupted` | 2, or 1 | an earlier init was killed part way (2), or this one failed and could not put everything back (1); `backup` names the backup and `error` says what to do |
+| `restored` | 1, or 130 | init failed, or Ctrl-C stopped it (130), and put every path back; `error` says why, `restored` names what was put back, and `recommendation` and `install_command` are as for `incomplete` |
+| `interrupted` | 2, 1 or 130 | an earlier init was killed part way (2), or this one failed (1) or was stopped with Ctrl-C (130) and could not put everything back; `backup` names the backup and `error` says what to do |
 | `error` | 2, 3 or 4 | a usage error (an unknown option or `--harness` name included), a source error, or an unexpected one; `error` holds the message |
 
 Fresh project initialisation uses explicit `--harness` options, then the machine configuration's
@@ -251,6 +251,7 @@ without it is refused.
 | `2` | Invalid command-line usage, unresolved init choices, missing noninteractive approval, or an interrupted init found by the next one |
 | `3` | Source, configuration, or resolution error: missing or invalid input, an unsafe destination, or an ownership collision |
 | `4` | Unexpected internal error, with a traceback |
+| `130` | `init` stopped with Ctrl-C, after putting back every path it changed |
 
 A modified vendored template is a source change. `check` can report it without failing solely
 for that reason. A refused `template sync` exits `1`.

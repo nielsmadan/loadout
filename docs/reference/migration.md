@@ -277,9 +277,9 @@ The backup lasts one run:
   index. This runs in the same process right after the failure, so nothing is checked for later
   edits. A write killed before its rename leaves a temporary file beside its target, named
   `.loadout-tmp-` and eight random characters; a file of exactly that shape beside a path in the
-  backup is removed, and any other file, a `.loadout-notes.md` included, stays. Init exits 1,
-  with `"status": "restored"` under `--json`. If putting back fails too, the backup stays marked
-  and init exits 1 with `"status": "interrupted"`.
+  backup is removed, and any other file, a `.loadout-notes.md` included, stays. Init exits 1, or
+  130 after Ctrl-C, with `"status": "restored"` under `--json`. If putting back fails too, the
+  backup stays marked and init exits the same way with `"status": "interrupted"`.
 - **A run killed part way** leaves the marker. The next `init`, of any scope or root, puts that
   backup back before anything else: at a terminal it asks first, and says that edits made since
   to those paths are lost; under `--json`, `--dry-run` or without a terminal it exits 2 with

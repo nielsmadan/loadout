@@ -267,13 +267,7 @@ def test_a_first_render_that_differs_from_the_preview_puts_back_every_path(
     assert _snapshot(root) == before
 
 
-def test_an_interrupt_during_apply_puts_back_every_path_and_still_interrupts(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
-) -> None:
-    """Ctrl-C is not an Exception, and must neither skip the restore nor be swallowed by it;
-    the user stopped it, so the skill is recommended but nothing is asked."""
-    root = _project(tmp_path / "p")
-    before = _snapshot(root)
+def _interrupt_after_deploy(monkeypatch: pytest.MonkeyPatch) -> None:
     deploy = workflow.deploy
 
     def interrupted(*args: object, **kwargs: object) -> object:
@@ -281,14 +275,35 @@ def test_an_interrupt_during_apply_puts_back_every_path_and_still_interrupts(
         raise KeyboardInterrupt
 
     monkeypatch.setattr(workflow, "deploy", interrupted)
+
+
+def test_an_interrupt_during_apply_puts_back_every_path_and_exits_130(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """Ctrl-C is not an Exception, and must not skip the restore; the user stopped it, so
+    the skill is recommended but nothing is asked, and init exits as an interrupt does."""
+    root = _project(tmp_path / "p")
+    before = _snapshot(root)
+    _interrupt_after_deploy(monkeypatch)
     prompts = _terminal(monkeypatch)
 
-    with pytest.raises(KeyboardInterrupt):
-        _init_project(root, "--yes")
+    assert _init_project(root, "--yes") == 130
 
     assert _snapshot(root) == before
     assert prompts == []
     assert workflow.SKILL_ADVICE in capsys.readouterr().err
+
+
+def test_an_interrupt_under_json_prints_only_the_restored_envelope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    root = _project(tmp_path / "p")
+    _interrupt_after_deploy(monkeypatch)
+
+    assert _init_project(root, "--yes", "--json") == 130
+
+    document = json.loads(capsys.readouterr().out)
+    assert (document["status"], document["exit_code"]) == ("restored", 130)
 
 
 def test_a_failure_whose_put_back_fails_leaves_the_backup_for_the_next_init(

@@ -951,3 +951,4 @@ Full detail, including the content-hash definition: [docs/reference/templates.md
 | 2 | usage error, an init plan that cannot complete, missing noninteractive approval, or an init killed part way, found by the next one |
 | 3 | source error — missing or invalid input, unsafe destination, or ownership collision |
 | 4 | internal error — an unexpected exception; a traceback is printed to stderr |
+| 130 | `init` stopped with Ctrl-C, after putting everything back |

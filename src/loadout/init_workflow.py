@@ -591,7 +591,7 @@ def _apply(
         # Whatever stopped it, the paths go back before anything else happens.
         interrupted = not isinstance(error, Exception)
         code = _failed(backup, plan, options, str(error) or type(error).__name__, interrupted)
-        if interrupted:
+        if interrupted and not isinstance(error, KeyboardInterrupt):
             raise
         return code
     discard(backup)
@@ -614,6 +614,7 @@ def _touched(prepared: MigrationPreparation, render: tuple[RenderedChange, ...])
 def _failed(
     backup: Backup, plan: MigrationPlan, options: InitOptions, reason: str, interrupted: bool
 ) -> int:
+    code = INTERRUPTED if interrupted else 1
     try:
         put_back = restore(backup)
     except (OSError, LoadoutError) as error:
@@ -622,18 +623,23 @@ def _failed(
             "the next init puts it back first"
         )
         if options.json:
-            return _envelope("interrupted", 1, error=message, backup=str(backup.directory))
+            return _envelope("interrupted", code, error=message, backup=str(backup.directory))
         print(f"loadout: {message} (backup {backup.directory})", file=sys.stderr)
-        return 1
+        return code
     harnesses = plan.inventory.harnesses
     if options.json:
         restored = [str(path) for path in put_back]
-        return _envelope("restored", 1, error=reason, restored=restored, **_skill_fields(harnesses))
+        return _envelope(
+            "restored", code, error=reason, restored=restored, **_skill_fields(harnesses)
+        )
     print(f"loadout: init failed ({reason}); everything it changed was put back", file=sys.stderr)
     # Stopped by the user: advise, but ask nothing more of them.
     _offer_skill(harnesses, options, ask=not interrupted)
-    return 1
+    return code
 
+
+# The shell's exit status for a process stopped by SIGINT.
+INTERRUPTED = 130
 
 # Issues a flag answers: the choice is the user's, and the skill cannot make it for them.
 CHOICES = frozenset({"harnesses-required", "scope-required", "registration-conflict"})
