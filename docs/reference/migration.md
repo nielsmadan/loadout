@@ -113,7 +113,7 @@ fix it on disk and run init again. An incomplete preview exits 2 and changes not
 | `git-link` | in project scope, a link points into the repository's `.git`, which holds credentials such as a token in `.git/config` and runs hooks; init reports it and never reads through it |
 | `linked-folder`, `linked-file` | in project scope, a harness folder that is itself a link inside the repository, such as `.claude -> config/claude`, or a link inside one, such as `.claude/skills/x/scripts -> ../../../tools`; project sync never writes through one, so init reports it instead of walking it. Replace it with a real copy (`cp -RL`) and run init again. A harness skills folder linked to a real folder in the repository, and a skill linked to the same skill in another skills folder, are the exceptions (below) |
 | `opencode-both-formats` | `opencode.json` and `opencode.jsonc` side by side: OpenCode reads both and merges them, the `.jsonc`'s keys winning; combine them into one file |
-| `invalid-native-document` | a document at a read path does not parse |
+| `invalid-native-document` | a document at a read path does not parse; the refusal names the file |
 | `dependency-activation` | an adopted declaration references a de-linked original instead of the copy loadout deploys |
 | `source-composition` | two originals would write different content to one source file outside the cases below; make them identical or remove one. Also a Codex rules file holding a statement adoption cannot carry, quoted with its line; see [extraction](extraction.md#a-hand-written-codex-rules-file) |
 | `source-exists`, `initialized-source`, `initialized-conflict` | the source directory already holds conflicting loadout source |

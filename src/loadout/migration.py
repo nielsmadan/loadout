@@ -201,7 +201,10 @@ def _choose(inventory: Inventory) -> tuple[tuple[Candidate, ...], tuple[Issue, .
         if candidate.disposition != "migrated" or candidate.destination is None:
             continue
         try:
-            grouped[candidate.destination].append(_authored(candidate, inventory.scope))
+            authored = _authored(candidate, inventory.scope)
+            if authored.format in {"json", "toml"}:
+                parse_document(authored.content.decode(), authored.format)
+            grouped[candidate.destination].append(authored)
         except (LoadoutError, UnicodeError, ValueError, TypeError):
             issues.append(
                 Issue(
