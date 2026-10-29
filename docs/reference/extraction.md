@@ -39,7 +39,7 @@ which do not break the round trip belong at render time, where they can still be
 
 | renderer | carries | loses |
 |---|---|---|
-| `claude`, `claude-project` | shell, MCP, `claude.extra` | nothing; `opencode.extra` is not its to carry |
+| `claude`, `claude-project` | shell, MCP, `claude.extra` allow and deny | **an `ask` rule for any other tool**, such as `Read(./secrets/**)`: the source has no Claude ask list, so init refuses with `uncarried-rule` rather than convert without it. `opencode.extra` is not its to carry |
 | `claude-mcp-permissions` | MCP | — |
 | `codex` | non-glob shell; an exact deny as its prefix | **exact allow and ask**, which it omits, and the exactness of a deny. **glob entries.** `render_codex` diverts them to a trailing comment block with no decision attached, so the file does not record whether `gamma-*` was allowed, asked or denied. Reported, never guessed. |
 | `codex-project` | shell; an exact deny as its prefix | **exact allow and ask**, and the exactness of a deny. Quote *style*. `render_codex_project` tokenises with `shlex.split`, and a token holding whitespace is re-quoted on the way back, so `echo "a b"` returns as `echo 'a b'` — the document round-trips, the source spelling normalises. |

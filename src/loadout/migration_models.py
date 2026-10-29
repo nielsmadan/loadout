@@ -20,6 +20,7 @@ IssueCode = Literal[
     "source-exists",
     "symlink-cycle",
     "symlink-target",
+    "uncarried-rule",
     "external-symlink",
     "git-link",
     "linked-folder",

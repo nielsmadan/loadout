@@ -270,6 +270,14 @@ CODEX_RULES_ABSORBED = (
 JSONC_ABSORBED = "Its settings are adopted into opencode.json, and OpenCode would read both files."
 
 
+class _Refusal(LoadoutError):
+    """A plan issue found while composing, naming its own code and original."""
+
+    def __init__(self, issue: Issue) -> None:
+        super().__init__(issue.message)
+        self.issue = issue
+
+
 class _PlanBuilder:
     def __init__(self, inventory: Inventory) -> None:
         self.inventory = inventory
@@ -590,8 +598,19 @@ class _PlanBuilder:
             extracted = extract(renderer, document)
         except LoadoutError as error:
             raise LoadoutError(f"{candidate.destination}: {error}") from None
-        if existing:
-            self.notes.extend(f"{candidate.destination}: {note.detail}" for note in extracted.notes)
+        if not existing:
+            return extracted.rules
+        uncarried = [n.detail for n in extracted.notes if n.kind in {"dropped", "unrecognised"}]
+        if uncarried:
+            raise _Refusal(
+                Issue(
+                    "uncarried-rule",
+                    (candidate.path,),
+                    f"The source has no place for these rules, so converting would lose them: "
+                    f"{'; '.join(uncarried)}.",
+                )
+            )
+        self.notes.extend(f"{candidate.destination}: {note.detail}" for note in extracted.notes)
         return extracted.rules
 
     def write_project_sources(self) -> None:
@@ -1130,6 +1149,8 @@ def plan_migration(inventory: Inventory) -> MigrationPlan:
                 builder.linked_skill(link)
         builder.shared_skill_copies()
         builder.dormant_routes()
+    except _Refusal as refusal:
+        return MigrationPlan(inventory, issues=(refusal.issue,))
     except (LoadoutError, UnicodeError, ValueError, TypeError) as error:
         return MigrationPlan(
             inventory,

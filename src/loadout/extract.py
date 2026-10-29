@@ -34,7 +34,7 @@ CATEGORIES = ("allow", "ask", "deny")
 class Note:
     """Something the document held that the source cannot represent."""
 
-    kind: Literal["cannot", "unrecognised"]
+    kind: Literal["cannot", "unrecognised", "dropped"]
     detail: str
 
 
@@ -136,7 +136,7 @@ def extract_claude(document: Any) -> Extraction:
             kind, value = _claude_entry(pattern)
             if kind == "extra" and category == "ask":
                 # Rules has no claude_extra_ask; there is nowhere to put it.
-                notes.append(Note("cannot", f"claude: unowned ask pattern {pattern!r}"))
+                notes.append(Note("dropped", f"claude: unowned ask pattern {pattern!r}"))
                 continue
             {"shell": shell, "mcp": mcp, "extra": extra}[kind][category].append(value)
 
