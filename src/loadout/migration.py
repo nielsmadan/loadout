@@ -1473,7 +1473,7 @@ def _within_any(path: Path, roots: frozenset[Path]) -> bool:
 def _readiness(builder: _PlanBuilder) -> tuple[CategoryReadiness, ...]:
     result = []
     agents_source = builder.inventory.source_root / "agents"
-    adopted_agents = any(path.is_relative_to(agents_source) for path in builder.writes)
+    project = builder.inventory.scope == "project"
     for category in sorted(READINESS_CATEGORIES):
         for agent in builder.inventory.harnesses:
             paths = tuple(
@@ -1483,7 +1483,7 @@ def _readiness(builder: _PlanBuilder) -> tuple[CategoryReadiness, ...]:
             )
             if paths:
                 result.append(CategoryReadiness(category, (agent,), paths, "routed"))
-            elif category == "agents" and adopted_agents:
+            elif category == "agents":
                 result.append(
                     CategoryReadiness(
                         category,
@@ -1524,8 +1524,11 @@ def _readiness(builder: _PlanBuilder) -> tuple[CategoryReadiness, ...]:
                     )
                 )
             elif (
-                builder.inventory.scope == "project"
-                and (agent, category) in builder.available_categories
+                project
+                and (
+                    (agent, category) in builder.available_categories
+                    or category in PROJECT_PRESET[agent]
+                )
             ) or category in {"support", "module-config", "templates"}:
                 result.append(
                     CategoryReadiness(
