@@ -24,6 +24,10 @@ It reports a diff and refuses to overwrite the edits.
 3. Run `loadout sync` again.
 4. If the remaining output-only edits should be discarded, rerun sync with `--force`.
 
+A file that holds a secret is never diffed: sync names it, counts the lines that differ, and
+says the change would be lost without pointing at lines. Read that file itself instead of a
+diff.
+
 A harness granting a permission interactively can change a generated file. Record that grant
 in `permissions.toml` or `permissions.local.toml` so it survives future syncs.
 

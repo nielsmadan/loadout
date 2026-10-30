@@ -10,7 +10,7 @@ from typing import Literal
 
 from .atomic import atomic_install
 from .bundled_skill import bundled_skill_path
-from .diffs import diff_lines, report_diff
+from .diffs import diff_lines, report_diff, withheld
 from .emit import (
     SKILLS_SUBDIR,
     ProjectTemplates,
@@ -175,23 +175,39 @@ def _display(path: Path, root: Path) -> str:
         return str(path)
 
 
-def _abort_sentences(kinds: set[str]) -> list[str]:
+def _abort_sentences(kinds: set[str], *, shown: bool = True) -> list[str]:
     """What the refused diffs mean, by kind: a removed key shows as `+` lines sync would
-    write back, anything else as `-` lines it would destroy (review 3, batch 2.11)."""
+    write back, anything else as `-` lines it would destroy (review 3, batch 2.11). A diff
+    withheld for a secret shows neither, so the file is named instead (ADR 0032)."""
     sentences = []
     if kinds - {"owned-key-removed"}:
         sentences.append(
             "Sync aborted — the '-' lines would be lost. Port them into the source with "
             "/loadout, or run `loadout sync --force` to discard them."
+            if shown
+            else WITHHELD_ABORT
         )
     if "owned-key-removed" in kinds:
         sentences.append(
             "Sync aborted — the '+' lines were removed outside loadout and would be written "
             "back. Remove them from the source with /loadout, or run `loadout sync --force` "
             "to write them back."
+            if shown
+            else WITHHELD_REMOVED_ABORT
         )
     return sentences
 
+
+WITHHELD_ABORT = (
+    "Sync aborted — a file whose diff is not shown was changed outside loadout, and the "
+    "change would be lost. Read the file, then port it into the source with /loadout, or run "
+    "`loadout sync --force` to discard it."
+)
+WITHHELD_REMOVED_ABORT = (
+    "Sync aborted — keys loadout writes were removed outside loadout from a file whose diff "
+    "is not shown, and would be written back. Read the file, then remove them from the source "
+    "with /loadout too, or run `loadout sync --force` to write them back."
+)
 
 ABORT_DIFF = "sync-abort.diff"
 
@@ -227,6 +243,8 @@ def cmd_sync(root: Path, profile: str, force: bool = False) -> int:
         if modified:
             full: list[str] = []
             truncated = False
+            shown: set[str] = set()
+            unshown: set[str] = set()
             for item in modified:
                 rel = _display(item.path, root)
                 state = " and is no longer rendered" if item.orphaned else ""
@@ -239,7 +257,8 @@ def cmd_sync(root: Path, profile: str, force: bool = False) -> int:
                 lines = diff_lines(rel, item.actual, item.expected, context=1)
                 full.extend(lines)
                 truncated = report_diff(lines) or truncated
-            for sentence in _abort_sentences({item.kind for item in modified}):
+                (unshown if withheld(lines) else shown).add(item.kind)
+            for sentence in [*_abort_sentences(shown), *_abort_sentences(unshown, shown=False)]:
                 print(f"\n{sentence}", file=sys.stderr)
             # A blocking prompt the reader cannot see all of is one they learn to
             # skip, and skipping this one means reaching for --force, which is the

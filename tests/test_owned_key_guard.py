@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 import loadout
+from loadout.commands import WITHHELD_REMOVED_ABORT
 from loadout.written import written_state_path
 from registration import register
 from test_codex_defaults import build
@@ -314,7 +315,32 @@ def test_the_sync_abort_shows_the_document_diff_check_shows(
     assert "Sync aborted — the '-' lines would be lost." in err
 
 
-def test_the_sync_abort_for_a_removed_key_says_it_would_be_written_back(root: Path, capsys) -> None:
+def test_the_sync_abort_for_a_removed_key_says_it_would_be_written_back(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    register(tmp_path)
+    target = _codex(tmp_path, fake_home, {"model": "gpt-5"}, "")
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 0
+    target.write_text(target.read_text().replace('model = "gpt-5"\n', ""))
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--root", str(tmp_path)]) == 1
+
+    err = capsys.readouterr().err
+    assert f"WARNING: {target} was modified outside loadout (owned-key-removed)" in err
+    assert _diff(err) == ['+model = "gpt-5"']
+    assert (
+        "Sync aborted — the '+' lines were removed outside loadout and would be written back. "
+        "Remove them from the source with /loadout, or run `loadout sync --force` to write "
+        "them back." in err
+    )
+    assert err.count("Sync aborted") == 1
+
+
+def test_a_removed_key_in_a_file_holding_a_secret_is_described_without_lines(
+    root: Path, capsys
+) -> None:
+    """ADR 0032: the diff is withheld, so there are no '+' lines to point at."""
     register(root)
     shared = _synced(root)
     document = json.loads(shared.read_text())
@@ -326,12 +352,8 @@ def test_the_sync_abort_for_a_removed_key_says_it_would_be_written_back(root: Pa
 
     err = capsys.readouterr().err
     assert f"WARNING: {SHARED} was modified outside loadout (owned-key-removed)" in err
-    assert (
-        "Sync aborted — the '+' lines were removed outside loadout and would be written back. "
-        "Remove them from the source with /loadout, or run `loadout sync --force` to write "
-        "them back." in err
-    )
-    assert err.count("Sync aborted") == 1
+    assert "diff not shown because the file holds a secret" in err
+    assert err.endswith(f"\n{WITHHELD_REMOVED_ABORT}\n")
 
 
 def test_with_no_record_a_removed_key_written_back_is_stripped_without_a_note(

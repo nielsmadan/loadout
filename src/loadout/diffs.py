@@ -56,6 +56,11 @@ def diff_lines(rel: str, actual: str, expected: str, context: int) -> list[str]:
     return lines
 
 
+def withheld(lines: list[str]) -> bool:
+    """Whether `diff_lines` named the file instead of diffing it."""
+    return bool(lines) and not lines[0].startswith("--- ")
+
+
 def _range(start: int, stop: int) -> str:
     """A hunk's range as `difflib.unified_diff` writes it."""
     length = stop - start
