@@ -22,12 +22,12 @@ def _project(root: Path) -> Path:
 
 @pytest.mark.integration
 @pytest.mark.parametrize("command", [["sync"], ["sync", "--force"], ["check"]])
-@pytest.mark.parametrize("where", ["loadout/settings/claude.json", ".claude/settings.json"])
-def test_a_project_settings_document_that_is_not_utf_8_is_named(
-    tmp_path: Path, capsys, command: list[str], where: str
+def test_a_project_settings_source_that_is_not_utf_8_is_named(
+    tmp_path: Path, capsys, command: list[str]
 ) -> None:
+    """The generated `.claude/settings.json` is drift instead: test_project_unparsable_documents."""
     root = _project(tmp_path / "p")
-    path = root / where
+    path = root / "loadout/settings/claude.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(BROKEN)
     capsys.readouterr()

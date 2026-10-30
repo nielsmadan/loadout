@@ -26,7 +26,7 @@ from .manifest import (
     manifest_path,
 )
 from .module_config import MODULE_CONFIG_SUBDIR, discover_module_config
-from .output import Copied, Merged, Output, output_record_paths
+from .output import Copied, Merged, Output, SharedText, output_record_paths
 from .permissions.merge import merge_rules
 from .permissions.renderers import (
     RENDERERS,
@@ -195,23 +195,16 @@ def _load_existing(path: Path) -> dict[str, Any]:
 
     Only keys loadout does not generate survive: every renderer assigns its owned
     key unconditionally, so the owned subtree is always regenerated and can never
-    feed back. See ADR 0001's amendment.
+    feed back. See ADR 0001's amendment. A file that does not parse has none to carry;
+    sync refuses it unless forced (`SharedText`).
     """
     if not path.is_file():
         return {}
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError) as error:
-        raise LoadoutError(
-            f"{path}: invalid JSON: {error}. This is a generated file; delete it and "
-            f"re-run `loadout sync`."
-        ) from error
-    if not isinstance(document, dict):
-        raise LoadoutError(
-            f"{path}: existing output must be a JSON object. This is a generated file; "
-            f"delete it and re-run `loadout sync`."
-        )
-    return document
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return {}
+    return document if isinstance(document, dict) else {}
 
 
 def _preserved(path: Path, keys: tuple[str, ...]) -> dict[str, Any]:
@@ -976,7 +969,10 @@ def render_project(root: Path, context: RenderContext | None = None) -> dict[Pat
     ]
     refuse_escaping(root, shared)
     templates = project_templates(root, config, context or RenderContext())
-    outputs = _render_project_slices(root, config, templates)
+    outputs = {
+        path: SharedText(output) if path in shared and isinstance(output, str) else output
+        for path, output in _render_project_slices(root, config, templates).items()
+    }
     # Before anything compares or shows these: a diff of a file outside the project
     # would print it.
     refuse_escaping(root, (*outputs, *output_record_paths(outputs)), outputs)

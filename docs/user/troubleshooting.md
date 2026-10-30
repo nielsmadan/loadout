@@ -54,7 +54,8 @@ there: remove it from the source too, or pass `--force` to write it back.
 tell a source change from a hand edit: read the diff before syncing.
 `unmanaged` is a file loadout did not write in a folder the harness reads whole, such as a skills
 folder; port it and delete it. `unmanaged-link` is a link there; check where it points before
-deleting it. `unparsable` is a shared file that no longer parses, or is not even UTF-8: plain
+deleting it. `unparsable` is a shared file, global or a project's `.claude/settings.json`,
+`.factory/settings.json` or `opencode.json`, that no longer parses, or is not even UTF-8: plain
 `sync` refuses it with exit 3 and names it. Fix or delete it, then sync, or run `sync --force` to
 replace it; one the source no longer renders has nothing to replace it with, so only fixing or
 deleting it helps.

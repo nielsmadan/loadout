@@ -8,7 +8,7 @@ import pytest
 from loadout.emit import CLAUDE_IMPORT, render_all, render_project
 from loadout.errors import LoadoutError
 from loadout.harnesses import SliceOutput
-from loadout.output import Copied
+from loadout.output import Copied, SharedText
 from loadout.project import PROJECT_PRESET
 from registration import register
 
@@ -220,21 +220,19 @@ def test_loadout_only_outputs_do_not_preserve_foreign_keys(project: Path) -> Non
     assert "INJECTED" not in doc
 
 
-def test_malformed_existing_output_raises_and_tells_the_user_the_way_out(project: Path) -> None:
+@pytest.mark.parametrize("broken", ["not json", "[1, 2, 3]"])
+def test_malformed_existing_output_renders_as_a_shared_document_with_nothing_to_keep(
+    project: Path, broken: str
+) -> None:
     """A truncated write or bad hand-edit to a preserve_foreign target must not wedge
-    sync — the error must point at `loadout sync` as the remedy, since deleting the
-    file and re-running it is the only way out of the read-your-own-output loop."""
+    render: it carries no foreign keys, and sync refuses to replace it unless forced."""
     out = project / "opencode.json"
-    out.write_text("not json", encoding="utf-8")
-    with pytest.raises(LoadoutError, match="loadout sync"):
-        render_project(project)
+    out.write_text(broken, encoding="utf-8")
 
+    rendered = render_project(project)[out]
 
-def test_non_dict_existing_output_raises_and_tells_the_user_the_way_out(project: Path) -> None:
-    out = project / "opencode.json"
-    out.write_text("[1, 2, 3]", encoding="utf-8")
-    with pytest.raises(LoadoutError, match="loadout sync"):
-        render_project(project)
+    assert isinstance(rendered, SharedText)
+    assert list(json.loads(rendered)) == ["permission", "mcp"]
 
 
 def test_project_unknown_renderer_raises_loadout_error_not_keyerror(

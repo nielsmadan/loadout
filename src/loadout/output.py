@@ -64,6 +64,13 @@ class FrozenFile:
     mode: int
 
 
+class SharedText(str):
+    """A whole project document whose keys loadout does not own came from the file on disk,
+    so one that no longer parses is replaced only under `sync --force`."""
+
+    __slots__ = ()
+
+
 Output = str | Copied | Merged | FrozenFile
 
 

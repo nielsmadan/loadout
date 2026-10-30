@@ -54,7 +54,7 @@ review the diff, then port or discard the same way), `missing`,
 skills folder or Codex's rules folder; port it with `/loadout`, then delete it — `sync` warns
 about it and carries on), `unmanaged-link` (a link loadout did not create in such a folder; it has
 nothing to port, so check where it points before deleting it), or `unparsable` (a file loadout shares with a harness, such as
-`~/.claude.json`, no longer parses, including one that is not even UTF-8, or parses but cannot hold loadout's keys, such as a JSON
+`~/.claude.json`, or in a project `.claude/settings.json`, `.factory/settings.json` or `opencode.json`, no longer parses, including one that is not even UTF-8, or parses but cannot hold loadout's keys, such as a JSON
 array or a TOML scalar where a table goes: fix or delete it and sync, or `sync --force` replaces it
 outright; plain `sync` refuses with exit 3 and names the file. One the source no longer renders
 has nothing to replace it, so `sync` refuses it with or without `--force` until it is fixed or

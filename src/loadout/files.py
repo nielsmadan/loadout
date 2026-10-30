@@ -13,7 +13,7 @@ from typing import BinaryIO, Literal, assert_never
 from .atomic import replace_atomically
 from .credentials import credential_material
 from .errors import LoadoutError
-from .output import Copied, FrozenFile, Merged, Output, file_sha256, sha256
+from .output import Copied, FrozenFile, Merged, Output, SharedText, file_sha256, sha256
 from .surgery import DocumentFormat, apply
 from .written import owned_values
 
@@ -171,6 +171,12 @@ def check_all(outputs: Mapping[Path, Output]) -> list[Drift]:
                 # cannot read as drift.
                 for written, text in merged_texts(path, expected).items():
                     text_differs(written, text, newline="" if written == path else None)
+            case SharedText() if unparsable_as(path, "json", ()):
+                drift.append(
+                    Drift(
+                        path=path, actual=shown_document(path), expected=expected, kind="unparsable"
+                    )
+                )
             case str():
                 text_differs(path, expected)
             case _:
@@ -303,6 +309,8 @@ def refuse_unparsable(outputs: Mapping[Path, Output]) -> None:
     for path, output in outputs.items():
         if isinstance(output, Merged) and unparsable(path, output):
             raise UnparsableDocument(path, output.format)
+        if isinstance(output, SharedText) and unparsable_as(path, "json", ()):
+            raise UnparsableDocument(path, "json")
 
 
 def merged_texts(
