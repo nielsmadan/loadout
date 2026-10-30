@@ -507,7 +507,7 @@ def compose_permission_document(
         label = f"permissions.{target.name}"
         target_spec = _resolve_renderer(target.renderer, label)
         owned_key = target.owned_key
-        preserve += target.preserve
+        preserve = tuple(dict.fromkeys((*preserve, *target.preserve)))
 
         if isinstance(target_spec, ValueSpec | ValuesSpec):
             _apply_value_renderer(target_spec, target, content, document, label)

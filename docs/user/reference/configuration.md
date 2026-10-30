@@ -147,7 +147,7 @@ so a manifest never spells out a machine path.
 | `hooks` | Hook fragment name or ordered list |
 | `plugins` | Plugin fragment name or ordered list, for supporting agents |
 | `substitute` | Map from selected instruction name to replacement name |
-| `preserve` | Foreign top-level keys to carry forward where the target supports them |
+| `preserve` | Foreign top-level keys to carry forward where the target supports them; an error under `[codex]`, where loadout already leaves the keys it does not own alone |
 | `permissions`, `mcp-permissions`, `mcp`, `skills`, `agents`, `module-config` | Automatic; `false` opts out, and `permissions = []` selects no rules |
 
 `[codex]` and `[pi]` with no keys are complete declarations. An unknown agent name, or a slice an

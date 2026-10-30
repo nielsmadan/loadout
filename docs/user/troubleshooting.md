@@ -98,9 +98,10 @@ There are two answers:
    `preserve names generated key(s)`. A preserved key is copied from this machine's file, so a
    fresh machine starts without it until the harness writes it there.
 
-   Codex needs no `preserve`. Remove the key from the `defaults` fragment: the next `sync` deletes
-   it from `config.toml`, and from then on it is Codex's. While Codex's value differs from the one
-   loadout wrote, that sync refuses; `sync --force` deletes the key anyway.
+   Codex needs no `preserve`, and `[codex] preserve` is a configuration error. Remove the key
+   from the `defaults` fragment: the next `sync` deletes it from `config.toml`, and from then on
+   it is Codex's. While Codex's value differs from the one loadout wrote, that sync refuses;
+   `sync --force` deletes the key anyway.
 
 What each harness writes, by the version checked:
 

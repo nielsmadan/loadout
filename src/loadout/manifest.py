@@ -463,6 +463,27 @@ def _agent_slice_names(agent: str, block: dict[str, object]) -> list[str]:
     return named + automatic
 
 
+AGENT_EXTRAS = ("settings", "preserve", "substitute")
+
+
+def _check_block(agent: str, declared: dict[str, object], offered: dict[str, SliceOutput]) -> None:
+    # Only what the agent block itself names is checked. A key from [all]
+    # that this agent has no slice for is simply not for it — [all] is a
+    # default, so it applies where it applies. An unknown key the agent
+    # named is still a typo worth catching.
+    stray = sorted(k for k in declared if k not in offered and k not in AGENT_EXTRAS)
+    if stray:
+        raise LoadoutError(
+            f"{agent}: unknown slice(s) {', '.join(stray)} "
+            f"(this harness offers: {', '.join(sorted(offered))})"
+        )
+    if agent == "codex" and "preserve" in declared:
+        raise LoadoutError(
+            "codex: preserve has nothing to keep, because loadout compares only the keys it "
+            "owns in Codex's config.toml and leaves the others as they are; remove it"
+        )
+
+
 def _settings_read(
     agent: str, declared: dict[str, object], offered: dict[str, SliceOutput], names: list[str]
 ) -> bool:
@@ -534,18 +555,8 @@ def _parse_agents(
             raise LoadoutError(f"{path}: [{agent}] must be a table")
         block = {**common, **declared}
         offered = GLOBAL_PRESET[agent]
-        # Only what the agent block itself names is checked. A key from [all]
-        # that this agent has no slice for is simply not for it — [all] is a
-        # default, so it applies where it applies. An unknown key the agent
-        # named is still a typo worth catching.
-        extras = ("settings", "preserve", "substitute")
-        stray = sorted(k for k in declared if k not in offered and k not in extras)
-        if stray:
-            raise LoadoutError(
-                f"{agent}: unknown slice(s) {', '.join(stray)} "
-                f"(this harness offers: {', '.join(sorted(offered))})"
-            )
-        block = {k: v for k, v in block.items() if k in offered or k in extras}
+        _check_block(agent, declared, offered)
+        block = {k: v for k, v in block.items() if k in offered or k in AGENT_EXTRAS}
         names = _agent_slice_names(agent, block)
         stranded.extend(() if _settings_read(agent, declared, offered, names) else (agent,))
         for slice_name in names:

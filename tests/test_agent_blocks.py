@@ -148,6 +148,27 @@ def test_an_unknown_slice_names_what_the_agent_offers(tmp_path: Path) -> None:
         render_global(root)
 
 
+def test_preserving_a_generated_key_names_it_once(tmp_path: Path) -> None:
+    register(tmp_path)
+    root = build(tmp_path, '\n[claude]\nplugins = []\npreserve = ["enabledPlugins"]\n')
+    with pytest.raises(LoadoutError) as refused:
+        render_global(root)
+    assert str(refused.value).endswith(
+        ": preserve names generated key(s) enabledPlugins; preserve may only carry foreign keys"
+    )
+
+
+def test_preserve_under_codex_is_rejected_with_the_reason(tmp_path: Path) -> None:
+    register(tmp_path)
+    root = build(tmp_path, '\n[codex]\npreserve = ["model"]\n')
+    with pytest.raises(LoadoutError) as refused:
+        render_global(root)
+    assert str(refused.value) == (
+        "codex: preserve has nothing to keep, because loadout compares only the keys it owns "
+        "in Codex's config.toml and leaves the others as they are; remove it"
+    )
+
+
 def test_an_agent_block_coexists_with_the_older_spelling(tmp_path: Path) -> None:
     register(tmp_path)
     root = build(

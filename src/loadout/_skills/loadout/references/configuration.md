@@ -362,5 +362,6 @@ Ask the user which answer they want:
    `enabledPlugins` and Droid's `enabledPlugins` when those slices are declared, and Pi's
    `packages`. Those can only be ported. pi-permission-system's keys have no place in the source,
    so preserving is the only answer for them. For Codex, removing the key from `defaults` is
-   enough; the next sync deletes it from `config.toml`, refusing while Codex's value differs from
-   loadout's until the user approves `--force`.
+   enough, and `[codex] preserve` is a configuration error; the next sync deletes it from
+   `config.toml`, refusing while Codex's value differs from loadout's until the user approves
+   `--force`.
