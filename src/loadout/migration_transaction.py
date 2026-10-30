@@ -276,6 +276,12 @@ def _ignore_lines(plan: MigrationPlan) -> tuple[str, ...]:
     return tuple(dict.fromkeys(escape(value) for value in plan.ignores))
 
 
+def _gitignore_lines(plan: MigrationPlan, ignores: tuple[str, ...]) -> tuple[str, ...]:
+    """The plan's lines and the first render's, a path the render ignores as a folder once."""
+    lines = (*_ignore_lines(plan), *ignores)
+    return tuple(line for line in lines if f"{line}/" not in lines)
+
+
 def _ignored_outputs(plan: MigrationPlan) -> tuple[Path, ...]:
     """Project outputs init gitignores: rendered from committed source from now on, so a
     tracked copy would hand every clone a stale file the first sync refuses over."""
@@ -374,7 +380,7 @@ def prepare_migration(
             ignore_path,
             Image(
                 "file",
-                with_lines(current.content.decode(), (*_ignore_lines(plan), *ignores)).encode(),
+                with_lines(current.content.decode(), _gitignore_lines(plan, ignores)).encode(),
                 current.mode if current.kind == "file" else 0o644,
             ),
             "ignore",

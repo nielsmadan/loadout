@@ -108,10 +108,7 @@ def test_identical_copies_in_a_reader_s_folder_and_the_shared_folder_are_adopted
 
     assert (root / "loadout/skills/review/notes.md").read_text() == "Notes.\n"
     ignored = (root / ".gitignore").read_text().splitlines()
-    assert [line for line in ignored if "skills" in line] == [
-        "/.agents/skills/review",
-        "/.agents/skills/review/",
-    ]
+    assert [line for line in ignored if "skills" in line] == ["/.agents/skills/review/"]
     assert shared.read_text().endswith("Body.\n")
     assert (own.exists(), (own.parent / "notes.md").exists()) == (False, False)
     capsys.readouterr()
@@ -145,3 +142,28 @@ def test_without_codex_a_reader_s_own_copy_becomes_generated(tmp_path: Path, cap
 
     originals = json.loads(capsys.readouterr().out)["originals"]
     assert [o["action"] for o in originals if o["path"] == str(own)] == ["generated"]
+
+
+def test_init_ignores_an_adopted_skill_once_as_a_folder(tmp_path: Path, capsys) -> None:
+    root = tmp_path / "project"
+    skill = _write(root / ".claude/skills/lint/SKILL.md", SKILL.format(name="lint"))
+    _git(root, "init", "-q")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-qm", "base")
+
+    assert (
+        loadout.main(["init", "project", "--root", str(root), "--harness", "claude", "--yes"]) == 0
+    )
+    assert loadout.main(["sync", "--root", str(root)]) == 0
+
+    ignored = (root / ".gitignore").read_text().splitlines()
+    assert [line for line in ignored if "skills" in line] == ["/.claude/skills/lint/"]
+    assert (
+        subprocess.run(
+            ["git", "-C", str(root), "ls-files", "--", str(skill)],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        == ""
+    )

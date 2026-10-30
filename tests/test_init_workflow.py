@@ -718,7 +718,6 @@ def test_project_init_ignores_a_glob_named_skill_by_its_literal_name(tmp_path, c
     assert loadout.main(init) == 0
 
     assert (tmp_path / ".gitignore").read_text().splitlines() == [
-        "/.claude/skills/x\\[1\\]",
         "/.claude/settings.json",
         "/.claude/skills/x\\[1\\]/",
     ]
