@@ -62,8 +62,9 @@ Write the instructions in `loadout/instructions/project.md` and `testing.md`, th
 loadout sync
 ```
 
-Loadout composes `CLAUDE.md` and `AGENTS.md` and renders the project's permission rules into
-each agent's format. Edit the source once, sync it, and use either agent.
+Loadout composes `AGENTS.md`, writes a `CLAUDE.md` that imports it with `@AGENTS.md`, and
+renders the project's permission rules into each agent's format. Edit the source once, sync it,
+and use either agent.
 
 [Follow the complete walkthrough](getting-started.md).
 

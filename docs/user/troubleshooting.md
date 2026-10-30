@@ -24,9 +24,9 @@ It reports a diff and refuses to overwrite the edits.
 3. Run `loadout sync` again.
 4. If the remaining output-only edits should be discarded, rerun sync with `--force`.
 
-A file that holds a secret is never diffed: sync names it, counts the lines that differ, and
-says the change would be lost without pointing at lines. Read that file itself instead of a
-diff.
+A file that holds a secret is never diffed. In place of its diff, sync prints one line naming
+the file and counting the lines that differ, and its abort message says to read the file. Open
+the file itself for step 1, then carry on with steps 2 to 4.
 
 A harness granting a permission interactively can change a generated file. Record that grant
 in `permissions.toml` or `permissions.local.toml` so it survives future syncs.
@@ -73,6 +73,29 @@ is registered, so add `--registration replace` to register this one instead. A m
 that does not load is reported as its own error: fix the key it names, or, when it cannot be
 read, the file's or its folder's permissions.
 
+## Sync refuses a skill or agent name
+
+```text
+loadout: Claude Code writes /home/you/.claude/skills/synced itself; rename the skill 'synced' so the two do not overwrite each other
+```
+
+A few names belong to a harness, which writes them into a folder Loadout writes too: Claude Code's
+`synced` skill, and Droid's `scrutiny-feature-reviewer` and `user-testing-flow-validator` droids.
+A global skill or agent with one of those names would overwrite the harness's file, or be
+overwritten by it, so `sync` and `check` exit 3 before writing anything. Rename the skill or agent
+in the source and sync again.
+
+## Sync notes a repeated heading
+
+```text
+note: claude.instructions: the instruction document repeats the heading "## Testing", from instructions/workflow.md and instructions/claude.md; keep one section, with /loadout
+```
+
+Two fragments selected into one instruction document each bring the same Markdown heading, so
+the agent reads that section twice. Merge the two sections into one fragment, or ask the
+`/loadout` skill to. The note is advisory: sync still writes, and `check`'s exit code is
+unaffected. See [composition](guides/composition.md#combine-sources).
+
 ## A skill named README, or a skill that stopped updating
 
 A skill is `skills/<name>/SKILL.md`. Older versions also read every `skills/*.md` file as a skill,
@@ -86,10 +109,12 @@ unless you edited them. A skill you kept as `skills/<name>.md` must move to
 Run:
 
 ```sh
+mkdir -p ~/agent-config
 loadout init global ~/agent-config
 ```
 
-Then configure the created source as described in [global setup](guides/global.md).
+`init global` needs the directory to exist; it refuses a missing one with `selected directory
+must exist`. Then configure the created source as described in [global setup](guides/global.md).
 A project-only setup does not require global configuration.
 
 If a machine configuration already exists, inspect its `source` path first.
@@ -107,18 +132,21 @@ Check the name against the selected source's directory:
 
 - `instructions = ["workflow"]` needs `instructions/workflow.md`.
 - `settings = "claude"` needs `settings/claude.json`.
-- Source paths are resolved relative to the manifest directory.
+- A relative source path is resolved from the manifest directory; absolute and `~/` paths are
+  used as they are.
 - A source's `use` list may exclude the requested slice.
 
 If several sources offer the same name, loadout does not pick one: it refuses the unqualified
-name and lists the candidates it found. Qualify it as `personal/workflow` to choose. A command for
+name and lists the candidates it found. Qualify it with the source name, such as
+`migrated/workflow` for the source `init global` wrote, to choose. A command for
 inspecting resolution directly is not available in 1.0.
 
 ## A template cannot be found
 
-Loadout first checks the project's vendored directory, then the template directories in sources
-declared by the machine's global manifest, then the bundled starters (`frontend` and `backend`),
-which ship with loadout and also resolve on a machine with no global configuration.
+Loadout first checks the project's vendored copy in `loadout/templates/`, then the `templates/`
+folder of each source declared by the machine's global manifest, where a template is either a
+`<name>/` directory or a `<name>.toml` catalog manifest, then the bundled starters (`frontend` and
+`backend`), which ship with loadout and also resolve on a machine with no global configuration.
 
 Run `loadout template list` and inspect those sources. Clone or update an external source using
 your normal git workflow. Loadout does not fetch it automatically.
@@ -138,8 +166,12 @@ failing solely for that reason.
 
 ## A removed skill or file is still present
 
-Removing a source or disabling an output does not currently remove every old destination.
-Inspect the obsolete output and remove it manually once you know nothing else owns it.
+When the source stops producing a file Loadout wrote, such as a removed skill or a disabled
+output, `check` reports it as `orphaned` and the next `sync` deletes it, printing
+`retired <path>`. A file you edited since Loadout wrote it is refused instead, as described under
+[check reports drift](#check-reports-drift). A file Loadout never wrote is left alone; in a folder
+the harness reads whole, such as a skills folder, `check` reports it as `unmanaged` so you can
+port it into the source and delete it.
 
 The bundled `loadout integrate skill uninstall` command has its own ownership-aware cleanup for
 the skill it installed.

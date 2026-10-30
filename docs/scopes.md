@@ -38,7 +38,7 @@ a new `~/.codex/rules/default.rules`, is reported as `unmanaged`; `sync` warns a
 on. Each message names `/loadout`. Its procedure ports the change into the right source, deletes an
 `unmanaged` file once its content is there, and runs `sync --force` to replace an edited output
 only after showing the user the diff and getting their approval. See
-[Files modified outside loadout](../README.md#files-modified-outside-loadout).
+[Files modified outside Loadout](user/troubleshooting.md#files-modified-outside-loadout).
 
 `init` follows the same split. A skill whose copies differ between harnesses, or a project
 `CLAUDE.md` that disagrees with `AGENTS.md`, is left in place and reported rather than merged; the
@@ -124,7 +124,8 @@ Per-repo configuration, layered on top of global. Two sources per artifact type:
 
 loadout merges the two and writes **generated outputs that are always gitignored** — eleven
 documents across five harnesses (`claude`, `codex`, `droid`, `opencode`, `pi`), of which
-`AGENTS.md` is one file four of them read, plus a skills directory per harness that has one.
+`AGENTS.md` is one file four of them read, plus a skills directory and an agents directory for
+each of the five (Codex, OpenCode and Pi may share `.agents/skills`, below).
 Claude's fourth non-skill file is
 `.mcp.json`, the document its `mcp` slice adds at project scope on top of its permission and
 instruction outputs — OpenCode's `mcp` key composes into `opencode.json`, an
@@ -160,15 +161,18 @@ Consequences:
   place for `/loadout` to merge. A repo declaring no order generates neither document, which is
   what keeps a permissions-only adopter's hand-written `CLAUDE.md` its own.
 - **Per-entry ownership tracking still is not needed, but "loadout is the sole writer of every
-  generated file" turned out to be false for two of the outputs.** `opencode.json` and
-  `.claude/settings.json` are a harness's own multi-purpose config file — the ported system
-  preserved foreign top-level keys in both (`$schema` in the former; `enabledPlugins`,
-  `sandbox`, `deny` in the latter), and rendering them from `{}` would silently delete that
-  content. loadout now reads the existing output as the renderer's base for those two targets
-  and carries forward any key it does not itself generate, an amendment to
-  [0001](decisions/0001-render-never-reads-its-own-output.md) rather than ownership tracking:
-  the owned subtree is still regenerated unconditionally on every render, so it can never feed
-  back — only foreign keys survive. The other three outputs are loadout-only and still render
+  generated file" turned out to be false for three of the outputs.** `opencode.json`,
+  `.claude/settings.json` and `.factory/settings.json` are a harness's own multi-purpose config
+  file — the ported system preserved foreign top-level keys in the first two (`$schema` in the
+  former; `enabledPlugins`, `sandbox`, `deny` in the latter), Droid's is its settings document
+  as well as the home of the permission lists and plugin keys loadout writes, and rendering any
+  of them from `{}` would silently delete that content. loadout now reads the existing output as
+  the renderer's base for those three targets and carries forward any key it does not itself
+  generate, an amendment to [0001](decisions/0001-render-never-reads-its-own-output.md) rather
+  than ownership tracking: the owned subtree is still regenerated unconditionally on every
+  render, so it can never feed back — only foreign keys survive. A project that keeps those keys
+  in `loadout/settings/<harness>.json` gets them from that fragment instead of from the file, so
+  a fresh clone renders them too. The other eight documents are loadout-only and still render
   from a blank document.
 
 **Both scopes now describe a slice the same way.** `SliceOutput` is one type in two tables —
@@ -214,7 +218,9 @@ Two consequences worth stating because they look inconsistent side by side:
 **Hooks and plugins at project scope are a `PROJECT_PRESET` entry away, not a project.**
 `compose_permission_document` is scope-agnostic — it takes a contributor list and knows nothing
 about which scope built it — so a value renderer or a generated adapter works there the moment a
-preset entry names one. They are deliberately not built: nothing asks for them yet, and a slice
+preset entry names one. Droid has those entries: `loadout/hooks.json` renders to
+`.factory/hooks.json`, and `loadout/plugins.json` to the plugin keys of `.factory/settings.json`.
+For the other four they are deliberately not built: nothing asks for them yet, and a slice
 nobody uses is one nobody notices breaking.
 
 **Project scope has no profiles**, and that is a decision rather than an omission:
@@ -239,8 +245,9 @@ person's setup; a repo's configuration is the same for everyone who checks it ou
   disappear rather than shrink. See
   [reference/templates.md](reference/templates.md) and
   [0014](decisions/0014-a-vendored-template-is-source-not-output.md).
-- MCP **server definitions shipped** on 2026-08-24 — `mcp` now renders `<source>/mcp.toml` to six
-  of the eight harness/scope destinations; see [reference/servers.md](reference/servers.md).
+- MCP **server definitions shipped** on 2026-08-24 — `mcp` now renders `<source>/mcp.toml` to
+  eight of the ten harness/scope destinations, all but Codex's and Pi's project scope; see
+  [reference/servers.md](reference/servers.md).
   **`~/ac` cut over on 2026-08-29** (`48126e0`): the source is `loadout/mcp.toml`, `preserve =
   ["mcp"]` is gone from the manifest, and `mcp/servers.toml` and `mcp/sync.py` are deleted. Not to
   be confused with the

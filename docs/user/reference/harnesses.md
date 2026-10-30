@@ -22,6 +22,7 @@ An absent output is an implementation limit of Loadout.
 | MCP tool policy | Yes | Yes, with server config | Not rendered | Yes | Permission extension |
 | MCP server definitions | Yes | Yes | Yes | Yes | MCP adapter |
 | Skills | Yes | Yes | Yes | Yes | Yes |
+| Agents | `~/.claude/agents/` | `~/.codex/agents/`, as TOML | `~/.factory/droids/` | `~/.config/opencode/agents/` | `~/.pi/agent/agents/`, read by `pi-subagents` |
 | Native settings | JSON settings | Defaults slice | JSON settings | JSON settings | JSON settings with plugins selected |
 | Hooks | Native document | Native document | Native document | Command-hook adapter | Command-hook adapter |
 | Plugin declarations | Marketplace enablement | Enablement and registrations | Enablement and registrations | Plugin files via module-config | Package references |
@@ -42,16 +43,22 @@ Unrelated state in those co-owned files is preserved.
 | Shell permissions | Yes | Yes | Yes | Yes | Permission extension |
 | MCP tool policy | Yes | Not rendered | Not rendered | Yes | Permission extension |
 | MCP definitions | `.mcp.json` | Not rendered | `.factory/mcp.json` | `opencode.json` | Reads shared `.mcp.json` through adapter |
-| Skills | `.claude/skills/` | Not rendered | `.factory/skills/` | `.opencode/skills/` | `.pi/skills/` |
+| Skills | `.claude/skills/` | `.agents/skills/` | `.factory/skills/` | `.opencode/skills/`, or shared `.agents/skills/` | `.pi/skills/`, or shared `.agents/skills/` |
+| Agents | `.claude/agents/` | `.codex/agents/`, as TOML | `.factory/droids/` | `.opencode/agents/` | `.pi/agents/`, read by `pi-subagents` |
 | Hooks | Not rendered | Not rendered | `.factory/hooks.json` | Not rendered | Not rendered |
 | Plugin declarations | Not rendered | Not rendered | `.factory/settings.json` | Not rendered | Not rendered |
 
 The Pi MCP case requires the shared file to exist, for example because Claude is also enabled.
 A Pi-only project has no MCP-definition output.
 
-Other than Droid's co-owned permission/plugin settings, this Loadout version has no project
-outputs for native settings/defaults or module files. Project templates contribute permissions,
-instructions, skills, and MCP definitions to the supported targets.
+A project skill is written once to `.agents/skills/`, which Codex, OpenCode and Pi all read, when
+Codex is selected and every one of those agents selected for the skill gets the same bytes.
+Otherwise OpenCode and Pi get their own folders.
+
+`loadout/settings/claude.json`, `droid.json` and `opencode.json` supply the native settings keys
+of `.claude/settings.json`, `.factory/settings.json` and `opencode.json` that no slice writes.
+Project scope has no output for Codex defaults, Pi settings or module files. Project templates
+contribute permissions, instructions, skills, MCP definitions, and Droid's hooks and plugins.
 
 ## Permission portability
 
@@ -83,6 +90,16 @@ export OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1
 
 Add the setting to your shell configuration and start a new session. Loadout's `check` command
 reports when neither this variable nor the broader `OPENCODE_DISABLE_CLAUDE_CODE` is enabled.
+
+OpenCode also scans `.agents/skills/`, where a project's Codex skills land. When a project skill's
+Codex and OpenCode variants differ, also set:
+
+```sh
+export OPENCODE_DISABLE_EXTERNAL_SKILLS=1
+```
+
+`check` reports a differing project skill while this variable is unset. Restricting the skill's
+`agents` so that only one of the two gets it also clears the report.
 
 ## Global destination roots
 

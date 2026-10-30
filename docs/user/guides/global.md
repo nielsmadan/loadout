@@ -11,9 +11,11 @@ or a [template](templates.md).
 
 ## Create a source
 
-Choose a directory for your configuration:
+Choose a directory for your configuration and create it first, since `init` refuses a
+directory that does not exist (`selected directory must exist`):
 
 ```sh
+mkdir -p ~/agent-config
 loadout init global ~/agent-config
 ```
 
@@ -34,6 +36,10 @@ one. `README.md` shows the full layout and how to add hooks, plugins and setting
 `init` adopts from your existing agent configuration lands beside these: instructions, settings,
 hooks, plugins and skills, each in its own directory.
 
+When `~/agent-config` is not already inside a git repository, `init` creates one there. It
+commits nothing: its last line is the `git add` and `git commit` command to run once you have
+reviewed the source.
+
 `init` then renders, as the first sync: when loadout reproduces your existing files it writes them
 and says so, and when it would change one it shows the diff and asks first. There is no need to
 run `loadout sync` straight after `init`.
@@ -48,13 +54,14 @@ An existing machine configuration is protected from reinitialisation.
 
 ## Choose your agents
 
-`init global` writes one block per harness, holding what it adopted. Add to those blocks rather
-than replacing the file, which would drop what was adopted. A source that adds shared
-instructions looks like this:
+`init global` names the source `migrated` and gives it no `use` list, so it offers every
+category: instructions, skills, agents, templates and the rest. It writes one block per harness,
+holding what it adopted. Add to those blocks rather than replacing the file, which would drop
+what was adopted. A source that adds shared instructions looks like this:
 
 ```toml title="~/agent-config/loadout/loadout.toml"
 [[source]]
-name = "personal"
+name = "migrated"
 path = "."
 
 [all]
@@ -84,7 +91,9 @@ deny = ["git push"]
 ```
 
 `[all]` supplies defaults to the agents you declare. Adding `[opencode]` or `[pi]`
-opts that agent in too. It does not enable an undeclared agent.
+opts that agent in too. It does not enable an undeclared agent. An agent's own list replaces the
+`[all]` one, so when `init` wrote an adopted `instructions` list into a block, add the new
+fragment to that list as well.
 
 ## Sync and check
 
@@ -126,7 +135,7 @@ If several sources offer the same fragment name, loadout does not pick one: it r
 unqualified name and lists the candidates. Qualify it with the source that should win:
 
 ```toml
-instructions = ["personal/workflow"]
+instructions = ["migrated/workflow"]
 ```
 
 A command for inspecting resolution directly is not available in 1.0.

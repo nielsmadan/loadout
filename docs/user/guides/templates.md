@@ -13,8 +13,13 @@ your global instruction document, while related projects share an updateable sou
 
 ## Create a template
 
-Start with the [global source](global.md) from the setup guide. Create a directory under that
-source's `templates/`:
+Start with the [global source](global.md) from the setup guide. The source `init global` wrote
+has no `use` list, so it offers templates as it is; a source with a `use` list offers them only
+when the list includes `templates`.
+
+A template is either a directory, `templates/<name>/`, holding its own files, or a catalog
+manifest, `templates/<name>.toml`, that selects shared parts. The directory form is the simpler
+start. Create a directory under that source's `templates/`:
 
 ```sh
 mkdir -p ~/agent-config/loadout/templates/python
@@ -46,10 +51,33 @@ templates/python/
 ├── skills/
 │   └── python-review/
 │       └── SKILL.md
-└── mcp.toml
+├── mcp.toml
+├── hooks.json
+└── plugins.json
 ```
 
-Every file is optional. The template directory name is the name projects use.
+Every file is optional. The template directory name is the name projects use. `hooks.json` and
+`plugins.json` reach Factory Droid only, the one agent with project hooks and plugins.
+
+### Share parts between templates
+
+When several templates repeat the same instructions or skills, keep each part once and list it
+from a catalog manifest instead. `templates/nextjs.toml` selects parts by name from folders
+beside it:
+
+```toml title="~/agent-config/loadout/templates/nextjs.toml"
+instructions = ["typescript", "nextjs"]
+skills = ["review-typescript"]
+mcp = ["github"]
+permissions = ["node"]
+```
+
+The parts live at `templates/instructions/typescript.md`, `templates/skills/review-typescript/`,
+`templates/mcp/github.toml` and `templates/permissions/node.toml`. Projects use the manifest's
+name, `nextjs`, exactly as they use a directory template's. A directory and a manifest with the
+same name are ambiguous and refused. The
+[template reference](https://github.com/nielsmadan/loadout/blob/main/docs/reference/templates.md#shared-catalog-parts)
+covers the catalog rules.
 
 ## Apply it to a project
 
@@ -130,12 +158,13 @@ name = "company"
 path = "~/src/company-agent-config"
 
 [[source]]
-name = "personal"
+name = "migrated"
 path = "."
 ```
 
-The company source can now offer `templates/python/`. Loadout resolves the template by name,
-so the project's committed configuration contains no machine-specific path.
+A source path may be absolute, start with `~/`, or be relative to the manifest's directory.
+The company source can now offer `templates/python/` or `templates/python.toml`. Loadout resolves
+the template by name, so the project's committed configuration contains no machine-specific path.
 
 If two sources offer the same name, qualify it, for example `company/python`.
 A vendored project copy is resolved before searching global sources.

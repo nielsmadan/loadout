@@ -42,11 +42,23 @@ instructions = ["company/engineering", "team/testing", "personal/workflow"]
 ```
 
 Each source can provide its own `instructions/`, `permissions.toml`, skills, and other
-supported slices. Relative source paths are resolved from the manifest directory.
+supported slices. A source path may be absolute, start with `~/`, or be relative to the manifest
+directory.
 
 A bare fragment name must resolve uniquely. Qualify it with its source name when several sources
 provide that name. The instruction order is explicit, so directory sorting never decides which
 guidance comes first.
+
+Fragments are concatenated as they are, so two that open the same section repeat it. When one
+instruction document would carry a Markdown heading from more than one fragment, `sync` and
+`check` print a note naming the heading and the fragments:
+
+```text
+note: claude.instructions: the instruction document repeats the heading "## Testing", from instructions/workflow.md and instructions/claude.md; keep one section, with /loadout
+```
+
+The note covers each agent's global document, and a project's document together with its
+templates' instructions. It never changes the exit code.
 
 A source's optional `use` list restricts what it contributes:
 
@@ -91,6 +103,17 @@ template deny.
 
 For project skills, a project copy replaces the template's copy under the same name. When two
 templates offer the same skill, the last declared template supplies it.
+
+A few names belong to a harness, which writes them into a folder Loadout also writes. A global
+skill named `synced` would land on Claude Code's own `~/.claude/skills/synced`, and a global agent
+named `scrutiny-feature-reviewer` or `user-testing-flow-validator` on one of Droid's mission
+droids. Sync and check refuse such a name with exit 3:
+
+```text
+loadout: Claude Code writes /home/you/.claude/skills/synced itself; rename the skill 'synced' so the two do not overwrite each other
+```
+
+Rename the skill or agent in the source.
 
 These rules describe Loadout's composition. Each agent still applies its native matching and
 scope precedence to the generated files.

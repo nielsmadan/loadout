@@ -33,8 +33,13 @@ cd loadout-demo
 loadout init project --harness claude --harness codex
 ```
 
-This creates `loadout/config.toml` and `loadout/permissions.toml`, renders each agent's generated
-files and lists them in `.gitignore`. Project setup works without a global configuration.
+`init` lists what it will write and asks `Apply this migration? [y/N]`; answer `y`. Without a
+terminal, add `--yes` once you have read the list with `--dry-run`.
+
+This creates `loadout/config.toml` and `loadout/permissions.toml`, then renders only what already
+has content and lists it in `.gitignore`. In an empty directory that is `.claude/settings.json`
+alone: there are no instructions yet, and Codex gets no rules file while its rules would be empty.
+Project setup works without a global configuration.
 
 Replace the freshly created `loadout/config.toml` with:
 
@@ -69,8 +74,9 @@ deny = ["git push"]
 ```
 
 Both permission files are optional. A missing `permissions.toml` means the same as an empty one:
-no shared rules, and each agent's permission rules are written empty on the next sync. The
-personal `loadout/permissions.local.toml` can stay absent too.
+no shared rules. The next sync writes `.claude/settings.json` with empty lists, and retires a
+Codex rules file it wrote earlier rather than writing it empty. The personal
+`loadout/permissions.local.toml` can stay absent too.
 
 ## Render both agents' files
 
@@ -85,12 +91,13 @@ The resulting files include:
 
 | File | Consumer |
 | --- | --- |
+| `AGENTS.md` | Codex, and Claude Code through `CLAUDE.md` |
 | `CLAUDE.md` | Claude Code |
-| `AGENTS.md` | Codex |
 | `.claude/settings.json` | Claude Code's permission rules |
 | `.codex/rules/permissions.rules` | Codex's permission rules |
 
-The two instruction documents contain the same fragment. Permission syntax differs because the
+`AGENTS.md` holds the fragment. `CLAUDE.md` holds only Loadout's banner and an `@AGENTS.md`
+line, which makes Claude Code read the same document. Permission syntax differs because the
 agents read different formats. Open either agent in this directory to use its generated setup.
 
 `loadout check` exits successfully when the generated files match their sources.
@@ -104,8 +111,8 @@ loadout sync
 loadout check
 ```
 
-Both instruction documents now contain the new sentence. Keep editing the source fragments,
-rather than the generated `CLAUDE.md` or `AGENTS.md`.
+`AGENTS.md` now contains the new sentence, and Claude Code reads it through `CLAUDE.md`. Keep
+editing the source fragments, rather than the generated `CLAUDE.md` or `AGENTS.md`.
 
 ## Add another agent
 
@@ -121,7 +128,14 @@ For OpenCode skills, also follow the [setup note](reference/harnesses.md#opencod
 
 ## Use this in an existing repository
 
-Move existing instructions into `loadout/instructions/` before enabling instruction generation.
+Run `loadout init project` there too. It adopts the instructions it finds: a `CLAUDE.md` or
+`AGENTS.md` becomes `loadout/instructions/main.md`, and the original is generated from then on.
+When Git tracks the original, init removes it from the index and adds it to `.gitignore`, so
+`git status` shows a staged deletion for you to commit. Copies that disagree with each other are
+left in place for you to merge. Later, if Git still tracks a generated path, `sync` prints a
+warning and `check` a note, each with the `git rm -r --cached` command that untracks it and keeps
+the file.
+
 Keep existing permission grants in the shared or personal source file. Sync reports protected
 files that contain edits it cannot attribute to Loadout.
 

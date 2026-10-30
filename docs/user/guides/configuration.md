@@ -21,6 +21,10 @@ global manifest:
 instructions = ["workflow", "testing"]
 ```
 
+The source `init global` writes, named `migrated`, has no `use` list and so offers every
+category; a source with a `use` list offers only the categories it names. When several sources
+offer one fragment name, qualify it with the source, for example `migrated/workflow`.
+
 Project fragments live in `loadout/instructions/`; their order belongs in
 `loadout/config.toml`. See [composition](composition.md).
 
@@ -63,7 +67,9 @@ skills/review/
 ```
 
 For a project, use `loadout/skills/review/`. The directory itself declares the skill.
-Global agent blocks can opt out with `skills = false`.
+Global agent blocks can opt out with `skills = false`. A file directly in `skills/` is not a
+skill: `sync` and `check` name it and skip it, except `README.md` and dotfiles, which they skip
+without a word.
 
 Loadout supports harness-specific content inside skill Markdown:
 
@@ -77,11 +83,40 @@ Use the OpenCode-specific workflow here.
 :::
 ```
 
-Keep supporting files in the same tree. They travel with the skill. Project skills are currently
-rendered for Claude, Factory Droid, OpenCode, and Pi; the Loadout project preset has no Codex
-skill output.
+Keep supporting files in the same tree. They travel with the skill. Project skills render to
+`.claude/skills/` for Claude, `.agents/skills/` for Codex and `.factory/skills/` for Droid.
+OpenCode and Pi read `.agents/skills/` too, so when Codex is selected and they would get the same
+bytes, the skill is written there once for all of them; otherwise OpenCode and Pi get
+`.opencode/skills/` and `.pi/skills/`.
 
 For the bundled configuration skill, see [global setup](global.md#configure-through-your-agent).
+
+## Agents
+
+A subagent is one Markdown file: `agents/<name>.md` in a global source, or
+`loadout/agents/<name>.md` in a project. The file name is the agent's name.
+
+```markdown title="agents/reviewer.md"
+---
+description: Reviews a diff for defects.
+model:
+  claude: sonnet
+effort: high
+---
+
+Review the staged diff.
+```
+
+The body becomes the agent's instructions, with `::: <harness>` sections as in a skill. `model`
+is `inherit` or a map per harness; a harness it leaves out inherits. `effort` runs from `off` to
+`max` and is translated to each harness's own scale; a harness without that level gets the
+nearest lower one, or none, and `sync` prints a note saying so.
+
+Every configured agent receives it: Claude in `agents/`, Codex as a TOML file in `agents/`,
+Droid in `droids/`, OpenCode in `agents/`, and Pi in `agents/` for the `pi-subagents` package,
+which Pi needs installed. The [support table](../reference/harnesses.md) lists the paths at
+both scopes. In a global manifest the slice is automatic; opt an agent block out with
+`agents = false`. Removing or renaming the file retires the old agent everywhere.
 
 ## MCP server definitions
 
