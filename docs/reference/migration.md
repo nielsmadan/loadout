@@ -324,9 +324,10 @@ adopted, and so are stow-style per-file links, inside it or inside a real harnes
 them; see [0023](../decisions/0023-adoption-de-links-a-symlinked-deployment.md):
 
 - loadout's outputs become real files at the harness path, each starting as the file it was and
-  then rendered the way `sync` renders it. A document loadout shares with the harness, such as
-  Codex's `config.toml` or Pi's `settings.json`, keeps every key loadout does not own, such as
-  `model` or `lastChangelogVersion`;
+  then rendered the way `sync` renders it. Codex's `config.toml`, which loadout shares with the
+  harness, keeps every key loadout does not own, such as `model`. Pi's `settings.json` is
+  rendered whole: init adopts its keys into the source's settings fragment, apart from
+  `lastChangelogVersion`, which the preset preserves;
 - every entry loadout does not manage becomes a link back into the original target, so runtime
   state, credentials, commands and subagents keep working. A directory loadout writes nothing into,
   such as `commands/`, links back whole, so a file added to it later appears;
