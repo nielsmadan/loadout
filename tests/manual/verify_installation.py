@@ -235,7 +235,7 @@ for destination in destinations:
 run("packaged skill status", ["integrate", "skill", "status"], work)
 run("packaged skill reinstall", ["integrate", "skill", "install", "--yes"], work)
 run("global check", ["check", "--global"], work)
-sentinel = destinations[0] / "notes.txt"
+sentinel = destinations[0] / "notes.md"
 sentinel.write_text("Keep this unrelated file.\n")
 run("uninstall packaged skill", ["integrate", "skill", "uninstall", "--yes"], work)
 assert sentinel.read_text() == "Keep this unrelated file.\n"
