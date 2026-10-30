@@ -129,7 +129,7 @@ The boundary is pinned by `test_the_base_keeps_keys_other_slices_own`.
 
 ## Collapsing the lossy pattern forms
 
-Rendering is not injective, and three forms have to be undone:
+Rendering is not injective, and five forms have to be undone:
 
 - **`foo` and `foo *`.** OpenCode and Pi emit both for one source entry, because older versions
   of both matchers did not let `foo *` match a bare `foo` (OpenCode before v1.1.15, Pi before

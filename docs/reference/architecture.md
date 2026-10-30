@@ -7,8 +7,11 @@
 one-process-per-command CLI, but a long-lived embedding must clear or bypass that cache after
 replacing a source directory or symlink; otherwise a stale root can surface as a misleading
 escape error.
-`extract.py` runs `permissions/renderers.py` backwards — one extractor per `RENDERERS` key. Init
-unions the extracted harnesses' permissions through `permissions/merge.py`.
+`extract.py` runs `permissions/renderers.py` backwards. `EXTRACTORS` covers the ten permission
+renderers and `VALUE_EXTRACTORS` the hooks, plugins and servers renderers; six `RENDERERS` keys
+have no extractor: `codex-config`, `codex-plugins`, `codex-servers`, `codex-settings`,
+`opencode-hooks` and `pi-hooks`. Init unions the extracted harnesses' permissions through
+`permissions/merge.py`.
 The native slices render from their own fragments rather than from rules and live beside it:
 `hooks.py` (with `adapters.py`) and `plugins.py`, both registered in `RENDERERS` like everything
 else, so `emit.py` composes them into a shared file without knowing what they are.
@@ -77,8 +80,9 @@ guard does: a banner or a JSON re-serialisation alone is `normalised`, not `upda
 init's preview and its first render are judged by. A copied file is judged by one rule in both,
 `files.copy_matches`: its bytes and its mode.
 `templates.py` resolves a template *name* — the project's vendored copy first, then the
-`templates/` directory of every source the machine's global manifest declares — and owns the tree
-hash `template sync` compares a vendored copy against. A template is a source, so it merges
+`templates/` directory of every source the machine's global manifest declares, then a bundled
+starter. With no machine config a bundled starter comes straight after the vendored copy. It owns
+the tree hash `template sync` compares a vendored copy against. A template is a source, so it merges
 through the slice's own operator and adds no merge rule.
 `emit.py:render_project` renders it; `render_all` unions it with `render_global`'s global-scope
 output, so `sync`/`check` regenerate whichever scopes are present.

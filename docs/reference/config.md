@@ -99,10 +99,10 @@ a false gap when read together.
 Both halves are now closed, in the direction the vocabulary always meant. The policy slice renamed
 to **`mcp-permissions`** — its outputs already said so (`mcp-permissions.json`,
 `mcp-permissions.toml`) — which freed `mcp` for what the table below, and every upstream document,
-already meant by it: server definitions. `mcp` now renders `<source>/mcp.toml` to six of the eight
-harness/scope destinations; see [servers.md](servers.md) for the slice — the format, why Pi has no
-project destination, why Codex's is still an open question, and how Claude's global entry
-co-owns `.claude.json`.
+already meant by it: server definitions. `mcp` now renders `<source>/mcp.toml` to eight of the ten
+harness/scope destinations, all but Codex's and Pi's project scope; see [servers.md](servers.md)
+for the slice — the format, why Pi has no project destination, why Codex's is still an open
+question, and how Claude's global entry co-owns `.claude.json`.
 
 `~/ac/mcp/servers.toml` already kept the two apart in its own header: *"This file defines which
 servers EXIST. Which of their tools may be called is the separate `[mcp]` section of
@@ -127,7 +127,7 @@ Four of the six harnesses recorded here read a shared, harness-neutral directory
 
 | slice | Claude | Codex | Droid | OpenCode | Pi | Antigravity |
 |---|---|---|---|---|---|---|
-| skills | | | | `~/.agents/skills/`, `.agents/skills/` | `~/.agents/skills/`, `.agents/skills/` | `.agents/skills/`, `.agents/skills.json` |
+| skills | | `~/.agents/skills/`, `.agents/skills/` | | `~/.agents/skills/`, `.agents/skills/` | `~/.agents/skills/`, `.agents/skills/` | `.agents/skills/`, `.agents/skills.json` |
 | plugins | | `~/.agents/plugins/`, `.agents/plugins/` | | | | `.agents/plugins/` |
 | instructions | | | | | | `.agents/rules/` |
 | hooks | | | | | | `.agents/hooks.json` |
@@ -138,11 +138,12 @@ is the broadest adopter, with `rules/`, `hooks.json`, `plugins/`, `skills/`, `sk
 `agents/` beneath it.
 
 The practical consequence for the skills slice: writing `~/.agents/skills/<name>/` once serves
-OpenCode and Pi, and `.agents/skills/` serves OpenCode, Pi and Antigravity at project scope
-(OpenCode's project row corrected 2026-08-16 from upstream) — leaving only Claude
-and Codex needing their own directories. Pi can additionally be *configured* to read
-`~/.claude/skills` and `~/.codex/skills` directly, so a Pi user who already has Claude skills
-need not copy them.
+Codex, OpenCode and Pi, and `.agents/skills/` serves Codex, OpenCode, Pi and Antigravity at project
+scope (OpenCode's project row corrected 2026-08-16 from upstream) — leaving only Claude and Droid
+needing their own directories. Loadout's project preset writes Codex's skills there, and
+OpenCode's and Pi's too when their rendered copies are byte-identical to Codex's. Pi can
+additionally be *configured* to read `~/.claude/skills` and `~/.codex/skills` directly, so a Pi
+user who already has Claude skills need not copy them.
 
 This is the clearest illustration of why the never-generalise-from-Claude rule exists. Reasoning
 from Claude's layout, this convention is invisible.
@@ -393,9 +394,10 @@ that one key and leaves the rest of the file to the harness, exactly as it does 
 it cost.
 
 **loadout's own `mcp` slice reproduces this table's shape rather than fighting it.** It writes `.mcp.json`
-directly at Claude's project scope, writes OpenCode's and Pi's global and project files directly,
-and writes Codex's `[mcp_servers.*]` into `config.toml` directly, owning that key and leaving the
-rest of the file alone. See [servers.md](servers.md).
+directly at Claude's project scope and owns `mcpServers` in `.claude.json` globally, writes
+Droid's `mcp.json` and OpenCode's `mcp` key at both scopes and Pi's global `mcp.json`, and writes
+Codex's global `[mcp_servers.*]` into `config.toml` directly, owning that key and leaving the rest
+of the file alone. See [servers.md](servers.md).
 
 ## plugins
 
@@ -444,8 +446,8 @@ Codex scans `.agents/skills` from the current directory through the repository r
 reads the user-scoped `~/.agents/skills`. Verified against the
 [official skills reference](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills),
 2026-09-08. This supersedes the earlier binary-based claim that no project convention exists.
-The legacy global destination remains installed on this machine. The project preset and fresh
-native projects both route Codex through `.agents/skills`.
+Loadout's global preset still renders Codex skills to `${CODEX_HOME:-~/.codex}/skills`, the legacy
+location; the project preset routes Codex through `.agents/skills`.
 
 Loadout authors project skills in one canonical catalog:
 
@@ -484,9 +486,9 @@ precedence rule. Treated as unverified until a probe settles it; see
 bundled `assets/external/skills/` and `antigravity-cli/builtin/skills/`.
 
 Every other harness has its own skills directory at global scope, so `~/.agents/skills/` is an
-*additional* location for OpenCode and Pi rather than the only one. At project scope the reverse
-holds: `.agents/skills/` is Antigravity's only option, while OpenCode and Pi — which both read it
-— have `.opencode/skills/` and `.pi/skills/` as alternatives.
+*additional* location for Codex, OpenCode and Pi rather than the only one. At project scope the
+reverse holds: `.agents/skills/` is the only option for Codex and Antigravity, while OpenCode and
+Pi — which both read it — have `.opencode/skills/` and `.pi/skills/` as alternatives.
 
 All five have a skills mechanism. An earlier draft of this page recorded Pi and Antigravity as
 having none, on the evidence that no skills were *installed* for them on this machine — a
@@ -582,7 +584,8 @@ Distinct from both plugins (enablement) and settings (the harness's own file): t
 configuration an installed module reads for itself. Pi fixes the directory and leaves the
 filename to each module, so there are two shapes in use and neither is derivable from a
 module's name. Enumerated, with the verified negatives, in
-[module-config.md](module-config.md); loadout renders it for Pi.
+[module-config.md](module-config.md); loadout renders it at global scope for Claude, Droid,
+OpenCode and Pi.
 
 ## Managed / enterprise tier
 

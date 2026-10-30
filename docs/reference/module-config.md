@@ -38,9 +38,10 @@ object form of a `packages` entry filters *which resources load* (`docs/packages
 `<source>/module-config/<agent>/<relative path>` is copied to
 `<agent config dir>/<relative path>`. Nothing is parsed, merged or serialised.
 
-The destination in `GLOBAL_PRESET` is a **root** rather than a file — the only slice
-where that is true — and `module-config = false` switches it off, since the directory
-being the declaration means an absent key already means *automatic*.
+The destination in `GLOBAL_PRESET` is a **folder** rather than a file, as the skills and
+agents destinations are, and here it is the harness's whole config directory.
+`module-config = false` switches it off, since the directory being the declaration means an
+absent key already means *automatic*.
 
 **Bytes are copied, not rendered**, for a reason that shows up immediately: the live
 `pi-statusline.json` on the machine this was written against is tab-indented by the
@@ -91,7 +92,8 @@ surfaces the difference.
 
 ## Other harnesses
 
-Claude, OpenCode and Pi all have a `module-config` entry, and each exercises the mechanism
+Claude, Droid, OpenCode and Pi all have a global `module-config` entry, rooted at the harness's
+config directory (`~/.factory` for Droid). Claude, OpenCode and Pi each exercise the mechanism
 differently — which is the point of it being harness-neutral rather than a Pi special case.
 
 **Claude's case is hook scripts.** The hooks slice registers a command *by path*

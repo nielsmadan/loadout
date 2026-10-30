@@ -29,14 +29,14 @@ Ownership follows the selected profile in both trees. Inactive instruction and p
 targets do not resolve their destination variables or protect their outputs for that check.
 HEAD supplies output declarations only: old source dependencies are neither resolved nor
 validated, so a staged migration from an absolute or external source to a relative vendored
-source can pass. HEAD config and artifact declarations still come from its isolated tree and
+source can pass. HEAD config and output declarations still come from its isolated tree and
 continue to protect retired outputs.
 
 The index and HEAD trees are materialized from Git blobs, so partially staged content and
 staged deletions are independent of the working tree. Only what a render can read is written out,
 streamed from one `cat-file` run: a project's `loadout/` folder and the files at its root, and,
 when the root also holds a staged manifest, a global source's manifest and profiles and, of each
-source they declare, the files in its folder and the folders of the artifact types its `use` names,
+source they declare, the files in its folder and the folders of the categories its `use` names,
 and each permission target's `base` file.
 A link inside the repository on the way to any of these, such as `instructions -> vendor/instr`
 or a source `path` that is a link, brings its target in the same way, and so does a link reached

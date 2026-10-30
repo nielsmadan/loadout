@@ -17,11 +17,20 @@ on a skill or a subagent, and the value each one accepts.
 be read back into, which pattern forms have to be collapsed, and what is reported rather than
 guessed at.
 
-[migration.md](migration.md) describes read-only inventory of the live deployment and verified
-migration plans, including private source and the boundary consumed by a later transaction.
+[migration.md](migration.md) is what `loadout init` does to an existing setup: which paths it
+reads, what it adopts into source and what it leaves in place, what it refuses, what it keeps
+private, and how it puts everything back when a conversion fails.
 
 [composition.md](composition.md) maps profile inheritance, fragment composition, native input
 layers and named-item overrides to their operators, ownership and scope boundaries.
+
+[templates.md](templates.md) covers project templates: catalog and directory forms, declared
+versus vendored, name resolution and the content hash `template sync` compares against.
+[module-config.md](module-config.md) is the slice that copies a module's own configuration to the
+path it reads, and [hooks-adapters.md](hooks-adapters.md) the code adapters that carry hooks to
+OpenCode and Pi. [servers.md](servers.md) is the `mcp` slice, server definitions.
+[git-integration.md](git-integration.md) is `check --staged` and the git hooks, and
+[architecture.md](architecture.md) maps the modules for anyone changing the code.
 
 One file per harness. Each records **what was verified** (with the date and version it
 was verified against) separately from **what upstream documents**. When a harness
@@ -197,7 +206,7 @@ only.
 | Codex | `.codex/rules/permissions.rules` | `config.toml` → `[mcp_servers.<name>].tools.<tool>`, owned by declared key | split |
 | Droid | `settings.json` → three command lists | not rendered | shell only |
 | OpenCode | `opencode.json` → `permission.bash` | the same `opencode.json` → `permission.<server>_<tool>` | shared |
-| Pi | `pi/permissions.json` → `permission.bash` | the same document → `permission.mcp` | shared |
+| Pi | `extensions/pi-permission-system/config.json` → `permission.bash` | the same document → `permission.mcp` | shared |
 
 Verified against `src/loadout/permissions/renderers.py`: `render_claude`'s `_claude_settings`
 concatenates `mcp_native(rules.mcp_allow)` (and `ask`/`deny`) into the very lists shell entries go
@@ -236,9 +245,12 @@ Antigravity negative is `agy` **1.1.11**, a scan of every `AGY_*` / `ANTIGRAVITY
 directory, loaded after the global config, that shadows it. Only `XDG_CONFIG_HOME` moves the
 file `loadout` writes.
 
-A manifest destination follows these with `${VAR:-fallback}` — see the schema in the
-[README](../../README.md#loadouttoml). Nothing in `loadout` knows these variable names; the
-manifest does.
+The presets write each destination with `${VAR:-fallback}` (`harnesses.py:GLOBAL_PRESET`), so a
+destination follows these variables when they are set; `destinations.py:resolve_destination`
+expands them against the environment
+([0011](../decisions/0011-a-destination-follows-a-relocated-harness.md)). An explicit output
+target in a manifest can use the same form — see
+[configuration](../user/reference/configuration.md#explicit-output-targets).
 
 ## Upstream documentation
 

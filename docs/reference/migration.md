@@ -16,9 +16,9 @@ known slice destination for it.
   ([config.md](config.md#what-a-harness-loads-from-a-skills-or-agents-folder))
 - subagents: each harness's top-level agent files become one source agent per name, with a
   per-harness `model` map, and an `effort` word or map, recording what differed. A file adoption
-  cannot read (such as a Codex agent holding a table) or whose name differs from its file name
-  stays in place, named in a preview note. Copies whose description or instructions differ are
-  left out (below).
+  cannot read (such as a Codex agent holding a table), one with no description, and one whose name
+  differs from its file name stay in place, each named in a preview note. Copies whose description
+  or instructions differ are left out (below).
 - global module configuration and support files
 
 Project command trees and other harness-specific files are left in place. They keep
@@ -46,7 +46,7 @@ Global scope:
 | `${CLAUDE_CONFIG_DIR:-~}/.claude.json` | the file itself (only `mcpServers` is adopted) |
 | `${CODEX_HOME:-~/.codex}` | `AGENTS.md`, `AGENTS.override.md`, `config.toml`, `hooks.json`, `rules/`, `skills/`, `agents/` |
 | `${FACTORY_HOME_OVERRIDE:-~}/.factory` | `AGENTS.md`, `settings.json`, `hooks.json`, `mcp.json`, `skills/`, `droids/`, `plugins/`, `hooks/`, `rules/`, `scripts/` |
-| `${XDG_CONFIG_HOME:-~/.config}/opencode`, or `$OPENCODE_CONFIG_DIR` | `AGENTS.md`, `opencode.json`, `opencode.jsonc`, `skills/`, `agents/`, `plugins/`, `plugin/`, `hooks/`, `rules/`, `scripts/` |
+| `${XDG_CONFIG_HOME:-~/.config}/opencode`, and `$OPENCODE_CONFIG_DIR` as well when it is set | `AGENTS.md`, `opencode.json`, `opencode.jsonc`, `skills/`, `agents/`, `plugins/`, `plugin/`, `hooks/`, `rules/`, `scripts/` |
 | `$OPENCODE_CONFIG` | the file itself |
 | `${PI_CODING_AGENT_DIR:-~/.pi/agent}` | `AGENTS.md`, `settings.json`, `mcp.json`, `extensions/pi-permission-system/config.json`, `skills/`, `agents/`, `plugins/`, `hooks/`, `rules/`, `scripts/` |
 | `${XDG_CONFIG_HOME:-~/.config}/mcp/mcp.json` | the file itself (Pi) |
@@ -102,12 +102,13 @@ its own skills or agents folder, each only in that folder: Claude Code's `skills
 
 ## What init refuses
 
-Discovery has no option to point it at another layout, so every refusal names the file to change;
-fix it on disk and run init again. An incomplete preview exits 2 and changes nothing.
+Discovery has no option to point it at another layout, so a refusal about a file names that
+file; fix it on disk and run init again. An incomplete preview exits 2 and changes nothing.
 
 | code | when |
 |---|---|
 | `harnesses-required` | no harness was given and none has configuration at a known path |
+| `scope-required` | no scope was selected; `init project` and `init global` each select one, so the CLI never reports it |
 | `symlink-target`, `symlink-cycle` | a link at a read path is missing its target or loops |
 | `external-symlink` | in project scope, a harness root links outside the repository; its content would become committed source. There is no override: share it as a loadout template, or replace the link with a real copy (`cp -RL`) and run init again ([0026](../decisions/0026-a-project-root-linked-outside-the-repository-has-no-override.md)) |
 | `git-link` | in project scope, a link points into the repository's `.git`, which holds credentials such as a token in `.git/config` and runs hooks; init reports it and never reads through it |
@@ -215,7 +216,7 @@ it; a YAML block scalar's value (`password: |`, with its chomping and indentatio
 either order) is its indented body, and after an authorization label a one-word scheme (`Token`,
 `Digest`, `ApiKey`) is skipped. One vocabulary names a secret wherever it sits
 (`SECRET_NAMES` in `credentials.py`): a key, a flag or a `name = value` label whose last words are
-token, API key, secret, password, passphrase, pass, credential(s), authorization, auth, access
+token, API key, secret, password, passwd, passphrase, pass, credential(s), authorization, auth, access
 key, private key, secret key, client secret, signing key or PAT, or a provider's name followed by
 key (`OPENAI_KEY`, `stripeKey`), so `apiKey`, `X-API-KEY`, `--api-key` and `api_key =` all count,
 and `--api-key-file`, `max_tokens` or `auth_env_var` do not. A file looks like it holds a secret when it has:
@@ -279,11 +280,14 @@ The backup lasts one run:
   edits. A write killed before its rename leaves a temporary file beside its target, named
   `.loadout-tmp-` and eight random characters; a file of exactly that shape beside a path in the
   backup is removed, and any other file, a `.loadout-notes.md` included, stays. Init exits 1, or
-  130 after Ctrl-C, with `"status": "restored"` under `--json`. If putting back fails too, the
+  130 after Ctrl-C with no traceback, with `"status": "restored"` under `--json`, where the
+  envelope is all it prints. If putting back fails too, the
   backup stays marked and init exits the same way with `"status": "interrupted"`.
 - **A run killed part way** leaves the marker. The next `init`, of any scope or root, puts that
   backup back before anything else: at a terminal it asks first, and says that edits made since
-  to those paths are lost; under `--json`, `--dry-run` or without a terminal it exits 2 with
+  to those paths are lost. On yes it puts them back, prints `Put back N path(s) as they were before
+  that init; run init again.` and exits 0 without converting anything; declining exits 2 and
+  changes nothing. Under `--json`, `--dry-run` or without a terminal it exits 2 with
   `"status": "interrupted"` and changes nothing. A backup written by another version of loadout is
   refused, naming the directory to delete.
 
@@ -386,14 +390,11 @@ still de-linked ([0023](../decisions/0023-adoption-de-links-a-symlinked-deployme
 it copies a single original into its scratch render, and a refusal there names the project's own
 paths.
 
-## Older adopted repositories
+## `.gitignore`
 
-Nothing using artifact routes was published. Re-initialise repositories adopted by a route-based
-development build: move command and subagent files from the Loadout source tree back to their
-harness paths, remove `artifacts` and `presets` from project configuration, then run init again.
-
-Sync appends current generated destinations to `.gitignore`. It leaves stale entries from older
-versions alone because Loadout cannot distinguish its old entries from user-authored policy.
+Sync appends current generated destinations to `.gitignore`, and drops the entry of a destination
+it retires. An entry for a path loadout has no write record of stays, since loadout cannot tell
+it from one you wrote.
 
 ## Known limitation
 

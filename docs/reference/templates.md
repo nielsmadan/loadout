@@ -35,7 +35,8 @@ parts. Lists are optional and ordered; an empty manifest is valid. Names resolve
 within the corresponding catalog folder, without extensions. Paths, symlinks, duplicate
 references, missing parts and unknown categories are errors. Skills require `SKILL.md` and
 carry their supporting files. MCP and permission fragments use the existing portable TOML
-formats. Settings, hooks and plugins remain explicit per-agent artifact sources.
+formats. A catalog manifest carries no settings, hooks or plugins; a directory template can
+carry hooks and plugins (below).
 
 Catalog presence never activates global output. A project must select the manifest:
 
@@ -60,7 +61,9 @@ part is refused, not overwritten by adopting another template.
 
 `template sync nextjs` previews changed files. If a changed shared part also belongs to
 another selected vendored template, it lists **all affected templates** and requires a yes
-before writing. A no, EOF or noninteractive input leaves everything unchanged. All affected
+before writing. A no or EOF leaves everything unchanged and exits 0. Without a terminal it
+needs `--yes`, which `template add` and `template sync` both take; without it the command exits 2
+and changes nothing. All affected
 copies must match their recorded hashes; one local edit blocks the whole update. Accepted
 updates refresh every affected hash. Removing a reference keeps a part still used elsewhere;
 removing a file inside an updated shared skill removes that file for every consumer. An
@@ -87,10 +90,12 @@ plugins — describe *your* setup: your model, your effort level, your hooks int
 Nothing is categorically excluded, because a source's `use` already decides what it contributes,
 but a template that sets `model = "opus"` is a smell rather than a feature.
 
-**Legacy preset scope.** Templates contribute **permissions, instructions, skills and MCP server
-definitions**. Each plugged into the
-same resolution as it shipped, without changing anything here, which is what "a dimension rather
-than a milestone" meant: see `docs/scopes.md`.
+**What a template contributes.** A catalog manifest contributes **permissions, instructions,
+skills and MCP server definitions**. A directory template contributes those and also `hooks.json`
+and `plugins.json`, each merged before the project's own `loadout/hooks.json` and
+`loadout/plugins.json`, so the project's value wins a key both set. Each plugged into the same
+resolution as it shipped, without changing anything here, which is what "a dimension rather than
+a milestone" meant: see `docs/scopes.md`.
 
 ## Declared and vendored
 
@@ -152,14 +157,15 @@ The same algorithm `resolve_fragment` uses, one level up:
    declares whose `use` admits templates. Project scope carries no `[[source]]` list of its own
    and must not, per the rule above; the machine config
    ([0010](../decisions/0010-a-machine-config-locates-the-global-source.md)) is where this
-   machine's paths already live.
-   Artifacts-only global manifests without a source list offer their own `loadout/templates/`
-   catalog automatically, without enabling any global slice. Directory and manifest forms
-   with the same name are ambiguous and refused.
+   machine's paths already live. Directory and manifest forms with the same name are
+   ambiguous and refused.
 3. With no declared-source match, `frontend` and `backend` resolve from the installed package's
    offline catalog. These names also work without machine configuration. A malformed configured
    machine source remains an error. Qualifying a source name never selects the package fallback.
-4. No match: an error naming every place searched, the vendored path included.
+4. No match: `template 'x' not found. Available: …`, listing every name the project's vendored
+   copies, the declared sources and the bundled starters offer. `template sync`, and `--tracked`
+   switching a vendored copy back, look past the vendored copy and name every path they searched
+   instead.
 5. **More than one declared-source match: an error listing both.** Never a silent preference — the winner would
    otherwise depend on manifest order rather than on anything the author wrote. Qualify as
    `company/web` to disambiguate.
@@ -173,7 +179,7 @@ makes "where do I edit" answerable from the path.
 
 `frontend` and `backend` ship in the package and resolve offline. `loadout template add
 frontend --vendored` (or `backend`) vendors one with normal content-hash provenance, the same way
-as any other template; it is the one way to apply a template, before or after init. A global
+as any other template, and `--tracked` declares one that resolves on every render. `template add` is how a template is applied, before or after init. A global
 source can offer these template names but cannot activate their advice machine-wide.
 
 The packaged seeds cover frontend accessibility, responsive layouts and UI states, or backend
@@ -258,7 +264,8 @@ covers relative paths only.
 ## `template sync` is refuse-and-diff
 
 This section describes directory templates. Catalog manifests use the shared-update flow
-above: provenance and ownership errors exit 3; declining the shared update exits 1.
+above: provenance and ownership errors exit 3; declining the shared update exits 0 and changes
+nothing.
 
     loadout template add web --tracked    # declare it; it resolves from a source on every render
     loadout template add web --vendored   # copy it in, record the hash
