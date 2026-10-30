@@ -1225,10 +1225,9 @@ def extract_opencode_servers(document: Any) -> ValueExtraction:
 def extract_claude_global_servers(document: Any) -> ValueExtraction:
     """The staged document `render_claude_servers` writes -> the servers fragment.
 
-    Flat, unlike `.mcp.json`: `claude mcp add-json` and the document it feeds
-    take `{name: entry}` directly, with no `mcpServers` wrapper. The per-entry
-    shape is otherwise identical to the project-scope one, so the entry-level
-    logic is shared; only the wrapper differs.
+    The servers sit under `mcpServers` in `.claude.json`, as in `.mcp.json`, and each
+    entry has the project-scope shape, so the entry-level logic is shared; only what
+    else the file may hold differs.
     """
     if not isinstance(document, Mapping):
         return ValueExtraction(
