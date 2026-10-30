@@ -81,3 +81,24 @@ def test_the_json_result_lists_the_removals(tmp_path: Path, capsys) -> None:
     assert loadout.main([*_init(root), "--yes", "--json"]) == 0
 
     assert json.loads(capsys.readouterr().out)["untracked"] == ["AGENTS.md"]
+
+
+HOOK_HINT = "To run loadout from that repository's Git hooks: loadout integrate git-hooks install"
+
+
+@pytest.mark.parametrize("repository", [True, False])
+def test_the_git_hooks_hint_is_printed_only_in_a_repository(
+    tmp_path: Path, capsys, repository: bool
+) -> None:
+    """Outside one, the command it suggests fails."""
+    root = tmp_path / "project"
+    (root / ".claude").mkdir(parents=True)
+    (root / ".claude/settings.json").write_text('{"permissions": {"allow": ["Bash(ls)"]}}\n')
+    if repository:
+        _git(root, "init", "-q")
+    argv = ["init", "project", "--root", str(root), "--harness", "claude", "--yes"]
+
+    assert loadout.main(argv) == 0
+
+    hints = [line for line in capsys.readouterr().out.splitlines() if line.startswith(HOOK_HINT)]
+    assert len(hints) == int(repository)

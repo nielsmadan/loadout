@@ -21,6 +21,10 @@ def _repository(directory: Path, cache: dict[Path, Path | None]) -> Path | None:
     return cache[directory]
 
 
+def in_repository(directory: Path) -> bool:
+    return _repository(directory.resolve(), {}) is not None
+
+
 def _by_repository(paths: Iterable[Path]) -> dict[Path, dict[str, Path]]:
     """Each path's repository-relative name, grouped by repository, so one Git run
     answers for every path in it. The parent is resolved, as `git -C` would."""

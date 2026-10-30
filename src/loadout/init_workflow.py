@@ -18,6 +18,7 @@ from .diffs import diff_lines, report_diff
 from .discovery import discover, initialized_project_path, project_root
 from .emit import RenderContext, refuse_unregistered_global, render_all, render_project
 from .errors import LoadoutError, UsageError
+from .git_privacy import in_repository
 from .harnesses import KNOWN_HARNESSES
 from .init_options import InitOptions
 from .machine import (
@@ -687,7 +688,11 @@ def _offer_skill(harnesses: tuple[str, ...], options: InitOptions, *, ask: bool 
 
 def _after_migration(plan: MigrationPlan, *, already: bool, as_json: bool) -> int:
     if not already and not as_json:
-        print(_hook_hint(plan))
+        root = (
+            plan.inventory.source_root if plan.inventory.scope == "global" else plan.inventory.root
+        )
+        if in_repository(root):
+            print(_hook_hint(root))
         if plan.inventory.scope == "global":
             print(_commit_hint(plan))
     if plan.inventory.scope == "project" and not as_json and not machine_config_path().is_file():
@@ -695,8 +700,7 @@ def _after_migration(plan: MigrationPlan, *, already: bool, as_json: bool) -> in
     return 0
 
 
-def _hook_hint(plan: MigrationPlan) -> str:
-    root = plan.inventory.source_root if plan.inventory.scope == "global" else plan.inventory.root
+def _hook_hint(root: Path) -> str:
     return (
         "To run loadout from that repository's Git hooks: "
         f"loadout integrate git-hooks install --root {shlex.quote(str(root))}"
