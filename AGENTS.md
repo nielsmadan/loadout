@@ -6,8 +6,8 @@ Codex, Factory Droid, OpenCode and Pi. Antigravity (`agy`) was dropped — see
 
 ## Commands
 
-    just setup        # install dependencies and verify tools
-    just doctor       # verify tools
+    just setup        # install dependencies and the lefthook git hooks, then run doctor
+    just doctor       # verify the one required tool, uv
     just install      # install or replace the current-source snapshot on PATH
     just install-editable  # link the installed command to this checkout
     just uninstall    # remove the installed CLI, preserving configuration
@@ -18,6 +18,14 @@ Codex, Factory Droid, OpenCode and Pi. Antigravity (`agy`) was dropped — see
     just test-migration  # Git-backed migration integration tests
     just test-all     # every pytest test
     just coverage     # every pytest test, with a branch coverage report
+    just lint         # ruff check
+    just format       # ruff format, rewriting files
+    just typecheck    # mypy
+    just serve-docs   # serve the docs/user site locally
+    just build-docs   # build the site, failing on warnings
+    just build        # build the package
+    just changelog    # regenerate CHANGELOG.md with git-cliff
+    just release ...  # cut a release; see docs/releasing.md
 
 ## Constraints that silently corrupt output if violated
 
@@ -173,11 +181,19 @@ The implementation path, renderer ownership boundaries, extraction flow, and sou
 
 ## Docs
 
-- `README.md` — commands, `loadout.toml` schema, exit codes
+- `README.md` — pitch, install, quick start, command list, exit codes; links into the site
+- `docs/user/` — the published site (loadoutai.dev). `reference/cli.md` is canonical for commands,
+  flags, init behaviour, `--json` statuses, drift kinds and exit codes;
+  `reference/configuration.md` is canonical for the schema at both scopes
+- `src/loadout/_skills/loadout/` — the bundled skill; agents follow it literally, so it is
+  behaviour-sensitive and changes with the behaviour it describes
 - `docs/scopes.md` — what loadout is for, the scope model, committed vs personal
 - `docs/reference/` — per-harness matcher semantics, pattern shapes, verified quirks
+- `docs/reference/sync.md` — the sync guard, retirement, unmanaged files
 - `docs/reference/extraction.md` — the renderers run backwards: what round-trips, what is reported
 - `docs/reference/templates.md` — declared vs vendored, name resolution, the content hash, sync
 - `docs/decisions/` — ADRs; append-only, superseded rather than edited
+- `docs/releasing.md` — versioned packages and Homebrew distribution
+- `docs/publishing.md` — previewing, building and publishing the site
 
 When behaviour changes, update the doc that covers it in the same commit.

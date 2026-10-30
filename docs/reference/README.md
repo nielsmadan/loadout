@@ -29,6 +29,7 @@ versus vendored, name resolution and the content hash `template sync` compares a
 [module-config.md](module-config.md) is the slice that copies a module's own configuration to the
 path it reads, and [hooks-adapters.md](hooks-adapters.md) the code adapters that carry hooks to
 OpenCode and Pi. [servers.md](servers.md) is the `mcp` slice, server definitions.
+[sync.md](sync.md) is what `sync` refuses, retires and reports unmanaged in both scopes,
 [git-integration.md](git-integration.md) is `check --staged` and the git hooks, and
 [architecture.md](architecture.md) maps the modules for anyone changing the code.
 
