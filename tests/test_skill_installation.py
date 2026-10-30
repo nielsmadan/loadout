@@ -119,6 +119,28 @@ def test_install_takes_over_an_unowned_copy_identical_to_the_bundle(tmp_path: Pa
     assert (installed.path / OWNER_MARKER).is_file()
 
 
+def test_taking_over_a_copy_init_adopted_says_its_render_policy_can_go(
+    tmp_path: Path, fake_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = register(_root(tmp_path))
+    manifest = root / "loadout.toml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8")
+        + '\n[skills.loadout]\nagents = ["claude", "codex"]\nrender = false\n',
+        encoding="utf-8",
+    )
+    declared = manifest.read_bytes()
+    shutil.copytree(bundled_skill_path(), root / "primary" / "skills" / "loadout")
+
+    assert loadout.main(["integrate", "skill", "install", "--yes"]) == 0
+
+    assert (
+        "note: [skills.loadout] render = false can now be removed, so each harness gets "
+        "the skill rendered for it"
+    ) in capsys.readouterr().out.splitlines()
+    assert manifest.read_bytes() == declared
+
+
 def test_an_unowned_copy_that_differs_from_the_bundle_stays_refused(tmp_path: Path) -> None:
     root = _root(tmp_path)
     bundle = _bundle(tmp_path / "bundle")

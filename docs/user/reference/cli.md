@@ -304,9 +304,10 @@ hash; the skill renderer never copies it. Reinstalling refreshes an unchanged ol
 copy you edited, or an unowned skill with the same name that differs from the bundled one, is
 reported and left alone, and the command exits 1. A source copy loadout does not own but that is
 byte for byte the bundled skill, such as one `copy` made that a later `init` adopted, shows as
-`identical copy` and `install` takes it over; `uninstall` refuses it. A generated output edited
-outside Loadout stops install's sync with exit 1, as it stops any sync, and stops uninstall before
-it removes anything, with exit 3.
+`identical copy` and `install` takes it over; `uninstall` refuses it. Install leaves the manifest
+as it is: when `[skills.loadout]` has the `render = false` that init wrote, install prints a note
+that it can now be removed. A generated output edited outside Loadout stops install's sync with
+exit 1, as it stops any sync, and stops uninstall before it removes anything, with exit 3.
 
 `uninstall` removes only the owned source copy and the files rendered from it that sync would
 accept as its own (the current render, what was committed, or what sync last wrote); unrelated

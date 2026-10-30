@@ -175,5 +175,7 @@ When this skill was started from a plain copy that `loadout integrate skill copy
 `loadout integrate skill install` once a global source is registered, so later releases update
 the skill. A global init adopts that copy into the source's `skills/loadout/`; install takes over
 a copy that is byte for byte the bundled skill (`integrate skill status` shows `identical copy,
-install takes it over`) and refuses one that differs. Without a global source, the copy stays a
-plain copy that sync never touches.
+install takes it over`) and refuses one that differs. After a takeover, install notes that the
+`[skills.loadout] render = false` init wrote can now be removed; offer to remove it, so each
+harness gets the skill rendered for it. Without a global source, the copy stays a plain copy
+that sync never touches.

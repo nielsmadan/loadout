@@ -36,6 +36,7 @@ from .skill_installation import (
     SkillSourceLocation,
     SourceSkillState,
     configured_skill_agents,
+    copied_as_written,
     inspect_skill_source,
     install_skill_source,
     uninstall_skill_source,
@@ -125,6 +126,11 @@ def cmd_skill_install(
         f"{'installed' if changed else 'already installed'} loadout skill in "
         f"source {location.source}: {location.path}"
     )
+    if copied_as_written(root, profile):
+        print(
+            "note: [skills.loadout] render = false can now be removed, so each harness gets "
+            "the skill rendered for it"
+        )
     return cmd_sync(root, profile=profile)
 
 

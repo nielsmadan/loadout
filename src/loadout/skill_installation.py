@@ -187,6 +187,11 @@ def configured_skill_agents(root: Path, profile: str) -> tuple[str, ...]:
     return tuple(sorted({target.harness for target in manifest.skills}))
 
 
+def copied_as_written(root: Path, profile: str) -> bool:
+    manifest = _load_skill_profile(root, profile)
+    return any(p.name == SKILL_NAME and not p.render for p in manifest.skill_policies)
+
+
 def _write_marker(path: Path, digest: str) -> None:
     (path / OWNER_MARKER).write_text(f'owner = "{_OWNER}"\nhash = "{digest}"\n', encoding="utf-8")
 
