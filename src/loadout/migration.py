@@ -112,22 +112,24 @@ configuration; edit here rather than in the generated files.
     mcp.toml           MCP server definitions for every agent that reads them
     instructions/      instruction fragments, named in reading order
     settings/          settings fragments, one JSON document per name
+    defaults/          Codex config.toml fragments, one JSON document per name
     hooks/             hook fragments, one JSON document per name
     plugins/           plugin fragments, one JSON document per name
-    skills/            skills, one file or directory each
+    skills/            skills, one folder each holding a SKILL.md
+    agents/            subagents, one Markdown file each
     module-config/     files copied verbatim into an agent's config directory
+    templates/         project templates, one <name>.toml manifest each
 
 Only what you use has to exist.
 
 ## Add hooks, plugins or settings
 
 1. Write the fragment, for example `hooks/claude.json`.
-2. Add the category to `use` in the `[[source]]` block of `loadout.toml`.
-3. Name the fragment in the agent's block, for example `hooks = ["claude"]`.
-4. Run `loadout sync --global`.
+2. Name the fragment in the agent's block, for example `hooks = ["claude"]`.
+3. Run `loadout sync --global`.
 
 Hooks, plugins, settings and instructions must be named: an agent block that leaves
-one out means loadout does not manage it. Permissions, MCP servers, skills and
+one out means loadout does not manage it. Permissions, MCP servers, skills, agents and
 module-config apply to every declared agent without being named.
 """
 
