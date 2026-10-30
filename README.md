@@ -428,7 +428,9 @@ for what a plugin reference holds and what each harness makes of it.
 
 Pi's plugin declaration shares `settings.json` with `lastChangelogVersion`, a cursor Pi updates
 after upgrades. The built-in Pi preset preserves that live key automatically; it does not belong
-in a settings fragment and loadout refuses a fragment that tries to manage it.
+in a settings fragment and loadout refuses a fragment that tries to manage it. Pi's `settings`
+fragments are written only through that document, so they render only when `[pi]` declares
+`plugins`, even as `plugins = []`; without it, `sync` and `check` say so in a note.
 
 `module-config` carries a module's *own* content — Pi's `pi-statusline.json`, a Claude hook
 script the `hooks` slice names by path, an OpenCode plugin's `.ts` file. Files under

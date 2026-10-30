@@ -138,6 +138,8 @@ class Manifest:
     module_config: tuple[ModuleConfigTarget, ...] = ()
     config_paths: tuple[Path, ...] = ()
     agents: tuple[AgentsTarget, ...] = ()
+    # Harnesses whose `settings` no declared slice reads, so nothing renders them.
+    stranded_settings: tuple[str, ...] = ()
 
 
 def _require(block: dict[str, object], key: str, label: str) -> object:
@@ -461,10 +463,11 @@ def _agent_slice_names(agent: str, block: dict[str, object]) -> list[str]:
     return named + automatic
 
 
-def _settings_must_reach_a_slice(
-    agent: str, declared: dict[str, object], offered: dict[str, SliceOutput]
-) -> None:
-    """A `settings` fragment has to reach a slice whose renderer reads one.
+def _settings_read(
+    agent: str, declared: dict[str, object], offered: dict[str, SliceOutput], names: list[str]
+) -> bool:
+    """A `settings` fragment has to reach a slice whose renderer reads one, and is read
+    only when the block declares such a slice: Pi's is `plugins`, which is not automatic.
 
     Which slices those are is declared by the preset, not inferred from the
     destination's filename: writing into a residual is a property of the renderer,
@@ -475,8 +478,10 @@ def _settings_must_reach_a_slice(
     Raised rather than ignored, because silently discarding declared configuration
     is the wrong default for a tool whose output governs command execution.
     """
-    if declared.get("settings") is None or any(spec.takes_settings for spec in offered.values()):
-        return
+    if declared.get("settings") is None:
+        return True
+    if any(spec.takes_settings for spec in offered.values()):
+        return any(offered[name].takes_settings for name in names)
     raise LoadoutError(
         f"{agent}: `settings` names a fragment, but no slice this harness offers reads one "
         f"(slices that do: "
@@ -492,6 +497,7 @@ def _parse_agents(
     tuple[SkillsTarget, ...],
     tuple[ModuleConfigTarget, ...],
     tuple[AgentsTarget, ...],
+    tuple[str, ...],
 ]:
     """Agent-keyed blocks: `[claude]` with slices beneath it.
 
@@ -517,6 +523,7 @@ def _parse_agents(
     skills: list[SkillsTarget] = []
     module_config: list[ModuleConfigTarget] = []
     agent_definitions: list[AgentsTarget] = []
+    stranded: list[str] = []
     for agent in sorted(KNOWN_HARNESSES):
         declared = data.get(agent)
         if declared is None:
@@ -539,8 +546,9 @@ def _parse_agents(
                 f"(this harness offers: {', '.join(sorted(offered))})"
             )
         block = {k: v for k, v in block.items() if k in offered or k in extras}
-        _settings_must_reach_a_slice(agent, declared, offered)
-        for slice_name in _agent_slice_names(agent, block):
+        names = _agent_slice_names(agent, block)
+        stranded.extend(() if _settings_read(agent, declared, offered, names) else (agent,))
+        for slice_name in names:
             spec = offered[slice_name]
             label = f"{agent}.{slice_name}"
             destinations = (
@@ -603,6 +611,7 @@ def _parse_agents(
         tuple(skills),
         tuple(module_config),
         tuple(agent_definitions),
+        tuple(stranded),
     )
 
 
@@ -634,9 +643,14 @@ def _build_manifest(
     claimed: set[PurePosixPath] = set()
     targets = _parse_instructions(data.get("instructions", {}), path, claimed)
     permissions = _parse_permissions(data.get("permissions", {}), path, claimed)
-    agent_targets, agent_permissions, agent_skills, agent_module_config, agent_definitions = (
-        _parse_agents(data, path, claimed)
-    )
+    (
+        agent_targets,
+        agent_permissions,
+        agent_skills,
+        agent_module_config,
+        agent_definitions,
+        stranded_settings,
+    ) = _parse_agents(data, path, claimed)
     targets += agent_targets
     permissions += agent_permissions
 
@@ -670,4 +684,5 @@ def _build_manifest(
         module_config=agent_module_config,
         config_paths=config_paths or (path,),
         agents=agent_definitions,
+        stranded_settings=stranded_settings,
     )

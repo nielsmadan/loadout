@@ -50,6 +50,7 @@ from .emit import (
     source_agents,
 )
 from .errors import LoadoutError
+from .harnesses import GLOBAL_PRESET
 from .hooks import CLAUDE_EVENTS, CODEX_EVENTS, DROID_EVENTS, unrecognised_events
 from .manifest import Manifest, load_profile, manifest_path
 from .permissions.renderers import CATCH_ALL_RENDERERS
@@ -455,6 +456,25 @@ def template_notices(root: Path) -> tuple[Notice, ...]:
     )
 
 
+def _stranded_settings(agents: Iterable[str]) -> tuple[Notice, ...]:
+    def readers(agent: str) -> str:
+        return " or ".join(
+            f"`{name}`" for name, spec in GLOBAL_PRESET[agent].items() if spec.takes_settings
+        )
+
+    return tuple(
+        Notice(
+            owner=agent,
+            slice="settings",
+            message=(
+                f"`settings` under [{agent}] renders nothing, because no slice that reads it is "
+                f"declared; declare {readers(agent)} under [{agent}], even as an empty list"
+            ),
+        )
+        for agent in agents
+    )
+
+
 def collect_notices(
     root: Path,
     profile: str = "default",
@@ -501,6 +521,7 @@ def collect_notices(
             root, fragment_paths(target, manifest), target.name or "all"
         )
     )
+    found.extend(_stranded_settings(manifest.stranded_settings))
     found.extend(_permission_notices(manifest, profile))
     found.extend(_unpermitted_servers(manifest))
     for target in manifest.permissions:
