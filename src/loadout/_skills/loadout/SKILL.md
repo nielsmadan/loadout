@@ -1,6 +1,6 @@
 ---
 name: loadout
-description: Use when adopting existing agent configuration into Loadout, setting up Loadout in a project or global source, or changing Claude, Codex, Droid, OpenCode or Pi configuration. Handles onboarding, permissions, instructions, skills, settings, hooks, plugins and MCP through their authoritative sources.
+description: Use when adopting existing agent configuration into Loadout, setting up Loadout in a project or global source, or changing Claude, Codex, Droid, OpenCode or Pi configuration. Handles onboarding, permissions, instructions, skills, agents (subagents), settings, hooks, plugins and MCP through their authoritative sources.
 ---
 
 # Loadout
@@ -34,7 +34,8 @@ Edit the declared source for each configured consumer. Generated harness files a
 - “Allow `just test` for me” edits the existing personal permissions producer and syncs. If the
   project has no personal producer, ask before changing committed ownership.
 - “Change the global Pi model” follows the settings fragment Pi's agent block names, edits its
-  `defaultModel` value and syncs the selected profile.
+  `defaultModel` value and syncs the selected profile. Pi renders settings only when its block
+  also declares `plugins`.
 
 ## Troubleshooting
 
@@ -46,12 +47,14 @@ Edit the declared source for each configured consumer. Generated harness files a
   or `check` reports `hand-edited`, `owned-key`, `owned-key-removed`, `unknown`, `unmanaged`,
   `unmanaged-link` or `unparsable`, follow
   “Porting a change made outside loadout” in [configuration routing](references/configuration.md).
-  Run `sync --force` only after showing the diff and getting the user's approval. A file holding a
+  Run `sync --force` only after showing the diff and getting the user's approval; when sync cut a
+  diff short, read the complete one in the `sync-abort.diff` file it names. A file holding a
   secret is never diffed: loadout names it and counts the lines that differ. Read the file on disk
   and the source directly to see the change, or move the secret to an environment variable.
-- A `project.instructions` note that the document repeats a heading, or a `template add` line
-  naming a project skill the template already supplies, marks guidance held twice. Resolve it by
-  the template comparison in [configuration routing](references/configuration.md).
+- A `project.instructions` or `<harness>.instructions` note that the document repeats a heading,
+  or a `template add` line naming a project skill the template already supplies, marks guidance
+  held twice. Resolve it by “Guidance held twice” in
+  [configuration routing](references/configuration.md).
 - An init that lists `unadopted` items left copies that disagree across harnesses in place. Merge
   them by “Resolving conflicting copies at init” in [onboarding](references/onboarding.md).
 - An init that lists `secrets` adopted them into the source as they were. Say the source's remote

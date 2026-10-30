@@ -27,25 +27,62 @@ After project init, offer a bundled template: `loadout template add frontend --v
 `backend`), then `loadout sync`. These packaged templates work offline and provide short
 instruction seeds with empty categories, vendored with content-hash provenance. Global scope
 cannot activate them. Template instructions, permissions, skills and MCP servers compose through
-the project's standard slices.
+the project's standard slices. Once a template is added, compare its guidance with the project's
+own, as “Guidance held twice” in [configuration routing](configuration.md#guidance-held-twice)
+describes, and offer to delete what the project repeats.
 
 Init keeps a project's `.claude/settings.local.json` in place, and Claude still applies it. After
 init, offer to move the permissions it still needs into `loadout/permissions.local.toml`, ask
 about each entry that looks stale, and delete the file once the user agrees nothing in it is
-left to keep.
+left to keep. Each verdict (`allow`, `ask`, `deny`) keeps its list:
 
-Init installs no Git hooks. Offer them separately, after init, with
-`loadout integrate git-hooks install --root <source-root> [--regenerate]`.
-Installation validates the staged dependency snapshot at pre-commit; `--regenerate` also runs
-guarded sync after checkout/merge. Show preview paths and source/profile, preserving occupied or
-shared hooks and reporting the exact integration commands. A clone needs the same command.
-Templates must be vendored and staged, required dependencies must be in the repository, and
-optional private sources may be
-absent. A post-hook failure leaves Git's completed operation in place; resolve the reported
-output conflict and retry normal sync, without adding `--force`.
+- `Bash(just test)`, a command with no wildcard, becomes the exact entry
+  `[shell] allow = ["=just test"]`.
+- `Bash(npm run:*)` becomes the prefix entry `"npm run"`, and `Bash(git log *)` stays the glob
+  `"git log *"`.
+- `mcp__gh__get_issue` becomes `[mcp] allow = ["gh/get_issue"]`.
+- Any other Claude tool rule, such as `Read(./docs/**)` or `WebFetch(domain:example.com)`, goes
+  to `[claude.extra] allow` or `deny` as written.
+- An `ask` rule for any other tool has no destination: `[claude.extra]` has no `ask`. Say so,
+  and leave it in `settings.local.json`, which then stays.
 
-Read the complete JSON `issues`, candidates and dispositions. An incomplete preview exits 2 and
-changes nothing. Prompts are available in an interactive terminal; JSON and dry-run never prompt.
+`[shell]` and `[mcp]` entries are not Claude's alone: they render for every configured harness
+that can express them. An exact entry renders for Claude, OpenCode and Pi, while Codex and Droid
+leave an exact `allow` or `ask` to their own approval and treat an exact `deny` as a prefix. Tell
+the user which harnesses each moved rule now reaches. Loadout never gitignores
+`permissions.local.toml`, so before the first sync ask whether to list
+`/loadout/permissions.local.toml` in `.gitignore` or in `.git/info/exclude`, and add it there.
+
+Init installs no Git hooks. When the project or global source is in a Git repository, offer them
+separately, after init. Preview first with
+`loadout integrate git-hooks install --root <source-root> --dry-run`, adding `--regenerate` when
+the user wants the post-checkout and post-merge hooks too; install writes without asking, so show
+the preview and run the same command without `--dry-run` only once the user agrees. The
+pre-commit hook validates the staged source; the `--regenerate` hooks run guarded sync after a
+checkout or merge. A hook names no profile: each run resolves it as `sync` does. Read each line of
+the preview:
+
+- `install`: a new hook loadout writes. `managed`: already installed and current.
+- `occupied`: a hook loadout did not write, or one for another source. It stays untouched, and
+  the preview prints two lines to add to it by hand; show them to the user.
+- `stale`: a hook loadout wrote that is out of date; with `--regenerate` it shows as `update`
+  and is rewritten.
+- A `shared` hooks directory is common to every worktree of the repository. Install writes it as
+  usual, and one hook serves each worktree.
+- An `external` hooks directory, outside the repository or reached through a link (such as a
+  global `core.hooksPath`), gets nothing written. Install prints a block per hook, guarded to run
+  only in this repository, for the user to add by hand.
+
+A clone needs the same command. Templates must be vendored and staged, required dependencies must
+be in the repository, and optional private sources may be absent. A post-hook failure leaves Git's
+completed operation in place; resolve the reported output conflict and retry normal sync, without
+adding `--force`.
+
+Read the complete JSON `issues`, `notes`, candidates and dispositions. An incomplete preview exits
+2 and changes nothing. A permission rule init cannot carry into the source is an issue
+(`uncarried-rule`), not a note. `notes` name what init changes or reports without refusing, such
+as comments a file will lose or an agent it does not adopt; show every one to the user before
+applying. Prompts are available in an interactive terminal; JSON and dry-run never prompt.
 Init reads only the live deployment at each harness's known paths. A dotfiles copy in the
 selected directory is not read; if the user keeps one, install it first so the live deployment
 holds what they want adopted. Each refusal names the file to change; fix it on disk and run init
@@ -69,13 +106,18 @@ and left as source; repeat init reports no migration. Registration can still be 
 Use normal check/sync for subsequent source edits.
 
 If init fails it puts every path back itself and deletes the backup (`"status": "restored"`,
-exit 1, with what it put back under `restored`); report the error. Success deletes the backup too,
-so a finished adoption is undone through Git and the user's own copies, not by loadout. A failed or
-incomplete init answers with `recommendation` and `install_command`, which name this skill: you are
-already running it, so leave the command alone and work through the error or `issues` with the user.
+exit 1, with what it put back under `restored`); report the error. Ctrl-C does the same and exits
+130. Success deletes the backup too, so a finished adoption is undone through Git and the user's
+own copies, not by loadout. A `restored` init answers with `recommendation` and `install_command`,
+and so does an `incomplete` one unless every issue is a choice an option makes (`--harness`, a
+scope, `--registration`). They name this skill and `loadout integrate skill copy`, the command
+that copies it: you are already running it, so leave the command alone and work through the error
+or `issues` with the user.
 
-If an earlier init was killed, every later one exits 2 with `"status": "interrupted"` and the
-backup path, and changes nothing. Putting it back needs a terminal: ask the user to run
+If putting everything back fails too, init answers `"status": "interrupted"` with exit 1 (130
+after Ctrl-C), the backup path and what to do, and the next init puts it back first. If an earlier
+init was killed, every later one exits 2 with `"status": "interrupted"` and the backup path, and
+changes nothing. Putting it back needs a terminal: ask the user to run
 `loadout init project` (or `init global`) there and answer yes, which loses any edit made since to
 the paths that init changed, then run init again. The backup holds copies of the user's
 configuration, so keep it private and never paste its content into the conversation.
@@ -128,3 +170,10 @@ The same skill handles later configuration using the configuration reference.
 `loadout integrate skill install` vendors this bundled skill into the global source's
 `skills/loadout/` and syncs it to every configured agent. It asks before source changes; `--yes`
 approves them. Status identifies the source and its harnesses. Reinstall updates unchanged copies; uninstall removes only owned, unchanged content.
+
+When this skill was started from a plain copy that `loadout integrate skill copy` made, offer
+`loadout integrate skill install` once a global source is registered, so later releases update
+the skill. A global init adopts that copy into the source's `skills/loadout/`; install takes over
+a copy that is byte for byte the bundled skill (`integrate skill status` shows `identical copy,
+install takes it over`) and refuses one that differs. Without a global source, the copy stays a
+plain copy that sync never touches.

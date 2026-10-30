@@ -3,6 +3,7 @@
 Read scope selection, then choose the narrowest canonical slice source from the capability matrix.
 
 - [Scope selection](#scope-selection)
+- [Canonical producers](#canonical-producers)
 - [Capability matrix](#capability-matrix)
 - [Configured agents](#configured-agents)
 - [Source rules](#source-rules)
@@ -12,11 +13,15 @@ Read scope selection, then choose the narrowest canonical slice source from the 
 
 ## Scope selection
 
-| invocation | ownership | initialization | sync |
+| request scope | ownership | initialization | sync |
 |---|---|---|---|
-| omitted or `--personal` | uncommitted configuration for this repository and user | `loadout/config.toml` must exist | `loadout sync --root <repo>` |
-| `--project` | committed configuration shared by this repository | `loadout/config.toml` must exist | `loadout sync --root <repo>` |
-| `--global` | this machine across repositories | machine config must exist | `loadout sync --global` |
+| personal, or none named | uncommitted configuration for this repository and user | `loadout/config.toml` must exist | `loadout sync --root <repo>` |
+| project | committed configuration shared by this repository | `loadout/config.toml` must exist | `loadout sync --root <repo>` |
+| global | this machine across repositories | machine config must exist | `loadout sync --global` |
+
+The request scope is what the user's request names, in words or as `--personal`, `--project` or
+`--global` after the skill's name. It selects a row; it is not an argument to loadout. The sync
+column gives the command to run.
 
 Resolve a project from the repository root, not from an arbitrary working subdirectory. The
 project config is `<repo>/loadout/config.toml`. For global scope, first resolve the actual
@@ -37,9 +42,10 @@ change does not itself authorize a migration; report the missing setup.
 ## Canonical producers
 
 Project configuration uses fixed sources under `loadout/`: `permissions.toml`, optional
-`permissions.local.toml`, named `instructions/` fragments, `skills/`, `mcp.toml`, `hooks.json`
-and `plugins.json`. Global sources use the corresponding slice directories and agent blocks in
-`loadout.toml`. Do not invent destinations or edit generated outputs.
+`permissions.local.toml`, named `instructions/` fragments, `skills/`, `agents/`, `mcp.toml`,
+`hooks.json`, `plugins.json` and `settings/<harness>.json`. Global sources use the corresponding
+slice directories and agent blocks in `loadout.toml`. Do not invent destinations or edit generated
+outputs.
 
 Templates contribute through the same project slices. Project commands and support files
 outside a known slice remain harness-owned and stay in place.
@@ -52,9 +58,9 @@ outside a known slice remain harness-owned and stay in place.
 | `mcp-permissions` | `loadout/permissions.local.toml` | `loadout/permissions.toml` | MCP policy from selected `permissions.toml` sources |
 | `mcp` | unsupported | `loadout/mcp.toml` | `mcp.toml` from selected sources |
 | `instructions` | unsupported | `loadout/config.toml` and `loadout/instructions/*.md` | manifest selection and `instructions/*.md` fragments |
-| `skills` | unsupported | supported for `claude`, `codex`, `droid`, `opencode`, `pi` via `loadout/skills/<name>/SKILL.md` | `skills/<name>/SKILL.md` from selected sources |
+| `skills` | `loadout/skills/<name>.local/SKILL.md`, replacing the shared skill of that name | supported for `claude`, `codex`, `droid`, `opencode`, `pi` via `loadout/skills/<name>/SKILL.md` | `skills/<name>/SKILL.md` from selected sources |
 | `agents` | unsupported | supported for `claude`, `codex`, `droid`, `opencode`, `pi` via `loadout/agents/<name>.md` | `agents/<name>.md` from selected sources |
-| `settings` | unsupported | unsupported | supported for `claude`, `droid`, `opencode` via `settings/<name>.json` fragments; Codex uses `defaults`; Pi unsupported |
+| `settings` | unsupported | supported for `claude`, `droid`, `opencode` via `loadout/settings/<harness>.json` | supported for `claude`, `droid`, `opencode` via `settings/<name>.json` fragments, and for Pi only when `[pi]` also declares `plugins`; Codex uses `defaults` |
 | `defaults` | unsupported | unsupported | Codex top-level and nested settings via `defaults/<name>.json` fragments |
 | `hooks` | unsupported | Droid via `loadout/hooks.json` | `hooks/<name>.json` fragments selected by agents offering hooks |
 | `plugins` | unsupported | Droid via `loadout/plugins.json` | `plugins/<name>.json` fragments selected by agents offering plugins |
@@ -79,7 +85,7 @@ permission tier uses the same configured harness list as project scope.
 
 For global requests, read top-level agent blocks named `[claude]`, `[codex]`, `[droid]`,
 `[opencode]`, and `[pi]` after profile inheritance. `[all]` supplies defaults but never declares
-an agent. Agent membership selects the known preset destinations; no route authoring is needed.
+an agent. Agent membership selects the known preset destinations.
 
 A generic request covers every configured agent supporting the artifact. A request that names an
 agent covers only that agent. Never enable a new harness as a side effect. Partial support means
@@ -94,8 +100,20 @@ only the named leaf, preserving other `skills` fields and `[[skills.config]]` ov
 Empty objects own nothing; arrays are managed as whole fields. If surgery refuses an inline
 parent table or a child inside an array-table element, report the conflict rather than widening
 ownership. `$remove` entries use TOML key paths, such as `"skills.max_context_tokens"`.
-Pi's permission document does not preserve a settings residual, so report Pi as unsupported instead
-of editing its harness-owned settings file.
+Pi's `settings.json` is written by its `plugins` slice, so a Pi settings fragment renders only
+when `[pi]` also declares `plugins`, even as an empty list (`plugins = []`). Without it, sync and
+check print a `pi.settings` note and write nothing: add `plugins` rather than editing Pi's
+settings file.
+
+Project settings reach Claude, Droid and OpenCode. `.claude/settings.json`,
+`.factory/settings.json` and `opencode.json` are shared between loadout's slices and the harness's
+own keys; `loadout/settings/claude.json`, `droid.json` or `opencode.json` holds everything in that
+file no slice writes, such as Claude's `model` or `env`, and sync renders the file from it plus
+the slices. It is the whole of those keys, not a delta: a key missing from it is dropped from the
+output. Without one, sync keeps those keys from the file on disk, so before creating one, copy
+into it every key of the current file that no slice writes. Codex and Pi have no project settings
+source. Init writes the settings source gitignored when the file it adopted was untracked or
+ignored, so check whether Git ignores it before calling a change there shared.
 
 Project MCP server definitions reach Claude, Droid, and OpenCode directly.
 Pi reads Claude's `.mcp.json` when that shared destination is present; a Pi-only project has no
@@ -110,7 +128,10 @@ Project skills reach all five harnesses. Codex reads `.agents/skills`.
 Permissions are TOML rules with `[shell]` and `[mcp]` categories; `[mcp]` supplies the
 `mcp-permissions` artifact. Preserve the existing order: OpenCode and Pi use last-match-wins
 semantics after rendering. Project permissions merge template, committed, then personal tiers;
-use `permissions.local.toml` only for personal requests.
+use `permissions.local.toml` only for personal requests. Loadout never gitignores
+`loadout/permissions.local.toml`: when you create it, ask whether to list
+`/loadout/permissions.local.toml` in the project's `.gitignore` or in `.git/info/exclude`, which
+keeps it off the shared list, and add it there before syncing.
 
 MCP server definitions are tables in `mcp.toml`, separate from permission policy. Project scope
 has one committed `loadout/mcp.toml`; global scope composes selected sources last-wins. A server
@@ -126,10 +147,27 @@ be derived from its package name. An OpenCode plugin's `.ts` file belongs here r
 Project instructions are named in `loadout/config.toml` and stored in
 `loadout/instructions/<name>.md`. Project skills use `loadout/skills/<name>/SKILL.md` with
 supporting files beside it; that is the only form, and a loose file in `skills/` is not a skill.
-`<name>.local/SKILL.md` replaces the complete public skill privately.
+The only personal skill form is a folder `loadout/skills/<name>.local/` with its own `SKILL.md`
+and supporting files. It replaces the shared `<name>` skill whole, document and supporting files
+together, and is not an overlay; with no shared skill of that name it is a skill of its own. It is
+personal only while Git ignores it, so add it to `.gitignore` or `.git/info/exclude` when you
+create one.
 `[skills.<name>] agents = [...]` narrows the default set of configured consumers. Templates are
 declared by name; use `loadout template add <name> --tracked`, `--vendored`, or
 `template sync <name>` when that command exactly expresses the request.
+
+A skill's frontmatter key `agent: <name>` hands its work to the agent of that name from
+`agents/` (or `loadout/agents/`). Claude's copy also gets `context: fork` unless the skill sets
+`context`, and every other harness's copy opens with "Delegate this task to the `<name>`
+subagent." Naming an agent the source does not define is an error. Like `model`, `effort` and
+`context`, the key itself goes into Claude's copy only.
+
+Some names are taken by a harness, and a global sync refuses a source item that would land on
+one: a skill named `synced` that reaches Claude (Claude Code writes `skills/synced` in its config
+folder itself), and an agent named `scrutiny-feature-reviewer` or `user-testing-flow-validator`
+that reaches Droid (Droid writes those droids into `.factory/droids/` itself). Pick another name.
+
+### Guidance held twice
 
 After adding a template, and whenever you edit a project's instructions while it declares one,
 compare the template's instruction parts (`loadout template list` shows where each template
@@ -140,6 +178,11 @@ names, paths, versions and exceptions. Show the proposed deletions and apply the
 user approves. A `project.instructions` note that the document repeats a heading points at one
 such pair. When `template add` reports that a project skill is byte for byte the one the template
 supplies, offer to delete `loadout/skills/<name>/` so the project follows the template's copy.
+
+The same note at global scope, `<harness>.instructions`, names two fragments of one agent's
+instruction document that bring the same heading. Compare them the same way and propose keeping
+one section. Before deleting the repeat from a fragment, find every agent block that names it, so
+no other agent loses the rule, and apply the deletion only once the user approves.
 
 Agents (subagents) are `agents/<name>.md` in a global source, or `loadout/agents/<name>.md` in a
 project, and reach every configured harness: Claude, Codex (as TOML), Droid (as a custom droid),
@@ -233,8 +276,10 @@ flags these changes; it does not merge them.
    would write. `owned-key` is a key loadout writes in a file it shares with the harness, such as
    `mcpServers` in `~/.claude.json`, edited there; only those keys are compared.
    `owned-key-removed` is such a key deleted there, as by `codex mcp remove`: ask whether to
-   remove it from the source too, or to write it back. `unmanaged` is a file or folder loadout did not write, inside a folder its harness
-   reads whole: a skill folder, or a Codex rules file such as `~/.codex/rules/default.rules`.
+   remove it from the source too, or to write it back. `unmanaged` is a file or folder loadout
+   did not write, inside a folder its harness reads whole: a skill folder, a file in an agents
+   folder such as `~/.claude/agents/`, or a Codex rules file such as
+   `~/.codex/rules/default.rules`.
    `unmanaged-link` is a link loadout did not create there; it has no content to port, so show
    the user where it points and ask before deleting it. Never read through it.
    `unparsable` is a file loadout shares with the harness that no longer parses: there is nothing
@@ -242,7 +287,9 @@ flags these changes; it does not merge them.
    for one the source no longer renders, before deleting it.
    `source-changed`, `missing` and `orphaned` need only a sync.
 2. Read the change. `loadout check` without `--json` prints each diff: `-` lines exist only on
-   disk, `+` lines only in the source. For an `unmanaged` path, read the file or folder itself.
+   disk, `+` lines only in the source. It cuts each diff at 40 lines and says how many more there
+   are; for the rest, read the file on disk and the source directly. For an `unmanaged` path, read
+   the file or folder itself.
    A file holding a secret is never diffed: loadout prints its name, how many lines differ and
    why it counts as a secret. Compare the file on disk with the source directly to find the
    change, or better, move the secret into an environment variable (`auth_env_var = "<NAME>"`
@@ -263,6 +310,10 @@ flags these changes; it does not merge them.
 5. A `+` line missing from disk is an entry removed outside loadout. Ask whether to remove it from
    the source or restore it; do not decide.
 6. Delete an `unmanaged` file or folder once its content is in the source.
-7. Sync. When the harness copy still differs from the new render, sync refuses; show that diff,
-   and run `sync --force` only after the user approves discarding it. For a file whose diff is
-   withheld, compare it with the source again first: `--force` replaces whatever it holds.
+7. Sync. When the harness copy still differs from the new render, sync refuses and writes
+   nothing; show that diff, and run `sync --force` only after the user approves discarding it.
+   Sync also cuts each diff at 40 lines, and when it cut one it writes the complete diff to
+   `sync-abort.diff` in `$XDG_STATE_HOME/loadout/` (`~/.local/state/loadout/` when that is unset)
+   and names the file: read it in full before asking for `--force`. For a file whose diff is
+   withheld because it holds a secret, which neither the terminal nor that file shows, read the
+   file on disk and compare it with the source first: `--force` replaces whatever it holds.

@@ -43,10 +43,10 @@ def _global_capability(artifact: str) -> str:
     return row.split("|")[4].strip()
 
 
-def _settings_reaches_output(root: Path, agent: str) -> bool:
+def _settings_reaches_output(root: Path, agent: str, extra: str = "") -> bool:
     root.mkdir()
     (root / "loadout.toml").write_text(
-        f'[[source]]\nname = "test"\npath = "."\n\n[{agent}]\nsettings = "model"\n',
+        f'[[source]]\nname = "test"\npath = "."\n\n[{agent}]\nsettings = "model"\n{extra}',
         encoding="utf-8",
     )
     (root / "permissions.toml").write_text("[shell]\n", encoding="utf-8")
@@ -115,7 +115,7 @@ def test_capability_matrix_pins_every_scope_mapping() -> None:
             "manifest selection and `instructions/*.md` fragments",
         ),
         "skills": (
-            "unsupported",
+            "`loadout/skills/<name>.local/SKILL.md`, replacing the shared skill of that name",
             "supported for `claude`, `codex`, `droid`, `opencode`, `pi` via `loadout/skills/<name>/SKILL.md`",
             "`skills/<name>/SKILL.md` from selected sources",
         ),
@@ -126,8 +126,12 @@ def test_capability_matrix_pins_every_scope_mapping() -> None:
         ),
         "settings": (
             "unsupported",
-            "unsupported",
-            "supported for `claude`, `droid`, `opencode` via `settings/<name>.json` fragments; Codex uses `defaults`; Pi unsupported",
+            "supported for `claude`, `droid`, `opencode` via `loadout/settings/<harness>.json`",
+            (
+                "supported for `claude`, `droid`, `opencode` via `settings/<name>.json` "
+                "fragments, and for Pi only when `[pi]` also declares `plugins`; Codex uses "
+                "`defaults`"
+            ),
         ),
         "defaults": (
             "unsupported",
@@ -188,6 +192,22 @@ def test_settings_capability_names_only_agents_whose_render_preserves_settings(
     }
     documented = {
         agent for agent in GLOBAL_PRESET if f"`{agent}`" in _global_capability("settings")
+    }
+    assert actual == {"claude", "droid", "opencode"}
+    assert documented == actual
+
+
+def test_pi_settings_reach_output_beside_a_plugins_declaration(tmp_path: Path) -> None:
+    assert _settings_reaches_output(tmp_path / "pi", "pi", "plugins = []\n")
+    assert "Pi only when `[pi]` also declares `plugins`" in _global_capability("settings")
+
+
+def test_project_settings_capability_names_only_agents_whose_file_keeps_other_keys() -> None:
+    actual = {
+        agent for agent, slices in PROJECT_PRESET.items() if slices["permissions"].preserve_foreign
+    }
+    documented = {
+        agent for agent in PROJECT_PRESET if f"`{agent}`" in _capability_matrix()["settings"][1]
     }
     assert actual == {"claude", "droid", "opencode"}
     assert documented == actual
