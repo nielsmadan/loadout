@@ -2,8 +2,10 @@
 
 ## Config file
 
-`pi/permissions.json`, consumed by the `@gotgenes/pi-permission-system` extension —
-not by Pi itself. Schema is pinned in the emitted `$schema` key:
+`${PI_CODING_AGENT_DIR:-~/.pi/agent}/extensions/pi-permission-system/config.json` globally and
+`.pi/extensions/pi-permission-system/config.json` in a project, consumed by the
+`@gotgenes/pi-permission-system` extension — not by Pi itself. The global document pins its
+schema in the emitted `$schema` key:
 
 ```
 https://cdn.jsdelivr.net/npm/@gotgenes/pi-permission-system@23.0.0/schemas/permissions.schema.json
@@ -19,6 +21,26 @@ file moves with it. Verified 2026-08-09 against pi 0.84.1. See
 
 Modules keep their own configuration beside this file — Pi offers no config API, so each
 picks its own path. See [module-config.md](module-config.md).
+
+## What loadout emits
+
+From `GLOBAL_PRESET["pi"]` in `harnesses.py` and `PROJECT_PRESET["pi"]` in `project.py`. Global
+paths are under `${PI_CODING_AGENT_DIR:-~/.pi/agent}`.
+
+| slice | global | project |
+|---|---|---|
+| permissions | `extensions/pi-permission-system/config.json` (`render_pi`) | `.pi/extensions/pi-permission-system/config.json` (`render_pi_project`) |
+| hooks | `extensions/loadout-hooks.ts`, a generated extension (`render_pi_adapter`) | not in the project preset |
+| MCP server definitions | `mcp.json`, pi-mcp-adapter's file (`render_pi_servers`) | not in the project preset; pi-mcp-adapter reads the project's `.mcp.json`, which the Claude project preset writes when Claude is declared |
+| plugins | the `packages` key of `settings.json` (`render_pi_plugins`), with a `[pi] settings` fragment as the rest of the document and `lastChangelogVersion` carried from the live file | not in the project preset |
+| agents | `agents/`, read by the `pi-subagents` package, not by Pi core | `.pi/agents/` |
+| skills | `skills/` | `.pi/skills/`, or the shared `.agents/skills/` when Codex is also declared and the copies are identical |
+| instructions | `AGENTS.md` | `AGENTS.md` at the repository root, shared with Codex, Droid and OpenCode |
+| module config | authored paths beneath the root | not in the project preset |
+
+A `[pi] settings` fragment with no `plugins` renders nothing, and sync and check print a note
+saying so: `settings.json` is written by the plugins slice, so declare `plugins` under `[pi]`, even
+as an empty list.
 
 ## Resolution
 
@@ -98,19 +120,3 @@ Pi never sees the `server/tool` form. It derives the target from the call's own 
 The last two are emitted **only for a server-wide entry** (`server/*`). A rule scoped to
 a single tool therefore cannot decide whether the whole server may be listed — that is
 deliberate, not an oversight.
-
-## Known bug in the live system
-
-`~/ac/permissions/manage.py` contains a **second, independent copy** of this render
-logic for the project-local scope, and it emits only the `<entry> *` form
-(`manage.py:512`) — omitting the bare form that `sync.py` correctly emits alongside it.
-
-The OpenCode renderer 17 lines above it (`manage.py:494-495`) emits both forms
-correctly, so this is an oversight in one copy rather than a deliberate difference.
-
-Effect: a permission granted at project-local scope does not match the bare invocation of
-its own command. Fail-closed, so it prompts rather than over-permitting — an annoyance,
-not a hole.
-
-This duplication is the concrete reason `loadout` exists. It survives milestone 3, which
-ports only the global renderers; killing it is milestone 4.

@@ -75,25 +75,31 @@ Claude-specific — do not carry it into another harness's output.
 
 ## What loadout emits
 
-| output | ownership |
-|---|---|
-| `claude/settings.json` | `permissions.allow` / `deny` / `ask` only |
-| `claude/settings.autonomous.json` | same document, all three lists emptied |
-| `claude/mcp-permissions.json` | fully owned — `PermissionRequest` hook policy; written only when `[mcp]` has a rule |
+From `GLOBAL_PRESET["claude"]` in `harnesses.py` and `PROJECT_PRESET["claude"]` in `project.py`.
+Global paths are under `${CLAUDE_CONFIG_DIR:-~/.claude}` unless shown otherwise.
 
-`claude/settings.json` carries **16 top-level keys**, of which exactly one
-(`permissions`) is generated. The other 15 are hand-maintained: `$schema`,
-`attribution`, `autoMemoryEnabled`, `awaySummaryEnabled`, `cleanupPeriodDays`,
-`effortLevel`, `enabledPlugins`, `env`, `hooks`, `model`, `sandbox`,
-`skillListingBudgetFraction`, `skipAutoPermissionPrompt`, `skipWorkflowUsageWarning`,
-`statusLine`. Inside `permissions`, `defaultMode` is also hand-maintained.
+| slice | global | project |
+|---|---|---|
+| permissions | the `permissions` key of `settings.json` (`render_claude`), with the `[claude] settings` fragment as the rest of the document | the `permissions` key of `.claude/settings.json` (`render_claude_project`), with the existing file as the rest |
+| hooks | the `hooks` key of `settings.json` | not in the project preset |
+| plugins | the `enabledPlugins` key of `settings.json` | not in the project preset |
+| mcp-permissions | `mcp-permissions.json`, fully owned `PermissionRequest` hook policy, written only when `[mcp]` has a rule | `.claude/mcp-permissions.json`, the same |
+| MCP server definitions | the `mcpServers` key of `${CLAUDE_CONFIG_DIR:-~}/.claude.json` ([servers.md](servers.md)) | `.mcp.json`, fully owned |
+| instructions | `CLAUDE.md` | `CLAUDE.md`; with another harness declared, a stub importing `@AGENTS.md` |
+| skills | `skills/` | `.claude/skills/` |
+| agents | `agents/` | `.claude/agents/` |
+| module config | authored paths beneath the root, such as a hook script the hooks slice registers by path | not in the project preset |
 
-It is the most-churned file in the repo, and the reason `loadout` needs an explicit
-base-document input rather than reading its own previous output.
+`permissions` is written as `allow`, `deny`, `ask` globally and `allow`, `ask`, `deny` in a
+project. Any other key inside it, such as `defaultMode`, comes from the settings fragment, or at
+project scope from the existing file.
 
-The autonomous variant empties `allow`, `deny` and `ask` so the auto-mode classifier
-judges every call — clearing `deny` is what lets `git push` through, since deny overrides
-every mode. It also drops `env.CLAUDE_AFK_TIMEOUT_MS`.
+An autonomous variant is a profile, not a second output: a sibling such as `autonomous.toml`
+that `extends` the default, sets `permissions = []` under `[claude]` so all three lists render
+empty, and composes its own settings fragments. Clearing `deny` is what lets the auto-mode
+classifier judge every call, `git push` included, since deny overrides every mode. Whichever
+profile is active renders to the same `settings.json`. See
+[composition.md](composition.md).
 
 ## `CLAUDE_AFK_TIMEOUT_MS`
 
@@ -114,29 +120,29 @@ timeoutMs = Z.CLAUDE_AFK_TIMEOUT_MS ?? props.timeoutMs ?? DEFAULT
   machinery even where a caller opted out, and only changes the duration.
 
 `~/ac` sets it to `2147483647` (≈25 days) in the interactive profile, which does not
-disable the feature — it makes the fuse unreachable. Omitting the key from the autonomous
-profile is what restores the short default, so the delta between the two files is
-load-bearing. Mirroring the key into the autonomous file would give headless runs a
-25-day fuse.
+disable the feature — it makes the fuse unreachable. Its autonomous profile leaves that
+settings fragment out, which is what restores the short default, so the difference between the
+two profiles is load-bearing. Composing the fragment into the autonomous profile would give
+headless runs a 25-day fuse.
 
 **Not verified:** whether the component mounts under `-p`, and the value of the default
 constant — so the "60s" figure in `~/ac`'s own comment is unconfirmed.
 
 ## Deployment
 
-`~/.claude/settings.json` is a **real file reconciled by merge, never a symlink** —
-Claude Code writes to it at runtime (`enabledPlugins`, `extraKnownMarketplaces`, `env`
-model upgrades, `/fast`, `/config` toggles).
+`~/.claude/settings.json` is a real file that loadout generates whole from the source: the
+settings fragment plus the `permissions`, `hooks` and `enabledPlugins` keys. Nothing is read back
+from the live file except the keys a `preserve` list under `[claude]` names, and `preserve`
+refuses a key loadout generates.
 
-It currently writes *through* a single symlink via one hardcoded exception
-(`allowSymlink: source === "userSettings"`) in a helper whose default posture is
-`O_NOFOLLOW`. Version 2.1.220 also ships an indirection gate requiring "a regular
-non-symlink file with link count 1", so a two-hop chain silently breaks — orphaning the
-real source while reporting success (anthropics/claude-code#78162).
+Claude Code also writes to this file at runtime (`enabledPlugins`, `extraKnownMarketplaces`,
+`env` model upgrades, `/fast`, `/config` toggles). Such a write is not in the source, so `check`
+reports the file as `hand-edited` drift and `sync` refuses to overwrite it until the edit is
+ported into the source with `/loadout` or discarded with `sync --force`. A key Claude Code keeps
+for itself belongs in `preserve`, which carries it from the live file on every render.
 
-`os.replace` onto a symlink replaces the symlink, not its target.
-
-`CLAUDE.md`, `hooks/` and `skills/` are symlinks; only `settings.json` is merged.
+At project scope `.claude/settings.json` is rendered over the existing file (`preserve_foreign`
+in `PROJECT_PRESET`), so keys loadout does not write keep their place.
 
 ## Account skills: `skills/synced`
 
@@ -160,10 +166,3 @@ folder, directly in Claude's skills folder; a `synced` anywhere else, such as in
 folder or inside a skill, is the user's (`HARNESS_RUNTIME_ENTRIES` in `runtime_paths.py`).
 A source skill named `synced` that would render into Claude's skills folder is refused with exit 3
 by `sync`, `check` and `init`, since it would land on the account's skills; rename the skill.
-
-## Gotcha: byte comparison against the live file always fails
-
-Generated and live `claude/settings.json` are semantically equal but byte-different,
-because `deep_merge` preserves the live file's insertion order for shared keys. A
-byte-level `check --live` would report Claude as drifted permanently. Drift comparison
-must be semantic, per owned subtree.

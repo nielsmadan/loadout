@@ -19,9 +19,10 @@ with Codex, OpenCode, and Pi.
 | MCP server definitions | `.factory/mcp.json` | `.factory/mcp.json` |
 | plugin declarations | `.factory/settings.json` | `.factory/settings.json` |
 | skills | `.factory/skills/` | `.factory/skills/` |
-| module config | authored path beneath `.factory/` | not in the legacy project preset |
+| agents (custom droids) | `.factory/droids/` | `.factory/droids/` |
+| module config | authored path beneath `.factory/` | not in the project preset |
 
-Custom droids, slash commands, and output styles are not Loadout slices.
+Slash commands and output styles are not Loadout slices.
 
 ## Shell permissions
 
@@ -121,10 +122,44 @@ command that resolves incorrectly.
 
 ## MCP servers
 
-`.factory/mcp.json` has the Claude-compatible `{ "mcpServers": ... }` shape. Stdio entries
-carry `command`, `args`, and optional `env`. HTTP entries carry `type = "http"`, `url`, and an
-optional `Authorization: Bearer ${ENV_VAR}` header. Loadout writes the variable reference,
-never its secret value.
+`.factory/mcp.json` has the Claude-compatible `{ "mcpServers": ... }` shape;
+`render_droid_servers` wraps the same entries `render_claude_servers` builds. Stdio entries carry
+`"type": "stdio"`, `command`, `args`, and `env`, and `args` and `env` are always written, empty
+when the source sets none. HTTP entries carry `"type": "http"`, `url`, and `headers` when there are any: an
+`Authorization: Bearer ${ENV_VAR}` header for the source's `auth_env_var`, then the source's
+literal `headers`. Loadout writes the variable reference, never its secret value. Three servers,
+rendered:
+
+```json
+{
+  "mcpServers": {
+    "svc": {
+      "type": "http",
+      "url": "https://svc.example/mcp",
+      "headers": {
+        "Authorization": "Bearer ${SVC_TOKEN}",
+        "X-Team": "core"
+      }
+    },
+    "tools": {
+      "type": "stdio",
+      "command": "tools-mcp",
+      "args": [
+        "--stdio"
+      ],
+      "env": {
+        "TOOLS_MODE": "fixture"
+      }
+    },
+    "bare": {
+      "type": "stdio",
+      "command": "bare-mcp",
+      "args": [],
+      "env": {}
+    }
+  }
+}
+```
 
 ## Plugins
 

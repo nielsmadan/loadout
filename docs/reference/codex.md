@@ -8,10 +8,8 @@
 | `~/.codex/rules/*.rules` | command execution rules — **a directory, read whole** |
 
 Codex is one of two harnesses that already gives permissions their own file. `loadout`
-fully owns `codex/rules/permissions.rules`; nothing hand-maintained lives in it, so it
+fully owns `~/.codex/rules/permissions.rules`; nothing hand-maintained lives in it, so it
 needs no base document.
-
-`codex/rules` is deployed as a **directory symlink**.
 
 `CODEX_HOME` replaces `~/.codex`, taking `rules/` with it. Verified 2026-08-09 against
 codex-cli 0.147.0. See
@@ -89,6 +87,7 @@ the allowlist in the same class. See [README](README.md#the-wrapper-command-bypa
 | `~/.codex/rules/permissions.rules` | fully owned, text; written only when it holds a rule |
 | `~/.codex/config.toml` | **declared keys only** — see below |
 | `~/.codex/AGENTS.md`, `~/.codex/hooks.json`, `~/.codex/skills/` | fully owned |
+| `~/.codex/agents/` | one TOML file per source agent, its body as `developer_instructions`; `.codex/agents/` in a project |
 
 MCP decisions map `allow → approve`, `ask → prompt`, `deny → deny`.
 

@@ -71,19 +71,29 @@ from a source entry of `jina/*` — the `/` becomes `_`.
 
 ## What loadout emits
 
-`opencode/opencode.json` → the `permission` key only.
+From `GLOBAL_PRESET["opencode"]` in `harnesses.py` and `PROJECT_PRESET["opencode"]` in
+`project.py`. Global paths are under `${XDG_CONFIG_HOME:-~/.config}/opencode`.
 
-The rest of the file (`$schema`, `model`, `provider`) is hand-maintained, so this is a
-base-document case like Claude's.
+| slice | global | project |
+|---|---|---|
+| permissions | the `permission` key of `opencode.json` (`render_opencode`) | the `permission` key of `opencode.json` at the repository root |
+| MCP server definitions | the `mcp` key of `opencode.json` (`render_opencode_servers`) | the `mcp` key of the same `opencode.json` |
+| hooks | `plugins/loadout-hooks.js`, a generated plugin ([hooks-adapters.md](hooks-adapters.md)) | not in the project preset |
+| agents | `agents/`, each written with `mode: subagent` unless the source sets a `mode` | `.opencode/agents/` |
+| skills | `skills/` | `.opencode/skills/`, or the shared `.agents/skills/` when Codex is also declared and the copies are identical |
+| instructions | `AGENTS.md` | `AGENTS.md` at the repository root, shared with Codex, Droid and Pi |
+| module config | authored paths beneath the root, such as hand-written plugin files in `plugins/` | not in the project preset |
 
-**This file has two owners.** `permissions/sync.py` writes `permission`;
-`mcp/sync.py` writes `mcp`. Neither may clobber the other's key. This is why the real
-output count across the repo is 12 distinct paths, not 13.
+**`opencode.json` has two owners**, the `permissions` and `mcp` slices, each writing its own key.
+Everything else in the file (`$schema`, `model`, `provider`) comes from the `[opencode] settings`
+fragment globally, and from the existing file at project scope (`preserve_foreign`). OpenCode has
+no plugins slice: a plugin is on because its file is in `plugins/`, so there is no enablement
+list to render.
 
 `[opencode.extra]` in `permissions.toml` supplies additional `permission.<key>` toggles
 verbatim — currently `skill`, `webfetch`, `websearch`, `codesearch`.
 
-`opencode/AGENTS.md` → the global instructions document. It is a document at a path, like the
+`AGENTS.md` is the global instructions document. It is a document at a path, like the
 other four harnesses — **not** the `instructions` key in `opencode.json`, which is a separate
 include feature for rule files someone else already wrote (globs and remote URLs among them).
 Loadout leaves that key untouched, so nothing is included twice. Upstream calls the document

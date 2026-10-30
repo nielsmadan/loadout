@@ -130,11 +130,13 @@ Three pure functions in `plugins.py`, none of which reads a file:
   `installLocation` paths — machine state a generated file must not hold
   ([0008](../decisions/0008-generated-files-carry-no-machine-state.md)) — and the harness
   maintains it. Codex is the easier case: its registration is ordinary configuration in the file
-  loadout already stages, so it renders. See
+  loadout already writes, so it renders. See
   [0015](../decisions/0015-enablement-is-rendered-installation-is-reported.md).
 
-These have no command surface yet; they are pure functions with tests, exactly as
-`unrecognised_events` arrived with the hooks slice.
+`sync` and `check` print what the first two find as notes, at both scopes, through
+`notices_for` in `notices.py`: `<plugin>: no <key> — left switched off` for a reference the
+harness cannot address, and `marketplace '<name>' is not registered; the plugin will not resolve
+yet` for an unregistered marketplace. Notes are advisory and never move the exit code.
 
 ## Reading it back
 
@@ -192,5 +194,5 @@ Each is a real gap, not a judgement that the feature is absent:
   installs register differently from local ones, the Codex half of
   [0015](../decisions/0015-enablement-is-rendered-installation-is-reported.md) may be
   incomplete.
-- Project scope outside Droid. Droid's legacy project preset renders plugin declarations to
+- Project scope outside Droid. Droid's project preset renders plugin declarations to
   `.factory/settings.json`; the other harnesses have no project plugin declaration route.

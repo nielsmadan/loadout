@@ -1,7 +1,7 @@
 # Generated hook adapters
 
-Claude and Codex read a hook document. **OpenCode and Pi register hooks in code**, so loadout
-generates the code — an OpenCode plugin and a Pi extension, both rendered by
+Claude, Codex and Droid read a hook document. **OpenCode and Pi register hooks in code**, so
+loadout generates the code — an OpenCode plugin and a Pi extension, both rendered by
 `src/loadout/adapters.py`.
 
 This is a different mechanism, not a missing one. Neither harness lacks hooks; Pi's documented
@@ -32,7 +32,9 @@ All four are reproducible without a credential: `npm pack @opencode-ai/plugin@1.
 
 The unit is *(ABI event, capability) → harness hook*. An event with no mapping on a target is
 **named in a comment in the generated file and not embedded** — leaving it in the table would put
-a hook in the file that looks wired and never fires.
+a hook in the file that looks wired and never fires. `sync` and `check` also print it as a note,
+`<event> has no adapter mapping, so it will not fire` (`notices_for` in `notices.py`, whose
+`_ADAPTED` set is built from these two mapping tables).
 
 ### OpenCode
 
@@ -140,7 +142,8 @@ matches.
 ## What has no adapter
 
 Anything using a capability outside the ABI stays **hand-written and native**, placed by the
-plugins slice. That is a permanent split, not a gap to close:
+module-config slice, whose global destination is each harness's config root
+(`GLOBAL_PRESET` in `harnesses.py`). That is a permanent split, not a gap to close:
 
 - **Pi** — `before_provider_request`, `render`, `user_bash`, `model_select`,
   `thinking_level_select`
@@ -155,10 +158,13 @@ the render path and the file its reader would look in is that one.
 
 ## Extraction
 
-The adapters are the only renderers with **no inverse, permanently**. Every other renderer writes
-a data format, so inverting it is work someone could do. These write JavaScript and TypeScript: a
-hook document is recoverable from loadout's own output only because loadout put it there, and a
-plugin a user wrote by hand — the case extraction exists for — is a program, not a document.
+The adapters are two of the six renderers named in `NOT_INVERTED`
+(`tests/test_extract_roundtrip.py`); the other four are Codex TOML renderers, covered in
+[servers.md](servers.md#codex-renderers-whose-inverse-is-not-registered). The adapters' reason is
+their own. Every other renderer writes a data format, so inverting it is work someone could do.
+These write JavaScript and TypeScript: a hook document is recoverable from loadout's own output
+only because loadout put it there, and a plugin a user wrote by hand — the case extraction exists
+for — is a program, not a document.
 
-Both are named in `NOT_INVERTED` with that reason; `test_no_renderer_lacks_an_inverse_without_being_named`
-fails if a third renderer is added without either an extractor or an entry.
+`test_no_renderer_lacks_an_inverse_without_being_named` fails if a renderer is added without
+either an extractor or an entry.

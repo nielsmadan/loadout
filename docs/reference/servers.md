@@ -82,8 +82,9 @@ Five harnesses, two scopes:
 | Pi | `${PI_CODING_AGENT_DIR:-~/.pi/agent}/mcp.json` | **none — `.mcp.json` already serves it** |
 
 Renderers, keyed the way `RENDERERS` in `permissions/renderers.py` names them: `claude-servers`
-(global — a flat `{name: entry}` map), `claude-project-servers` (project — the same
-per-entry shape wrapped in `{"mcpServers": …}`, owning `.mcp.json` outright),
+(global — the per-entry map wrapped in `{"mcpServers": …}`, a `MergedJsonSpec` that owns only the
+`mcpServers` key of `.claude.json`), `claude-project-servers` (project — the same wrapped
+document, owning `.mcp.json` outright),
 `codex-servers` (TOML text; the function is scope-agnostic and no preset entry uses it now that
 `codex-config` renders definitions and policy together — it stays registered for extraction),
 `droid-servers` (the `{"mcpServers": …}` document at both scopes), `opencode-servers` (one
@@ -146,10 +147,14 @@ keys are assigned in place rather than popped and re-added, for the same reason 
 replaces where content already sits: moving the key would reshuffle the file whenever the
 harness rewrote it, and `check` would report that as drift on every run.
 
-**One key, statically owned, so `record.py` is not needed.** Codex needs a record because the
-key *names* are the user's — `[plugins."x@y"]`, `[marketplaces.z]` — an open set loadout
-cannot enumerate. Here the owned set is the constant `{"mcpServers"}`, so writing the map is
-enough for add, update *and* delete.
+**One key, statically owned, so `record.py` is not needed.** Only Codex's `defaults` slice
+(`codex-settings`) keeps a `.owned` record beside its fragment, because the keys it owns are
+whichever top-level keys the user's fragment names — an open set loadout cannot enumerate. Every
+other merged renderer declares a fixed set: `codex-config` owns `mcp_servers`, `codex-plugins`
+owns `plugins` and `marketplaces`, and here the owned set is the constant `{"mcpServers"}`
+(`RENDERERS` in `permissions/renderers.py`; `_attach_records` in `emit.py` writes a record only
+for a `MergedTomlSpec` whose `owns` is a function). Writing the map is enough for add, update
+*and* delete.
 
 That last one closed a real defect. The staged path was **add-only**: `sync_claude_mcp` listed
 what was registered and called `add-json` for the rest, and `claude mcp add-json` refuses to
@@ -168,30 +173,38 @@ motivating one.
 
 ## A server defined but not permitted is reported
 
-`unpermitted_servers` (`notices.py`) names every server `mcp.toml` defines that no `[mcp]` policy
-entry — allow, ask or deny — mentions by name, in declaration order. Two files, two edits: define
-the server, then allow its tools. Forgetting the second gives a server whose tools are all denied
+At global scope, `unpermitted_servers` (`notices.py`) names every server `mcp.toml` defines that
+no `[mcp]` policy entry — allow, ask or deny — mentions by name, in declaration order. Two files,
+two edits: define the server, then allow its tools. Forgetting the second gives a server whose tools are all denied
 and no error anywhere. The notice is silent as soon as a policy names the server at all, even for
 one tool — it flags a definition nobody has said anything about, not policy completeness.
 
 ```
-$ loadout check
-mcp.servers: jina is defined but no [mcp] policy allow/ask/deny entry names it — its tools are all denied with no error
+$ loadout check --global
+note: mcp.servers: jina is defined but no [mcp] policy allow/ask/deny entry names it — its tools are all denied with no error
 ```
 
-Advisory only, like every notice — it never moves the exit code.
+`sync --global` prints the same note. Project scope does not check this: `_unpermitted_servers`
+is called from `collect_notices` only, never from `project_notices`. Advisory only, like every
+notice — it never moves the exit code.
 
-## Two renderers whose inverse cannot be registered
+## Codex renderers whose inverse is not registered
 
 `codex-servers` and `codex-plugins` both have a written, tested inverse — `extract_codex_servers`
-and its `codex-plugins` counterpart, each pinned by its own test
-(`tests/test_extract_servers.py`, `tests/test_extract_plugins.py`). Neither is registered in
-`EXTRACTORS` or `VALUE_EXTRACTORS`, for the same reason: both are `DocumentTextSpec` renderers
-producing TOML **text**, while every member of `VALUE_EXTRACTORS` takes a **parsed document**.
-Registering either would make `extract_value(name, x)` mean two different things about `x`
-depending on the name, and a dict passed where text is expected would fail somewhere less obvious
-than the call. So both stay named in `NOT_INVERTED` (`tests/test_extract_roundtrip.py`) with that
-reason, rather than being silently missing.
+and `extract_codex_plugins`, each pinned by its own test (`tests/test_extract_servers.py`,
+`tests/test_extract_plugins.py`). Neither is registered in `EXTRACTORS` or `VALUE_EXTRACTORS`,
+for the same reason: `codex-servers` is a `DocumentTextSpec` and `codex-plugins` a
+`MergedTomlSpec`, and both produce TOML **text**, while every member of `VALUE_EXTRACTORS` takes a
+**parsed document**. Registering either would make `extract_value(name, x)` mean two different
+things about `x` depending on the name, and a dict passed where text is expected would fail
+somewhere less obvious than the call.
+
+`NOT_INVERTED` (`tests/test_extract_roundtrip.py`) names both, with that reason, rather than
+leaving them silently missing. It also names the other two Codex `MergedTomlSpec` renderers:
+`codex-config`, whose halves invert separately (definitions through `extract_codex_servers`,
+policy through `codex-mcp-permissions`), and `codex-settings`, whose owned keys are known only
+from the `.owned` record that extraction is never handed. Its other two entries are the hook
+adapters, `opencode-hooks` and `pi-hooks` ([hooks-adapters.md](hooks-adapters.md)).
 
 Every other definition renderer's inverse is registered in `VALUE_EXTRACTORS`:
 `claude-project-servers` → `extract_claude_servers`, `claude-servers` (global) →
@@ -204,7 +217,7 @@ Every other definition renderer's inverse is registered in `VALUE_EXTRACTORS`:
 | renderer | recovers | loses |
 |---|---|---|
 | `claude-project-servers` (`.mcp.json`) | every field; a stray top-level key or unknown `type` is reported | — |
-| `claude-servers` (global) | every field, from the flat `{name: entry}` map with no `mcpServers` wrapper | — |
+| `claude-servers` (global) | every field, from the `mcpServers` key of `.claude.json`; the harness's keys beside it are expected and not reported | — |
 | `droid-servers` | every field from the `mcpServers` wrapper | — |
 | `opencode-servers` | every field; nothing is noted about the rest of `opencode.json`, since `permission` has its own owner | — |
 | `pi-servers` | every field, including `bearerTokenEnv`; a stray top-level key is reported | — |
