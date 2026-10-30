@@ -64,6 +64,86 @@ deleting it. `unparsable` is a shared file, global or a project's `.claude/setti
 replace it; one the source no longer renders has nothing to replace it with, so only fixing or
 deleting it helps.
 
+## Settings a harness saves itself
+
+Some harness commands save a setting into a file loadout writes. Claude Code's `/model`, for
+example, writes `model` into `~/.claude/settings.json`. Loadout owns that file, so the change is
+drift like any other edit: `check` reports it and `sync` refuses to overwrite it.
+
+Which keys count depends on the file. Claude Code's and Droid's `settings.json`, OpenCode's
+`opencode.json` and Pi's `settings.json` are written whole, so any key the harness adds or changes
+there is `hand-edited`, whether the source sets it or not. Codex's `config.toml` is shared: loadout
+compares only the keys the source sets, reports a change to one as `owned-key`, and leaves every
+other key to Codex.
+
+There are two answers:
+
+1. **Keep the setting in the source.** Port the new value into the fragment that sets it, such as
+   the settings or Codex `defaults` fragment, or ask the `/loadout` skill to, then run
+   `loadout sync`. Every machine gets the value, and the next change made in the harness is drift
+   again.
+2. **Hand the key to the harness.** Remove it from the source, if it is there, and name it in the
+   agent block's `preserve`. Sync then copies the key from the file on disk into the file it
+   writes, and `check` no longer reports changes to it:
+
+   ```toml
+   [claude]
+   settings = "claude"
+   preserve = ["model", "modelSettings"]
+   ```
+
+   `preserve` takes top-level keys only, so preserving `modelSettings` hands Claude Code the whole
+   key, every model's entry in it. A key the source still sets, or one a slice writes, such as
+   `permissions`, or `enabledPlugins` when `[claude]` declares `plugins`, is refused with
+   `preserve names generated key(s)`. A preserved key is copied from this machine's file, so a
+   fresh machine starts without it until the harness writes it there.
+
+   Codex needs no `preserve`. Remove the key from the `defaults` fragment: the next `sync` deletes
+   it from `config.toml`, and from then on it is Codex's. While Codex's value differs from the one
+   loadout wrote, that sync refuses; `sync --force` deletes the key anyway.
+
+What each harness writes, by the version checked:
+
+| Harness | Action | Key | File | `check` reports |
+| --- | --- | --- | --- | --- |
+| Claude Code 2.1.312 | `/model` | `model` | `~/.claude/settings.json` | `hand-edited` |
+| | `/effort`, or the effort in `/model` | `modelSettings` (`<model>.effortLevel`) | same | `hand-edited` |
+| | `/plugin` install, enable or disable at user scope | `enabledPlugins` | same | `hand-edited` |
+| | `/plugin marketplace add` | `extraKnownMarketplaces` | same | `hand-edited` |
+| | `/theme`, `/config` | `theme` and the other keys the panel sets | same | `hand-edited` |
+| | Making auto mode the default | `permissions` (`defaultMode`) | same | `hand-edited`; `permissions` cannot be preserved, so set `defaultMode` under `permissions` in the settings fragment |
+| | Starting after an upgrade that retires a model name | `model` | same | `hand-edited` |
+| | `claude mcp add --scope user` | `mcpServers` | `~/.claude.json` | `owned-key` |
+| Codex 0.165.0 | `/model` | `model`, `model_reasoning_effort` | `~/.codex/config.toml` | `owned-key` when `defaults` sets them, `owned-key-removed` when Codex deletes one; nothing otherwise |
+| | Approving an MCP tool for good | `mcp_servers.<server>.tools.<tool>.approval_mode` | same | `owned-key` for a server the source defines |
+| | Installing, enabling or disabling a plugin | `plugins."<name>@<marketplace>"` | same | `owned-key` when `[codex]` declares `plugins` |
+| | Service tier, theme, status line, trusting a project | `service_tier`, `tui`, `projects` | same | nothing, unless `defaults` sets them |
+| Droid 0.251.0 | `/model`, and the reasoning-effort and autonomy pickers | `sessionDefaultSettings` | `~/.factory/settings.json` | `hand-edited` |
+| | `/settings` | `theme` and the other keys it sets | same | `hand-edited` |
+| | Installing or enabling a plugin, adding a marketplace | `enabledPlugins`, `extraKnownMarketplaces` | same | `hand-edited` |
+| | Trusting a folder | `trustedFolders` | same | nothing; loadout preserves it |
+| OpenCode 2.2.0 | Picking a model in the TUI | recent and favourite models | `~/.local/state/opencode/model.json` | nothing; loadout does not write it |
+| | TUI settings | | `~/.config/opencode/cli.json` | nothing; loadout does not write it |
+| | The desktop app's shell setting | `shell` | `~/.config/opencode/opencode.json` | `hand-edited` |
+| | `opencode plugin add`, `opencode mcp add --global` | `plugins`, `mcp` | same | `hand-edited` |
+| Pi 1.4.0 | `/model`, then Ctrl+S | `defaultProvider`, `defaultModel` | `~/.pi/agent/settings.json` | `hand-edited` |
+| | `/thinking`, then Ctrl+S | `defaultThinkingLevel` | same | `hand-edited` |
+| | `/settings`, `/scoped-models` | `theme`, `modelThinkingLevels`, `enabledModels` and others | same | `hand-edited` |
+| | `pi install`, `pi config` | `packages` | same | `hand-edited`; `packages` belongs to the `plugins` slice and cannot be preserved |
+| | Starting after an upgrade | `lastChangelogVersion` | same | nothing; loadout preserves it |
+| | pi-permission-system's `/permission-system` | `yoloMode`, `debugLog`, `permissionReviewLog` | `~/.pi/agent/extensions/pi-permission-system/config.json` | `hand-edited`; the source has no place for these keys, so preserve them |
+
+Loadout writes Pi's `settings.json` only when `[pi]` declares `plugins`; without it, none of the
+Pi rows on that file is drift.
+
+At project scope, Claude Code saves a "don't ask again" permission to `.claude/settings.local.json`,
+which loadout does not write; record it in `permissions.local.toml` to keep it with the source. A
+plugin enabled at project scope goes into `.claude/settings.json` or `.factory/settings.json`.
+Claude Code's `enabledPlugins` there stays as the harness wrote it until the project has a
+`loadout/settings/claude.json`; from then on that file holds every key no slice writes, and a key
+the harness adds is `hand-edited`. Droid's project `enabledPlugins` belongs to the `plugins` slice,
+so a plugin enabled there is `hand-edited`: declare it in `loadout/plugins.json`.
+
 ## Sync or check refuses a global setup
 
 A folder holding a `loadout.toml` renders only if it is this machine's registered global source.

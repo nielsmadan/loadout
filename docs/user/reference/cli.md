@@ -69,7 +69,8 @@ nothing to port, so check where it points before deleting it), or `unparsable` (
 array or a TOML scalar where a table goes: fix or delete it and sync, or `sync --force` replaces it
 outright; plain `sync` refuses with exit 3 and names the file. One the source no longer renders
 has nothing to replace it, so `sync` refuses it with or without `--force` until it is fixed or
-deleted).
+deleted). Settings a harness saves itself, such as Claude Code's `/model`, are drift too; see
+[settings a harness saves itself](../troubleshooting.md#settings-a-harness-saves-itself).
 `check --json` reports the same kind per path and exits with the same code as `check`. How `sync`
 tells its own output from an edit, what it retires, and what it leaves alone is described in
 [what sync protects, retires and reports](https://github.com/nielsmadan/loadout/blob/main/docs/reference/sync.md).

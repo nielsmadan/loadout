@@ -317,3 +317,50 @@ flags these changes; it does not merge them.
    and names the file: read it in full before asking for `--force`. For a file whose diff is
    withheld because it holds a secret, which neither the terminal nor that file shows, read the
    file on disk and compare it with the source first: `--force` replaces whatever it holds.
+
+### Settings a harness saves itself
+
+Harness commands save some settings into files loadout writes. That is drift: the source owns
+those keys. Claude's and Droid's `settings.json`, OpenCode's `opencode.json`, Pi's `settings.json`
+and pi-permission-system's `config.json` are written whole, so any key the harness adds or
+changes there is `hand-edited`, set in the source or not. Codex's `config.toml` compares only the
+keys the source sets, as `owned-key` or `owned-key-removed`.
+
+| harness | action | key | file |
+|---|---|---|---|
+| Claude | `/model`; a model name retired by an upgrade | `model` | `~/.claude/settings.json` |
+| Claude | `/effort`, or the effort in `/model` | `modelSettings` | `~/.claude/settings.json` |
+| Claude | `/plugin` at user scope | `enabledPlugins`, `extraKnownMarketplaces` | `~/.claude/settings.json` |
+| Claude | `/theme`, `/config` | `theme` and other keys | `~/.claude/settings.json` |
+| Claude | making auto mode the default | `permissions.defaultMode` | `~/.claude/settings.json` |
+| Codex | `/model` | `model`, `model_reasoning_effort` | `~/.codex/config.toml` |
+| Codex | approving an MCP tool for good | `mcp_servers.<server>.tools.<tool>.approval_mode` | `~/.codex/config.toml` |
+| Codex | the plugin browser | `plugins."<name>@<marketplace>"` | `~/.codex/config.toml` |
+| Droid | `/model`, effort and autonomy pickers | `sessionDefaultSettings` | `~/.factory/settings.json` |
+| Droid | `/settings`; plugin and marketplace installs | `theme` and other keys; `enabledPlugins`, `extraKnownMarketplaces` | `~/.factory/settings.json` |
+| OpenCode | desktop app shell setting; `opencode plugin add`; `opencode mcp add --global` | `shell`, `plugins`, `mcp` | `~/.config/opencode/opencode.json` |
+| Pi | `/model` or `/thinking`, then Ctrl+S | `defaultProvider`, `defaultModel`, `defaultThinkingLevel` | `~/.pi/agent/settings.json` |
+| Pi | `/settings`, `/scoped-models`; `pi install`, `pi config` | `theme`, `modelThinkingLevels`, `enabledModels`; `packages` | `~/.pi/agent/settings.json` |
+| Pi | `/permission-system` | `yoloMode`, `debugLog`, `permissionReviewLog` | `~/.pi/agent/extensions/pi-permission-system/config.json` |
+
+Not drift: OpenCode's TUI model pick (`~/.local/state/opencode/model.json`) and TUI settings
+(`~/.config/opencode/cli.json`), which loadout does not write; Droid's `trustedFolders` and Pi's
+`lastChangelogVersion`, which the presets preserve; Pi's `settings.json` when `[pi]` does not
+declare `plugins`; Codex keys the source does not set; Claude's project
+`.claude/settings.local.json`, which loadout does not write.
+
+Ask the user which answer they want:
+
+1. Port the value into the source that owns the key and sync: the settings, `defaults` or
+   `plugins` fragment, or `[mcp]` policy in `permissions.toml` for a Codex tool approval. Every
+   machine gets it.
+2. Hand the key to the harness: remove it from the fragment, if it is there, and add it to that
+   agent block's `preserve`, such as `preserve = ["model", "modelSettings"]` under `[claude]`, then
+   sync. Sync copies a preserved key from the file on disk, so a fresh machine starts without it.
+   `preserve` takes top-level keys only (preserving `modelSettings` hands over every model's entry)
+   and refuses a key the source or a slice writes: `permissions`, Claude's `hooks` and
+   `enabledPlugins` and Droid's `enabledPlugins` when those slices are declared, and Pi's
+   `packages`. Those can only be ported. pi-permission-system's keys have no place in the source,
+   so preserving is the only answer for them. For Codex, removing the key from `defaults` is
+   enough; the next sync deletes it from `config.toml`, refusing while Codex's value differs from
+   loadout's until the user approves `--force`.
