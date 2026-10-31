@@ -30,6 +30,10 @@ applies its permissions and enabled servers, so the preview names it, `Keep in p
 .claude/settings.local.json`, with a pointer to `/loadout`, which can move its permissions into
 `loadout/permissions.local.toml`.
 
+Droid's legacy `.factory/hooks/hooks.json` is kept in place and named the same way. Droid still
+loads it and moves it to `.factory/hooks.json` the next time it saves hooks; init run again after
+that adopts it.
+
 ## What discovery reads
 
 Discovery is an allowlist. Under each harness root it reads only the paths below, and everything

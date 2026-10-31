@@ -120,9 +120,11 @@ by event name" (fetched 2026-10-31), and `droid exec` 0.251.0 ran a top-level `S
 an event Droid saves there itself is drift.
 
 Init adopts a `hooks.json` keyed by event. Events under a `hooks` key in it never ran, so init
-reports them and does not adopt them. Droid also still loads the legacy `.factory/hooks/hooks.json`;
-global init adopts it as module configuration, copied as it is, and project init leaves it in
-place.
+reports them and does not adopt them.
+
+Droid also still loads the legacy `.factory/hooks/hooks.json`, and moves it to
+`.factory/hooks.json` the next time it saves hooks. Global init adopts it as module
+configuration, copied as it is; project init keeps it in place and names it in the preview.
 
 The documented event set used for notices is `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `Notification`,
 `Stop`, `SubagentStop`, `PreCompact`, `SessionStart`, and `SessionEnd`.

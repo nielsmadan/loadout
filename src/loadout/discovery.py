@@ -384,6 +384,11 @@ def _managed(relative: Path, entries: tuple[str, ...], *, directory: bool) -> bo
     return False
 
 
+DROID_LEGACY_HOOKS = (
+    "Droid's legacy hooks file, which Droid still loads and loadout does not render; Droid "
+    "moves it to .factory/hooks.json and archives it as hooks/hooks.migrated.json the next "
+    "time it saves hooks, and init run again after that adopts it"
+)
 CLAUDE_LOCAL_SETTINGS = (
     "Claude's personal settings for this repository, which loadout does not render and Claude "
     "still applies; /loadout can move its permissions into loadout/permissions.local.toml"
@@ -467,6 +472,7 @@ class _InventoryBuilder:
     def _walk(self, path: Path, mapping: RootMapping, ancestors: tuple[Path, ...]) -> None:
         relative = path.relative_to(mapping.source) if mapping.kind != "file" else Path(path.name)
         entries = managed_paths(self.scope, mapping)
+        self._droid_legacy_hooks(path, relative, mapping)
         if self._claude_local_settings(path, relative, mapping) or (
             entries is not None and not _managed(relative, entries, directory=path.is_dir())
         ):
@@ -526,6 +532,28 @@ class _InventoryBuilder:
                 self._walk(child, mapping, (*ancestors, canonical))
         else:
             self._file(path, canonical, destination, mapping)
+
+    def _droid_legacy_hooks(self, path: Path, relative: Path, mapping: RootMapping) -> None:
+        """A project's `.factory/hooks/hooks.json`, which Droid still loads, named in the
+        preview; the folder holding it is not otherwise walked."""
+        legacy = path / "hooks.json"
+        if (
+            self.scope != "project"
+            or mapping.harnesses != ("droid",)
+            or relative != Path("hooks")
+            or not legacy.is_file()
+        ):
+            return
+        self.remember(legacy, read=False)
+        self.candidates[legacy, None] = Candidate(
+            legacy,
+            legacy.resolve(),
+            None,
+            mapping.harnesses,
+            "hooks",
+            "retained dependency",
+            DROID_LEGACY_HOOKS,
+        )
 
     def _claude_local_settings(self, path: Path, relative: Path, mapping: RootMapping) -> bool:
         """A project's personal Claude settings, kept in place and named in the preview."""
