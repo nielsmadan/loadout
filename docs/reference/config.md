@@ -251,13 +251,18 @@ settings, which is why those targets need a `base` document and the rest do not.
 |---|---|---|
 | Claude | `~/.claude/settings.json` → `hooks` | `.claude/settings.json` → `hooks` |
 | Codex | `~/.codex/hooks.json` → `hooks` | |
-| Droid | `~/.factory/hooks.json` → `hooks` | `.factory/hooks.json` → `hooks` |
+| Droid | `~/.factory/hooks.json`, events at the top level | `.factory/hooks.json`, events at the top level |
 | OpenCode | **in code** — `~/.config/opencode/plugins/*.ts` | |
 | Pi | **in code** — `~/.pi/agent/extensions/*.ts` | |
 | Antigravity | `~/.gemini/config/hooks.json` | `.agents/hooks.json` |
 
 **Claude, Codex, and Droid use the same declarative entry shape.** Each is a map of event name
-→ list of entries, each `{matcher?, hooks: [{type, command, timeout}]}`. Observed events:
+→ list of entries, each `{matcher?, hooks: [{type, command, timeout}]}`. Claude and Codex put that
+map under a `hooks` key; Droid's standalone `hooks.json` is the map itself, and Droid reads a
+`hooks` key only in `settings.json` (Factory's hooks reference, fetched 2026-10-31; see
+[droid.md](droid.md#hooks)). Codex's `hooks.json` must have the key: rust-v0.165.0 parses it as
+`HooksFile` (`codex-rs/config/src/hook_config.rs`), `deny_unknown_fields` with `description` and
+`hooks`. Observed events:
 
 **Claude — 31 hook events**, from the 2.1.226 binary. Extracted by *shape*
 (`Name:{summary:"…"`), not by naming candidates, so the query could return names nobody

@@ -219,7 +219,7 @@ def test_an_owner_only_project_settings_document_keeps_its_residual_owner_only(
     droid = root / ".factory/hooks.json"
     droid.parent.mkdir()
     hooks = {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "true"}]}]}
-    droid.write_text(json.dumps({"hooks": hooks}))
+    droid.write_text(json.dumps(hooks))
     droid.chmod(0o600)
     _git(root, "init", "-q")
 

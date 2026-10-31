@@ -734,9 +734,9 @@ def extract_codex_mcp(document: Any) -> Extraction:
 
 
 # --------------------------------------------------------------------------
-# hooks — the inverse of the two `ValueSpec` renderers. Both return the value of
-# the `hooks` key; they differ only in whether anything else in the file has an
-# owner, and in which harness's variables cannot be re-rendered.
+# hooks — Claude's and Codex's return the value of the `hooks` key; they differ
+# only in whether anything else in the file has an owner, and in which harness's
+# variables cannot be re-rendered. Droid's hooks.json is the event map itself.
 # --------------------------------------------------------------------------
 
 
@@ -785,15 +785,27 @@ def extract_codex_hooks(document: Any) -> ValueExtraction:
     return ValueExtraction(copy.deepcopy(dict(value)), notes)
 
 
+DROID_WRAPPED_HOOKS = (
+    "hooks.json wraps events in a `hooks` key, which Droid reads only in settings.json, so "
+    "those hooks never ran and are not adopted; to keep them, move each event to the top "
+    "level of the hooks fragment"
+)
+
+
 def extract_droid_hooks(document: Any) -> ValueExtraction:
+    """`hooks.json` -> the hooks fragment, which is the whole document.
+
+    Events under a `hooks` key never ran, so they are reported rather than adopted:
+    adopting them would switch on hooks the user never had running.
+    """
     if not isinstance(document, Mapping):
         return ValueExtraction({})
-    value = document.get("hooks", {})
-    unowned = [key for key in document if key != "hooks"]
+    wrapped = isinstance(document.get("hooks"), Mapping)
+    value = {key: entry for key, entry in document.items() if not (wrapped and key == "hooks")}
     notes = _foreign_variable_notes(value, "droid")
-    if unowned:
-        notes += (Note("cannot", f"hooks.json holds unowned key(s): {', '.join(unowned)}"),)
-    return ValueExtraction(copy.deepcopy(dict(value)), notes)
+    if wrapped:
+        notes += (Note("dropped", DROID_WRAPPED_HOOKS),)
+    return ValueExtraction(copy.deepcopy(value), notes)
 
 
 # --------------------------------------------------------------------------

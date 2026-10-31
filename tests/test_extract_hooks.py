@@ -1,4 +1,5 @@
-"""The inverse of the two `ValueSpec` hook renderers.
+"""The inverse of the hook renderers: Claude's and Codex's `hooks` value, and Droid's
+standalone `hooks.json`, which is the event map itself.
 
 Two properties, per `docs/reference/extraction.md`:
 
@@ -50,7 +51,7 @@ def codex_file(fragment: dict[str, Any]) -> dict[str, Any]:
 
 
 def droid_file(fragment: dict[str, Any]) -> dict[str, Any]:
-    return {"hooks": render_droid_hooks(fragment)}
+    return render_droid_hooks(fragment)
 
 
 # --- property 1: extract(render(x)) == carried(x), carried == identity --------
@@ -86,7 +87,8 @@ def test_a_clean_document_reports_nothing_and_closes() -> None:
     ):
         extraction = extract_value(name, build(FRAGMENT))
         assert extraction.notes == ()
-        assert render(extraction.value) == build(FRAGMENT)["hooks"]
+        assert build(extraction.value) == build(FRAGMENT)
+        assert render(extraction.value) == FRAGMENT
 
 
 def test_a_foreign_variable_extracts_and_is_noted() -> None:
@@ -114,6 +116,24 @@ def test_an_unowned_key_in_codexs_file_is_noted() -> None:
     assert extraction.value == FRAGMENT
     assert [n.kind for n in extraction.notes] == ["cannot"]
     assert "version" in extraction.notes[0].detail
+
+
+def test_droids_hooks_json_is_the_fragment_comment_keys_included() -> None:
+    """Droid's file is the event map, so a comment key round-trips with the events
+    rather than being reported as a key loadout does not write."""
+    document = {"_comment": "audit", **FRAGMENT}
+    extraction = extract_value("droid-hooks", document)
+    assert extraction.notes == ()
+    assert render_droid_hooks(extraction.value) == document
+
+
+def test_droid_events_under_a_hooks_key_are_reported_and_not_extracted() -> None:
+    """Droid reads a `hooks` key only in settings.json; in hooks.json those hooks
+    never ran, so adopting them would switch on hooks the user never had running."""
+    extraction = extract_value("droid-hooks", {"hooks": FRAGMENT, "Stop": FRAGMENT["Stop"]})
+    assert extraction.value == {"Stop": FRAGMENT["Stop"]}
+    assert [n.kind for n in extraction.notes] == ["dropped"]
+    assert "never ran" in extraction.notes[0].detail
 
 
 def test_claude_does_not_note_the_rest_of_settings_json() -> None:

@@ -666,12 +666,14 @@ def render_pi_project(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
 
 # --------------------------------------------------------------------------
 # hooks — the slice's renderers live in `hooks.py`, which knows nothing about
-# permissions. Both are value renderers: each returns what goes under the
-# `hooks` key, and the composing loop puts it there.
+# permissions. Claude's and Codex's are value renderers: each returns what goes
+# under the `hooks` key, and the composing loop puts it there.
 #
 # On Claude that key sits beside `permissions` and the settings residual in
 # settings.json. On Codex it is the only key in hooks.json. Neither renderer
-# knows or cares — that difference is entirely the preset's.
+# knows or cares — that difference is entirely the preset's. Droid's standalone
+# hooks.json is keyed by event name with no `hooks` key, so its renderer writes
+# the whole document.
 #
 # plugins — same arrangement, in `plugins.py`, with one shape hooks did not
 # need: Codex keeps plugin enablement in `config.toml`, so its renderer produces
@@ -693,7 +695,7 @@ RENDERERS: dict[
     "claude": JsonSpec(render_claude),
     "claude-hooks": ValueSpec(render_claude_hooks),
     "codex-hooks": ValueSpec(render_codex_hooks),
-    "droid-hooks": ValueSpec(render_droid_hooks),
+    "droid-hooks": DocumentJsonSpec(render_droid_hooks),
     "opencode-hooks": DocumentTextSpec(render_opencode_adapter),
     "pi-hooks": DocumentTextSpec(render_pi_adapter),
     "claude-plugins": ValueSpec(render_claude_plugins),

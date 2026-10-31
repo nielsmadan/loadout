@@ -212,7 +212,6 @@ PROJECT_PRESET: dict[str, dict[str, SliceOutput]] = {
             renderer="droid-hooks",
             output=".factory/hooks.json",
             source_slice="hooks",
-            owned_key="hooks",
         ),
         "plugins": SliceOutput(
             renderer="droid-plugins",

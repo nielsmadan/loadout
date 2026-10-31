@@ -112,8 +112,19 @@ settings fragment, so a sync cannot turn machine-local trust history into versio
 
 ## Hooks
 
-Hooks use Droid's declarative `{ "hooks": ... }` document without an adapter. The documented
-event set used for notices is `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `Notification`,
+Hooks use Droid's declarative document without an adapter. A standalone `hooks.json` is keyed
+by event name at the top level, with no `hooks` key: Droid reads a `hooks` key only in
+`settings.json`. Factory's hooks reference says "Standalone `hooks.json` files are keyed directly
+by event name" (fetched 2026-10-31), and `droid exec` 0.251.0 ran a top-level `Stop` hook in
+`hooks.json` and not the same hook under `hooks`. Loadout writes the whole file at both scopes, so
+an event Droid saves there itself is drift.
+
+Init adopts a `hooks.json` keyed by event. Events under a `hooks` key in it never ran, so init
+reports them and does not adopt them. Droid also still loads the legacy `.factory/hooks/hooks.json`;
+global init adopts it as module configuration, copied as it is, and project init leaves it in
+place.
+
+The documented event set used for notices is `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `Notification`,
 `Stop`, `SubagentStop`, `PreCompact`, `SessionStart`, and `SessionEnd`.
 
 Commands may use Droid's `FACTORY_` and `DROID_` environment-variable namespaces. A hook

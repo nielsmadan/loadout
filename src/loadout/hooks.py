@@ -200,7 +200,10 @@ def render_codex_hooks(document: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def render_droid_hooks(document: Mapping[str, Any]) -> dict[str, Any]:
-    """Droid implements the same declarative hook document shape."""
+    """The whole of Droid's standalone hooks.json, which is keyed by event name.
+
+    Droid reads a `hooks` key only in settings.json; in hooks.json it runs nothing
+    under one (Factory's hooks reference, and droid exec 0.251.0)."""
     _reject_foreign_variables(document, "droid")
     return copy.deepcopy(dict(document))
 

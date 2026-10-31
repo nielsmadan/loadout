@@ -196,7 +196,6 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
             renderer="droid-hooks",
             destination="${FACTORY_HOME_OVERRIDE:-~}/.factory/hooks.json",
             source_slice="hooks",
-            owned_key="hooks",
         ),
         "plugins": SliceOutput(
             renderer="droid-plugins",
