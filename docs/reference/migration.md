@@ -32,7 +32,8 @@ applies its permissions and enabled servers, so the preview names it, `Keep in p
 
 Droid's legacy `.factory/hooks/hooks.json` is kept in place and named the same way. Droid still
 loads it and moves it to `.factory/hooks.json` the next time it saves hooks; init run again after
-that adopts it.
+that adopts it. Hooks in a Droid `settings.json` move into the hooks slice when there is no
+`hooks.json`; see [droid.md](droid.md#hooks).
 
 ## What discovery reads
 

@@ -785,6 +785,12 @@ def extract_codex_hooks(document: Any) -> ValueExtraction:
     return ValueExtraction(copy.deepcopy(dict(value)), notes)
 
 
+def extract_droid_settings_hooks(document: Any) -> ValueExtraction:
+    """`settings.json` -> the hooks fragment, for a Droid with no hooks.json to read instead."""
+    value = document.get("hooks", {}) if isinstance(document, Mapping) else {}
+    return ValueExtraction(copy.deepcopy(dict(value)), _foreign_variable_notes(value, "droid"))
+
+
 DROID_WRAPPED_HOOKS = (
     "hooks.json wraps events in a `hooks` key, which Droid reads only in settings.json, so "
     "those hooks never ran and are not adopted; to keep them, move each event to the top "

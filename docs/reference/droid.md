@@ -120,7 +120,11 @@ by event name" (fetched 2026-10-31), and `droid exec` 0.251.0 ran a top-level `S
 an event Droid saves there itself is drift.
 
 Init adopts a `hooks.json` keyed by event. Events under a `hooks` key in it never ran, so init
-reports them and does not adopt them.
+reports them and does not adopt them. When there is no `hooks.json`, Droid reads the `hooks` key
+in `settings.json` instead ("If `hooks.json` is absent, Droid also reads hook declarations from
+the `hooks` key in the matching `settings.json`"). Init moves those into the hooks slice, because
+the `hooks.json` that slice writes would otherwise switch them off without a word. Beside a
+`hooks.json` they never ran, so init reports them and leaves them in the settings fragment.
 
 Droid also still loads the legacy `.factory/hooks/hooks.json`, and moves it to
 `.factory/hooks.json` the next time it saves hooks. Global init adopts it as module

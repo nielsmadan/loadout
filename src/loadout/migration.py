@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Literal
@@ -21,7 +21,13 @@ from .discovery import (
 )
 from .emit import PROJECT_SETTINGS_DIR, project_owned_keys, refuse_project_inputs
 from .errors import LoadoutError
-from .extract import extract, extract_codex_plugins, extract_codex_servers, extract_value
+from .extract import (
+    extract,
+    extract_codex_plugins,
+    extract_codex_servers,
+    extract_droid_settings_hooks,
+    extract_value,
+)
 from .harnesses import DIRECTORY_SLICES, GLOBAL_PRESET, KNOWN_HARNESSES, SHARED_SKILL_READERS
 from .manifest import MANIFEST_NAME, load_manifest
 from .migration_models import (
@@ -68,6 +74,10 @@ OWNERS: dict[str, dict[str, tuple[str, ...]]] = {
     "opencode": {"permissions": ("permission",), "mcp": ("mcp",), "plugins": ("plugin",)},
     "pi": {"plugins": ("packages",)},
 }
+DROID_INERT_SETTINGS_HOOKS = (
+    "hooks in settings.json never ran, because Droid reads them only when hooks.json is "
+    "absent; they stay in the settings fragment and are not adopted as hooks"
+)
 NOT_ADOPTED = "No source slice adopts this category; existing files stay in place."
 # Templates carry no agents, so agents is a readiness category but not an output.CATEGORIES one.
 READINESS_CATEGORIES = CATEGORIES | {"agents"}
@@ -426,7 +436,12 @@ class _PlanBuilder:
             category: {key: value for key, value in document.items() if key in keys}
             for category, keys in ownership.items()
         }
-        residual = {key: value for key, value in document.items() if key not in claimed}
+        moved = existing and self.droid_settings_hooks(candidate, document)
+        residual = {
+            key: value
+            for key, value in document.items()
+            if key not in claimed and not (moved and key == "hooks")
+        }
         if not special or residual:
             values = {"settings": residual, **values}
         self.available_categories.update(
@@ -512,6 +527,7 @@ class _PlanBuilder:
     def project_settings(self, candidate: Candidate, document: dict[str, Any]) -> None:
         """A co-owned file's keys that no slice writes go into the project source, so a
         clone renders them too rather than finding them only on this machine (ADR 0030)."""
+        moved = self.droid_settings_hooks(candidate, document)
         for agent in candidate.harnesses:
             spec = PROJECT_PRESET[agent]["permissions"]
             if not spec.preserve_foreign or self.inventory.root / str(spec.output) != (
@@ -519,7 +535,11 @@ class _PlanBuilder:
             ):
                 continue
             owned = project_owned_keys(self.inventory.harnesses, str(spec.output))
-            residual = {key: value for key, value in document.items() if key not in owned}
+            residual = {
+                key: value
+                for key, value in document.items()
+                if key not in owned and not (moved and key == "hooks")
+            }
             if residual:
                 self.write(
                     Path(PROJECT_SETTINGS_DIR) / f"{agent}.json",
@@ -527,6 +547,34 @@ class _PlanBuilder:
                     private=candidate.private,
                     restricted=_owner_only(candidate.mode),
                 )
+
+    def droid_settings_hooks(self, candidate: Candidate, document: Mapping[str, Any]) -> bool:
+        """Whether Droid's settings.json `hooks` move into the hooks slice. Droid reads them
+        only when hooks.json is absent, and the hooks slice writes hooks.json, so left in
+        the settings fragment they would stop running at the first hook added."""
+        hooks = document.get("hooks")
+        if (
+            "droid" not in candidate.harnesses
+            or candidate.document_name != "settings.json"
+            or candidate.destination is None
+            or not isinstance(hooks, Mapping)
+        ):
+            return False
+        beside = candidate.destination.with_name("hooks.json")
+        if any(
+            c.destination == beside and c.disposition == "migrated"
+            for c in self.inventory.candidates
+        ):
+            self.notes.append(f"{candidate.destination}: {DROID_INERT_SETTINGS_HOOKS}")
+            return False
+        extraction = extract_droid_settings_hooks(document)
+        self.notes.extend(f"{candidate.destination}: {note.detail}" for note in extraction.notes)
+        project = self.inventory.scope == "project"
+        values = self.project_values if project else self.global_values
+        self.adopt_value(values, "hooks", "droid", extraction.value, candidate)
+        if not project:
+            self.global_slices["droid"].add("hooks")
+        return True
 
     def opaque(self, candidate: Candidate, *, existing: bool = True) -> None:
         if self.inventory.scope == "project":
