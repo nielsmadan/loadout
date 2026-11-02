@@ -1142,8 +1142,10 @@ OPENCODE_SERVER_KEYS = frozenset({"type", "url", "headers", "command", "environm
 # `"type": "sse"`, or `"type": "ws"`"; Droid: "`type` | `"stdio" | "http" | "sse"`".
 SUPPORTED_UNCARRIED_TYPES = {"claude-servers": ("sse", "ws"), "droid-servers": ("sse",)}
 
-CLAUDE_BEARER = re.compile(r"^Bearer \$\{(?P<var>[^}]+)\}$")
-OPENCODE_BEARER = re.compile(r"^Bearer \{env:(?P<var>[^}]+)\}$")
+# One variable name and nothing else: `${VAR:-x}` falls back to `x`, which an auth variable
+# cannot say, so it stays a header reference.
+CLAUDE_BEARER = re.compile(r"^Bearer \$\{(?P<var>[A-Za-z_][A-Za-z0-9_]*)\}$")
+OPENCODE_BEARER = re.compile(r"^Bearer \{env:(?P<var>[A-Za-z_][A-Za-z0-9_]*)\}$")
 
 
 def _stray_server_keys(label: str, name: str, keys: list[str]) -> Note:

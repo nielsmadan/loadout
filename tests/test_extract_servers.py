@@ -469,3 +469,26 @@ def test_a_bearer_reference_outside_authorization_is_not_the_auth_variable() -> 
             "the server would be sent no such header"
         )
     ]
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("claude-project-servers", "Bearer ${TOKEN:-anon}"),
+        ("opencode-servers", "Bearer {env:TOKEN:-anon}"),
+    ],
+)
+def test_a_bearer_reference_that_is_not_one_variable_name_is_not_the_auth_variable(
+    name: str, value: str
+) -> None:
+    """`${TOKEN:-anon}` falls back to `anon` when TOKEN is unset. Read as the auth variable it
+    became a variable named `TOKEN:-anon`, which no harness defines."""
+    entry: dict[str, Any] = {"url": "https://x", "headers": {"Authorization": value}}
+    entry["type"] = "http" if name == "claude-project-servers" else "remote"
+    document = {"mcpServers" if name == "claude-project-servers" else "mcp": {"x": entry}}
+
+    extraction = extract_value(name, document)
+
+    assert extraction.value == {"x": Server(name="x", transport="http", url="https://x")}
+    assert [n.kind for n in extraction.notes] == ["lost"]
+    assert "header Authorization" in extraction.notes[0].detail

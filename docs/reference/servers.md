@@ -224,10 +224,11 @@ Every other definition renderer's inverse is registered in `VALUE_EXTRACTORS`:
 | `codex-servers` | every field, parsed from `[mcp_servers.*]` text with `tomllib` | not registered — see above |
 
 An `Authorization` header that is exactly `Bearer ${VAR}` (Claude, Droid) or `Bearer {env:VAR}`
-(OpenCode) becomes `auth_env_var`. Every other header with a literal value is carried into
-`headers`, from Pi's `headers` and Codex's `http_headers` too. A header holding any other reference
-is reported rather than guessed at — extraction never invents an environment variable name from an
-opaque header string. An `Authorization` header beside an auth variable (Pi's `bearerTokenEnv`,
+(OpenCode), with `VAR` one variable name, becomes `auth_env_var`. Every other header with a literal
+value is carried into `headers`, from Pi's `headers` and Codex's `http_headers` too. A header
+holding any other reference, such as `Bearer ${VAR:-fallback}`, refuses init with
+`uncarried-setting` — extraction never invents an environment variable name from an opaque header
+string, and the harness would expand the reference. An `Authorization` header beside an auth variable (Pi's `bearerTokenEnv`,
 Codex's `bearer_token_env_var`, or a second one beside a Bearer reference) is not adopted, with a
 note: the server keeps the variable.
 
