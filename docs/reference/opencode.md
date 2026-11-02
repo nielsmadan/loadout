@@ -75,6 +75,13 @@ replaced by `_` in each half (`sanitize` and `toolName` in `mcp/catalog.ts`, v1.
 `render_opencode` refuses two servers whose names sanitise alike, and two targets that become
 one key, such as `a_b/c` and `a/b_c`, since a rule keyed by that name matches both.
 
+A tool name may itself hold `_`, the separator, so a rule for one server can reach another's
+tools: `a/*` is `a_*`, which also matches `a_b_read`, a tool of server `a_b`, and `a_b/c` is
+`a_b_c`, which also matches `a`'s tool `b_c`. Render refuses such a rule, whatever its decision,
+naming both servers, against every server the same source names in a rule or in `mcp.toml`.
+**A server the source does not name cannot be checked**: one added with `opencode mcp add`, or,
+for a project, one declared only at global scope. A rule can still reach its tools.
+
 ## What loadout emits
 
 From `GLOBAL_PRESET["opencode"]` in `harnesses.py` and `PROJECT_PRESET["opencode"]` in

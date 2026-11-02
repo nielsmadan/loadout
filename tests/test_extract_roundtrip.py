@@ -97,7 +97,7 @@ SHELL_POOL = ("alpha", "beta sub", "gamma-*", "delta run --tag=*", "=epsilon run
 
 # Server-wide, per-tool, a server name with a dot, and a second server so
 # codex-mcp-permissions's sort-by-server has something to reorder.
-MCP_POOL = ("svc/*", "svc/read", "svc.two/write", "other/*")
+MCP_POOL = ("svc/*", "svc/read", "web.two/write", "other/*")
 
 CLAUDE_EXTRA_ALLOW = ("Read(//tmp/**)",)
 CLAUDE_EXTRA_DENY = ("Write(//etc/**)",)

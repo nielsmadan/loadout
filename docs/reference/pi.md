@@ -123,6 +123,14 @@ Pi gives a tool a hash suffix when its sanitised name collides with another tool
 two servers whose names sanitise alike, two targets that become one key, and a target without a
 wildcard whose key is longer than 64 characters.
 
+A server name may itself hold `_`, of which the separator `__` is made, so a rule for one server
+can reach another's tools: `a/*` is `mcp__a__*`, which also matches `mcp__a__b__read`, a tool of
+server `a__b`, and `mcp__a___read`, a tool of server `a_`.
+Render refuses such a rule, whatever its decision, naming both servers, against every server the
+same source names in a rule or in `mcp.toml`. **A server the source does not name cannot be
+checked**: one added through `/mcp`, or, for a project, one declared only at global scope. A
+rule can still reach its tools.
+
 pi-permission-system's `mcp` map governs only pi-mcp-adapter's single `mcp` proxy tool. loadout
 does not render it: pi-mcp-adapter is not supported in 1.0, because when installed it replaces
 the built-in MCP, and Pi then does not read `mcp.json` at all. Init reads an `mcp` map it finds and

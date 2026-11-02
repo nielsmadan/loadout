@@ -38,7 +38,7 @@ deny = [
 allow = [
   "svc/*",                    # server-wide: Codex default_tools_approval_mode,
                               # Pi mcp_server_/mcp_connect_ targets
-  "svc.two/read",             # server name with a dot: forces TOML table quoting
+  "web.two/read",             # server name with a dot: forces TOML table quoting
 ]
 
 ask = [

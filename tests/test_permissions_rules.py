@@ -52,7 +52,7 @@ def test_parse_rules_reads_every_section() -> None:
     assert "alpha" in rules.allow
     assert "iota push" in rules.deny
     assert "theta check" in rules.ask
-    assert rules.mcp_allow == ("svc/*", "svc.two/read")
+    assert rules.mcp_allow == ("svc/*", "web.two/read")
     assert "Read(//tmp/**)" in rules.claude_extra_allow
     assert rules.opencode_extra["webfetch"] == "allow"
 

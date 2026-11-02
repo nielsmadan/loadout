@@ -4,7 +4,7 @@ import copy
 import json
 import re
 import shlex
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any
 
@@ -240,6 +240,7 @@ def _pi_mcp_keys(rules: Rules, categories: tuple[str, ...]) -> list[tuple[str, s
                     "and no rule can match it"
                 )
             keys.append((key, category))
+    refuse_mcp_namespace_overlap("pi", rules, ())
     return keys
 
 
@@ -652,7 +653,56 @@ def _opencode_mcp_keys(rules: Rules) -> list[tuple[str, str]]:
                     "in OpenCode, so no rule can tell them apart; rename one"
                 )
             keys.append((key, category))
+    refuse_mcp_namespace_overlap("opencode", rules, ())
     return keys
+
+
+# The prefix every tool of a server carries in each harness's tool names.
+MCP_NAMESPACES: dict[str, Callable[[str], str]] = {
+    "opencode": lambda server: f"{OPENCODE_UNNAMEABLE.sub('_', server)}_",
+    "pi": lambda server: f"mcp__{PI_UNNAMEABLE.sub('_', server)}__",
+}
+MCP_KEYS: dict[str, Callable[[str], str]] = {"opencode": opencode_mcp_key, "pi": pi_mcp_key}
+MCP_NAMESPACE_HARNESS = {"opencode": "opencode", "pi": "pi", "pi-project": "pi"}
+
+
+def _names_one_server(server: str) -> bool:
+    return "*" not in server and "?" not in server
+
+
+def _runs_past(pattern: str, prefix: str) -> bool:
+    """Whether `pattern`, with `*` and `?` as wildcards, matches a name running past `prefix`."""
+    for index, char in enumerate(prefix):
+        if index == len(pattern) or pattern[index] not in ("*", "?", char):
+            return False
+        if pattern[index] == "*":
+            return True
+    return len(pattern) > len(prefix)
+
+
+def refuse_mcp_namespace_overlap(harness: str, rules: Rules, servers: Iterable[str]) -> None:
+    """Refuse a server-scoped rule whose key also matches the tool names of another server
+    named in `servers` or in the rules, since a tool name may hold the separator."""
+    namespace, key_of = MCP_NAMESPACES[harness], MCP_KEYS[harness]
+    entries = [entry for category in CATEGORIES for entry in rules.mcp(category)]
+    named = sorted(
+        {
+            name
+            for name in (*servers, *(mcp_parts(e)[0] for e in entries))
+            if _names_one_server(name)
+        }
+    )
+    for entry in entries:
+        server, _ = mcp_parts(entry)
+        if not _names_one_server(server):
+            continue
+        key = key_of(entry)
+        for other in named:
+            if namespace(other) != namespace(server) and _runs_past(key, namespace(other)):
+                raise LoadoutError(
+                    f"{harness}: MCP rule {entry!r} is {key!r}, which also matches tools of "
+                    f"server {other!r}; rename {server!r} or {other!r}"
+                )
 
 
 def render_opencode(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:

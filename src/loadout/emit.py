@@ -29,6 +29,7 @@ from .module_config import MODULE_CONFIG_SUBDIR, discover_module_config
 from .output import Copied, Merged, Output, SharedText, output_record_paths
 from .permissions.merge import merge_rules
 from .permissions.renderers import (
+    MCP_NAMESPACE_HARNESS,
     RENDERERS,
     DocumentJsonSpec,
     DocumentTextSpec,
@@ -39,6 +40,7 @@ from .permissions.renderers import (
     ValueSpec,
     ValuesSpec,
     evicted_keys,
+    refuse_mcp_namespace_overlap,
     render_pi_project,
 )
 from .permissions.rules import EMPTY_RULES, Rules, parse_rules
@@ -716,6 +718,8 @@ def render_global(
                 or _rule_less(target.renderer, rules if target.select_all else EMPTY_RULES)
             ):
                 continue
+            if harness := MCP_NAMESPACE_HARNESS.get(target.renderer):
+                refuse_mcp_namespace_overlap(harness, rules, servers)
             content = _permission_content(target, servers, manifest)
             residual = settings_document(target, manifest, root)
             for path in _target_paths(target, root, context):
@@ -1105,6 +1109,8 @@ def _render_project_slices(
             continue
         if _rule_less(spec.renderer or "", rules):
             continue
+        if harness := MCP_NAMESPACE_HARNESS.get(spec.renderer or ""):
+            refuse_mcp_namespace_overlap(harness, rules, servers)
         owner = f"{agent}.{slice_name}"
         contributor = PermissionTarget(
             harness=agent,
