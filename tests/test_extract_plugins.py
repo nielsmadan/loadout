@@ -154,8 +154,14 @@ def test_a_plugin_switched_off_in_the_file_is_reported_not_extracted() -> None:
     off, so extracting it as something would switch it back on."""
     extraction = extract_value("claude-plugins", {"enabledPlugins": {"x@m": False}})
     assert extraction.value == {}
-    assert [note.detail for note in extraction.notes] == [
-        "claude: x@m is False, which is not enabled"
+    assert [(note.kind, note.text) for note in extraction.notes] == [
+        (
+            "cannot",
+            (
+                "claude: x@m is False; the source cannot switch a plugin off, so Claude would "
+                "fall back to the plugin's defaultEnabled, on by default"
+            ),
+        )
     ]
 
 
@@ -169,7 +175,9 @@ def test_a_codex_plugin_table_key_loadout_does_not_write_is_reported() -> None:
     document = '[plugins."x@m"]\nenabled = true\nautoupdate = true\n'
     extraction = extract_codex_plugins(document)
     assert extraction.value == {"plugins": {"x": {"marketplace": "m"}}}
-    assert [note.detail for note in extraction.notes] == ["codex: x@m carries autoupdate"]
+    assert [note.detail for note in extraction.notes] == [
+        "codex: x@m carries autoupdate, which Codex stores and does not act on"
+    ]
 
 
 def test_every_pi_entry_reports_the_name_it_had_to_invent() -> None:

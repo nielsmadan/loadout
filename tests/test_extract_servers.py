@@ -135,7 +135,7 @@ def test_a_header_with_an_untranslatable_reference_is_reported_not_guessed() -> 
     assert extraction.value == {
         "x": Server(name="x", transport="http", url="https://x", headers={"X-Team": "core"})
     }
-    assert [n.kind for n in extraction.notes] == ["cannot"]
+    assert [n.kind for n in extraction.notes] == ["lost"]
     assert "Authorization" in extraction.notes[0].detail
 
 
@@ -178,7 +178,7 @@ def test_an_unowned_key_in_the_mcp_json_file_is_reported() -> None:
     extraction = extract_value("claude-project-servers", document)
 
     assert [n.detail for n in extraction.notes] == [
-        "claude-servers: .mcp.json holds unowned key(s): extra"
+        "claude-servers: .mcp.json holds extra, which the harness ignores"
     ]
 
 
@@ -317,13 +317,14 @@ def test_pi_stdio_server_round_trips() -> None:
     assert render_pi_servers(extraction.value) == document
 
 
-def test_an_unowned_key_in_pis_mcp_json_is_reported() -> None:
+def test_an_unowned_key_in_pis_mcp_json_is_lost() -> None:
+    """Pi reads `autoEnableCodemode` beside `mcpServers`, and pi-mcp-adapter its own keys."""
     document = {"mcpServers": {}, "extra": True}
 
     extraction = extract_value("pi-servers", document)
 
-    assert [n.detail for n in extraction.notes] == [
-        "pi-servers: mcp.json holds unowned key(s): extra"
+    assert [(n.kind, n.detail) for n in extraction.notes] == [
+        ("lost", "pi-servers: mcp.json holds extra")
     ]
 
 
@@ -333,7 +334,7 @@ def test_an_unrecognised_pi_server_entry_is_reported_and_dropped() -> None:
     extraction = extract_value("pi-servers", document)
 
     assert extraction.value == {}
-    assert any(n.kind == "unrecognised" for n in extraction.notes)
+    assert any(n.kind == "lost" for n in extraction.notes)
 
 
 # --- codex-servers (unregistered, written and pinned directly) -------------
@@ -424,7 +425,7 @@ def test_an_auth_header_beside_an_auth_variable_is_dropped_with_a_note(
             headers={"X-Team": "core"},
         )
     }
-    assert [n.kind for n in extraction.notes] == ["cannot"]
+    assert [n.kind for n in extraction.notes] == ["lost" if name == "pi-servers" else "cannot"]
     assert "uthorization" in extraction.notes[0].detail
 
 
@@ -462,6 +463,9 @@ def test_a_bearer_reference_outside_authorization_is_not_the_auth_variable() -> 
     assert extraction.value == {
         "x": Server(name="x", transport="http", url="https://x", headers={"X-Team": "core"})
     }
-    assert [n.detail for n in extraction.notes] == [
-        "claude-servers: x: header X-Token holds a reference with no source form"
+    assert [n.text for n in extraction.notes] == [
+        (
+            "claude-servers: x: header X-Token holds a reference the source has no form for; "
+            "the server would be sent no such header"
+        )
     ]

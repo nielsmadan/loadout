@@ -80,7 +80,9 @@ adding `--force`.
 
 Read the complete JSON `issues`, `notes`, candidates and dispositions. An incomplete preview exits
 2 and changes nothing. A permission rule init cannot carry into the source is an issue
-(`uncarried-rule`), not a note. `notes` name what init changes or reports without refusing, such
+(`uncarried-rule`), not a note, and so is any other setting whose loss would change what the
+harness does (`uncarried-setting`), such as a server key, a header holding a reference or an
+`sse` server. `notes` name what init changes or reports without refusing, such
 as comments a file will lose or an agent it does not adopt; show every one to the user before
 applying. Prompts are available in an interactive terminal; JSON and dry-run never prompt.
 Init reads only the live deployment at each harness's known paths. A dotfiles copy in the

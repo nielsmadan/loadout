@@ -67,6 +67,40 @@ categories, and whole-document comparison never exercises it. That does not narr
 here, because **extraction's input is not loadout's output.** It reads what a person, a harness,
 or another tool already wrote, where the shape is ordinary.
 
+## Values init cannot carry
+
+Init refuses with `uncarried-setting` when dropping what an extractor cannot carry would change
+what the harness does, and notes it when it would change nothing. The refusal lists each
+setting, followed once by the consequence they share.
+
+Refused:
+
+- a server key outside what the source holds, such as `timeout`, `oauth`, `enabled` or Codex's
+  `enabled_tools` ("Explicit allow-list of tools exposed from this server", `mcp_types.rs` at
+  rust-v0.165.0); Pi's lone `type` is a note, since `url` or `command` selects the same transport
+- a header whose value is a reference other than the one bearer form each harness converts;
+  every harness expands these when it connects
+- Claude `sse` and `ws` servers and Droid `sse` servers, transports the harness documents
+- Droid `mcp.json`'s `persistentPermissions`, remembered tool approvals; and any key beside
+  `mcpServers` in Pi's `mcp.json`, where Pi reads `autoEnableCodemode` and pi-mcp-adapter its own
+- a Pi `Authorization` header beside `bearerTokenEnv`: Pi core never reads `bearerTokenEnv`, and
+  pi-mcp-adapter only beside `auth: "bearer"`, so the header is the credential sent
+- a Pi entry with neither `url` nor `command`, which pi-mcp-adapter reads as an override
+- Codex approval mode `writes` (asks unless a tool is read-only), and a per-tool `auto` under a
+  server default other than `auto`; the source has no category for either
+- a Codex plugin's `mcp_servers` policy, and a Claude `enabledPlugins` that is not a map, which
+  makes Claude skip the whole settings file
+
+Codex's server policy is carried at init: `enabled = false`, `default_tools_approval_mode`,
+`disabled_tools` and per-tool `approval_mode` become `[mcp]` rules, and `auto` where it matches
+what the tool would inherit becomes no rule.
+
+Noted: a plugin switched off (pending a way for the source to say so); an approval mode, a
+Codex server entry or a `packages` entry the harness will not start with; Droid's and Codex's malformed or unknown
+plugin keys; Codex hooks in a file Codex rejected; a key Claude ignores beside `mcpServers`;
+Codex plugin metadata it stores and does not act on; and malformed server entries in Claude,
+Droid and Pi, which each harness skips.
+
 ## A hand-written Codex rules file
 
 Codex's rules files are Starlark, and the ones adoption reads need not be in loadout's spelling:

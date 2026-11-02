@@ -21,6 +21,7 @@ IssueCode = Literal[
     "symlink-cycle",
     "symlink-target",
     "uncarried-rule",
+    "uncarried-setting",
     "external-symlink",
     "git-link",
     "linked-folder",

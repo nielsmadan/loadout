@@ -22,7 +22,9 @@ from .discovery import (
 from .emit import PROJECT_SETTINGS_DIR, project_owned_keys, refuse_project_inputs
 from .errors import LoadoutError
 from .extract import (
+    Note,
     extract,
+    extract_codex_mcp,
     extract_codex_plugins,
     extract_codex_servers,
     extract_droid_settings_hooks,
@@ -75,8 +77,8 @@ OWNERS: dict[str, dict[str, tuple[str, ...]]] = {
     "pi": {"plugins": ("packages",)},
 }
 DROID_INERT_SETTINGS_HOOKS = (
-    "hooks in settings.json never ran, because Droid reads them only when hooks.json is "
-    "absent; they stay in the settings fragment and are not adopted as hooks"
+    "hooks in settings.json are not adopted as hooks, because Droid reads them only when no "
+    "hooks.json is beside them; they stay in the settings fragment"
 )
 NOT_ADOPTED = "No source slice adopts this category; existing files stay in place."
 # Templates carry no agents, so agents is a readiness category but not an output.CATEGORIES one.
@@ -170,6 +172,17 @@ def _rules_source(rules: Rules) -> bytes:
             "opencode": {"extra": dict(rules.opencode_extra)},
         }
     ).encode()
+
+
+def _grouped(notes: Iterable[Note]) -> str:
+    """Each consequence once, after everything it follows from."""
+    by_consequence: dict[str, list[str]] = defaultdict(list)
+    for note in notes:
+        by_consequence[note.consequence].append(note.detail)
+    return "; ".join(
+        f"{', '.join(details)}: {consequence}" if consequence else ", ".join(details)
+        for consequence, details in by_consequence.items()
+    )
 
 
 def _merged_rules(values: list[tuple[str, object]]) -> Rules:
@@ -472,12 +485,12 @@ class _PlanBuilder:
                     )
                     extracted = extraction.value
                     if existing:
-                        self.notes.extend(
-                            f"{candidate.destination}: {note.detail}" for note in extraction.notes
-                        )
+                        self.value_notes(candidate, extraction.notes)
                     if existing or extracted:
                         self.adopt_value(self.global_values, category, agent, extracted, candidate)
                         self.global_slices[agent].add(category)
+                    if spec.renderer == "codex-config" and existing:
+                        self.codex_policy(candidate)
                 continue
             if category == "settings" and (existing or value):
                 self.adopt_value(self.global_values, "settings", agent, value, candidate)
@@ -507,9 +520,7 @@ class _PlanBuilder:
                     extraction = extract_value(spec.renderer or "", document)
                     value = extraction.value
                     if existing:
-                        self.notes.extend(
-                            f"{candidate.destination}: {note.detail}" for note in extraction.notes
-                        )
+                        self.value_notes(candidate, extraction.notes)
                     if not existing and not value:
                         continue
                     self.adopt_value(self.project_values, category, agent, value, candidate)
@@ -548,6 +559,15 @@ class _PlanBuilder:
                     restricted=_owner_only(candidate.mode),
                 )
 
+    def codex_policy(self, candidate: Candidate) -> None:
+        """The approval policy in Codex's `[mcp_servers.*]` tables, adopted as MCP rules:
+        the server source holds only how to reach a server, so a server switched off or
+        set to prompt would otherwise come back on, or approve without asking."""
+        policy = extract_codex_mcp(candidate.content.decode())
+        self.value_notes(candidate, policy.notes)
+        if policy.rules != Rules():
+            self.adopt_value(self.global_values, "permissions", "codex", policy.rules, candidate)
+
     def droid_settings_hooks(self, candidate: Candidate, document: Mapping[str, Any]) -> bool:
         """Whether Droid's settings.json `hooks` move into the hooks slice. Droid reads them
         only when hooks.json is absent, and the hooks slice writes hooks.json, so left in
@@ -561,14 +581,16 @@ class _PlanBuilder:
         ):
             return False
         beside = candidate.destination.with_name("hooks.json")
+        legacy = candidate.destination.parent / "hooks" / "hooks.json"
         if any(
-            c.destination == beside and c.disposition == "migrated"
+            (c.destination == beside and c.disposition == "migrated")
+            or legacy in {c.destination, c.path}
             for c in self.inventory.candidates
         ):
             self.notes.append(f"{candidate.destination}: {DROID_INERT_SETTINGS_HOOKS}")
             return False
         extraction = extract_droid_settings_hooks(document)
-        self.notes.extend(f"{candidate.destination}: {note.detail}" for note in extraction.notes)
+        self.value_notes(candidate, extraction.notes)
         project = self.inventory.scope == "project"
         values = self.project_values if project else self.global_values
         self.adopt_value(values, "hooks", "droid", extraction.value, candidate)
@@ -640,6 +662,22 @@ class _PlanBuilder:
         self.records[candidate.destination] = self.record(
             candidate.destination, candidate.harnesses, candidate.format
         )
+
+    def value_notes(self, candidate: Candidate, notes: Iterable[Note]) -> None:
+        """What extracting a value from an original could not carry. A drop that would
+        change what the harness does refuses, as an uncarried rule does; any other is noted."""
+        notes = tuple(notes)
+        lost = _grouped(note for note in notes if note.kind == "lost")
+        if lost:
+            raise _Refusal(
+                Issue(
+                    "uncarried-setting",
+                    (candidate.path,),
+                    "The source has no place for these settings, so converting would change "
+                    f"what the harness does: {lost}.",
+                )
+            )
+        self.notes.extend(f"{candidate.destination}: {note.text}" for note in notes)
 
     def extracted_rules(
         self, renderer: str, candidate: Candidate, document: Any, *, existing: bool = True

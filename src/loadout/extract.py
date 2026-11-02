@@ -32,10 +32,16 @@ CATEGORIES = ("allow", "ask", "deny")
 
 @dataclass(frozen=True)
 class Note:
-    """Something the document held that the source cannot represent."""
+    """Something the document held that the source cannot represent. `lost` means
+    dropping it changes what the harness does, so init refuses."""
 
-    kind: Literal["cannot", "unrecognised", "dropped"]
+    kind: Literal["cannot", "unrecognised", "dropped", "lost"]
     detail: str
+    consequence: str = ""
+
+    @property
+    def text(self) -> str:
+        return f"{self.detail}; {self.consequence}" if self.consequence else self.detail
 
 
 @dataclass(frozen=True)
@@ -694,34 +700,57 @@ CODEX_MCP_CATEGORY = {"approve": "allow", "prompt": "ask", "deny": "deny"}
 
 CODEX_MCP_KEYS = ("enabled", "default_tools_approval_mode", "disabled_tools", "tools")
 
+# Codex's AppToolApproval at rust-v0.165.0: `auto` is the default and asks as the tool's
+# annotations say; `writes` asks unless the tool is read-only, which no category says.
+CODEX_DEFAULT_MODE = "auto"
+
+
+def _codex_mode(label: str, mode: Any, inherited: str) -> tuple[str | None, Note | None]:
+    """The category one approval mode is carried as, or none when leaving it out changes
+    nothing, with the note for a mode the source cannot say."""
+    if mode in CODEX_MCP_CATEGORY:
+        return CODEX_MCP_CATEGORY[mode], None
+    if mode is None or (mode == CODEX_DEFAULT_MODE and inherited == CODEX_DEFAULT_MODE):
+        return None, None
+    if mode in {CODEX_DEFAULT_MODE, "writes"}:
+        return None, Note(
+            "lost",
+            f"codex-mcp: {label} approval mode {mode!r}",
+            f"the source has no category for it, so Codex would apply {inherited!r} instead",
+        )
+    return None, Note(
+        "cannot",
+        f"codex-mcp: {label} approval mode {mode!r} is not one Codex accepts, so Codex does "
+        "not start with it; it is not adopted",
+    )
+
 
 def extract_codex_mcp(document: Any) -> Extraction:
+    """`config.toml`'s per-server approval policy -> MCP rules. A server's other keys
+    are its definition, which `extract_codex_servers` reads and reports on."""
     data = tomllib.loads(document)
     buckets: dict[str, list[str]] = {category: [] for category in CATEGORIES}
     notes: list[Note] = []
 
     for server, block in data.get("mcp_servers", {}).items():
-        for key in block:
-            if key not in CODEX_MCP_KEYS:
-                notes.append(Note("unrecognised", f"codex-mcp: {server}.{key}"))
+        default = block.get("default_tools_approval_mode", CODEX_DEFAULT_MODE)
         if block.get("enabled") is False:
             buckets["deny"].append(f"{server}/*")
-        elif "default_tools_approval_mode" in block:
-            mode = block["default_tools_approval_mode"]
-            category = CODEX_MCP_CATEGORY.get(mode)
-            if category is None:
-                notes.append(Note("unrecognised", f"codex-mcp: {server} default mode {mode!r}"))
-            else:
+        else:
+            category, note = _codex_mode(server, default, CODEX_DEFAULT_MODE)
+            notes.extend(() if note is None else (note,))
+            if category is not None:
                 buckets[category].append(f"{server}/*")
         for tool in block.get("disabled_tools", []):
             buckets["deny"].append(f"{server}/{tool}")
         for tool, tool_block in block.get("tools", {}).items():
-            mode = tool_block.get("approval_mode")
-            category = CODEX_MCP_CATEGORY.get(mode)
-            if category is None:
-                notes.append(Note("unrecognised", f"codex-mcp: {server}/{tool} mode {mode!r}"))
-                continue
-            buckets[category].append(f"{server}/{tool}")
+            inherited = default if default in CODEX_MCP_CATEGORY else CODEX_DEFAULT_MODE
+            category, note = _codex_mode(
+                f"{server}/{tool}", tool_block.get("approval_mode"), inherited
+            )
+            notes.extend(() if note is None else (note,))
+            if category is not None:
+                buckets[category].append(f"{server}/{tool}")
 
     return Extraction(
         Rules(
@@ -770,19 +799,28 @@ def extract_claude_hooks(document: Any) -> ValueExtraction:
 def extract_codex_hooks(document: Any) -> ValueExtraction:
     """`hooks.json` -> the hooks fragment.
 
-    Unlike Claude's, this file has **no residual slice** — `hooks` is the only
-    key loadout writes and no settings document underlies it. So a key loadout
-    does not write has nowhere to go and is reported: a hand-made hooks.json may
-    carry anything, and Cursor's equivalent has a `version`.
+    Codex parses the file as `HooksFile`, `deny_unknown_fields` with `description` and
+    `hooks` (codex-rs/config/src/hook_config.rs, rust-v0.165.0), and runs nothing from a
+    file that fails to parse. So beside any other key the hooks never ran, and adopting
+    them would switch them on: they are reported instead.
     """
     if not isinstance(document, Mapping):
         return ValueExtraction({})
+    unknown = [key for key in document if key not in {"hooks", "description"}]
+    if unknown:
+        return ValueExtraction({}, (Note("dropped", _codex_rejected(unknown)),))
     value = document.get("hooks", {})
-    unowned = [key for key in document if key != "hooks"]
     notes = _foreign_variable_notes(value, "codex")
-    if unowned:
-        notes += (Note("cannot", f"hooks.json holds unowned key(s): {', '.join(unowned)}"),)
+    if "description" in document:
+        notes += (Note("cannot", "hooks.json's description is not adopted; Codex does not use it"),)
     return ValueExtraction(copy.deepcopy(dict(value)), notes)
+
+
+def _codex_rejected(keys: list[str]) -> str:
+    return (
+        f"hooks.json holds {', '.join(keys)}, which Codex does not accept, so it ran none of "
+        "these hooks; they are not adopted"
+    )
 
 
 def extract_droid_settings_hooks(document: Any) -> ValueExtraction:
@@ -835,7 +873,10 @@ def _addressed(key: str, harness: str) -> tuple[str, str] | Note:
 
 
 def _enablement(
-    document: Mapping[str, Any], harness: str, enabled_of: Callable[[Any], Any]
+    document: Mapping[str, Any],
+    harness: str,
+    enabled_of: Callable[[Any], Any],
+    off: Note,
 ) -> tuple[dict[str, Any], list[Note]]:
     """The shared half of Claude's and Codex's inverse: `<name>@<marketplace>`.
 
@@ -852,11 +893,33 @@ def _enablement(
             continue
         enabled = enabled_of(entry)
         if enabled is not True:
-            notes.append(Note("cannot", f"{harness}: {key} is {enabled!r}, which is not enabled"))
+            notes.append(Note(off.kind, f"{harness}: {key} is {enabled!r}", off.consequence))
             continue
         name, marketplace = addressed
         references[name] = {"marketplace": marketplace}
     return references, notes
+
+
+# What an absent entry means, per harness. Claude: "A plugin with no entry at any scope falls
+# back to its `defaultEnabled` value", which defaults to true. Droid takes the first scope
+# holding an entry, org, project then user. Codex loads no plugin without a `[plugins]` table.
+CLAUDE_OFF = Note(
+    "cannot",
+    "",
+    "the source cannot switch a plugin off, so Claude would fall back to the plugin's "
+    "defaultEnabled, on by default",
+)
+DROID_OFF = Note(
+    "cannot",
+    "",
+    "the source cannot switch a plugin off, so an enable at another scope would apply",
+)
+CODEX_OFF = Note(
+    "cannot",
+    "",
+    "the source cannot switch a plugin off, so it is not adopted; Codex loads no plugin "
+    "without an entry",
+)
 
 
 def _fragment(marketplaces: dict[str, Any], references: dict[str, Any]) -> dict[str, Any]:
@@ -880,8 +943,18 @@ def extract_claude_plugins(document: Any) -> ValueExtraction:
     """
     enabled = document.get("enabledPlugins", {}) if isinstance(document, Mapping) else {}
     if not isinstance(enabled, Mapping):
-        return ValueExtraction({}, (Note("unrecognised", "claude: enabledPlugins is not a map"),))
-    references, notes = _enablement(enabled, "claude", lambda entry: entry)
+        return ValueExtraction(
+            {},
+            (
+                Note(
+                    "lost",
+                    "claude: enabledPlugins is not a map",
+                    "Claude skips a settings file with an invalid setting entirely, so every "
+                    "other setting in it would start to apply",
+                ),
+            ),
+        )
+    references, notes = _enablement(enabled, "claude", lambda entry: entry, CLAUDE_OFF)
     return ValueExtraction(_fragment({}, references), tuple(notes))
 
 
@@ -891,7 +964,7 @@ def extract_droid_plugins(document: Any) -> ValueExtraction:
     enabled = document.get("enabledPlugins", {})
     if not isinstance(enabled, Mapping):
         return ValueExtraction({}, (Note("unrecognised", "droid: enabledPlugins is not a map"),))
-    references, notes = _enablement(enabled, "droid", lambda entry: entry)
+    references, notes = _enablement(enabled, "droid", lambda entry: entry, DROID_OFF)
     raw_marketplaces = document.get("extraKnownMarketplaces", {})
     if not isinstance(raw_marketplaces, Mapping):
         notes.append(Note("unrecognised", "droid: extraKnownMarketplaces is not a map"))
@@ -905,7 +978,13 @@ def extract_droid_plugins(document: Any) -> ValueExtraction:
     used = {ref["marketplace"] for ref in references.values()}
     for name in marketplaces:
         if name not in used:
-            notes.append(Note("cannot", f"droid: marketplace {name!r} is enabled by no plugin"))
+            notes.append(
+                Note(
+                    "cannot",
+                    f"droid: marketplace {name!r} is enabled by no plugin, so it is not "
+                    "adopted; add it to the plugins fragment again to keep it listed in Droid",
+                )
+            )
     return ValueExtraction(_fragment(marketplaces, references), tuple(notes))
 
 
@@ -925,11 +1004,25 @@ def extract_codex_plugins(document: Any) -> ValueExtraction:
     """
     data = tomllib.loads(document)
     tables = data.get(PLUGINS, {})
-    references, notes = _enablement(tables, "codex", lambda block: block.get("enabled"))
+    references, notes = _enablement(tables, "codex", lambda block: block.get("enabled"), CODEX_OFF)
     for key, block in tables.items():
         stray = sorted(k for k in block if k not in CODEX_PLUGIN_KEYS)
-        if stray:
-            notes.append(Note("unrecognised", f"codex: {key} carries {', '.join(stray)}"))
+        if "mcp_servers" in stray:
+            notes.append(
+                Note(
+                    "lost",
+                    f"codex: {key} carries mcp_servers",
+                    "the plugin's servers would lose their enablement and tool policy",
+                )
+            )
+        ignored = [k for k in stray if k != "mcp_servers"]
+        if ignored:
+            notes.append(
+                Note(
+                    "cannot",
+                    f"codex: {key} carries {', '.join(ignored)}, which Codex stores and does not act on",
+                )
+            )
     marketplaces = {name: dict(block) for name, block in data.get(MARKETPLACES, {}).items()}
     return ValueExtraction(_fragment(marketplaces, references), tuple(notes))
 
@@ -964,7 +1057,15 @@ def extract_pi_plugins(document: Any) -> ValueExtraction:
     """
     packages = document.get("packages", []) if isinstance(document, Mapping) else []
     if not isinstance(packages, list):
-        return ValueExtraction({}, (Note("unrecognised", "pi: packages is not a list"),))
+        return ValueExtraction(
+            {},
+            (
+                Note(
+                    "cannot",
+                    "pi: packages is not a list, so it is not adopted; Pi 1.4.0 stops at startup on it",
+                ),
+            ),
+        )
 
     references: dict[str, Any] = {}
     notes: list[Note] = []
@@ -983,7 +1084,13 @@ def extract_pi_plugins(document: Any) -> ValueExtraction:
                     Note("cannot", f"pi: {source} filters nothing, so it renders as a string")
                 )
         else:
-            notes.append(Note("unrecognised", f"pi: package entry {entry!r} names no source"))
+            notes.append(
+                Note(
+                    "cannot",
+                    f"pi: package entry {entry!r} names no source, so it is not adopted; "
+                    "Pi 1.4.0 stops at startup on such an entry",
+                )
+            )
             continue
         name = _pi_name(source)
         if not name or name in references:
@@ -1031,8 +1138,20 @@ def extract_pi_plugins(document: Any) -> ValueExtraction:
 CLAUDE_SERVER_KEYS = frozenset({"type", "url", "headers", "command", "args", "env"})
 OPENCODE_SERVER_KEYS = frozenset({"type", "url", "headers", "command", "environment"})
 
+# Transports the harness documents and the source cannot hold. Claude: "add `"type": "http"`,
+# `"type": "sse"`, or `"type": "ws"`"; Droid: "`type` | `"stdio" | "http" | "sse"`".
+SUPPORTED_UNCARRIED_TYPES = {"claude-servers": ("sse", "ws"), "droid-servers": ("sse",)}
+
 CLAUDE_BEARER = re.compile(r"^Bearer \$\{(?P<var>[^}]+)\}$")
 OPENCODE_BEARER = re.compile(r"^Bearer \{env:(?P<var>[^}]+)\}$")
+
+
+def _stray_server_keys(label: str, name: str, keys: list[str]) -> Note:
+    return Note(
+        "lost",
+        f"{label}: {name} carries {', '.join(keys)}",
+        "the harness would run the server without them",
+    )
 
 
 def _one_auth(
@@ -1073,7 +1192,11 @@ def _extract_headers(
             literal[name] = value
         else:
             notes.append(
-                Note("cannot", f"{label}: header {name} holds a reference with no source form")
+                Note(
+                    "lost",
+                    f"{label}: header {name} holds a reference the source has no form for",
+                    "the server would be sent no such header",
+                )
             )
     return auth_env_var, literal, tuple(notes)
 
@@ -1087,7 +1210,7 @@ def _extract_claude_server(
         return None, tuple(notes)
     stray = sorted(set(entry) - CLAUDE_SERVER_KEYS)
     if stray:
-        notes.append(Note("cannot", f"{label}: {name} carries {', '.join(stray)}"))
+        notes.append(_stray_server_keys(label, name, stray))
     # Claude Code reads an entry with a command and no type as stdio.
     kind = entry.get("type", "stdio" if "command" in entry else None)
     if kind == "http":
@@ -1116,7 +1239,16 @@ def _extract_claude_server(
             args=tuple(entry.get("args", ())),
             env=dict(entry.get("env", {})),
         ), tuple(notes)
-    notes.append(Note("unrecognised", f"{label}: {name} unknown type {kind!r}"))
+    if kind in SUPPORTED_UNCARRIED_TYPES.get(label, ()):
+        notes.append(
+            Note(
+                "lost",
+                f"{label}: {name} is a {kind} server",
+                "the source has no such transport, so the harness would lose the server",
+            )
+        )
+    else:
+        notes.append(Note("unrecognised", f"{label}: {name} unknown type {kind!r}"))
     return None, tuple(notes)
 
 
@@ -1139,12 +1271,22 @@ def _collect_servers(
     return servers, tuple(notes)
 
 
-def _unowned(document: Mapping[str, Any], label: str) -> tuple[Note, ...]:
-    """A note for top-level keys beside `mcpServers` in a file nothing else owns."""
+def _unowned(document: Mapping[str, Any], label: str, used: frozenset[str]) -> tuple[Note, ...]:
+    """Top-level keys beside `mcpServers` in a file nothing else owns: lost where the
+    harness reads them, noted where it ignores them."""
     unowned = sorted(set(document) - {"mcpServers"})
-    if not unowned:
-        return ()
-    return (Note("cannot", f"{label} holds unowned key(s): {', '.join(unowned)}"),)
+    lost = [key for key in unowned if "*" in used or key in used]
+    ignored = [key for key in unowned if key not in lost]
+    notes = []
+    if ignored:
+        notes.append(
+            Note("cannot", f"{label} holds {', '.join(ignored)}, which the harness ignores")
+        )
+    if lost:
+        notes.append(
+            Note("lost", f"{label} holds {', '.join(lost)}", "the harness would run without it")
+        )
+    return tuple(notes)
 
 
 def extract_claude_servers(document: Any) -> ValueExtraction:
@@ -1163,7 +1305,15 @@ def extract_claude_servers(document: Any) -> ValueExtraction:
         _extract_claude_server,
         "claude-servers: mcpServers is not a table",
     )
-    return ValueExtraction(servers, (*_unowned(document, "claude-servers: .mcp.json"), *notes))
+    return ValueExtraction(
+        servers, (*_unowned(document, "claude-servers: .mcp.json", frozenset()), *notes)
+    )
+
+
+# Droid 0.251.0's schema for mcp.json is `{mcpServers, persistentPermissions}`; the second
+# holds tool approvals Droid remembers across sessions. Pi reads `autoEnableCodemode` beside
+# `mcpServers`, and pi-mcp-adapter its `settings` and `imports`, so every key there is read.
+DROID_MCP_DOCUMENT_KEYS = frozenset({"persistentPermissions"})
 
 
 def extract_droid_servers(document: Any) -> ValueExtraction:
@@ -1176,7 +1326,10 @@ def extract_droid_servers(document: Any) -> ValueExtraction:
         lambda name, entry: _extract_claude_server(name, entry, "droid-servers"),
         "droid-servers: mcpServers is not a table",
     )
-    return ValueExtraction(servers, (*_unowned(document, "droid-servers: mcp.json"), *notes))
+    return ValueExtraction(
+        servers,
+        (*_unowned(document, "droid-servers: mcp.json", DROID_MCP_DOCUMENT_KEYS), *notes),
+    )
 
 
 def _extract_opencode_server(name: str, entry: Any) -> tuple[Server | None, tuple[Note, ...]]:
@@ -1186,7 +1339,7 @@ def _extract_opencode_server(name: str, entry: Any) -> tuple[Server | None, tupl
         return None, tuple(notes)
     stray = sorted(set(entry) - OPENCODE_SERVER_KEYS)
     if stray:
-        notes.append(Note("cannot", f"opencode-servers: {name} carries {', '.join(stray)}"))
+        notes.append(_stray_server_keys("opencode-servers", name, stray))
     kind = entry.get("type")
     if kind == "remote":
         url = entry.get("url")
@@ -1261,6 +1414,12 @@ def extract_claude_global_servers(document: Any) -> ValueExtraction:
     return ValueExtraction(servers, notes)
 
 
+# Pi core never reads `bearerTokenEnv`, and pi-mcp-adapter uses it only beside
+# `auth: "bearer"`, so an Authorization header beside it is the credential actually sent.
+PI_HEADER_AUTH = (
+    "Pi sends that header and not bearerTokenEnv, so the server would get no credential"
+)
+
 PI_SERVER_KEYS = frozenset({"url", "bearerTokenEnv", "headers", "command", "args", "env"})
 
 
@@ -1270,8 +1429,15 @@ def _extract_pi_server(name: str, entry: Any) -> tuple[Server | None, tuple[Note
         notes.append(Note("unrecognised", f"pi-servers: {name} is not a table"))
         return None, tuple(notes)
     stray = sorted(set(entry) - PI_SERVER_KEYS)
-    if stray:
-        notes.append(Note("cannot", f"pi-servers: {name} carries {', '.join(stray)}"))
+    if stray == ["type"]:
+        notes.append(
+            Note(
+                "cannot",
+                f"pi-servers: {name} type is not adopted; its url or command selects the same transport",
+            )
+        )
+    elif stray:
+        notes.append(_stray_server_keys("pi-servers", name, stray))
     if "url" in entry:
         url = entry.get("url")
         if not isinstance(url, str):
@@ -1283,8 +1449,12 @@ def _extract_pi_server(name: str, entry: Any) -> tuple[Server | None, tuple[Note
             auth_env_var = None
         _, headers, found = _extract_headers(entry.get("headers", {}), None, f"pi-servers: {name}")
         notes.extend(found)
+        clash = auth_conflict(auth_env_var, headers)
         headers, found = _one_auth(auth_env_var, headers, f"pi-servers: {name}", "bearerTokenEnv")
-        notes.extend(found)
+        if found:
+            notes.append(
+                Note("lost", f"pi-servers: {name}: {clash} beside bearerTokenEnv", PI_HEADER_AUTH)
+            )
         return Server(
             name=name, transport="http", url=url, auth_env_var=auth_env_var, headers=headers
         ), tuple(notes)
@@ -1300,7 +1470,14 @@ def _extract_pi_server(name: str, entry: Any) -> tuple[Server | None, tuple[Note
             args=tuple(entry.get("args", ())),
             env=dict(entry.get("env", {})),
         ), tuple(notes)
-    notes.append(Note("unrecognised", f"pi-servers: {name} entry has neither url nor command"))
+    notes.append(
+        Note(
+            "lost",
+            f"pi-servers: {name} has neither url nor command",
+            "pi-mcp-adapter reads such an entry as an override of a server defined elsewhere, "
+            "which would apply no longer",
+        )
+    )
     return None, tuple(notes)
 
 
@@ -1317,20 +1494,20 @@ def extract_pi_servers(document: Any) -> ValueExtraction:
         _extract_pi_server,
         "pi-servers: mcpServers is not a table",
     )
-    return ValueExtraction(servers, (*_unowned(document, "pi-servers: mcp.json"), *notes))
+    return ValueExtraction(
+        servers, (*_unowned(document, "pi-servers: mcp.json", frozenset({"*"})), *notes)
+    )
 
 
 CODEX_SERVER_HTTP_KEYS = frozenset({"url", "bearer_token_env_var", "http_headers"})
 CODEX_SERVER_STDIO_KEYS = frozenset({"command", "args", "env"})
 
 
-def _not_adopted(name: str, keys: list[str]) -> str:
-    """Keys of a Codex server that loadout's server source cannot hold, so the next sync
-    writes the server without them."""
-    return (
-        f"codex-servers: {name} carries {', '.join(keys)}, which loadout does not adopt; "
-        "the next sync writes the server without them"
-    )
+def _codex_stray(name: str, block: Mapping[str, Any], kept: frozenset[str]) -> tuple[Note, ...]:
+    """Keys of a Codex server neither the server source nor its MCP policy holds; the
+    policy keys are carried by `extract_codex_mcp`, so they are no loss."""
+    stray = sorted(set(block) - kept - set(CODEX_MCP_KEYS))
+    return (_stray_server_keys("codex-servers", name, stray),) if stray else ()
 
 
 def _extract_codex_server(name: str, block: Any) -> tuple[Server | None, tuple[Note, ...]]:
@@ -1339,9 +1516,7 @@ def _extract_codex_server(name: str, block: Any) -> tuple[Server | None, tuple[N
         notes.append(Note("unrecognised", f"codex-servers: {name} is not a table"))
         return None, tuple(notes)
     if "url" in block:
-        stray = sorted(set(block) - CODEX_SERVER_HTTP_KEYS)
-        if stray:
-            notes.append(Note("cannot", _not_adopted(name, stray)))
+        notes.extend(_codex_stray(name, block, CODEX_SERVER_HTTP_KEYS))
         url = block.get("url")
         if not isinstance(url, str):
             notes.append(Note("unrecognised", f"codex-servers: {name} http entry has no url"))
@@ -1361,9 +1536,7 @@ def _extract_codex_server(name: str, block: Any) -> tuple[Server | None, tuple[N
             name=name, transport="http", url=url, auth_env_var=auth_env_var, headers=headers
         ), tuple(notes)
     if "command" in block:
-        stray = sorted(set(block) - CODEX_SERVER_STDIO_KEYS)
-        if stray:
-            notes.append(Note("cannot", _not_adopted(name, stray)))
+        notes.extend(_codex_stray(name, block, CODEX_SERVER_STDIO_KEYS))
         command = block.get("command")
         if not isinstance(command, str):
             notes.append(Note("unrecognised", f"codex-servers: {name} stdio entry has no command"))

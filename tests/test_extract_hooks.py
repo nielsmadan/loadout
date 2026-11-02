@@ -109,13 +109,19 @@ def test_the_symmetric_case_is_noted_for_claude() -> None:
     assert [n.kind for n in notes] == ["cannot"]
 
 
-def test_an_unowned_key_in_codexs_file_is_noted() -> None:
-    """`hooks.json` has no residual slice, so a key loadout does not write has
-    nowhere to go. Cursor's equivalent hooks file carries a `version`."""
+def test_hooks_in_a_file_codex_rejects_are_reported_not_extracted() -> None:
+    """Codex parses hooks.json with `deny_unknown_fields`, so beside a key such as
+    Cursor's `version` the file fails to parse and none of its hooks ran."""
     extraction = extract_value("codex-hooks", {"version": 1, "hooks": FRAGMENT})
+    assert extraction.value == {}
+    assert [n.kind for n in extraction.notes] == ["dropped"]
+    assert "version" in extraction.notes[0].detail
+
+
+def test_a_codex_description_is_noted_and_the_hooks_extracted() -> None:
+    extraction = extract_value("codex-hooks", {"description": "audit", "hooks": FRAGMENT})
     assert extraction.value == FRAGMENT
     assert [n.kind for n in extraction.notes] == ["cannot"]
-    assert "version" in extraction.notes[0].detail
 
 
 def test_droids_hooks_json_is_the_fragment_comment_keys_included() -> None:
