@@ -11,5 +11,5 @@ disabled_tools = ["purge"]
 [mcp_servers.svc.tools.write]
 approval_mode = "prompt"
 
-[mcp_servers."svc.two".tools.read]
+[mcp_servers."web.two".tools.read]
 approval_mode = "approve"

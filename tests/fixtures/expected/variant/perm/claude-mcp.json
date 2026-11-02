@@ -1,7 +1,7 @@
 {
   "allow": [
     "svc/*",
-    "svc.two/read"
+    "web.two/read"
   ],
   "ask": [
     "svc/write"

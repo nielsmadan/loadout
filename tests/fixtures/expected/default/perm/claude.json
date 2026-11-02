@@ -10,7 +10,7 @@
       "Bash(eta:*)",
       "Bash(mu status)",
       "mcp__svc__*",
-      "mcp__svc.two__read",
+      "mcp__web.two__read",
       "Read(//tmp/**)"
     ],
     "deny": [

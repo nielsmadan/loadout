@@ -16,12 +16,12 @@ X-Team = "core"
 [mcp_servers.svc.tools.write]
 approval_mode = "prompt"
 
-[mcp_servers."svc.two".tools.read]
-approval_mode = "approve"
-
 [mcp_servers.tools]
 command = "tools-mcp"
 args = ["--stdio"]
 
 [mcp_servers.tools.env]
 TOOLS_MODE = "fixture"
+
+[mcp_servers."web.two".tools.read]
+approval_mode = "approve"

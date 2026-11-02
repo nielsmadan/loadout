@@ -23,7 +23,7 @@
     },
     "mcp__*": "ask",
     "mcp__svc__*": "allow",
-    "mcp__svc_two__read": "allow",
+    "mcp__web_two__read": "allow",
     "mcp__svc__write": "ask",
     "mcp__blocked__*": "deny",
     "mcp__svc__purge": "deny"

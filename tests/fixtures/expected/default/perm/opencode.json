@@ -29,7 +29,7 @@
       "theta check *": "ask"
     },
     "svc_*": "allow",
-    "svc_two_read": "allow",
+    "web_two_read": "allow",
     "blocked_*": "deny",
     "svc_purge": "deny",
     "svc_write": "ask",
