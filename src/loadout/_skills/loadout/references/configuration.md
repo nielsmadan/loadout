@@ -100,6 +100,10 @@ only the named leaf, preserving other `skills` fields and `[[skills.config]]` ov
 Empty objects own nothing; arrays are managed as whole fields. If surgery refuses an inline
 parent table or a child inside an array-table element, report the conflict rather than widening
 ownership. `$remove` entries use TOML key paths, such as `"skills.max_context_tokens"`.
+
+A plugin reference takes `"enabled": false` to switch the plugin off; edit that rather than
+removing the reference, because Claude turns a plugin with no entry back on by default.
+
 Pi's `settings.json` is written by its `plugins` slice, so a Pi settings fragment renders only
 when `[pi]` also declares `plugins`, even as an empty list (`plugins = []`). Without it, sync and
 check print a `pi.settings` note and write nothing: add `plugins` rather than editing Pi's

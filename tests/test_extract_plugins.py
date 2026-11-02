@@ -149,22 +149,6 @@ def test_pi_re_renders_the_document_it_read_though_the_name_was_derived() -> Non
 # --- what does not survive ---------------------------------------------------
 
 
-def test_a_plugin_switched_off_in_the_file_is_reported_not_extracted() -> None:
-    """`false` has no representation in a fragment: absence is how a plugin is
-    off, so extracting it as something would switch it back on."""
-    extraction = extract_value("claude-plugins", {"enabledPlugins": {"x@m": False}})
-    assert extraction.value == {}
-    assert [(note.kind, note.text) for note in extraction.notes] == [
-        (
-            "cannot",
-            (
-                "claude: x@m is False; the source cannot switch a plugin off, so Claude would "
-                "fall back to the plugin's defaultEnabled, on by default"
-            ),
-        )
-    ]
-
-
 def test_a_key_that_is_not_name_at_marketplace_is_reported() -> None:
     extraction = extract_value("claude-plugins", {"enabledPlugins": {"bare": True}})
     assert extraction.value == {}

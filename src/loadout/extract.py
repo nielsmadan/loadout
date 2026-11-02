@@ -859,9 +859,7 @@ def extract_droid_hooks(document: Any) -> ValueExtraction:
 # source and no name. So `carried` is a real projection here, not the identity
 # hooks got.
 #
-# Enablement is presence in all three. A plugin a harness lists as explicitly
-# off has no representation in a fragment — removal is how a profile turns one
-# off — so it is reported rather than extracted as something.
+# A plugin a harness lists as explicitly off is adopted with `enabled = false`.
 # --------------------------------------------------------------------------
 
 
@@ -876,7 +874,6 @@ def _enablement(
     document: Mapping[str, Any],
     harness: str,
     enabled_of: Callable[[Any], Any],
-    off: Note,
 ) -> tuple[dict[str, Any], list[Note]]:
     """The shared half of Claude's and Codex's inverse: `<name>@<marketplace>`.
 
@@ -892,34 +889,17 @@ def _enablement(
             notes.append(addressed)
             continue
         enabled = enabled_of(entry)
-        if enabled is not True:
-            notes.append(Note(off.kind, f"{harness}: {key} is {enabled!r}", off.consequence))
+        if not isinstance(enabled, bool):
+            notes.append(
+                Note(
+                    "unrecognised",
+                    f"{harness}: {key} is {enabled!r}, which is neither true nor false",
+                )
+            )
             continue
         name, marketplace = addressed
-        references[name] = {"marketplace": marketplace}
+        references[name] = {"marketplace": marketplace} | ({} if enabled else {"enabled": False})
     return references, notes
-
-
-# What an absent entry means, per harness. Claude: "A plugin with no entry at any scope falls
-# back to its `defaultEnabled` value", which defaults to true. Droid takes the first scope
-# holding an entry, org, project then user. Codex loads no plugin without a `[plugins]` table.
-CLAUDE_OFF = Note(
-    "cannot",
-    "",
-    "the source cannot switch a plugin off, so Claude would fall back to the plugin's "
-    "defaultEnabled, on by default",
-)
-DROID_OFF = Note(
-    "cannot",
-    "",
-    "the source cannot switch a plugin off, so an enable at another scope would apply",
-)
-CODEX_OFF = Note(
-    "cannot",
-    "",
-    "the source cannot switch a plugin off, so it is not adopted; Codex loads no plugin "
-    "without an entry",
-)
 
 
 def _fragment(marketplaces: dict[str, Any], references: dict[str, Any]) -> dict[str, Any]:
@@ -954,7 +934,7 @@ def extract_claude_plugins(document: Any) -> ValueExtraction:
                 ),
             ),
         )
-    references, notes = _enablement(enabled, "claude", lambda entry: entry, CLAUDE_OFF)
+    references, notes = _enablement(enabled, "claude", lambda entry: entry)
     return ValueExtraction(_fragment({}, references), tuple(notes))
 
 
@@ -964,7 +944,7 @@ def extract_droid_plugins(document: Any) -> ValueExtraction:
     enabled = document.get("enabledPlugins", {})
     if not isinstance(enabled, Mapping):
         return ValueExtraction({}, (Note("unrecognised", "droid: enabledPlugins is not a map"),))
-    references, notes = _enablement(enabled, "droid", lambda entry: entry, DROID_OFF)
+    references, notes = _enablement(enabled, "droid", lambda entry: entry)
     raw_marketplaces = document.get("extraKnownMarketplaces", {})
     if not isinstance(raw_marketplaces, Mapping):
         notes.append(Note("unrecognised", "droid: extraKnownMarketplaces is not a map"))
@@ -1004,7 +984,7 @@ def extract_codex_plugins(document: Any) -> ValueExtraction:
     """
     data = tomllib.loads(document)
     tables = data.get(PLUGINS, {})
-    references, notes = _enablement(tables, "codex", lambda block: block.get("enabled"), CODEX_OFF)
+    references, notes = _enablement(tables, "codex", lambda block: block.get("enabled"))
     for key, block in tables.items():
         stray = sorted(k for k in block if k not in CODEX_PLUGIN_KEYS)
         if "mcp_servers" in stray:

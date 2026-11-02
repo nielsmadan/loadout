@@ -95,7 +95,9 @@ Codex's server policy is carried at init: `enabled = false`, `default_tools_appr
 `disabled_tools` and per-tool `approval_mode` become `[mcp]` rules, and `auto` where it matches
 what the tool would inherit becomes no rule.
 
-Noted: a plugin switched off (pending a way for the source to say so); an approval mode, a
+A plugin switched off in Claude, Droid or Codex is carried as `enabled = false`.
+
+Noted: an approval mode, a
 Codex server entry or a `packages` entry the harness will not start with; Droid's and Codex's malformed or unknown
 plugin keys; Codex hooks in a file Codex rejected; a key Claude ignores beside `mcpServers`;
 Codex plugin metadata it stores and does not act on; and malformed server entries in Claude,

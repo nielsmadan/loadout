@@ -27,16 +27,18 @@ A plugins fragment is `<source>/plugins/<name>.json`, and it holds two maps:
 }
 ```
 
-A reference carries at most three keys:
+A reference carries at most four keys:
 
 - **`source`** — where the package comes from, in Pi's syntax (`npm:`, `git:`, a URL, or a
   path). What Pi installs from; no other harness renders it.
 - **`marketplace`** — the marketplace a plugin is addressed through. What Claude and Codex
   render; Pi has no marketplace concept at all.
 - **`pi`** — per-package options, passed through untouched.
+- **`enabled`** — `false` switches the plugin off; anything other than a boolean is an error.
+  Omitted means on.
 
 Two sections rather than plugin names at the top level, so a plugin called `marketplaces`
-cannot collide with the registrations. A key outside the three above is an **error**: this
+cannot collide with the registrations. A key outside the four above is an **error**: this
 vocabulary is loadout's own, so a typo here is loadout's to catch. The nested blocks are the
 opposite case and are passed through verbatim — `pi` holds Pi's filter schema and a
 `[marketplaces.<name>]` table holds Codex's registration schema, and we do not have either
@@ -47,7 +49,7 @@ schema, so the harness decides. (Validation invented from one machine's files is
 
 | harness | destination | rendered |
 |---|---|---|
-| Claude | `~/.claude/settings.json` → `enabledPlugins` | `"<name>@<marketplace>": true` |
+| Claude | `~/.claude/settings.json` → `enabledPlugins` | `"<name>@<marketplace>": true`, or `false` when switched off |
 | Codex | `~/.codex/config.toml` → `plugins`, `marketplaces` | `[plugins."<name>@<marketplace>"]`, `[marketplaces.<name>]` |
 | Droid | `~/.factory/settings.json` → `enabledPlugins`, `extraKnownMarketplaces` | enablement plus each used marketplace registration |
 | Pi | `~/.pi/agent/settings.json` → `packages` | the source, or an object carrying its filters |
@@ -57,8 +59,8 @@ schema, so the harness decides. (Validation invented from one machine's files is
 hooks. It owns one key and nothing else in the file.
 
 **Droid contributes two top-level keys to `settings.json`.** `enabledPlugins` uses the same
-`<name>@<marketplace>` addresses as Claude. `extraKnownMarketplaces` contains only declared
-marketplaces reached by an enabled plugin. Settings and command-policy keys remain separate
+`<name>@<marketplace>` addresses as Claude, `false` included. `extraKnownMarketplaces` contains
+only declared marketplaces reached by a plugin it lists, on or off. Settings and command-policy keys remain separate
 owners in the same document.
 
 **Codex writes `config.toml` directly, owning two keys of it.** Enablement and marketplace
@@ -96,21 +98,25 @@ true sentences, one unreachable destination.
 
 ## On and off
 
-**Presence is enablement.** Every rendered entry is on; a plugin is switched off by taking the
-reference out, which a profile does with a `null` overlay:
+**A reference is on unless it says `enabled = false`.** A profile switches one off with a one-key
+overlay, which deep-merges onto the reference:
 
 ```json
-{ "plugins": { "nono": null } }
+{ "plugins": { "nono": { "enabled": false } } }
 ```
 
-`merge_documents` removes the key before any renderer sees it
-([spec 1 §8](config.md)), so one overlay key replaces restating a list. Being deep-merged,
-plugins takes no variant suffix.
+Off and absent differ by harness, which is why the source needs both. Claude renders `false`,
+because an absent plugin falls back to its `defaultEnabled`, on by default. Droid renders `false`,
+because it takes the first scope holding an entry, so an entry here outranks an enable at a lower
+scope. Codex and Pi omit a switched-off reference: neither loads a plugin it is not given.
 
-A harness may also be able to say *off* explicitly — Claude's map holds a boolean and Codex's
-table holds `enabled` — but nothing loadout renders needs it, and whether either honours `false`
-is not settled here. Extraction reads such an entry as **not enabled** and reports it, because
-absence is the only representation a fragment has.
+A `null` overlay still removes the reference outright (`merge_documents`,
+[spec 1 §8](config.md)); for Claude and Droid that leaves the harness to its own default rather
+than off. Being deep-merged, plugins takes no variant suffix.
+
+Extraction adopts a `false` entry as `enabled = false`, from Claude, Droid and Codex, and reports
+an entry that is neither true nor false. A switched-off plugin's marketplace is not reported as
+unregistered, since nothing resolves through it.
 
 ## What is reported rather than rendered
 
@@ -145,9 +151,9 @@ Per-harness losses, since each document states only the half it addresses by. Fu
 
 | renderer | recovers | loses |
 |---|---|---|
-| `claude-plugins` | name, marketplace | `source`, `pi` |
-| `codex-plugins` | name, marketplace, the registrations its plugins reach | `source`, `pi`, a marketplace no plugin names |
-| `droid-plugins` | name, marketplace, the registrations its plugins reach | `source`, `pi`, a marketplace no plugin names |
+| `claude-plugins` | name, marketplace, `enabled` | `source`, `pi` |
+| `codex-plugins` | name, marketplace, `enabled`, the registrations its plugins reach | `source`, `pi`, a marketplace no plugin names |
+| `droid-plugins` | name, marketplace, `enabled`, the registrations its plugins reach | `source`, `pi`, a marketplace no plugin names |
 | `pi-plugins` | source, `pi` | `marketplace`, **the name**, and the object form of an unfiltered entry |
 
 Pi's is the interesting one: a package is a source and nothing else, so the key a reference is

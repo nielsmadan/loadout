@@ -36,7 +36,7 @@ MARKETPLACES = "marketplaces"
 
 SECTIONS = (MARKETPLACES, PLUGINS)
 
-# `source` and `marketplace` are **loadout's** vocabulary — the portable unit
+# `source`, `marketplace` and `enabled` are **loadout's** vocabulary — the portable unit
 # this slice invented — so a key outside them is a typo and is refused. A plugin
 # that silently fails to render is a plugin the user believes is on and is not.
 #
@@ -45,7 +45,7 @@ SECTIONS = (MARKETPLACES, PLUGINS)
 # own registration keys. We do not have either schema, so the harness decides —
 # the lesson `render_claude_hooks` records, where validation invented from one
 # machine's files was falsified by the first sample of a survey.
-REFERENCE_KEYS = frozenset({"source", "marketplace", "pi"})
+REFERENCE_KEYS = frozenset({"source", "marketplace", "pi", "enabled"})
 
 # What each harness needs before it can name a plugin at all. Claude and Codex
 # converged independently on `<name>@<marketplace>`; Pi has no marketplace
@@ -92,6 +92,8 @@ def plugins(document: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
         for key in ("source", "marketplace"):
             if key in reference and not isinstance(reference[key], str):
                 raise LoadoutError(f"plugins: {name}.{key} must be a string")
+        if not isinstance(reference.get("enabled", True), bool):
+            raise LoadoutError(f"plugins: {name}.enabled must be true or false")
     return references
 
 
@@ -129,8 +131,16 @@ def unregistered_marketplaces(
     Codex keeps registration in `config.toml`, which loadout writes, so there the
     same call answers "declared in the source?" instead.
     """
-    named = [ref["marketplace"] for ref in plugins(document).values() if "marketplace" in ref]
+    named = [
+        ref["marketplace"]
+        for ref in plugins(document).values()
+        if "marketplace" in ref and _enabled(ref)
+    ]
     return tuple(dict.fromkeys(name for name in named if name not in known))
+
+
+def _enabled(reference: Mapping[str, Any]) -> bool:
+    return reference.get("enabled", True) is True
 
 
 def _addressable(document: Mapping[str, Any], harness: str) -> dict[str, dict[str, Any]]:
@@ -144,13 +154,11 @@ def render_claude_plugins(document: Mapping[str, Any]) -> dict[str, bool]:
     The caller writes it into `settings.json`, which this slice shares with
     settings, permissions and hooks; plugins owns only this key.
 
-    Every entry is `true`, because presence *is* enablement here: a profile takes
-    a plugin out with a `null` in an overlay fragment, which `merge_documents`
-    removes before this ever sees it. Whether Claude also honours `false` is not
-    something this machine can settle, and nothing needs it to.
+    A reference with `enabled = false` renders `false`. Absence is not off here: Claude
+    falls back to the plugin's `defaultEnabled`, which is on by default.
     """
     return {
-        f"{name}@{ref['marketplace']}": True
+        f"{name}@{ref['marketplace']}": _enabled(ref)
         for name, ref in _addressable(document, "claude").items()
     }
 
@@ -162,7 +170,7 @@ def render_droid_plugins(document: Mapping[str, Any]) -> dict[str, Any]:
     used = dict.fromkeys(ref["marketplace"] for ref in references.values())
     return {
         "enabledPlugins": {
-            f"{name}@{ref['marketplace']}": True for name, ref in references.items()
+            f"{name}@{ref['marketplace']}": _enabled(ref) for name, ref in references.items()
         },
         "extraKnownMarketplaces": {
             name: copy.deepcopy(declared[name]) for name in used if name in declared
@@ -187,6 +195,8 @@ def render_pi_plugins(document: Mapping[str, Any]) -> list[Any]:
     """
     entries: list[Any] = []
     for ref in _addressable(document, "pi").values():
+        if not _enabled(ref):
+            continue
         options = ref.get("pi") or {}
         entries.append(
             {"source": ref["source"], **copy.deepcopy(options)} if options else ref["source"]
@@ -209,7 +219,9 @@ def render_codex_plugins(document: Mapping[str, Any]) -> str:
     whatever registered it by hand, and `unregistered_marketplaces` is how a
     caller finds out.
     """
-    references = _addressable(document, "codex")
+    references = {
+        name: ref for name, ref in _addressable(document, "codex").items() if _enabled(ref)
+    }
     declared = marketplaces(document)
     used = dict.fromkeys(ref["marketplace"] for ref in references.values())
 

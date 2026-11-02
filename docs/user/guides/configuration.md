@@ -242,6 +242,8 @@ plugins = "tools"
 ```
 
 Claude, Codex, and Droid render marketplace-based enablement. Pi renders package references.
+Add `"enabled": false` to a reference to switch the plugin off: Claude and Droid record it as off,
+and Codex and Pi leave it out.
 Installing packages and registering Claude marketplaces remain part of your harness setup.
 
 OpenCode plugin files go through module configuration rather than this enablement slice.

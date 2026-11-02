@@ -206,8 +206,10 @@ command.
 
 `hooks` and `plugins` take fragment names, resolved as `<source>/hooks/<name>.json` and
 `<source>/plugins/<name>.json` and deep-merged in order: maps merge key by key, lists concatenate,
-and `null` removes, which is how a profile switches one plugin off with a one-key overlay instead
-of restating a list. See [plugins](https://github.com/nielsmadan/loadout/blob/main/docs/reference/plugins.md)
+and `null` removes. A plugin reference takes `enabled = false` to switch it off, so a profile
+switches one off with a one-key overlay instead of restating a list:
+`{"plugins": {"my-tools": {"enabled": false}}}`. Claude and Droid render it as `false`; Codex and
+Pi leave the plugin out. See [plugins](https://github.com/nielsmadan/loadout/blob/main/docs/reference/plugins.md)
 for what a plugin reference holds and what each harness makes of it.
 
 Pi's plugin declaration shares `settings.json` with `lastChangelogVersion`, a cursor Pi updates

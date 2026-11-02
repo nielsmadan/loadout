@@ -182,8 +182,8 @@ rendered:
 
 Droid addresses plugins as `<name>@<marketplace>`. The portable plugins fragment contributes
 both `enabledPlugins` and `extraKnownMarketplaces` to `settings.json`; settings and permission
-keys beside them remain intact. Removing a portable plugin reference removes its enablement on
-the next render.
+keys beside them remain intact. A reference with `"enabled": false` renders `false`. Removing a
+portable plugin reference removes its entry on the next render.
 
 ## Mission droids
 

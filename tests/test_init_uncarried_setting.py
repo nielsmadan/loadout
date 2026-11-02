@@ -218,20 +218,57 @@ def test_codex_server_policy_is_carried_as_mcp_rules(tmp_path: Path, fake_home: 
     assert loadout.main(["check", "--global"]) == 0
 
 
-# --- noted: nothing the harness does changes ----------------------------------------
+def test_a_claude_plugin_switched_off_is_carried(tmp_path: Path, fake_home: Path) -> None:
+    settings = fake_home / ".claude/settings.json"
+    _write(settings, json.dumps({"enabledPlugins": {"x@m": False, "y@m": True}}))
+    source = _git(tmp_path / "source")
+
+    assert loadout.main(["init", "global", str(source), "--harness", "claude", "--yes"]) == 0
+
+    fragment = json.loads((source / "loadout/plugins/claude.json").read_text())
+    assert fragment["plugins"] == {
+        "x": {"marketplace": "m", "enabled": False},
+        "y": {"marketplace": "m"},
+    }
+    assert json.loads(settings.read_text())["enabledPlugins"] == {"x@m": False, "y@m": True}
+    assert loadout.main(["check", "--global"]) == 0
 
 
-def test_a_claude_plugin_switched_off(tmp_path: Path, fake_home: Path, capsys) -> None:
-    _write(fake_home / ".claude/settings.json", json.dumps({"enabledPlugins": {"x@m": False}}))
-
-    _converts(*_global(tmp_path / "source", "claude", capsys), "x@m is False")
-
-
-def test_a_droid_project_plugin_switched_off(tmp_path: Path, capsys) -> None:
+def test_a_droid_project_plugin_switched_off_is_carried(tmp_path: Path) -> None:
     root = _git(tmp_path / "p")
-    _write(root / ".factory/settings.json", json.dumps({"enabledPlugins": {"x@m": False}}))
+    settings = root / ".factory/settings.json"
+    _write(settings, json.dumps({"enabledPlugins": {"x@m": False}}))
 
-    _converts(*_project(root, "droid", capsys), "x@m is False")
+    assert (
+        loadout.main(["init", "project", "--root", str(root), "--harness", "droid", "--yes"]) == 0
+    )
+
+    fragment = json.loads((root / "loadout/plugins.json").read_text())
+    assert fragment["plugins"] == {"x": {"marketplace": "m", "enabled": False}}
+    assert json.loads(settings.read_text())["enabledPlugins"] == {"x@m": False}
+    assert loadout.main(["check", "--root", str(root)]) == 0
+
+
+def test_a_codex_plugin_switched_off_is_carried(tmp_path: Path, fake_home: Path) -> None:
+    config = fake_home / ".codex/config.toml"
+    _write(
+        config,
+        '[plugins."x@m"]\nenabled = false\n\n[plugins."y@m"]\nenabled = true\n',
+    )
+    source = _git(tmp_path / "source")
+
+    assert loadout.main(["init", "global", str(source), "--harness", "codex", "--yes"]) == 0
+
+    fragment = json.loads((source / "loadout/plugins/codex.json").read_text())
+    assert fragment["plugins"] == {
+        "x": {"marketplace": "m", "enabled": False},
+        "y": {"marketplace": "m"},
+    }
+    assert tomllib.loads(config.read_text())["plugins"] == {"y@m": {"enabled": True}}
+    assert loadout.main(["check", "--global"]) == 0
+
+
+# --- noted: nothing the harness does changes ----------------------------------------
 
 
 def test_a_codex_approval_mode_codex_rejects(tmp_path: Path, fake_home: Path, capsys) -> None:
