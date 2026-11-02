@@ -99,9 +99,13 @@ include feature for rule files someone else already wrote (globs and remote URLs
 Loadout leaves that key untouched, so nothing is included twice. Upstream calls the document
 "global rules … applied across all opencode sessions".
 
-**Until this destination existed, OpenCode fell back to `~/.claude/CLAUDE.md`** — which loadout
-also writes. OpenCode was reading Claude's document, with Claude's fragments in it, and the
-fallback is silent, so nothing looked broken.
+**Until this destination existed, OpenCode v1 fell back to `~/.claude/CLAUDE.md`** — which
+loadout also writes. OpenCode was reading Claude's document, with Claude's fragments in it, and
+the fallback is silent, so nothing looked broken. The fallback is v1's only. Verified negative
+by run on 2.2.5 (2026-11-02): with no `AGENTS.md` anywhere, neither `~/.claude/CLAUDE.md` nor a
+repository `CLAUDE.md` reached the request, and the server watched only
+`~/.config/opencode/AGENTS.md` and the repository's `AGENTS.md`. Claude's skill folders are still
+read in 2.2.5, and `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1` still turns them off.
 
 ## Gotcha: v2 renames nearly every key
 

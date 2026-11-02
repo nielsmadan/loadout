@@ -85,7 +85,8 @@ two under separate headings — see [instructions](#instructions) for both quote
 
 The global rules document is `~/.config/opencode/AGENTS.md`, the same shape as the other three
 harnesses, and it landed as **one preset entry** on 2026-08-15. What the wrong reason cost was
-not effort: OpenCode's documented fallback is `~/.claude/CLAUDE.md`, which loadout also writes,
+not effort: OpenCode v1's documented fallback is `~/.claude/CLAUDE.md` (2.2.5 has none; see
+[opencode.md](opencode.md)), which loadout also writes,
 so the missing slice presented as a harness reading a perfectly valid instruction document meant
 for a different one.
 
