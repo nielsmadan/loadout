@@ -20,6 +20,13 @@ from .native_documents import key_fingerprints, parse_document
 from .output import Copied, FrozenFile, Merged, sha256
 from .project import PROJECT_DIR
 
+# The worker's exit status when render refuses the source; stdout then holds the refusal.
+REFUSED = 3
+
+
+class SourceRefused(LoadoutError):
+    """Render refused the serialized source; the message is render's own."""
+
 
 def validate_plan(plan: MigrationPlan) -> MigrationPlan:
     if plan.issues or plan.already_initialized:
@@ -27,6 +34,13 @@ def validate_plan(plan: MigrationPlan) -> MigrationPlan:
     try:
         generated = _reconstruct(plan)
         _compare(plan, generated)
+    except SourceRefused as error:
+        return replace(
+            plan,
+            validated=False,
+            generated_writes=(),
+            issues=(Issue("source-refused", (plan.inventory.source_root,), str(error)),),
+        )
     except (LoadoutError, OSError, ValueError, TypeError, KeyError) as error:
         return replace(
             plan,
@@ -106,6 +120,8 @@ def _reconstruct(plan: MigrationPlan) -> tuple[GeneratedWrite, ...]:
             cwd=scratch,
             env=environment,
         )
+        if result.returncode == REFUSED:
+            raise SourceRefused(json.loads(result.stdout)["refused"])
         if result.returncode:
             raise LoadoutError(
                 "Isolated migration reconstruction failed: "
@@ -224,6 +240,9 @@ def _worker() -> None:
                 }
             )
         json.dump(result, sys.stdout)
+    except LoadoutError as error:
+        json.dump({"refused": str(error)}, sys.stdout)
+        sys.exit(REFUSED)
     except Exception as error:  # noqa: BLE001 - report the failure; the caller decides the exit
         print(
             type(error).__name__,

@@ -132,6 +132,7 @@ file; fix it on disk and run init again. An incomplete preview exits 2 and chang
 | `source-exists`, `initialized-source`, `initialized-conflict` | the source directory already holds conflicting loadout source |
 | `registration-conflict` | global: another source is registered; choose `--registration` |
 | `reconstruction-failed` | the serialized source does not reproduce the originals |
+| `source-refused` | rendering the serialized source in isolation raised a refusal, and the message is that refusal, such as two MCP servers whose tool names overlap or that Pi reads as one; rename one in the native configuration and run init again |
 
 ## What init leaves out
 

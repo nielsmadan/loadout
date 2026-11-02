@@ -15,6 +15,7 @@ IssueCode = Literal[
     "opencode-both-formats",
     "reconstruction-failed",
     "registration-conflict",
+    "source-refused",
     "scope-required",
     "source-composition",
     "source-exists",
