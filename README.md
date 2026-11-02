@@ -16,6 +16,9 @@ For versioned packages and Homebrew distribution, see [Releasing Loadout](docs/r
 
 ## Install
 
+Loadout runs on macOS and Linux. [Getting started](https://loadoutai.dev/getting-started/#install)
+has the requirements and the install from the repository. From a checkout:
+
     just install
 
 This installs a snapshot of the current checkout onto `PATH`. Run it again after changes
