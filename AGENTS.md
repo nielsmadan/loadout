@@ -131,7 +131,7 @@ from this machine, and none of the rules above would have caught it. **Before pa
 document with the code's vocabulary, confirm the shared word denotes the same thing in both** —
 and prefer the upstream page's own headings, which kept OpenCode's two mechanisms apart all along.
 
-The second one cost more than effort. OpenCode's documented fallback is `~/.claude/CLAUDE.md`,
+The second one cost more than effort. OpenCode v1's documented fallback is `~/.claude/CLAUDE.md`,
 which loadout also writes, so a missing slice presented as a harness silently reading a valid
 instruction document meant for a different harness. Nothing errored and nothing looked empty.
 
