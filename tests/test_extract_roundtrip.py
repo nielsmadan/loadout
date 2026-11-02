@@ -30,6 +30,7 @@ import pytest
 from loadout.errors import LoadoutError
 from loadout.extract import EXTRACTORS, VALUE_EXTRACTORS, extract
 from loadout.permissions.renderers import (
+    OPENCODE_UNNAMEABLE,
     PI_UNNAMEABLE,
     RENDERERS,
     JsonSpec,
@@ -340,14 +341,22 @@ def _claude_carried(rules: Rules) -> Rules:
     )
 
 
+def _opencode_named(entries: tuple[str, ...]) -> tuple[str, ...]:
+    """OpenCode's tool names hold each half sanitised, so that is what reads back."""
+    return tuple(
+        "/".join(OPENCODE_UNNAMEABLE.sub("_", part) for part in entry.split("/", 1))
+        for entry in entries
+    )
+
+
 def _opencode_carried(rules: Rules) -> Rules:
     return Rules(
         allow=rules.allow,
         ask=rules.ask,
         deny=rules.deny,
-        mcp_allow=rules.mcp_allow,
-        mcp_ask=rules.mcp_ask,
-        mcp_deny=rules.mcp_deny,
+        mcp_allow=_opencode_named(rules.mcp_allow),
+        mcp_ask=_opencode_named(rules.mcp_ask),
+        mcp_deny=_opencode_named(rules.mcp_deny),
         opencode_extra=dict(rules.opencode_extra),
         default=_stated_default(rules),
     )

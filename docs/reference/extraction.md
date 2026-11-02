@@ -227,7 +227,8 @@ back identically, so the document property holds and the source differs only in 
 - A source entry of `foo:*` is itself a glob, so `claude_pattern` emits `Bash(foo:*)` — the same
   bytes as the non-glob entry `foo`. The bare reading is taken.
 - An OpenCode MCP key splits on its last `_`, so a tool name containing `_` splits wrong, and a
-  passthrough key containing one reads as an MCP target.
+  passthrough key containing one reads as an MCP target. Names read back sanitised, so
+  `svc.two/read` returns as `svc_two/read`.
 - A `claude.extra` value shaped like `Bash(...)` or `mcp__x__y` reads as a shell or MCP rule.
 - A stated `default = "ask"` renders exactly what an unstated key renders, so it reads back
   unstated. Only the spelling is lost; across tiers it also loses a vote, which is why

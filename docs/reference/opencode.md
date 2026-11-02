@@ -69,6 +69,12 @@ MCP entries become top-level keys under `permission`, not nested:
 
 from a source entry of `jina/*` — the `/` becomes `_`.
 
+OpenCode names an MCP tool `<server>_<tool>` with every character outside `[a-zA-Z0-9_-]`
+replaced by `_` in each half (`sanitize` and `toolName` in `mcp/catalog.ts`, v1.18.15), so
+`svc.two/read` renders as `"svc_two_read"`. `*` and `?` are kept, being wildcards there.
+`render_opencode` refuses two servers whose names sanitise alike, and two targets that become
+one key, such as `a_b/c` and `a/b_c`, since a rule keyed by that name matches both.
+
 ## What loadout emits
 
 From `GLOBAL_PRESET["opencode"]` in `harnesses.py` and `PROJECT_PRESET["opencode"]` in

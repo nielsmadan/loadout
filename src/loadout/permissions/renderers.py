@@ -621,6 +621,40 @@ def opencode_patterns(entry: str) -> list[str]:
     return [entry] if is_glob(entry) else [entry, f"{entry} *"]
 
 
+# OpenCode's `sanitize` (`mcp/catalog.ts`), keeping `*` and `?`, which are wildcards in a key.
+OPENCODE_UNNAMEABLE = re.compile(r"[^a-zA-Z0-9_\-*?]")
+
+
+def opencode_mcp_key(entry: str) -> str:
+    server, tool = mcp_parts(entry)
+    return f"{OPENCODE_UNNAMEABLE.sub('_', server)}_{OPENCODE_UNNAMEABLE.sub('_', tool)}"
+
+
+def _opencode_mcp_keys(rules: Rules) -> list[tuple[str, str]]:
+    """Each MCP rule's key and decision, in emission order. Targets OpenCode gives one
+    name are refused, since a rule keyed by that name matches both."""
+    servers: dict[str, str] = {}
+    targets: dict[str, str] = {}
+    keys: list[tuple[str, str]] = []
+    for category in CATEGORIES:
+        for entry in rules.mcp(category):
+            server, _ = mcp_parts(entry)
+            named = OPENCODE_UNNAMEABLE.sub("_", server)
+            key = opencode_mcp_key(entry)
+            if servers.setdefault(named, server) != server:
+                raise LoadoutError(
+                    f"opencode: MCP servers {servers[named]!r} and {server!r} are both {named!r} "
+                    "in OpenCode's tool names, so no rule can tell them apart; rename one"
+                )
+            if targets.setdefault(key, entry) != entry:
+                raise LoadoutError(
+                    f"opencode: MCP targets {targets[key]!r} and {entry!r} are both {key!r} "
+                    "in OpenCode, so no rule can tell them apart; rename one"
+                )
+            keys.append((key, category))
+    return keys
+
+
 def render_opencode(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
     config = copy.deepcopy(base)
 
@@ -631,10 +665,8 @@ def render_opencode(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
                 bash[pattern] = category
 
     permission: dict[str, Any] = {"bash": bash}
-    for category in CATEGORIES:
-        for entry in rules.mcp(category):
-            server, tool = mcp_parts(entry)
-            permission[f"{server}_{tool}"] = category
+    for key, category in _opencode_mcp_keys(rules):
+        permission[key] = category
     for key, value in rules.opencode_extra.items():
         permission[key] = value
 
