@@ -16,7 +16,8 @@
     "zeta"
   ],
   "enabledPlugins": {
-    "review@official": true
+    "review@official": true,
+    "lint@official": false
   },
   "extraKnownMarketplaces": {
     "official": {
