@@ -13,7 +13,7 @@ from typing import Any, Literal
 
 from .errors import LoadoutError
 from .hooks import foreign_variables
-from .permissions.renderers import pi_mcp_patterns, render_codex, render_codex_project
+from .permissions.renderers import render_codex, render_codex_project
 from .permissions.rules import (
     CATCH_ALL_ENTRY,
     DECISIONS,
@@ -23,6 +23,7 @@ from .permissions.rules import (
     Decision,
     Rules,
     is_glob,
+    mcp_parts,
 )
 from .plugins import MARKETPLACES, PLUGINS
 from .servers import Server, auth_conflict, literal_header
@@ -338,10 +339,20 @@ def _collapse_shell(
     return buckets, notes
 
 
+def _adapter_mcp_patterns(entry: str) -> list[str]:
+    """The forms pi-mcp-adapter's `mcp` tool is matched by, which loadout rendered for Pi
+    before it rendered for Pi's built-in MCP."""
+    server, tool = mcp_parts(entry)
+    patterns = [f"{server}_{tool}", f"{server}:{tool}"]
+    if tool == "*":
+        patterns += [f"mcp_server_{server}", f"mcp_connect_{server}"]
+    return patterns
+
+
 def _collapse_pi_mcp(
     patterns: dict[str, str], label: str
 ) -> tuple[dict[str, list[str]], list[Note]]:
-    """`server:tool` is the anchor — the only emitted form with an unambiguous split."""
+    """`server:tool` is the anchor — the only adapter form with an unambiguous split."""
     buckets: dict[str, list[str]] = {category: [] for category in CATEGORIES}
     notes: list[Note] = []
     consumed: set[str] = set()
@@ -354,7 +365,7 @@ def _collapse_pi_mcp(
             continue
         entry = f"{server}/{tool}"
         buckets[decision].append(entry)
-        consumed.update(pi_mcp_patterns(entry))
+        consumed.update(_adapter_mcp_patterns(entry))
     for pattern in patterns:
         if pattern not in consumed:
             notes.append(Note("unrecognised", f"{label}: unpaired mcp pattern {pattern!r}"))
@@ -370,6 +381,36 @@ def _collapse_pi_mcp(
 
 PI_ORDER = ("allow", "ask", "deny")
 
+PI_TOOL_PREFIX = "mcp__"
+PI_MCP_SEED = (f"{PI_TOOL_PREFIX}{CATCH_ALL_ENTRY}", MCP_SEED)
+
+PI_ADAPTER_MAP = Note(
+    "cannot",
+    "the mcp map is pi-mcp-adapter's, so its rules are carried as Pi's built-in MCP tool "
+    "names; the adapter, which replaces the built-in when installed, is not governed by them",
+)
+
+
+def _pi_tool_keys(
+    permission: Mapping[str, Any], label: str, seeded: bool
+) -> tuple[dict[str, list[str]], dict[str, str], list[Note]]:
+    """Top-level `mcp__<server>__<tool>` keys -> MCP rules. A server name may itself hold
+    `__`, so the split is at the first one; the key renders back the same either way."""
+    keys = {key: value for key, value in permission.items() if key.startswith(PI_TOOL_PREFIX)}
+    if seeded and next(iter(keys.items()), None) == PI_MCP_SEED:
+        keys = dict(list(keys.items())[1:])
+    buckets: dict[str, list[str]] = {category: [] for category in CATEGORIES}
+    notes: list[Note] = []
+    for key, decision in keys.items():
+        server, separator, tool = key.removeprefix(PI_TOOL_PREFIX).partition("__")
+        if not separator or not server or not tool:
+            notes.append(Note("unrecognised", f"{label}: {key!r} is not mcp__<server>__<tool>"))
+        elif decision not in buckets:
+            notes.append(Note("unrecognised", f"{label}: decision {decision!r} for {key!r}"))
+        else:
+            buckets[decision].append(f"{server}/{tool}")
+    return buckets, keys, notes
+
 
 def _extract_pi(document: Any, label: str, seeded: bool) -> Extraction:
     """Shared body. `seeded` is the whole difference between the two scopes.
@@ -383,13 +424,17 @@ def _extract_pi(document: Any, label: str, seeded: bool) -> Extraction:
     default, bash, default_notes = _split_default(raw_bash, label, seeded=seeded)
     raw_mcp = _drop_mcp_seed(permission.get("mcp", {})) if seeded else permission.get("mcp", {})
     shell, shell_notes = _collapse_shell(bash, label)
-    mcp, mcp_notes = _collapse_pi_mcp(raw_mcp, label)
+    tools, tool_keys, tool_notes = _pi_tool_keys(permission, label, seeded)
+    adapter, adapter_notes = _collapse_pi_mcp(raw_mcp, label)
+    mcp = {category: tools[category] + adapter[category] for category in CATEGORIES}
     notes = (
         default_notes
         + shell_notes
-        + mcp_notes
+        + tool_notes
+        + adapter_notes
+        + ([Note(PI_ADAPTER_MAP.kind, f"{label}: {PI_ADAPTER_MAP.detail}")] if raw_mcp else [])
         + _order_note(bash, PI_ORDER, f"{label} bash")
-        + _order_note(raw_mcp, PI_ORDER, f"{label} mcp")
+        + _order_note(tool_keys, PI_ORDER, f"{label} mcp")
     )
     return Extraction(
         Rules(
@@ -1396,13 +1441,50 @@ def extract_claude_global_servers(document: Any) -> ValueExtraction:
     return ValueExtraction(servers, notes)
 
 
-# Pi core never reads `bearerTokenEnv`, and pi-mcp-adapter uses it only beside
-# `auth: "bearer"`, so an Authorization header beside it is the credential actually sent.
-PI_HEADER_AUTH = (
-    "Pi sends that header and not bearerTokenEnv, so the server would get no credential"
+# Pi's built-in MCP sends headers and never reads `bearerTokenEnv`; pi-mcp-adapter reads it only
+# beside `auth: "bearer"`, the one case it was a credential.
+PI_ADAPTER_BEARER = (
+    "Pi's built-in MCP sends the header and pi-mcp-adapter the bearerTokenEnv credential, so "
+    "which one the server gets would change"
 )
 
-PI_SERVER_KEYS = frozenset({"url", "bearerTokenEnv", "headers", "command", "args", "env"})
+PI_SERVER_KEYS = frozenset({"url", "headers", "command", "args", "env", "auth", "bearerTokenEnv"})
+
+
+def _pi_auth(name: str, entry: Mapping[str, Any]) -> tuple[str | None, dict[str, str], list[Note]]:
+    label = f"pi-servers: {name}"
+    header_var, headers, found = _extract_headers(entry.get("headers", {}), CLAUDE_BEARER, label)
+    notes = list(found)
+    auth = entry.get("auth")
+    token_env = entry.get("bearerTokenEnv")
+    if token_env is not None and not isinstance(token_env, str):
+        notes.append(Note("unrecognised", f"{label} bearerTokenEnv is not a string"))
+        token_env = None
+    if auth == "bearer" and token_env is not None:
+        clash = "Authorization" if header_var else auth_conflict(token_env, headers)
+        if clash is None:
+            return token_env, headers, notes
+        notes.append(Note("lost", f"{label}: {clash} beside auth: bearer", PI_ADAPTER_BEARER))
+    elif auth == "oauth":
+        notes.append(
+            Note(
+                "cannot",
+                f"{label} auth: oauth is not adopted; Pi's built-in MCP signs in with OAuth "
+                "itself for a server without an Authorization header",
+            )
+        )
+    else:
+        if token_env is not None:
+            notes.append(
+                Note(
+                    "cannot",
+                    f"{label} bearerTokenEnv is not adopted; Pi's built-in MCP ignores it, and "
+                    "pi-mcp-adapter reads it only beside auth: bearer",
+                )
+            )
+        if auth is not None:
+            notes.append(Note("unrecognised", f"{label} auth {auth!r} is not adopted"))
+    return header_var, headers, notes
 
 
 def _extract_pi_server(name: str, entry: Any) -> tuple[Server | None, tuple[Note, ...]]:
@@ -1425,18 +1507,8 @@ def _extract_pi_server(name: str, entry: Any) -> tuple[Server | None, tuple[Note
         if not isinstance(url, str):
             notes.append(Note("unrecognised", f"pi-servers: {name} http entry has no url"))
             return None, tuple(notes)
-        auth_env_var = entry.get("bearerTokenEnv")
-        if auth_env_var is not None and not isinstance(auth_env_var, str):
-            notes.append(Note("unrecognised", f"pi-servers: {name} bearerTokenEnv is not a string"))
-            auth_env_var = None
-        _, headers, found = _extract_headers(entry.get("headers", {}), None, f"pi-servers: {name}")
+        auth_env_var, headers, found = _pi_auth(name, entry)
         notes.extend(found)
-        clash = auth_conflict(auth_env_var, headers)
-        headers, found = _one_auth(auth_env_var, headers, f"pi-servers: {name}", "bearerTokenEnv")
-        if found:
-            notes.append(
-                Note("lost", f"pi-servers: {name}: {clash} beside bearerTokenEnv", PI_HEADER_AUTH)
-            )
         return Server(
             name=name, transport="http", url=url, auth_env_var=auth_env_var, headers=headers
         ), tuple(notes)
@@ -1456,8 +1528,8 @@ def _extract_pi_server(name: str, entry: Any) -> tuple[Server | None, tuple[Note
         Note(
             "lost",
             f"pi-servers: {name} has neither url nor command",
-            "pi-mcp-adapter reads such an entry as an override of a server defined elsewhere, "
-            "which would apply no longer",
+            "Pi reads such an entry in .pi/mcp.json as an override of the user-level server of "
+            "that name, which would apply no longer",
         )
     )
     return None, tuple(notes)

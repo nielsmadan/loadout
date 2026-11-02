@@ -150,9 +150,9 @@ code. When Codex and OpenCode need different variants of the same skill, also se
 
 ### MCP servers
 
-`loadout/mcp.toml` reaches Claude (`.mcp.json`), Droid (`.factory/mcp.json`), and OpenCode
-(`opencode.json`'s `mcp` key). Pi has no project destination: `.mcp.json` already serves it, since
-`pi-mcp-adapter` reads it directly. Codex has none yet: whether a server survives Codex's
+`loadout/mcp.toml` reaches Claude (`.mcp.json`), Droid (`.factory/mcp.json`), OpenCode
+(`opencode.json`'s `mcp` key) and Pi (`.pi/mcp.json`, read once the project is trusted). Codex has
+none yet: whether a server survives Codex's
 project-config filter is unverified. A template contributes its own `mcp.toml` beneath the project.
 
 ### Shared settings files

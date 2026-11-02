@@ -312,23 +312,42 @@ def render_opencode_servers(servers: dict[str, Server]) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------
-# pi — `mcpServers`, the shape pi-mcp-adapter's ServerEntry takes. HTTP auth
-# uses `bearerTokenEnv` (the variable NAME; the adapter reads it at call
-# time), so no token is ever written here.
+# pi — `mcpServers`, the shape Pi's built-in MCP reads (`docs/mcp.md`, Pi 1.4.0).
+# Header interpolation is ${VAR}, so no token is ever written here.
 # --------------------------------------------------------------------------
+
+# `SERVER_NAME` in Pi's `core/mcp-servers.js`; Pi rejects any other server name.
+PI_SERVER_NAME = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _pi_server_names(servers: Mapping[str, Server]) -> None:
+    """Pi rejects a server name outside `PI_SERVER_NAME`, and a second one that differs from
+    another only in `-` and `_`."""
+    seen: dict[str, str] = {}
+    for name in servers:
+        if not PI_SERVER_NAME.fullmatch(name):
+            raise LoadoutError(
+                f"pi: MCP server {name!r} is not a name Pi accepts; use letters, digits, _ and -"
+            )
+        named = name.replace("-", "_")
+        if seen.setdefault(named, name) != name:
+            raise LoadoutError(
+                f"pi: MCP servers {seen[named]!r} and {name!r} are both {named!r} to Pi, "
+                "which rejects the second; rename one"
+            )
 
 
 def render_pi_servers(servers: dict[str, Server]) -> dict[str, Any]:
+    _pi_server_names(servers)
     entries: dict[str, Any] = {}
     for name, server in servers.items():
         entry: dict[str, Any]
         if is_http(server):
             assert server.url is not None
             entry = {"url": server.url}
-            if server.auth_env_var:
-                entry["bearerTokenEnv"] = server.auth_env_var
-            if server.headers:
-                entry["headers"] = dict(server.headers)
+            headers = _bearer_headers(server, f"${{{server.auth_env_var}}}")
+            if headers:
+                entry["headers"] = headers
         else:
             assert server.command is not None
             entry = {"command": server.command, "args": list(server.args)}

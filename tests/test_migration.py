@@ -149,7 +149,7 @@ def test_live_roots_expand_using_supplied_home() -> None:
     assert any(m.source == Path("/isolated/home/.factory") for m in roots)
     relocated = live_roots(Path("/isolated/home"), {"FACTORY_HOME_OVERRIDE": "~/factory-home"})
     assert any(m.source == Path("/isolated/home/factory-home/.factory") for m in relocated)
-    assert any(m.source == Path("/isolated/home/xdg/mcp/mcp.json") for m in roots)
+    assert any(m.source == Path("/isolated/home/xdg/opencode") for m in roots)
 
 
 def test_symlink_into_known_runtime_root_is_excluded(tmp_path: Path) -> None:

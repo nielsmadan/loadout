@@ -22,6 +22,7 @@ OUTPUTS = (
     ".factory/mcp.json",
     "opencode.json",
     ".pi/extensions/pi-permission-system/config.json",
+    ".pi/mcp.json",
     ".claude/mcp-permissions.json",
     ".mcp.json",
     "CLAUDE.md",
@@ -461,6 +462,7 @@ def test_a_project_declaring_no_instructions_generates_neither_document(
         ".factory/mcp.json",
         "opencode.json",
         ".pi/extensions/pi-permission-system/config.json",
+        ".pi/mcp.json",
     } | {
         # The template is gone with `bare_project`, so only the project's own skill
         # survives — which is also what proves the template supplied the other one.

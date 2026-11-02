@@ -20,7 +20,7 @@ An absent output is an implementation limit of Loadout.
 | Instructions | Yes | Yes | Yes | Yes | Yes |
 | Shell permissions | Yes | Yes | Yes | Yes | Permission extension |
 | MCP tool policy | Yes | Yes, with server config | Not rendered | Yes | Permission extension |
-| MCP server definitions | Yes | Yes | Yes | Yes | MCP adapter |
+| MCP server definitions | Yes | Yes | Yes | Yes | Yes |
 | Skills | Yes | Yes | Yes | Yes | Yes |
 | Agents | `~/.claude/agents/` | `~/.codex/agents/`, as TOML | `~/.factory/droids/` | `~/.config/opencode/agents/` | `~/.pi/agent/agents/`, read by `pi-subagents` |
 | Native settings | JSON settings | Defaults slice | JSON settings | JSON settings | JSON settings with plugins selected |
@@ -28,8 +28,12 @@ An absent output is an implementation limit of Loadout.
 | Plugin declarations | Marketplace enablement | Enablement and registrations | Enablement and registrations | Plugin files via module-config | Package references |
 | Module files | Yes | Not rendered | Yes | Yes | Yes |
 
-Pi needs the corresponding permission extension and MCP adapter to consume those generated
-files. Loadout renders configuration; it does not install those integrations.
+Pi needs the permission extension, pi-permission-system, to apply the generated permissions.
+Loadout renders configuration; it does not install that extension.
+
+Loadout renders Pi's MCP servers and policy for Pi's built-in MCP. `pi-mcp-adapter` is not
+supported in 1.0: when installed it replaces the built-in, so Pi does not read the servers
+loadout writes, and the policy does not govern the adapter's tool.
 
 Claude's global MCP servers are written into the owned `mcpServers` key in `.claude.json`.
 Codex's server definitions and policy share the owned `mcp_servers` tables in `config.toml`.

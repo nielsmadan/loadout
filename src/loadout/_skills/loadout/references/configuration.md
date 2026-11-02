@@ -346,6 +346,7 @@ keys the source sets, as `owned-key` or `owned-key-removed`.
 | Pi | `/model` or `/thinking`, then Ctrl+S | `defaultProvider`, `defaultModel`, `defaultThinkingLevel` | `~/.pi/agent/settings.json` |
 | Pi | `/settings`, `/scoped-models`; `pi install`, `pi config` | `theme`, `modelThinkingLevels`, `enabledModels`; `packages` | `~/.pi/agent/settings.json` |
 | Pi | `/permission-system` | `yoloMode`, `debugLog`, `permissionReviewLog` | `~/.pi/agent/extensions/pi-permission-system/config.json` |
+| Pi | `/mcp`: enable, disable, exposure; "Disable in this project" | `enabled`, `exposure`, `toolExposure` in a server's entry; an override entry | `~/.pi/agent/mcp.json`, `.pi/mcp.json` |
 
 Not drift: OpenCode's TUI model pick (`~/.local/state/opencode/model.json`) and TUI settings
 (`~/.config/opencode/cli.json`), which loadout does not write; Droid's `trustedFolders` and Pi's
@@ -364,7 +365,9 @@ Ask the user which answer they want:
    `preserve` takes top-level keys only (preserving `modelSettings` hands over every model's entry)
    and refuses a key the source or a slice writes: `permissions`, Claude's `hooks` and
    `enabledPlugins` and Droid's `enabledPlugins` when those slices are declared, and Pi's
-   `packages`. Those can only be ported. pi-permission-system's keys have no place in the source,
+   `packages`. Those can only be ported. Pi's `/mcp` changes sit inside `mcpServers`, beyond
+`preserve`, and the source has no form for exposure; a server turned off ports as an `[mcp]` deny
+rule (`"docs/*"`). pi-permission-system's keys have no place in the source,
    so preserving is the only answer for them. For Codex, removing the key from `defaults` is
    enough, and `[codex] preserve` is a configuration error; the next sync deletes it from
    `config.toml`, refusing while Codex's value differs from loadout's until the user approves

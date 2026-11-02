@@ -82,10 +82,11 @@ Refused:
   every harness expands these when it connects
 - Claude `sse` and `ws` servers and Droid `sse` servers, transports the harness documents
 - Droid `mcp.json`'s `persistentPermissions`, remembered tool approvals; and any key beside
-  `mcpServers` in Pi's `mcp.json`, where Pi reads `autoEnableCodemode` and pi-mcp-adapter its own
-- a Pi `Authorization` header beside `bearerTokenEnv`: Pi core never reads `bearerTokenEnv`, and
-  pi-mcp-adapter only beside `auth: "bearer"`, so the header is the credential sent
-- a Pi entry with neither `url` nor `command`, which pi-mcp-adapter reads as an override
+  `mcpServers` in Pi's `mcp.json`, where Pi reads `autoEnableCodemode`
+- a Pi `Authorization` header beside pi-mcp-adapter's `auth: "bearer"` and `bearerTokenEnv`: Pi's
+  built-in MCP sends the header and the adapter the variable
+- a Pi entry with neither `url` nor `command`, which Pi reads in `.pi/mcp.json` as an override of
+  the user-level server of that name
 - Codex approval mode `writes` (asks unless a tool is read-only), and a per-tool `auto` under a
   server default other than `auto`; the source has no category for either
 - a Codex plugin's `mcp_servers` policy, and a Claude `enabledPlugins` that is not a map, which
@@ -185,9 +186,14 @@ Rendering is not injective, and five forms have to be undone:
   entries existed, the first stayed in `[claude.extra]` and never reached another harness, and
   the second re-rendered with a companion it never had. A pattern holding a `*`, or surrounding
   whitespace, is not one command and keeps its previous reading.
-- **Pi's MCP fan-out.** One `server/tool` entry emits `server_tool` and `server:tool`, plus
-  `mcp_server_<server>` and `mcp_connect_<server>` when the tool is `*`. The colon form is the
-  anchor — the only emitted form that splits unambiguously — and the companions are consumed.
+- **Pi's MCP tool names.** A top-level `mcp__<server>__<tool>` key reads back as `server/tool`,
+  split at the first `__` after the prefix; a server name holding `__` splits differently and
+  renders back to the same key. Names read back sanitised, so `svc.two/read` returns as
+  `svc_two/read`. A leading `mcp__*: ask` at global scope is the seed, not a rule.
+- **pi-mcp-adapter's `mcp` map.** Read with `server:tool` as the anchor, the only adapter form that
+  splits unambiguously, and its `server_tool`, `mcp_server_<server>` and `mcp_connect_<server>`
+  companions consumed. The rules are carried as tool names, with a note: the adapter is not
+  supported, and is not governed by them.
 
 The catch-all that Pi and OpenCode write first is not a source rule. A leading `*` in the
 **bash** map is read back as `[shell] default` and taken out of the rules; `ask` reads back as

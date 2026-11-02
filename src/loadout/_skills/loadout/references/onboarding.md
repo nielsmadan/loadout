@@ -156,7 +156,7 @@ each one into an environment variable:
 
 - An HTTP MCP server's bearer token: replace the literal `Authorization` header in `mcp.toml` with
   `auth_env_var = "<NAME>"`. Loadout renders the name for each harness: `bearer_token_env_var` for
-  Codex, `Bearer ${NAME}` for Claude and Droid, `{env:NAME}` for OpenCode, `bearerTokenEnv` for Pi.
+  Codex, `Bearer ${NAME}` for Claude, Droid and Pi, `{env:NAME}` for OpenCode.
 - Any other value: use the reference syntax of the harness that reads it (`${NAME}` in Claude and Pi
   MCP entries, `{env:NAME}` in OpenCode), and only in a source that harness alone reads.
   `mcp.toml`'s `env`, `args` and `headers` reach every harness as written, so a reference there is

@@ -131,18 +131,19 @@ def test_a_pi_server_switched_off(tmp_path: Path, fake_home: Path, capsys) -> No
     _refused(*_global(tmp_path / "source", "pi", capsys), mcp, "docs carries enabled")
 
 
-def test_a_pi_authorization_header_beside_bearer_token_env(
+def test_a_pi_authorization_header_beside_adapter_bearer_auth(
     tmp_path: Path, fake_home: Path, capsys
 ) -> None:
     mcp = fake_home / ".pi/agent/mcp.json"
     entry = {
         "url": "https://x.test/mcp",
+        "auth": "bearer",
         "bearerTokenEnv": "TOKEN",
         "headers": {"Authorization": "Bearer abc"},
     }
     _write(mcp, json.dumps({"mcpServers": {"docs": entry}}))
 
-    _refused(*_global(tmp_path / "source", "pi", capsys), mcp, "not bearerTokenEnv")
+    _refused(*_global(tmp_path / "source", "pi", capsys), mcp, "beside auth: bearer")
 
 
 def test_pi_document_settings_beside_its_servers(tmp_path: Path, fake_home: Path, capsys) -> None:

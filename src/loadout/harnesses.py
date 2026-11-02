@@ -283,8 +283,8 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
             owned_key="packages",
             preserve=("lastChangelogVersion",),
         ),
-        # pi-mcp-adapter's own file, written directly — Pi has no runtime
-        # state co-mingled with server definitions the way Claude does.
+        # The file Pi's built-in MCP reads, written whole. `/mcp` saves enable and
+        # exposure changes into it, which is drift.
         "mcp": SliceOutput(
             renderer="pi-servers", destination="${PI_CODING_AGENT_DIR:-~/.pi/agent}/mcp.json"
         ),

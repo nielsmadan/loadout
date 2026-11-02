@@ -673,8 +673,7 @@ def _rule_less(renderer: str, rules: Rules) -> bool:
     if renderer == "claude-mcp-permissions":
         return not (rules.mcp_allow or rules.mcp_ask or rules.mcp_deny)
     if renderer == "pi-project":
-        permission = render_pi_project(rules, {})["permission"]
-        return not (permission["bash"] or permission["mcp"])
+        return render_pi_project(rules, {}) == {"permission": {"bash": {}}}
     return False
 
 

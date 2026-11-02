@@ -133,6 +133,8 @@ What each harness writes, by the version checked:
 | | `pi install`, `pi config` | `packages` | same | `hand-edited`; `packages` belongs to the `plugins` slice and cannot be preserved |
 | | Starting after an upgrade | `lastChangelogVersion` | same | nothing; loadout preserves it |
 | | pi-permission-system's `/permission-system` | `yoloMode`, `debugLog`, `permissionReviewLog` | `~/.pi/agent/extensions/pi-permission-system/config.json` | `hand-edited`; the source has no place for these keys, so preserve them |
+| | `/mcp`: enable, disable, or change exposure | `enabled`, `exposure`, `toolExposure` in a server's entry | `~/.pi/agent/mcp.json`, or `.pi/mcp.json` for a project server | `hand-edited`; `preserve` cannot reach inside `mcpServers`. Turn a server off with an `[mcp]` deny rule such as `"docs/*"`; exposure has no source form in 1.0 |
+| | `/mcp` "Disable in this project" | an override entry in `mcpServers` | `.pi/mcp.json` | `hand-edited`, once the project has servers in `loadout/mcp.toml`; the same deny rule in the project's `permissions.toml` is the source's form |
 
 Loadout writes Pi's `settings.json` only when `[pi]` declares `plugins`; without it, none of the
 Pi rows on that file is drift.

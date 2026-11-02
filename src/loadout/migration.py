@@ -1067,14 +1067,7 @@ class _PlanBuilder:
                         if m.kind == "file" and m.destination.name == ".claude.json"
                     )
                 )
-                self.dormant(
-                    mcp,
-                    tuple(a for a in ("claude", "pi") if a in self.inventory.harnesses)
-                    if project
-                    else (agent,),
-                    "mcp",
-                    "json",
-                )
+                self.dormant(mcp, (agent,), "mcp", "json")
             elif agent == "codex":
                 self.dormant(root / "rules/permissions.rules", (agent,), "permissions")
                 if not project:
@@ -1091,12 +1084,7 @@ class _PlanBuilder:
                     "json",
                 )
                 self.available_categories.add((agent, "hooks"))
-                self.dormant(
-                    self.inventory.root / ".mcp.json" if project else root / "mcp.json",
-                    (agent,),
-                    "mcp",
-                    "json",
-                )
+                self.dormant(root / "mcp.json", (agent,), "mcp", "json")
 
 
 def _permission_renderer(candidate: Candidate, project: bool) -> str | None:

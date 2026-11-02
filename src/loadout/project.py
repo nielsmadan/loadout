@@ -246,9 +246,8 @@ PROJECT_PRESET: dict[str, dict[str, SliceOutput]] = {
         "instructions": SliceOutput(output="AGENTS.md"),
         "skills": SliceOutput(output=".pi/skills"),
         "agents": SliceOutput(output=".pi/agents"),
-        # No mcp entry: pi-mcp-adapter's shipped README calls .mcp.json the
-        # "Preferred project config" and reads it directly, so writing
-        # .pi/mcp.json too would hand Pi the same servers twice under two names.
+        # Pi's built-in MCP reads it only once the project is trusted.
+        "mcp": SliceOutput(renderer="pi-servers", output=".pi/mcp.json"),
     },
 }
 

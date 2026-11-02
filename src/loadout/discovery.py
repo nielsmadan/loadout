@@ -130,7 +130,7 @@ MANAGED_PATHS: dict[str, dict[str, tuple[str, ...]]] = {
             "plugins/",
             *_MODULE_TREES,
         ),
-        "shared": ("skills/", "mcp.json", "mcp/mcp.json"),
+        "shared": ("skills/",),
     },
     "project": {
         "claude": ("settings.json", "mcp-permissions.json", "skills/", "agents/"),
@@ -143,7 +143,7 @@ MANAGED_PATHS: dict[str, dict[str, tuple[str, ...]]] = {
             f"{DROID_AGENTS_DIRECTORY}/",
         ),
         "opencode": ("skills/", "agents/"),
-        "pi": ("extensions/pi-permission-system/config.json", "skills/", "agents/"),
+        "pi": ("extensions/pi-permission-system/config.json", "mcp.json", "skills/", "agents/"),
         "shared": ("skills/",),
     },
 }
@@ -237,21 +237,6 @@ def live_roots(home: Path, environ: Mapping[str, str]) -> tuple[RootMapping, ...
             destination_template="~/.agents",
         )
     )
-    shared_mcp = (
-        _home_path(environ["XDG_CONFIG_HOME"], home) / "mcp/mcp.json"
-        if environ.get("XDG_CONFIG_HOME")
-        else home / ".config/mcp/mcp.json"
-    )
-    result.append(
-        RootMapping(
-            shared_mcp,
-            shared_mcp,
-            ("pi",),
-            "file",
-            "mcp",
-            "${XDG_CONFIG_HOME:-~/.config}/mcp/mcp.json",
-        )
-    )
     for variable, kind, category in (
         ("OPENCODE_CONFIG", "file", "settings"),
         ("OPENCODE_CONFIG_DIR", "harness", None),
@@ -284,6 +269,27 @@ def project_root(path: Path) -> Path:
 def initialized_project_path(path: Path) -> Path | None:
     config = project_config_path(project_root(path))
     return config if config.is_file() else None
+
+
+def _pi_adapter_paths(
+    root: Path,
+    scope: Scope | None,
+    harnesses: tuple[str, ...],
+    home: Path,
+    environment: Mapping[str, str],
+) -> tuple[Path, ...]:
+    """The files pi-mcp-adapter reads that Pi's built-in MCP does not. A project's `.mcp.json`
+    is Claude's when Claude is declared, and adopted as that."""
+    if "pi" not in harnesses:
+        return ()
+    if scope != "global":
+        return () if "claude" in harnesses else (root / ".mcp.json",)
+    config = environment.get("XDG_CONFIG_HOME")
+    return (
+        (_home_path(config, home) if config else home / ".config") / "mcp/mcp.json",
+        home / ".agents/mcp.json",
+        home / ".agents/mcp/mcp.json",
+    )
 
 
 def _home_path(value: str, home: Path) -> Path:
@@ -389,6 +395,10 @@ DROID_LEGACY_HOOKS = (
     "moves it to .factory/hooks.json and archives it as hooks/hooks.migrated.json the next "
     "time it saves hooks, and init run again after that adopts it"
 )
+PI_ADAPTER_FILE = (
+    "pi-mcp-adapter's server file; the adapter is not supported in 1.0, and loadout does not "
+    "render this file"
+)
 CLAUDE_LOCAL_SETTINGS = (
     "Claude's personal settings for this repository, which loadout does not render and Claude "
     "still applies; /loadout can move its permissions into loadout/permissions.local.toml"
@@ -427,8 +437,6 @@ def _agents_for(relative: Path, mapping: RootMapping, scope: str) -> tuple[str, 
     supported = {
         "skills": SHARED_SKILL_WRITERS[scope],
         "plugins": {"codex"},
-        "mcp.json": {"pi"},
-        "mcp": {"pi"},
     }
     return tuple(a for a in mapping.harnesses if a in supported.get(relative.parts[0], set()))
 
@@ -554,6 +562,16 @@ class _InventoryBuilder:
             "retained dependency",
             DROID_LEGACY_HOOKS,
         )
+
+    def pi_adapter_files(self, paths: tuple[Path, ...]) -> None:
+        """pi-mcp-adapter's server files, named in the preview and left in place."""
+        for path in paths:
+            if not path.is_file():
+                continue
+            self.remember(path, read=False)
+            self.candidates[path, None] = Candidate(
+                path, path.resolve(), None, ("pi",), "mcp", "retained dependency", PI_ADAPTER_FILE
+            )
 
     def _claude_local_settings(self, path: Path, relative: Path, mapping: RootMapping) -> bool:
         """A project's personal Claude settings, kept in place and named in the preview."""
@@ -728,10 +746,10 @@ class _InventoryBuilder:
                 return
             content = jsonc_to_json(content.decode()).encode()
             destination = destination.with_suffix(".json")
-        native_location = len(relative.parts) == 1 or relative.as_posix() in {
-            "extensions/pi-permission-system/config.json",
-            "mcp/mcp.json",
-        }
+        native_location = (
+            len(relative.parts) == 1
+            or relative.as_posix() == "extensions/pi-permission-system/config.json"
+        )
         document = (
             native_location
             and category
@@ -817,7 +835,7 @@ def _project_mappings(root: Path, agents: tuple[str, ...]) -> tuple[RootMapping,
     for name, consumers, category in (
         ("opencode.json", ("opencode",), "settings"),
         ("opencode.jsonc", ("opencode",), "settings"),
-        (".mcp.json", ("claude", "pi"), "mcp"),
+        (".mcp.json", ("claude",), "mcp"),
     ):
         active = tuple(a for a in consumers if a in agents)
         if active:
@@ -916,6 +934,7 @@ def discover(
     builder = _builder(root, selected_mappings, home, scope)
     for mapping in selected_mappings:
         builder.walk(mapping)
+    builder.pi_adapter_files(_pi_adapter_paths(root, scope, harnesses, home, environment))
     if scope != "global":
         for mapping in _instruction_mappings(builder, harnesses):
             builder.walk(mapping)

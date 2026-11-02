@@ -21,17 +21,20 @@ def test_a_project_renders_mcp_json_for_claude(project: Path) -> None:
     assert list(document["mcpServers"]) == ["jina"]
 
 
-def test_pi_gets_no_project_destination(project: Path) -> None:
-    """pi-mcp-adapter calls .mcp.json its "Preferred project config" and uses it
-    immediately, so writing .pi/mcp.json too would hand Pi the same servers twice
-    under two names."""
+def test_pi_gets_pi_mcp_json(project: Path) -> None:
+    """Pi's built-in MCP reads project servers from .pi/mcp.json alone, once the
+    project is trusted; .mcp.json is Claude's."""
     (project / "loadout" / "mcp.toml").write_text(
-        '[jina]\ntransport = "http"\nurl = "https://x"\n', encoding="utf-8"
+        '[jina]\ntransport = "http"\nurl = "https://x"\nauth_env_var = "JINA"\n',
+        encoding="utf-8",
     )
 
     rendered = render_project(project)
 
-    assert not any(str(p).endswith(".pi/mcp.json") for p in rendered)
+    pi = next(output for path, output in rendered.items() if str(path).endswith(".pi/mcp.json"))
+    assert json.loads(pi) == {
+        "mcpServers": {"jina": {"url": "https://x", "headers": {"Authorization": "Bearer ${JINA}"}}}
+    }
 
 
 def test_codex_gets_no_project_destination_yet(project: Path) -> None:

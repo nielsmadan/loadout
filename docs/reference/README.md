@@ -207,7 +207,7 @@ only.
 | Codex | `.codex/rules/permissions.rules` | `config.toml` → `[mcp_servers.<name>].tools.<tool>`, owned by declared key | split |
 | Droid | `settings.json` → three command lists | not rendered | shell only |
 | OpenCode | `opencode.json` → `permission.bash` | the same `opencode.json` → `permission.<server>_<tool>` | shared |
-| Pi | `extensions/pi-permission-system/config.json` → `permission.bash` | the same document → `permission.mcp` | shared |
+| Pi | `extensions/pi-permission-system/config.json` → `permission.bash` | the same document → `permission.mcp__<server>__<tool>` | shared |
 
 Verified against `src/loadout/permissions/renderers.py`: `render_claude`'s `_claude_settings`
 concatenates `mcp_native(rules.mcp_allow)` (and `ask`/`deny`) into the very lists shell entries go

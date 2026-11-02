@@ -29,7 +29,13 @@ import pytest
 
 from loadout.errors import LoadoutError
 from loadout.extract import EXTRACTORS, VALUE_EXTRACTORS, extract
-from loadout.permissions.renderers import RENDERERS, JsonSpec, TextSpec, render_codex_project
+from loadout.permissions.renderers import (
+    PI_UNNAMEABLE,
+    RENDERERS,
+    JsonSpec,
+    TextSpec,
+    render_codex_project,
+)
 from loadout.permissions.rules import (
     UNSTATED_DEFAULT,
     Rules,
@@ -347,6 +353,13 @@ def _opencode_carried(rules: Rules) -> Rules:
     )
 
 
+def _pi_named(entries: tuple[str, ...]) -> tuple[str, ...]:
+    """Pi's tool names hold each half sanitised, so that is what reads back."""
+    return tuple(
+        "/".join(PI_UNNAMEABLE.sub("_", part) for part in entry.split("/", 1)) for entry in entries
+    )
+
+
 def _pi_carried(rules: Rules) -> Rules:
     """Pi carries the default; a stated `ask` reads back unstated, since Pi seeds it.
 
@@ -357,9 +370,9 @@ def _pi_carried(rules: Rules) -> Rules:
         allow=rules.allow,
         ask=rules.ask,
         deny=rules.deny,
-        mcp_allow=rules.mcp_allow,
-        mcp_ask=rules.mcp_ask,
-        mcp_deny=rules.mcp_deny,
+        mcp_allow=_pi_named(rules.mcp_allow),
+        mcp_ask=_pi_named(rules.mcp_ask),
+        mcp_deny=_pi_named(rules.mcp_deny),
         default=_stated_default(rules),
     )
 
@@ -370,9 +383,9 @@ def _pi_project_carried(rules: Rules) -> Rules:
         allow=rules.allow,
         ask=rules.ask,
         deny=rules.deny,
-        mcp_allow=rules.mcp_allow,
-        mcp_ask=rules.mcp_ask,
-        mcp_deny=rules.mcp_deny,
+        mcp_allow=_pi_named(rules.mcp_allow),
+        mcp_ask=_pi_named(rules.mcp_ask),
+        mcp_deny=_pi_named(rules.mcp_deny),
         default=rules.default,
     )
 

@@ -139,8 +139,8 @@ Use your actual server URL or command. `auth_env_var` is the environment variabl
 not the secret value.
 
 At project scope, the file is `loadout/mcp.toml`. Claude receives `.mcp.json`, Droid receives
-`.factory/mcp.json`, and OpenCode receives its `mcp` configuration key. Pi's MCP adapter can read the shared `.mcp.json`
-when Claude is also selected. A Pi-only project does not get a separate MCP output.
+`.factory/mcp.json`, OpenCode receives its `mcp` configuration key, and Pi receives
+`.pi/mcp.json`, which it reads once you trust the project.
 
 At global scope, Loadout writes the selected harness's server configuration, including Claude's
 `.claude.json` and the owned server tables in Codex's `config.toml`.

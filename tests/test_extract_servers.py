@@ -381,18 +381,6 @@ def test_an_unrecognised_codex_server_entry_is_reported_and_dropped() -> None:
     ("name", "document"),
     [
         (
-            "pi-servers",
-            {
-                "mcpServers": {
-                    "x": {
-                        "url": "https://x",
-                        "bearerTokenEnv": "K",
-                        "headers": {"Authorization": "Bearer abc", "X-Team": "core"},
-                    }
-                }
-            },
-        ),
-        (
             "claude-project-servers",
             {
                 "mcpServers": {
@@ -425,7 +413,7 @@ def test_an_auth_header_beside_an_auth_variable_is_dropped_with_a_note(
             headers={"X-Team": "core"},
         )
     }
-    assert [n.kind for n in extraction.notes] == ["lost" if name == "pi-servers" else "cannot"]
+    assert [n.kind for n in extraction.notes] == ["cannot"]
     assert "uthorization" in extraction.notes[0].detail
 
 

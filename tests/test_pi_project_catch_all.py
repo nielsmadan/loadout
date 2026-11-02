@@ -82,7 +82,7 @@ def test_a_stated_default_alone_writes_the_project_pi_file(tmp_path: Path) -> No
 
     document = json.loads(str(render_project(root)[root / CONFIG]))
 
-    assert document == {"permission": {"bash": {"*": "deny"}, "mcp": {}}}
+    assert document == {"permission": {"bash": {"*": "deny"}}}
 
 
 @pytest.mark.integration

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import shlex
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -197,12 +198,49 @@ def pi_patterns(entry: str) -> list[str]:
     return [entry] if is_glob(entry) else [entry, f"{entry} *"]
 
 
-def pi_mcp_patterns(entry: str) -> list[str]:
+# Pi's built-in MCP names a tool `mcp__<server>__<tool>` with every character outside
+# `[A-Za-z0-9_]` replaced by `_`, and pi-permission-system matches that name against the
+# top-level keys of `permission`. `*` and `?` are kept, being wildcards in a key.
+PI_UNNAMEABLE = re.compile(r"[^A-Za-z0-9_*?]")
+
+# `MAX_TOOL_NAME_LENGTH` in Pi 1.4.0; a longer name is cut and given a hash suffix.
+PI_TOOL_NAME_LIMIT = 64
+
+
+def pi_mcp_key(entry: str) -> str:
     server, tool = mcp_parts(entry)
-    patterns = [f"{server}_{tool}", f"{server}:{tool}"]
-    if tool == "*":
-        patterns += [f"mcp_server_{server}", f"mcp_connect_{server}"]
-    return patterns
+    return PI_UNNAMEABLE.sub("_", f"mcp__{server}__{tool}")
+
+
+def _pi_mcp_keys(rules: Rules, categories: tuple[str, ...]) -> list[tuple[str, str]]:
+    """Each MCP rule's key and decision, in emission order. A name Pi gives a hash suffix
+    cannot be predicted, so targets that collide, or run past the limit, are refused."""
+    servers: dict[str, str] = {}
+    targets: dict[str, str] = {}
+    keys: list[tuple[str, str]] = []
+    for category in categories:
+        for entry in rules.mcp(category):
+            server, _ = mcp_parts(entry)
+            named = PI_UNNAMEABLE.sub("_", server)
+            key = pi_mcp_key(entry)
+            if servers.setdefault(named, server) != server:
+                raise LoadoutError(
+                    f"pi: MCP servers {servers[named]!r} and {server!r} are both {named!r} in "
+                    "Pi's tool names, so no rule can tell them apart; rename one"
+                )
+            if targets.setdefault(key, entry) != entry:
+                raise LoadoutError(
+                    f"pi: MCP targets {targets[key]!r} and {entry!r} are both {key!r} in Pi, "
+                    "which gives such tools a hash suffix no rule can match; rename one"
+                )
+            if len(key) > PI_TOOL_NAME_LIMIT and "*" not in key and "?" not in key:
+                raise LoadoutError(
+                    f"pi: MCP target {entry!r} is {key!r}, longer than the "
+                    f"{PI_TOOL_NAME_LIMIT} characters Pi gives a tool name, so Pi shortens it "
+                    "and no rule can match it"
+                )
+            keys.append((key, category))
+    return keys
 
 
 def render_pi(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
@@ -216,17 +254,12 @@ def render_pi(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
                 bash[pattern] = decision
 
     # `[shell] default` governs bash only; MCP policy has its own three lists.
-    mcp: dict[str, str] = {"*": MCP_SEED}
-    for category, decision in ordered:
-        for entry in rules.mcp(category):
-            for pattern in pi_mcp_patterns(entry):
-                mcp.pop(pattern, None)
-                mcp[pattern] = decision
+    permission: dict[str, Any] = {"*": "allow", "bash": bash, "mcp__*": MCP_SEED}
+    for key, decision in _pi_mcp_keys(rules, tuple(category for category, _ in ordered)):
+        permission.pop(key, None)
+        permission[key] = decision
 
-    return {
-        "$schema": PI_SCHEMA,
-        "permission": {"*": "allow", "bash": bash, "mcp": mcp},
-    }
+    return {"$schema": PI_SCHEMA, "permission": permission}
 
 
 # --------------------------------------------------------------------------
@@ -655,13 +688,11 @@ def render_pi_project(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
             for pattern in pi_project_patterns(entry):
                 bash[pattern] = category
 
-    mcp: dict[str, str] = {}
-    for category in PROJECT_CATEGORIES:
-        for entry in rules.mcp(category):
-            for pattern in pi_mcp_patterns(entry):
-                mcp[pattern] = category
+    permission: dict[str, Any] = {"bash": bash}
+    for key, decision in _pi_mcp_keys(rules, PROJECT_CATEGORIES):
+        permission[key] = decision
 
-    return {"permission": {"bash": bash, "mcp": mcp}}
+    return {"permission": permission}
 
 
 # --------------------------------------------------------------------------

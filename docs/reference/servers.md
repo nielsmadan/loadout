@@ -90,15 +90,14 @@ document, owning `.mcp.json` outright),
 `droid-servers` (the `{"mcpServers": …}` document at both scopes), `opencode-servers` (one
 `ValueSpec` used at both scopes, contributing the `mcp` key to `opencode.json` — the same
 document `permissions` also writes), `pi-servers` (`DocumentJsonSpec`,
-global only).
+`~/.pi/agent/mcp.json` and `.pi/mcp.json`).
 
-### Pi has no project destination
+### Pi's project destination is `.pi/mcp.json`
 
-`pi-mcp-adapter`'s shipped README calls `.mcp.json` the **"Preferred project config"** and says Pi
-**"uses it immediately."** Writing `.pi/mcp.json` as well would hand Pi the same servers twice
-under two names. loadout already writes `.mcp.json` for Claude at project scope, and Pi reads it
-without any help from loadout — one file serving several harnesses, the same shape project
-instructions already use, where Codex, OpenCode and Pi share one `AGENTS.md`.
+Pi 1.4.0's built-in MCP reads project servers from `.pi/mcp.json` alone, once the project is
+trusted; `.mcp.json` is Claude's. `pi-mcp-adapter`, which read `.mcp.json`, is not supported in
+1.0: when installed it replaces the built-in and Pi reads neither file. See
+[pi.md](pi.md#server-definitions).
 
 ### Codex has no project destination yet
 
@@ -220,17 +219,18 @@ Every other definition renderer's inverse is registered in `VALUE_EXTRACTORS`:
 | `claude-servers` (global) | every field, from the `mcpServers` key of `.claude.json`; the harness's keys beside it are expected and not reported | — |
 | `droid-servers` | every field from the `mcpServers` wrapper | — |
 | `opencode-servers` | every field; nothing is noted about the rest of `opencode.json`, since `permission` has its own owner | — |
-| `pi-servers` | every field, including `bearerTokenEnv`; a stray top-level key is reported | — |
+| `pi-servers` | every field; pi-mcp-adapter's `auth: "bearer"` with `bearerTokenEnv` as the auth variable; a stray top-level key is reported | `bearerTokenEnv` without `auth: "bearer"` and `auth: "oauth"`, both noted |
 | `codex-servers` | every field, parsed from `[mcp_servers.*]` text with `tomllib` | not registered — see above |
 
-An `Authorization` header that is exactly `Bearer ${VAR}` (Claude, Droid) or `Bearer {env:VAR}`
+An `Authorization` header that is exactly `Bearer ${VAR}` (Claude, Droid, Pi) or `Bearer {env:VAR}`
 (OpenCode), with `VAR` one variable name, becomes `auth_env_var`. Every other header with a literal
 value is carried into `headers`, from Pi's `headers` and Codex's `http_headers` too. A header
 holding any other reference, such as `Bearer ${VAR:-fallback}`, refuses init with
 `uncarried-setting` — extraction never invents an environment variable name from an opaque header
-string, and the harness would expand the reference. An `Authorization` header beside an auth variable (Pi's `bearerTokenEnv`,
-Codex's `bearer_token_env_var`, or a second one beside a Bearer reference) is not adopted, with a
-note: the server keeps the variable.
+string, and the harness would expand the reference. An `Authorization` header beside an auth variable (Codex's `bearer_token_env_var`, or a second one
+beside a Bearer reference) is not adopted, with a note: the server keeps the variable. Beside
+pi-mcp-adapter's `auth: "bearer"` it refuses init with `uncarried-setting`, because the built-in
+sends the header and the adapter the variable.
 
 ## Not built
 

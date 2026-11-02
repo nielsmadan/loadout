@@ -35,6 +35,12 @@ loads it and moves it to `.factory/hooks.json` the next time it saves hooks; ini
 that adopts it. Hooks in a Droid `settings.json` move into the hooks slice when there is no
 `hooks.json`; see [droid.md](droid.md#hooks).
 
+pi-mcp-adapter's server files are kept in place and named the same way, when Pi is declared:
+`${XDG_CONFIG_HOME:-~/.config}/mcp/mcp.json`, `~/.agents/mcp.json` and `~/.agents/mcp/mcp.json`
+at global scope, and a project's `.mcp.json` when Claude is not also declared (with Claude it is
+Claude's, and adopted as that). The adapter is not supported in 1.0 and Pi's built-in MCP reads
+none of them; see [pi.md](pi.md#mcp-targets-are-tool-names).
+
 ## What discovery reads
 
 Discovery is an allowlist. Under each harness root it reads only the paths below, and everything
@@ -54,8 +60,7 @@ Global scope:
 | `${XDG_CONFIG_HOME:-~/.config}/opencode`, and `$OPENCODE_CONFIG_DIR` as well when it is set | `AGENTS.md`, `opencode.json`, `opencode.jsonc`, `skills/`, `agents/`, `plugins/`, `plugin/`, `hooks/`, `rules/`, `scripts/` |
 | `$OPENCODE_CONFIG` | the file itself |
 | `${PI_CODING_AGENT_DIR:-~/.pi/agent}` | `AGENTS.md`, `settings.json`, `mcp.json`, `extensions/pi-permission-system/config.json`, `skills/`, `agents/`, `plugins/`, `hooks/`, `rules/`, `scripts/` |
-| `${XDG_CONFIG_HOME:-~/.config}/mcp/mcp.json` | the file itself (Pi) |
-| `~/.agents` | `mcp.json`, `mcp/mcp.json` (Pi); `skills/` is left in place, see below |
+| `~/.agents` | `skills/` is left in place, see below |
 
 OpenCode's `plugin/` is read because OpenCode scans `"{plugin,plugins}/*.{ts,js}"` in every config
 directory (`packages/opencode/src/config/plugin.ts:21`, 1.19.0); its docs name only `plugins/`.

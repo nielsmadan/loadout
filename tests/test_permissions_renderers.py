@@ -14,7 +14,6 @@ from loadout.permissions.renderers import (
     claude_pattern,
     codex_rule,
     opencode_patterns,
-    pi_mcp_patterns,
     pi_patterns,
     pi_project_patterns,
     render_claude,
@@ -58,23 +57,10 @@ def test_pi_keeps_a_glob_literal() -> None:
     assert pi_patterns("docker stop cc-workbench-*") == ["docker stop cc-workbench-*"]
 
 
-def test_pi_mcp_patterns_for_a_single_tool() -> None:
-    assert pi_mcp_patterns("jina/search") == ["jina_search", "jina:search"]
-
-
-def test_pi_mcp_patterns_add_server_wide_targets_for_a_wildcard() -> None:
-    assert pi_mcp_patterns("jina/*") == [
-        "jina_*",
-        "jina:*",
-        "mcp_server_jina",
-        "mcp_connect_jina",
-    ]
-
-
 def test_pi_seeds_catch_alls_first() -> None:
     doc = render_pi(Rules(allow=("pwd",)), {})
     assert next(iter(doc["permission"]["bash"])) == "*"
-    assert next(iter(doc["permission"]["mcp"])) == "*"
+    assert list(doc["permission"]).index("mcp__*") == 2
 
 
 def test_pi_seeds_bash_with_the_stated_default_and_leaves_mcp_alone() -> None:
@@ -83,7 +69,7 @@ def test_pi_seeds_bash_with_the_stated_default_and_leaves_mcp_alone() -> None:
     # Position, not just value: a catch-all emitted last would beat every rule
     # under last-match-wins, and the value assertion alone cannot see that.
     assert next(iter(doc["permission"]["bash"].items())) == ("*", "allow")
-    assert doc["permission"]["mcp"]["*"] == "ask"
+    assert doc["permission"]["mcp__*"] == "ask"
 
 
 def test_only_the_declared_renderers_seed_a_catch_all() -> None:
@@ -111,7 +97,7 @@ def test_pi_emits_deny_last_so_it_wins_under_last_match() -> None:
 def test_pi_document_shape() -> None:
     doc = render_pi(EMPTY_RULES, {})
     assert list(doc) == ["$schema", "permission"]
-    assert list(doc["permission"]) == ["*", "bash", "mcp"]
+    assert list(doc["permission"]) == ["*", "bash", "mcp__*"]
     assert doc["permission"]["*"] == "allow"
 
 
@@ -368,7 +354,7 @@ def test_codex_project_does_not_skip_globs_unlike_the_global_renderer() -> None:
 def test_pi_project_omits_schema_and_catch_alls() -> None:
     doc = render_pi_project(Rules(allow=("just build",)), {})
     assert list(doc) == ["permission"]
-    assert list(doc["permission"]) == ["bash", "mcp"]
+    assert list(doc["permission"]) == ["bash"]
     assert "*" not in doc["permission"]["bash"]
     assert "*" not in doc["permission"]
 
@@ -383,7 +369,7 @@ def test_pi_project_keeps_a_glob_literal() -> None:
 
 def test_pi_project_empty_rules_give_empty_maps() -> None:
     doc = render_pi_project(Rules(), {})
-    assert doc == {"permission": {"bash": {}, "mcp": {}}}
+    assert doc == {"permission": {"bash": {}}}
 
 
 def test_project_renderers_are_registered() -> None:

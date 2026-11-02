@@ -126,13 +126,12 @@ STDIO = {
 }
 
 
-def test_pi_names_the_auth_variable_bearer_token_env() -> None:
-    """Each harness spells the same concept differently and the spellings are
-    reproduced, not harmonised (ADR 0006)."""
+def test_pi_sends_the_auth_variable_as_a_header_it_expands() -> None:
+    """Pi's built-in MCP expands `${VAR}` in headers and never reads `bearerTokenEnv`."""
     doc = render_pi_servers(HTTP)
     assert doc["mcpServers"]["jina"] == {
         "url": "https://mcp.jina.ai/v1",
-        "bearerTokenEnv": "JINA_API_KEY",
+        "headers": {"Authorization": "Bearer ${JINA_API_KEY}"},
     }
 
 

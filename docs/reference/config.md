@@ -100,9 +100,9 @@ a false gap when read together.
 Both halves are now closed, in the direction the vocabulary always meant. The policy slice renamed
 to **`mcp-permissions`** — its outputs already said so (`mcp-permissions.json`,
 `mcp-permissions.toml`) — which freed `mcp` for what the table below, and every upstream document,
-already meant by it: server definitions. `mcp` now renders `<source>/mcp.toml` to eight of the ten
-harness/scope destinations, all but Codex's and Pi's project scope; see [servers.md](servers.md)
-for the slice — the format, why Pi has no project destination, why Codex's is still an open
+already meant by it: server definitions. `mcp` now renders `<source>/mcp.toml` to nine of the ten
+harness/scope destinations, all but Codex's project scope; see [servers.md](servers.md) for the
+slice — the format, why Pi's project destination is `.pi/mcp.json`, why Codex's is still an open
 question, and how Claude's global entry co-owns `.claude.json`.
 
 `~/ac/mcp/servers.toml` already kept the two apart in its own header: *"This file defines which
@@ -371,26 +371,18 @@ event mapping, what each can and cannot express, and the payload fields neither 
 | Codex | `~/.codex/config.toml` → `[mcp_servers.*]` | `.codex/config.toml` |
 | Droid | `~/.factory/mcp.json` → `mcpServers` | `.factory/mcp.json` → `mcpServers` |
 | OpenCode | `~/.config/opencode/opencode.json` → `mcp` | `opencode.json` → `mcp` |
-| Pi | `~/.pi/agent/mcp.json` (+ shared paths below) | `.pi/mcp.json`, `.mcp.json` |
+| Pi | `~/.pi/agent/mcp.json` | `.pi/mcp.json` |
 | Antigravity | `~/.gemini/config/mcp_config.json` | |
 
-**Pi core has no MCP at all.** Its docs say so outright — "It intentionally does not include
-built-in MCP, sub-agents, permission popups, plan mode, to-dos, or background bash." MCP arrives
-via the `pi-mcp-adapter` package, which supports native `mcpServers` definitions and reads a
-layered set of paths, several of them **tool-agnostic**:
+**Pi 1.4.0 has built-in MCP.** Its shipped `docs/mcp.md`: "Pi reads user-level servers from
+`~/.pi/agent/mcp.json` and project servers from `.pi/mcp.json`. Project configuration is read only
+after project trust is granted. A project entry replaces a user-level entry with the same name."
 
-| file | purpose |
-|---|---|
-| `~/.config/mcp/mcp.json` | user-global shared |
-| `~/.agents/mcp.json`, `~/.agents/mcp/mcp.json` | user-global tool-agnostic |
-| `.mcp.json` | project-local shared — **the same file Claude reads** |
-| `~/.pi/agent/mcp.json` | Pi global override and compatibility imports |
-| `.pi/mcp.json` | Pi project override |
-
-`{"imports": ["claude-code"]}` in `~/.pi/agent/mcp.json` is a **compatibility import**, not the
-only option — `~/ac` generated one until 2026-08-11 and now emits real `mcpServers` instead: `pi-mcp-adapter init` scans for host-specific
-configs and adds them. The adapter also loads servers from Agent Plugins 1.0 packages
-(<https://agent-plugins.org/>), prefixed `<plugin>__<server>`.
+The `pi-mcp-adapter` package, which reads `.mcp.json` and several tool-agnostic paths, is not
+supported in 1.0, because the same page says an installed adapter displaces the built-in: "An
+installed extension that registers `/mcp`, such as `pi-mcp-adapter`, replaces the built-in MCP
+support for sessions. Pi then does not read `mcp.json` or connect its servers in a session". See
+[pi.md](pi.md#mcp-targets-are-tool-names) for the tool names policy matches.
 
 **Claude looked like the exception and is not.** `${CLAUDE_CONFIG_DIR:-~}/.claude.json` carries
 a top-level `mcpServers` map — where `claude mcp add-json --scope user` writes — so loadout owns
