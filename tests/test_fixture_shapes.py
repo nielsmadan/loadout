@@ -206,6 +206,17 @@ def test_the_project_plugins_fragment_declares_a_marketplace_and_an_addressable_
     ], "no plugin reaches a declared marketplace, so nothing is addressable"
 
 
+def test_the_project_plugins_fragment_switches_an_addressable_plugin_off() -> None:
+    """Droid renders a switched-off plugin as `false`; without one in the fixture the
+    expected settings never show it."""
+    document = json.loads((PROJECT_FIXTURES / "plugins.json").read_text(encoding="utf-8"))
+    assert [
+        name
+        for name, entry in document["plugins"].items()
+        if entry.get("enabled") is False and entry.get("marketplace") in document["marketplaces"]
+    ], "no addressable plugin is switched off"
+
+
 def test_the_project_hooks_fragment_declares_an_event_with_a_command() -> None:
     """`.factory/hooks.json` is generated from this alone. An empty document
     renders an empty file that matches its expected copy exactly."""
