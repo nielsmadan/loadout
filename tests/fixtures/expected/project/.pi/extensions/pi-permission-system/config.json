@@ -22,21 +22,9 @@
       "zeta": "deny",
       "zeta *": "deny"
     },
-    "mcp": {
-      "tmpl_server_*": "allow",
-      "tmpl_server:*": "allow",
-      "mcp_server_tmpl_server": "allow",
-      "mcp_connect_tmpl_server": "allow",
-      "svc_*": "allow",
-      "svc:*": "allow",
-      "mcp_server_svc": "allow",
-      "mcp_connect_svc": "allow",
-      "svc_write": "ask",
-      "svc:write": "ask",
-      "blocked_*": "deny",
-      "blocked:*": "deny",
-      "mcp_server_blocked": "deny",
-      "mcp_connect_blocked": "deny"
-    }
+    "mcp__tmpl_server__*": "allow",
+    "mcp__svc__*": "allow",
+    "mcp__svc__write": "ask",
+    "mcp__blocked__*": "deny"
   }
 }

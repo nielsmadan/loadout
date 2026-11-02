@@ -2,8 +2,8 @@
   "mcpServers": {
     "svc": {
       "url": "https://svc.example/mcp",
-      "bearerTokenEnv": "SVC_TOKEN",
       "headers": {
+        "Authorization": "Bearer ${SVC_TOKEN}",
         "X-Team": "core"
       }
     },
