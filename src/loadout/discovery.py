@@ -25,6 +25,7 @@ from .runtime_paths import (
     RUNTIME_DIRECTORIES,
     RUNTIME_FILES,
     UNMANAGED_NAMES,
+    dot_entry,
 )
 
 # The harnesses whose project instructions are AGENTS.md, from the preset.
@@ -377,7 +378,7 @@ def managed_paths(scope: str, mapping: RootMapping) -> tuple[str, ...] | None:
 
 
 def _managed(relative: Path, entries: tuple[str, ...], *, directory: bool) -> bool:
-    if relative.name in UNMANAGED_NAMES:
+    if relative.name in UNMANAGED_NAMES or _skills_folder_dot_entry(relative):
         return False
     if not relative.parts:
         return True
@@ -388,6 +389,15 @@ def _managed(relative: Path, entries: tuple[str, ...], *, directory: bool) -> bo
         if directory and path.is_relative_to(relative):
             return True
     return False
+
+
+def _skills_folder_dot_entry(relative: Path) -> bool:
+    """An entry at the top of a skills folder that sync leaves alone, and so init too."""
+    return (
+        len(relative.parts) > 1
+        and relative.parts[0] == SKILLS_FOLDER
+        and dot_entry(relative.parts[1])
+    )
 
 
 DROID_LEGACY_HOOKS = (

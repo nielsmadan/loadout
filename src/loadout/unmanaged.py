@@ -17,7 +17,13 @@ from .harnesses import DIRECTORY_SLICES, SHARED_SKILL_READERS
 from .manifest import load_profile, manifest_path
 from .output import Output
 from .project import PROJECT_PRESET, load_project_config, project_config_path
-from .runtime_paths import RUNTIME_DIRECTORIES, RUNTIME_FILES, UNMANAGED_NAMES, harness_owned
+from .runtime_paths import (
+    RUNTIME_DIRECTORIES,
+    RUNTIME_FILES,
+    UNMANAGED_NAMES,
+    dot_entry,
+    harness_owned,
+)
 from .state import SyncState
 from .written import every_recorded_path
 
@@ -113,9 +119,8 @@ def _readers(
 
 
 def _ignored(relative: Path) -> bool:
-    # Dot entries are the OS's or the harness's own: .DS_Store, Codex's .system skills.
     return (
-        any(part.startswith(".") or part in RUNTIME_DIRECTORIES for part in relative.parts)
+        any(dot_entry(part) or part in RUNTIME_DIRECTORIES for part in relative.parts)
         or relative.name in RUNTIME_FILES
         or relative.name in UNMANAGED_NAMES
     )

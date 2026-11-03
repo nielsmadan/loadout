@@ -283,14 +283,11 @@ def test_directory_precondition_detects_a_new_authored_input(tmp_path: Path) -> 
     assert entry_state(state.path) != state
 
 
-def test_scaffold_gitkeep_remains_a_retained_dependency(tmp_path: Path) -> None:
+def test_a_scaffold_gitkeep_in_a_skills_folder_is_left_unread(tmp_path: Path) -> None:
     marker = write(tmp_path, ".claude/skills/.gitkeep", "")
     plan = migration(tmp_path)
     assert plan.expected_outputs == ()
-    assert (
-        next(c.disposition for c in plan.inventory.candidates if c.path == marker)
-        == "retained dependency"
-    )
+    assert marker not in {c.path for c in plan.inventory.candidates}
 
 
 def test_runtime_history_references_are_excluded_before_dependency_discovery(
@@ -479,14 +476,13 @@ def test_private_and_runtime_originals_have_retained_dispositions(fake_home: Pat
     write(fake_home, ".claude/skills/s/SKILL.md", "---\nname: s\n---\nx\n")
     private = write(fake_home, ".claude/skills/s/notes.local.md", "personal\n")
     auth = write(fake_home, ".claude/skills/s/auth.json", "runtime-credential")
-    marker = write(fake_home, ".claude/skills/.gitkeep", "")
     mixed = write(fake_home, ".codex/config.toml", 'model="test"\n[trust]\nvalue=true\n')
     source = fake_home / "agent-config"
     source.mkdir()
     plan = plan_migration(discover(source, scope="global", harnesses=("claude", "codex")))
     assert plan.complete, plan.preview()
     retained = {item.path for item in plan.originals if item.action == "retain"}
-    assert {private, auth, marker, mixed} <= retained
+    assert {private, auth, mixed} <= retained
     assert plan.obsolete == ()
     assert {private, auth, mixed} <= set(plan.private_paths)
 

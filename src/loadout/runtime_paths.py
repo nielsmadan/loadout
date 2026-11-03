@@ -57,6 +57,13 @@ RUNTIME_FILES = frozenset(
 )
 # Written by the OS into any folder, never by a harness.
 UNMANAGED_NAMES = frozenset({".DS_Store"})
+
+
+def dot_entry(name: str) -> bool:
+    """The OS's or the harness's own, such as .DS_Store or Codex's .system skills."""
+    return name.startswith(".")
+
+
 # Entries a harness writes into a folder loadout writes too, and that harness: exempt in
 # that folder only, and refused as a source skill or agent that would land on one. The
 # evidence is in docs/reference/claude-code.md and droid.md.

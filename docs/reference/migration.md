@@ -13,7 +13,10 @@ known slice destination for it.
 - skills: each folder holding a `SKILL.md`. A loose file or a folder without one beside them, such
   as a `README.md` or a `shared/` folder, is no skill and stays in place; `check` reports it only
   where a harness reading the folder would load it
-  ([config.md](config.md#what-a-harness-loads-from-a-skills-or-agents-folder))
+  ([config.md](config.md#what-a-harness-loads-from-a-skills-or-agents-folder)). A dot entry at the
+  top of a skills folder, such as the `.system` skills Codex installs for itself, is the harness's
+  or the OS's: init neither adopts it nor stops for it, and it stays in place, as `sync` leaves it
+  ([sync.md](sync.md#files-loadout-did-not-write-in-folders-it-manages))
 - subagents: each harness's top-level agent files become one source agent per name, with a
   per-harness `model` map, and an `effort` word or map, recording what differed. A file adoption
   cannot read (such as a Codex agent holding a table), one with no description, and one whose name
@@ -45,7 +48,8 @@ none of them; see [pi.md](pi.md#mcp-targets-are-tool-names).
 
 Discovery is an allowlist. Under each harness root it reads only the paths below, and everything
 else there is left alone unread: never mapped, never reported, never a reason to stop. A `.DS_Store`
-is skipped wherever it appears, including inside a listed tree. See
+is skipped wherever it appears, including inside a listed tree, and so is a dot entry at the top of
+a skills folder, such as Codex's own `.system`. See
 [0024](../decisions/0024-discovery-reads-an-allowlist.md). The table is `MANAGED_PATHS` in
 `src/loadout/discovery.py`; a path ending in `/` is a tree.
 

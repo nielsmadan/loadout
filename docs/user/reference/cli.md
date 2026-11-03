@@ -191,6 +191,9 @@ initialised and changes nothing; it does not reinterpret an existing source.
 project `CLAUDE.md` that disagrees with `AGENTS.md`, does not stop init: that one item is left in
 place and reported for the `/loadout` skill to merge, and everything else is adopted; see
 [what init leaves out](https://github.com/nielsmadan/loadout/blob/main/docs/reference/migration.md#what-init-leaves-out).
+A dot entry at the top of a skills folder, such as the `.system` skills Codex installs for itself,
+is the harness's own: init neither adopts it nor stops for it, and it stays where it is, as `sync`
+leaves it.
 Configuration init cannot carry is refused instead; see
 [what init refuses](https://github.com/nielsmadan/loadout/blob/main/docs/reference/migration.md#what-init-refuses).
 A file holding a secret is adopted as it is: the preview and `--json` (`secrets`) name each source
