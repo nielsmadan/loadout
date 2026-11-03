@@ -1242,7 +1242,8 @@ def plan_migration(inventory: Inventory) -> MigrationPlan:
         Issue(
             "source-exists",
             (path,),
-            "The proposed source path already exists; select a source directory or resolve its ownership explicitly.",
+            "init would write this source file, but it already exists; move it aside or delete "
+            "it, then run init again",
         )
         for path in builder.writes
         if path.exists() or path.is_symlink()

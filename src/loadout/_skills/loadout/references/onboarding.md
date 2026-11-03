@@ -9,8 +9,9 @@ loadout init global /work/dotfiles --harness pi --dry-run --json
 
 Scope is a subcommand: `init project` or `init global`. Global source selection defaults to cwd.
 Use a dedicated directory, never HOME or the filesystem
-root for a new repository. Project discovery finds the enclosing Loadout/Git root from nested
-directories. Configured roots establish harnesses; a shared AGENTS.md or installed binary does not.
+root for a new repository. Without `--root`, project init resolves the enclosing Loadout/Git root
+from a nested directory; `--root` is used as given, so a monorepo folder such as `apps/web` becomes
+a project of its own. Configured roots establish harnesses; a shared AGENTS.md or installed binary does not.
 Repeat `--harness` when membership needs an explicit selection.
 
 Project init creates canonical sources for configuration with known project destinations. An empty

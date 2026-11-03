@@ -15,7 +15,7 @@ import tomlkit
 
 from .containment import first_link, refuse_escaping
 from .diffs import diff_lines, report_diff
-from .discovery import discover, initialized_project_path, project_root
+from .discovery import discover, initialized_project_path
 from .emit import RenderContext, refuse_unregistered_global, render_all, render_project
 from .errors import LoadoutError, UsageError
 from .git_privacy import in_repository
@@ -510,8 +510,7 @@ def _run_init(options: InitOptions) -> int:
     if (pending := _interrupted(options)) is not None:
         return pending
     if options.scope == "project":
-        # The folder init adopts, which a subdirectory resolves up to before planning.
-        refuse_unregistered_global(project_root(options.root))
+        refuse_unregistered_global(options.root)
     options, plan = _resolve(options)
     machine, issue = _registration(options, plan)
     if issue:

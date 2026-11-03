@@ -267,7 +267,7 @@ def project_root(path: Path) -> Path:
 
 
 def initialized_project_path(path: Path) -> Path | None:
-    config = project_config_path(project_root(path))
+    config = project_config_path(path.absolute())
     return config if config.is_file() else None
 
 
@@ -899,7 +899,7 @@ def discover(
         raise LoadoutError("scope must be project or global")
     if set(harnesses) - KNOWN_HARNESSES or len(harnesses) != len(set(harnesses)):
         raise LoadoutError("harnesses must be distinct supported harness names")
-    root = root.absolute() if scope == "global" else project_root(root)
+    root = root.absolute()
     selected = _initialized_configs(root, scope)
     if len(selected) == 1:
         inferred, config = selected[0]

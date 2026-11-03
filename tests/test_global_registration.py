@@ -317,16 +317,18 @@ def test_the_commit_removing_a_pr_added_global_setup_passes(tmp_path: Path, caps
 
 
 def test_init_project_from_a_subdirectory_is_refused_at_the_project_root(
-    tmp_path: Path, capsys
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Review 3, batch 2.8: the gate looked at the subdirectory, so the preview ran and
-    `--yes` applied before the first sync refused and rolled back."""
+    `--yes` applied before the first sync refused and rolled back. Without `--root`, init
+    resolves cwd up to the project root, and the gate looks there."""
     project = _clone(tmp_path / "p", "~/.config/fish/conf.d/evil.fish")
     subprocess.run(["git", "init", "-q", str(project)], check=True)
     (project / "src").mkdir()
     tree = _tree(project)
+    monkeypatch.chdir(project / "src")
 
-    arguments = ["init", "project", "--root", str(project / "src"), "--harness", "claude"]
+    arguments = ["init", "project", "--harness", "claude"]
     assert loadout.main([*arguments, "--dry-run"]) == 3
 
     assert capsys.readouterr().err == _no_source(project)

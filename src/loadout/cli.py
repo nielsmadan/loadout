@@ -25,6 +25,7 @@ from .completions import (
     status_completions,
     uninstall_completions,
 )
+from .discovery import project_root
 from .emit import refuse_unregistered_global
 from .errors import LoadoutError, UsageError
 from .git_hook_commands import run_hook
@@ -349,8 +350,9 @@ def _add_init_project(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--root",
         type=Path,
-        default=Path.cwd(),
-        help="source root: the folder holding loadout.toml, or a project root holding loadout/ (default: cwd)",
+        default=None,
+        help="project directory to initialise, as given (default: the Loadout or Git root "
+        "enclosing cwd)",
     )
     _add_init_choices(parser)
 
@@ -391,7 +393,11 @@ def _dispatch_init(args: argparse.Namespace) -> int:
         )
     return run_init(
         InitOptions(
-            root=args.root.expanduser().absolute(),
+            root=(
+                args.root.expanduser().absolute()
+                if args.root is not None
+                else project_root(Path.cwd())
+            ),
             scope="project",
             harnesses=tuple(args.harnesses or ()),
             dry_run=args.dry_run,

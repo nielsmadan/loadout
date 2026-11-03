@@ -23,8 +23,9 @@ The request scope is what the user's request names, in words or as `--personal`,
 `--global` after the skill's name. It selects a row; it is not an argument to loadout. The sync
 column gives the command to run.
 
-Resolve a project from the repository root, not from an arbitrary working subdirectory. The
-project config is `<repo>/loadout/config.toml`. For global scope, first resolve the actual
+Resolve a project from its root, the folder holding `loadout/config.toml`, not from an arbitrary
+working subdirectory. That is the repository root unless the project was initialised in a
+subfolder, such as `apps/web` in a monorepo; pass that folder as `--root`. For global scope, first resolve the actual
 `XDG_CONFIG_HOME` environment value: when it is non-empty, inspect only
 `$XDG_CONFIG_HOME/loadout/config.toml`; when it is unset or empty, inspect only
 `~/.config/loadout/config.toml`. Never probe both. The machine config names the global source

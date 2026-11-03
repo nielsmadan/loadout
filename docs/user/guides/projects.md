@@ -23,8 +23,11 @@ harnesses = ["claude", "codex", "pi"]
 ```
 
 `loadout sync` then writes the new harness's outputs and extends `.gitignore` to cover them.
-You can also target a repository explicitly with `--root /path/to/project`. The init options and
-what init prints are in the [CLI reference](../reference/cli.md#initialise).
+You can also target a repository explicitly with `--root /path/to/project`. In a monorepo,
+`--root apps/web` makes that folder a project of its own: its source is `apps/web/loadout`, its
+outputs and `.gitignore` entries land in `apps/web`, and `sync`, `check` and
+`integrate git-hooks install` take the same `--root`. The init options and what init prints are in
+the [CLI reference](../reference/cli.md#initialise).
 
 ## Shared and personal sources
 

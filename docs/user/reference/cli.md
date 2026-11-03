@@ -111,7 +111,7 @@ loadout init global --dry-run --json
 | Option | Commands | Meaning |
 | --- | --- | --- |
 | `--harness NAME` | `init project`, `init global` | Select a harness: `claude`, `codex`, `droid`, `opencode` or `pi`; repeat for several |
-| `--root PATH` | `init project` | Project directory to initialise |
+| `--root PATH` | `init project` | Project directory to initialise, used as given, also a folder below the repository's top level such as `apps/web`; default the Loadout or Git root enclosing the current directory |
 | `DIR` (positional) | `init global` | Existing directory: a global source, or the directory to hold a new one; default the current directory |
 | `--registration keep\|replace` | `init global` | Resolve a conflict with the source this machine already registers |
 | `--dry-run` | `init project`, `init global` | Preview without changing the source, Git or any destination; exits 0 |
