@@ -185,6 +185,65 @@ both `enabledPlugins` and `extraKnownMarketplaces` to `settings.json`; settings 
 keys beside them remain intact. A reference with `"enabled": false` renders `false`. Removing a
 portable plugin reference removes its entry on the next render.
 
+## Custom droids
+
+A source agent becomes `<name>.md` in Droid's droids folder, written byte for byte in the form
+Droid itself writes, so Droid has nothing to change in it. Observed on Droid 1.2.0 by lo-qa,
+2026-11-03:
+
+- Creating a droid in `/droids` rewrote every other droid in that folder whose bytes differed
+  from Droid's own form. Of 188 droids placed there, the 94 in loadout's earlier form were all
+  rewritten and the 94 in its current form were all left byte for byte as they were.
+- Editing a droid's model or tools, and deleting a droid, wrote only that droid's file, at personal
+  and project scope alike.
+- A droid rewritten this way came back with its description unquoted, without the blank line
+  after the frontmatter and without its final newline, and `check` then reported it as
+  `hand-edited` (QA E-1). That is the reason for the form.
+
+Droid's form, as those files show it:
+- The frontmatter holds, in this order and only when set, `name`, `description`, `model`,
+  `reasoningEffort`, `tools`, `mcpServers` and `version`.
+- Each value is plain unless YAML would read it as something else or misparse it; then it is
+  double-quoted, with YAML's escapes.
+- Text over several lines is a `|` block.
+- `tools` is one comma-separated string, and `mcpServers` a block list.
+- The body follows the closing `---` with no blank line and no final newline, trimmed at both ends.
+
+This is js-yaml 4's `dump` with line folding off and double quotes, the library and version Droid
+ships. `droid_form.py` ports its choice of style and escapes for these values.
+
+Two fixtures in `tests/fixtures/droid_form/` pin it:
+- `golden.json` is js-yaml 4.3.2's own output for 94 cases, made by `capture_golden.mjs`.
+- `captured-droid-1.2.0.json` holds the bytes Droid 1.2.0 itself left for those cases, once in
+  loadout's current form and once in its earlier form.
+
+The tests check that loadout renders each case to the bytes Droid wrote, that those bytes read
+back to the same fields, and that Droid left the current form unchanged.
+
+The earlier form also wrote `name` and `model` unquoted. A `model: 1.5`, which YAML reads as a
+number, left Droid with only the droid's name. A `model: custom: model`, which is not valid YAML,
+was recovered by Droid with its description and model. Both are quoted now.
+
+To recheck a new Droid version, run the capture set through it, black-box:
+1. `python3 tests/fixtures/droid_form/recapture.py write <folder>` writes the 188 droids into an
+   empty droids folder that Droid reads, on a machine you can spare.
+2. Create one droid in `/droids` in that same location.
+3. `python3 tests/fixtures/droid_form/recapture.py compare <folder>` names every file Droid left
+   differently from 1.2.0.
+
+A source agent's `droid:` block may set only `tools`, `mcpServers` and `version`. Any other key is
+refused, naming the agent and the key, because Droid writes back only the seven keys above.
+`createdAt` and `updatedAt` are refused too: Droid reads them but never writes them back.
+`reasoningEffort` comes from `effort`. An empty `tools` or `version` is refused, since Droid does
+not write an empty value back. A value over several lines is refused if it holds a blank line or a
+line of only spaces, or starts with a space: Droid writes such a value as a block loadout cannot
+read back. `init`, adopting a droid file, leaves keys outside the seven behind with a note:
+`<file>: <key> is ignored by Droid and was not carried`.
+
+Droid 1.1.0 also deletes any `.md` in a droids folder that is not a droid it lists; this was not
+re-observed on 1.2.0. Loadout writes nothing else there: one file per source agent, named after
+it.
+
 ## Mission droids
 
 Droid writes two droids of its own into `${FACTORY_HOME_OVERRIDE:-~}/.factory/droids/`,

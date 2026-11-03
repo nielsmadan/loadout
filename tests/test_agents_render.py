@@ -99,7 +99,7 @@ def test_inherit_alone_is_valid_and_writes_no_model(tmp_path: Path) -> None:
     agent = _agent(tmp_path, "---\ndescription: D.\nmodel: inherit\n---\nBody.\n")
 
     assert agent.models == {}
-    assert render_agent(agent, "droid").startswith('---\nname: reviewer\ndescription: "D."\n---\n')
+    assert render_agent(agent, "droid").startswith("---\nname: reviewer\ndescription: D.\n---\n")
 
 
 def test_one_model_for_every_harness_is_refused(tmp_path: Path) -> None:

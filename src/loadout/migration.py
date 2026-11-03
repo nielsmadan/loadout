@@ -1483,6 +1483,10 @@ def _adopt_agents(builder: _PlanBuilder, candidates: tuple[Candidate, ...]) -> N
             builder.retained.update(_original_paths(candidate))
             builder.notes.append(f"{candidate.destination}: not adopted, {problem}")
             continue
+        builder.notes.extend(
+            f"{candidate.destination}: {key} is ignored by Droid and was not carried"
+            for key in native.ignored
+        )
         copies[native.name].append((harness, candidate, native))
     for name, group in sorted(copies.items()):
         texts = {(n.description, n.body.strip()) for _, _, n in group}

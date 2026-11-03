@@ -603,8 +603,10 @@ the agent's name; a `name` field must match it. `model` is `inherit` or a map pe
 harness it leaves out inherits; one name for every harness is refused, since no model name means
 the same thing in all five. `effort` is one word from `off` to `max`, translated per harness, or a
 map. A harness lacking the level gets the nearest lower one, and OpenCode none, each with a note.
-A block keyed by a harness holds what only that harness reads. Removing or renaming the file
-retires the old agent everywhere. Details:
+A block keyed by a harness holds what only that harness reads; Droid's `droid:` block takes only
+`tools`, `mcpServers` and `version`, since Droid drops any other key when it rewrites its droids
+folder. Droid's copy is written in the form Droid itself writes, so creating or editing a droid in
+`/droids` leaves it unchanged. Removing or renaming the file retires the old agent everywhere. Details:
 [models](https://github.com/nielsmadan/loadout/blob/main/docs/reference/models.md#what-loadout-does).
 
 ## MCP server definitions

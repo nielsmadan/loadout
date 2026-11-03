@@ -198,7 +198,9 @@ OpenCode's needs the `provider/model-id` form. A single model name for every har
 because no name means the same model everywhere. `effort` is one of `off`, `minimal`, `low`,
 `medium`, `high`, `xhigh`, `max`, translated per harness (a missing level becomes the nearest
 lower one, with a note; OpenCode has no effort), or a per-harness map written verbatim. Anything
-harness-specific, such as Claude's `tools`, goes in a block keyed by that harness. A request about
+harness-specific, such as Claude's `tools`, goes in a block keyed by that harness; Droid's `droid:`
+block takes only `tools`, `mcpServers` and `version`, and any other key is refused because Droid
+drops it. A request about
 one harness's agent changes that harness's block or map entry, not the shared body.
 
 Global fragments resolve through `[[source]]` entries. A bare fragment name must resolve uniquely;

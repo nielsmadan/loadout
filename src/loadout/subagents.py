@@ -20,6 +20,7 @@ from pathlib import Path
 
 import tomlkit
 
+from . import droid_form
 from .errors import LoadoutError
 from .harnesses import KNOWN_HARNESSES
 from .output import item_name
@@ -85,16 +86,65 @@ def yaml_text(value: str, children: list[str], label: str) -> str:
     if children:
         raise LoadoutError(f"{label}: a value over several lines must be a `|` or `>` block")
     if value[:1] == '"':
-        try:
-            decoded = json.loads(value)
-        except ValueError:
-            raise LoadoutError(f"{label}: unreadable double-quoted value {value!r}") from None
-        if not isinstance(decoded, str):
+        decoded = _double_quoted(value[1:-1]) if len(value) > 1 and value[-1] == '"' else None
+        if decoded is None:
             raise LoadoutError(f"{label}: unreadable double-quoted value {value!r}")
         return decoded
     if value[:1] == "'" and value.endswith("'") and len(value) > 1:
         return value[1:-1].replace("''", "'")
     return value
+
+
+_YAML_ESCAPES = {
+    "0": "\0",
+    "a": "\a",
+    "b": "\b",
+    "t": "\t",
+    "\t": "\t",
+    "n": "\n",
+    "v": "\v",
+    "f": "\f",
+    "r": "\r",
+    "e": "\x1b",
+    " ": " ",
+    '"': '"',
+    "/": "/",
+    "\\": "\\",
+    "N": "\x85",
+    "_": "\xa0",
+    "L": "\u2028",
+    "P": "\u2029",
+}
+_HEX_ESCAPES = {"x": 2, "u": 4, "U": 8}
+_HEX = frozenset("0123456789abcdefABCDEF")
+
+
+def _double_quoted(inner: str) -> str | None:
+    """A one-line YAML double-quoted scalar's text, or None; JSON's escapes are a subset."""
+    out: list[str] = []
+    index = 0
+    while index < len(inner):
+        char = inner[index]
+        if char == '"':
+            return None
+        if char != "\\":
+            out.append(char)
+            index += 1
+            continue
+        escape = inner[index + 1 : index + 2]
+        width = _HEX_ESCAPES.get(escape, 0)
+        digits = inner[index + 2 : index + 2 + width]
+        if escape in _YAML_ESCAPES:
+            out.append(_YAML_ESCAPES[escape])
+        elif width and len(digits) == width and set(digits) <= _HEX:
+            out.append(chr(int(digits, 16)))
+        else:
+            return None
+        index += 2 + width
+    try:
+        return "".join(out).encode("utf-16", "surrogatepass").decode("utf-16")
+    except UnicodeDecodeError:
+        return None
 
 
 def _block_text(style: str, chomp: str, children: list[str]) -> str:
@@ -198,6 +248,8 @@ def parse_agent(path: Path) -> Agent:
                 f"{label}: {harness}'s block sets {', '.join(reserved)}; give those at the top "
                 "level, where model and effort take a per-harness map"
             )
+    if "droid" in extra:
+        droid_block(extra["droid"], label)
     return Agent(name, description, body, models, effort, efforts, extra)
 
 
@@ -296,6 +348,8 @@ def render_agent(agent: Agent, harness: str) -> str:
     if harness == "codex":
         return _render_codex(agent, body)
     effort, _ = effort_for(agent, harness)
+    if harness == "droid":
+        return _render_droid(agent, effort, body)
     extra = agent.extra.get(harness, ())
     lines = [] if harness == "opencode" else [f"name: {agent.name}"]
     lines.append(f"description: {yaml_string(agent.description)}")
@@ -309,6 +363,90 @@ def render_agent(agent: Agent, harness: str) -> str:
     lines.extend(extra)
     banner = f"<!-- {BANNER.format(name=agent.name)} -->"
     return "---\n" + "\n".join(lines) + "\n---\n\n" + banner + "\n" + body
+
+
+DROID_BLOCK_KEYS = ("tools", "mcpServers", "version")
+_FLOW_ITEM = re.compile(r"""\s*("(?:[^"\\]|\\.)*"|'(?:[^']|'')*'|[^,"']*?)\s*(?:,|$)""")
+
+
+def _droid_list(value: str, children: list[str], label: str) -> list[str] | None:
+    """A flow or block sequence of scalars, or None when the value is a single scalar."""
+    if value.startswith("["):
+        if not value.endswith("]"):
+            raise LoadoutError(f"{label}: unreadable list {value!r}")
+        inner = value[1:-1].strip()
+        items = [m.group(1) for m in _FLOW_ITEM.finditer(inner)][:-1] if inner else []
+        if inner and ",".join(items).replace(" ", "") != inner.replace(" ", ""):
+            raise LoadoutError(f"{label}: unreadable list {value!r}")
+        return [yaml_text(item, [], label) for item in items]
+    if value or not children:
+        return None
+    items = [line.strip() for line in children]
+    if not all(item == "-" or item.startswith("- ") for item in items):
+        raise LoadoutError(f"{label}: a value over several lines must be a list of `- ` items")
+    return [yaml_text(item[2:].strip(), [], label) for item in items]
+
+
+def droid_block(lines: tuple[str, ...], label: str) -> dict[str, str | list[str]]:
+    """The keys a source agent's `droid:` block may set, as Droid reads them."""
+    fields: dict[str, str | list[str]] = {}
+    for key, (value, children) in _blocks(list(lines), label).items():
+        where = f"{label}: droid.{key}"
+        if key == "reasoningEffort":
+            raise LoadoutError(
+                f"{where} is written from effort; give effort at the top level, where it takes "
+                "a per-harness map"
+            )
+        if key not in DROID_BLOCK_KEYS:
+            raise LoadoutError(
+                f"{where} is a key Droid ignores and drops when it rewrites its droids folder; "
+                "remove it from the droid block"
+            )
+        items = None if key == "version" else _droid_list(value, children, where)
+        text = yaml_text(value, children, where) if items is None else None
+        if key == "mcpServers" and text is not None:
+            items = [part.strip() for part in text.split(",") if part.strip()]
+        if key == "tools" and items is not None:
+            text = ", ".join(items)
+        if key == "mcpServers":
+            fields[key] = items or []
+        elif not text:
+            raise LoadoutError(f"{where} is empty, and Droid drops an empty {key} on rewrite")
+        else:
+            fields[key] = text
+    return fields
+
+
+def _unreadable_block(text: str) -> bool:
+    """Text Droid writes as a `|` block that this module cannot read back whole."""
+    if "\n" not in text or not all(char == "\n" or char.isprintable() for char in text):
+        return False
+    lines = text.split("\n")
+    return (
+        lines[0][:1] == " "
+        or any(not line.strip() for line in lines[:-1])
+        or (lines[-1] != "" and not lines[-1].strip())
+    )
+
+
+def _render_droid(agent: Agent, effort: str | None, body: str) -> str:
+    label = f"agents/{agent.name}.md"
+    fields: dict[str, str | list[str] | None] = {
+        "name": agent.name,
+        "description": agent.description,
+        "model": agent.models.get("droid"),
+        "reasoningEffort": effort,
+        **droid_block(agent.extra.get("droid", ()), label),
+    }
+    for key, value in fields.items():
+        texts = [value] if isinstance(value, str) else value or []
+        if any(_unreadable_block(text) for text in texts):
+            raise LoadoutError(
+                f"{label}: {key} holds a blank line, a line of only spaces, or starts with a "
+                "space over several lines, which Droid writes in a form loadout cannot read back"
+            )
+    banner = f"<!-- {BANNER.format(name=agent.name)} -->"
+    return droid_form.document(fields, f"{banner}\n{body}")
 
 
 def _scalar(value: str) -> object:
@@ -352,10 +490,19 @@ class NativeAgent:
     model: str | None = None
     effort: str | None = None
     extra: tuple[str, ...] = ()
+    ignored: tuple[str, ...] = ()
 
 
 def _strip_banner(body: str, name: str) -> str:
     return body.removeprefix(f"\n<!-- {BANNER.format(name=name)} -->\n")
+
+
+def _droid_body(body: str, name: str) -> str:
+    """Droid trims a body on read and writes it straight after the frontmatter, so it comes
+    back with neither the blank line nor the final newline the other harnesses keep."""
+    rest = _strip_banner(body, name).removeprefix(f"<!-- {BANNER.format(name=name)} -->\n")
+    rest = rest.rstrip(droid_form.JS_WHITESPACE)
+    return rest + "\n" if rest else ""
 
 
 def extract_agent(harness: str, text: str, stem: str) -> NativeAgent:
@@ -371,8 +518,12 @@ def extract_agent(harness: str, text: str, stem: str) -> NativeAgent:
     effort_key = EFFORT_KEY.get(harness)
     known = {"name", "description", "model", *((effort_key,) if effort_key else ())}
     extra: list[str] = []
+    ignored: list[str] = []
     for key, (value, children) in blocks.items():
         if key in known or (harness == "opencode" and key == "mode" and value == "subagent"):
+            continue
+        if harness == "droid" and key not in DROID_BLOCK_KEYS:
+            ignored.append(key)
             continue
         extra.append(f"{key}: {value}" if value else f"{key}:")
         extra.extend(children)
@@ -381,10 +532,11 @@ def extract_agent(harness: str, text: str, stem: str) -> NativeAgent:
     return NativeAgent(
         name=name,
         description=yaml_text(*blocks.get("description", ("", [])), label),
-        body=_strip_banner(body, name),
+        body=_droid_body(body, name) if harness == "droid" else _strip_banner(body, name),
         model=_unquote(model) if model and _unquote(model) != "inherit" else None,
         effort=_unquote(effort) or None,
         extra=tuple(extra),
+        ignored=tuple(ignored),
     )
 
 
