@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .bundled_skill import SKILL_NAME, bundled_skill_path
 from .destinations import resolve_destination
-from .errors import LoadoutError
+from .errors import LoadoutError, unwritable, write_denied
 from .harnesses import GLOBAL_PRESET, SHARED_SKILL_READERS
 from .templates import tree_hash
 
@@ -67,18 +67,25 @@ def copy_skill(harnesses: Iterable[str], bundle: Path | None = None) -> tuple[Pa
     for target in targets:
         if target in present:
             continue
-        target.parent.mkdir(parents=True, exist_ok=True)
-        # Copied beside the target and renamed into place, so a kill leaves no half skill.
-        staging = Path(tempfile.mkdtemp(dir=target.parent, prefix=".loadout-skill-"))
         try:
-            shutil.copytree(
-                source, staging / SKILL_NAME, ignore=shutil.ignore_patterns("__pycache__")
-            )
-            (staging / SKILL_NAME).rename(target)
-        finally:
-            shutil.rmtree(staging, ignore_errors=True)
+            _copy_into(source, target)
+        except OSError as error:
+            if write_denied(error):
+                raise unwritable(target, error) from error
+            raise
         copied.append(target)
     return tuple(copied)
+
+
+def _copy_into(source: Path, target: Path) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    # Copied beside the target and renamed into place, so a kill leaves no half skill.
+    staging = Path(tempfile.mkdtemp(dir=target.parent, prefix=".loadout-skill-"))
+    try:
+        shutil.copytree(source, staging / SKILL_NAME, ignore=shutil.ignore_patterns("__pycache__"))
+        (staging / SKILL_NAME).rename(target)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
 
 
 def start_hints(harnesses: Iterable[str]) -> tuple[str, ...]:

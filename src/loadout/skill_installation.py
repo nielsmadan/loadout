@@ -19,7 +19,7 @@ from .atomic import atomic_install, read_file
 from .bundled_skill import SKILL_NAME
 from .destinations import resolve_destination
 from .emit import declared_profiles, render_global
-from .errors import LoadoutError
+from .errors import LoadoutError, unwritable, write_denied
 from .manifest import Manifest, load_profile
 from .output import FrozenFile, Merged
 from .skills import discover_skills
@@ -247,8 +247,15 @@ def _restore(quarantined: Path, destination: Path) -> None:
 
 
 def _stage_bundle(destination: Path, bundle: Path, digest: str) -> tuple[Path, Path]:
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    staging_root = Path(tempfile.mkdtemp(prefix=".loadout-skill-install-", dir=destination.parent))
+    try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        staging_root = Path(
+            tempfile.mkdtemp(prefix=".loadout-skill-install-", dir=destination.parent)
+        )
+    except OSError as error:
+        if write_denied(error):
+            raise unwritable(destination, error) from error
+        raise
     staged = staging_root / SKILL_NAME
     copy_tree(bundle, staged)
     _write_marker(staged, digest)

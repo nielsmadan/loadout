@@ -4,7 +4,9 @@ PermissionError traceback, exit 4."""
 from __future__ import annotations
 
 import errno
+import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -131,3 +133,50 @@ def test_an_unexpected_os_error_is_still_internal(capsys, monkeypatch: pytest.Mo
     monkeypatch.setattr(cli, "_dispatch", broken)
     assert loadout.main(["sync"]) == 4
     assert capsys.readouterr().err.startswith("Traceback")
+
+
+def test_skill_copy_into_a_read_only_folder_names_it(fake_home: Path, capsys) -> None:
+    claude = fake_home / ".claude"
+    claude.mkdir(mode=0o555)
+
+    assert loadout.main(["integrate", "skill", "copy", "--harness", "claude"]) == 3
+    assert capsys.readouterr().err == _unwritable(claude / "skills/loadout", claude)
+
+
+def test_skill_install_into_a_read_only_source_names_it(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    root = tmp_path / "global"
+    main = root / "main"
+    main.mkdir(parents=True)
+    (main / "permissions.toml").write_text("[shell]\n")
+    (root / "loadout.toml").write_text('[[source]]\nname = "main"\npath = "main"\n\n[claude]\n')
+    register(root)
+    main.chmod(0o555)
+
+    assert loadout.main(["integrate", "skill", "install", "--yes"]) == 3
+    assert capsys.readouterr().err == _unwritable(main / "skills/loadout", main)
+
+
+def test_a_refusal_comes_after_the_preview_it_follows(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir(mode=0o555)
+    root = tmp_path / "p"
+    root.mkdir()
+    (root / "CLAUDE.md").write_text("# one\n")
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    argv = ["init", "project", "--root", str(root), "--harness", "claude", "--yes"]
+
+    result = subprocess.run(
+        [sys.executable, "-m", "loadout", *argv],
+        env={**os.environ, "XDG_STATE_HOME": str(state)},
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        check=False,
+    )
+
+    lines = result.stdout.splitlines()
+    assert result.returncode == 3
+    assert lines[0].startswith("Scope: project")
+    assert lines[-1] == _unwritable(state / "loadout/backups", state).rstrip("\n")
