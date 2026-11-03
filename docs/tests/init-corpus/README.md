@@ -60,11 +60,11 @@ global case), and verifies:
   untracking its preview listed.
 - `check` exits 0 after init, `sync` exits 0, and `check` exits 0 again.
 
-An earlier runner also compared every adopted original with a generated write, one to one. That
-stopped holding once project instructions and `.mcp.json` stayed in place rather than becoming
-generated writes, so it failed every converting case and was removed, along with the
-reconstruction and skill-lifecycle passes built on it. No test launches a harness, so a clean
-check is not proof of that harness's execution.
+The runner does not compare each adopted original with its generated write itself: init renders
+the serialized source in isolation and compares the result with the originals before it applies
+anything, and a mismatch refuses the case with `reconstruction-failed`, which the runner reports
+as an incomplete preview. No test launches a harness, so a clean check is not proof of that
+harness's execution.
 
 ## Run the performance comparison
 
