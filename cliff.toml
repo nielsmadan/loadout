@@ -2,9 +2,9 @@
 header = """
 # Changelog
 
-All notable user-facing changes to loadout. While the project is on `0.x` it follows
-[Semantic Versioning](https://semver.org) loosely: breaking changes may land in a minor
-release and are called out under **Breaking Changes**.
+All notable user-facing changes to loadout. From 1.0 it follows
+[Semantic Versioning](https://semver.org): breaking changes land only in a major release and
+are called out under **Breaking Changes**.
 
 """
 body = """

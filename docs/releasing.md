@@ -46,7 +46,8 @@ steps. Enter `y` to proceed, another version or bump to revise the proposal, or 
 `--yes` explicitly bypasses the prompt for automation.
 
 The first release defaults to `0.1.0`. Later proposals use git-cliff: `feat` produces a minor
-bump, `fix` a patch, and breaking changes a minor bump while the version is `0.x`.
+bump, `fix` a patch, and a breaking change a major bump. Before 1.0 a breaking change bumped the
+minor version instead, since `cliff.toml` sets `breaking_always_bump_major = false`.
 
 After confirmation, curtains runs `scripts/prepare_release.py` to update both version fields,
 refreshes `uv.lock`, generates `CHANGELOG.md`, commits those files, creates an annotated
