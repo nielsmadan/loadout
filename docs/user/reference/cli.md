@@ -119,7 +119,9 @@ loadout init global --dry-run --json
 | `--json` | `init project`, `init global` | Print one JSON object instead of text; see the status table below |
 
 Scope is a subcommand: `init project` for a repository, `init global` for machine-wide
-configuration.
+configuration. Init needs git on PATH for `init global`, which keeps the source in a repository,
+and for a project inside a Git repository; without it, init exits 3 saying so before it plans
+anything. `sync` and `check` do not need git.
 
 **Approval.** Init first shows a read-only preview of the source and output writes, private
 exclusions and removals. At a terminal it then asks `Apply this migration? [y/N]`; declining

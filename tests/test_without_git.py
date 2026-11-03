@@ -47,11 +47,21 @@ def test_the_guard_refuses_without_git(
     assert (root / "AGENTS.md").read_text() == "Hand-written.\n"
 
 
-def test_check_staged_without_git_names_it(tmp_path: Path, no_git: None, capsys) -> None:
+@pytest.mark.parametrize(
+    "command",
+    [
+        ["check", "--staged"],
+        ["integrate", "git-hooks", "install"],
+        ["integrate", "git-hooks", "status"],
+    ],
+)
+def test_a_command_that_needs_git_says_it_is_missing(
+    tmp_path: Path, no_git: None, capsys, command: list[str]
+) -> None:
     root = tmp_path / "p"
     (root / "loadout").mkdir(parents=True)
     (root / "loadout/config.toml").write_text('harnesses = ["codex"]\n')
 
-    assert loadout.main(["check", "--staged", "--root", str(root)]) == 3
+    assert loadout.main([*command, "--root", str(root)]) == 3
 
-    assert "git could not be run: No such file or directory; install git" in capsys.readouterr().err
+    assert capsys.readouterr().err == "loadout: git is not on PATH; install git or put it on PATH\n"

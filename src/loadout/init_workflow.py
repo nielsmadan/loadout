@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shlex
+import shutil
 import sys
 import tempfile
 from collections.abc import Mapping
@@ -142,6 +143,22 @@ def _registration(
     if plan.inventory.harnesses:
         registration["harnesses"] = list(plan.inventory.harnesses)
     return SourceWrite(path, tomlkit.dumps(registration).encode(), 0o600, True), None
+
+
+def _require_git(options: InitOptions) -> None:
+    """Global init keeps its source in a repository, and project init asks Git which of a
+    repository's files it tracks or ignores; without git, either fails part way."""
+    if shutil.which("git") is not None:
+        return
+    if options.scope == "global":
+        need = "init global needs it to keep the source in a Git repository"
+    elif any((folder / ".git").exists() for folder in (options.root, *options.root.parents)):
+        need = f"init project needs it to read how Git treats {options.root}'s files"
+    else:
+        return
+    raise LoadoutError(
+        f"git is not on PATH; {need}. Install git or put it on PATH, then run init again"
+    )
 
 
 def _refuse_a_project_sharing_the_global_source(root: Path) -> None:
@@ -533,6 +550,7 @@ def _interrupted(options: InitOptions) -> int | None:
 def _run_init(options: InitOptions) -> int:
     if (pending := _interrupted(options)) is not None:
         return pending
+    _require_git(options)
     if options.scope == "project":
         refuse_unregistered_global(options.root)
         _refuse_a_project_sharing_the_global_source(options.root)

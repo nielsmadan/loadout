@@ -9,6 +9,7 @@ index it was given is the one it inspects.
 
 from __future__ import annotations
 
+import errno
 import functools
 import os
 import subprocess
@@ -112,12 +113,16 @@ NOT_RUN = 127
 
 
 def _not_run(error: OSError) -> str:
+    if error.errno == errno.ENOENT:
+        return "git is not on PATH; install git or put it on PATH"
     return f"git could not be run: {error.strerror or error}; install git or put it on PATH"
 
 
 def output(root: Path, *arguments: str, data: bytes | None = None, index: Index = None) -> bytes:
     """`git -C root …`'s output, or a LoadoutError naming the command that failed."""
     result = run(root, *arguments, data=data, index=index)
+    if result.returncode == NOT_RUN:
+        raise LoadoutError(result.stderr.decode().strip())
     if result.returncode:
         detail = result.stderr.decode(errors="replace").strip()
         raise LoadoutError(f"Git {' '.join(arguments[:2])} failed: {detail}")
