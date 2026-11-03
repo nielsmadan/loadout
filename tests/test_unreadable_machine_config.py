@@ -167,7 +167,10 @@ def test_a_profile_that_is_not_utf_8_is_named(
 
     assert loadout.main(["check", "--root", str(root), "--profile", profile]) == 3
 
-    assert capsys.readouterr().err == f"loadout: {named}: not UTF-8: invalid start byte\n"
+    assert (
+        capsys.readouterr().err
+        == f"loadout: {named}: not UTF-8: invalid start byte; re-encode it as UTF-8\n"
+    )
 
 
 def test_a_project_config_that_is_not_utf_8_is_named(tmp_path: Path, capsys) -> None:
@@ -177,7 +180,10 @@ def test_a_project_config_that_is_not_utf_8_is_named(tmp_path: Path, capsys) -> 
 
     assert loadout.main(["check", "--root", str(project)]) == 3
 
-    assert capsys.readouterr().err == f"loadout: {config}: not UTF-8: invalid start byte\n"
+    assert (
+        capsys.readouterr().err
+        == f"loadout: {config}: not UTF-8: invalid start byte; re-encode it as UTF-8\n"
+    )
 
 
 def test_an_unreadable_machine_config_wins_over_a_staged_manifest(

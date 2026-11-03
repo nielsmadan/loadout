@@ -138,8 +138,6 @@ class Manifest:
     module_config: tuple[ModuleConfigTarget, ...] = ()
     config_paths: tuple[Path, ...] = ()
     agents: tuple[AgentsTarget, ...] = ()
-    # Harnesses whose `settings` no declared slice reads, so nothing renders them.
-    stranded_settings: tuple[str, ...] = ()
 
 
 def _require(block: dict[str, object], key: str, label: str) -> object:
@@ -319,7 +317,7 @@ def _read_toml(path: Path) -> dict[str, object]:
         with path.open("rb") as handle:
             data: dict[str, object] = tomllib.load(handle)
     except UnicodeDecodeError as error:
-        raise LoadoutError(f"{path}: not UTF-8: {error.reason}") from error
+        raise LoadoutError(f"{path}: not UTF-8: {error.reason}; re-encode it as UTF-8") from error
     except tomllib.TOMLDecodeError as error:
         raise LoadoutError(f"{path}: invalid TOML: {error}") from error
     return data
@@ -489,9 +487,9 @@ def _check_block(agent: str, declared: dict[str, object], offered: dict[str, Sli
         )
 
 
-def _settings_read(
+def _require_settings_read(
     agent: str, declared: dict[str, object], offered: dict[str, SliceOutput], names: list[str]
-) -> bool:
+) -> None:
     """A `settings` fragment has to reach a slice whose renderer reads one, and is read
     only when the block declares such a slice: Pi's is `plugins`, which is not automatic.
 
@@ -504,10 +502,19 @@ def _settings_read(
     Raised rather than ignored, because silently discarding declared configuration
     is the wrong default for a tool whose output governs command execution.
     """
-    if declared.get("settings") is None:
-        return True
-    if any(spec.takes_settings for spec in offered.values()):
-        return any(offered[name].takes_settings for name in names)
+    readers = sorted(name for name, spec in offered.items() if spec.takes_settings)
+    if declared.get("settings") is None or any(name in readers for name in names):
+        return
+    if len(readers) == 1:
+        raise LoadoutError(
+            f"{agent}: `settings` renders only through the {readers[0]} slice; declare "
+            f"`{readers[0]}` under [{agent}], even as an empty list"
+        )
+    if readers:
+        raise LoadoutError(
+            f"{agent}: `settings` renders only through the {' or '.join(readers)} slices; "
+            f"declare one of them under [{agent}]"
+        )
     raise LoadoutError(
         f"{agent}: `settings` names a fragment, but no slice this harness offers reads one "
         f"(slices that do: "
@@ -523,7 +530,6 @@ def _parse_agents(
     tuple[SkillsTarget, ...],
     tuple[ModuleConfigTarget, ...],
     tuple[AgentsTarget, ...],
-    tuple[str, ...],
 ]:
     """Agent-keyed blocks: `[claude]` with slices beneath it.
 
@@ -549,7 +555,6 @@ def _parse_agents(
     skills: list[SkillsTarget] = []
     module_config: list[ModuleConfigTarget] = []
     agent_definitions: list[AgentsTarget] = []
-    stranded: list[str] = []
     for agent in sorted(KNOWN_HARNESSES):
         declared = data.get(agent)
         if declared is None:
@@ -563,7 +568,7 @@ def _parse_agents(
         _check_block(agent, declared, offered)
         block = {k: v for k, v in block.items() if k in offered or k in AGENT_EXTRAS}
         names = _agent_slice_names(agent, block)
-        stranded.extend(() if _settings_read(agent, declared, offered, names) else (agent,))
+        _require_settings_read(agent, declared, offered, names)
         for slice_name in names:
             spec = offered[slice_name]
             label = f"{agent}.{slice_name}"
@@ -627,7 +632,6 @@ def _parse_agents(
         tuple(skills),
         tuple(module_config),
         tuple(agent_definitions),
-        tuple(stranded),
     )
 
 
@@ -665,7 +669,6 @@ def _build_manifest(
         agent_skills,
         agent_module_config,
         agent_definitions,
-        stranded_settings,
     ) = _parse_agents(data, path, claimed)
     targets += agent_targets
     permissions += agent_permissions
@@ -700,5 +703,4 @@ def _build_manifest(
         module_config=agent_module_config,
         config_paths=config_paths or (path,),
         agents=agent_definitions,
-        stranded_settings=stranded_settings,
     )

@@ -138,7 +138,9 @@ What each harness writes, by the version checked:
 | | `/mcp` "Disable in this project" | an override entry in `mcpServers` | `.pi/mcp.json` | `hand-edited`, once the project has servers in `loadout/mcp.toml`; the same deny rule in the project's `permissions.toml` is the source's form |
 
 Loadout writes Pi's `settings.json` only when `[pi]` declares `plugins`; without it, none of the
-Pi rows on that file is drift.
+Pi rows on that file is drift. A `[pi] settings` fragment without `plugins` is a configuration
+error that every command reports, exit 3, so sync stops before it could retire the file; add
+`plugins = []` to keep the settings.
 
 At project scope, Claude Code saves a "don't ask again" permission to `.claude/settings.local.json`,
 which loadout does not write; record it in `permissions.local.toml` to keep it with the source. A

@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 import loadout
+from registration import register
 
 pytestmark = pytest.mark.integration
 
@@ -41,6 +42,25 @@ def test_a_source_file_that_is_not_utf8_is_named(
     source.write_bytes(source.read_bytes() + b"# \xff\n")
 
     assert loadout.main([command, "--root", str(project)]) == 3
+    assert capsys.readouterr().err == (
+        f"loadout: {source}: not UTF-8: invalid start byte; re-encode it as UTF-8\n"
+    )
+
+
+@pytest.mark.parametrize("name", ["permissions.toml", "mcp.toml"])
+@pytest.mark.parametrize("command", ["sync", "check"])
+def test_a_global_source_file_that_is_not_utf8_is_named(
+    tmp_path: Path, fake_home: Path, capsys, name: str, command: str
+) -> None:
+    root = tmp_path / "source"
+    root.mkdir()
+    (root / "loadout.toml").write_text('[[source]]\nname = "s"\npath = "."\n\n[claude]\n')
+    (fake_home / ".claude").mkdir()
+    register(root)
+    source = root / name
+    source.write_bytes(b"# \xff\n")
+
+    assert loadout.main([command, "--global"]) == 3
     assert capsys.readouterr().err == (
         f"loadout: {source}: not UTF-8: invalid start byte; re-encode it as UTF-8\n"
     )

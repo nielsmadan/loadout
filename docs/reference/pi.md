@@ -38,9 +38,10 @@ paths are under `${PI_CODING_AGENT_DIR:-~/.pi/agent}`.
 | instructions | `AGENTS.md` | `AGENTS.md` at the repository root, shared with Codex, Droid and OpenCode |
 | module config | authored paths beneath the root | not in the project preset |
 
-A `[pi] settings` fragment with no `plugins` renders nothing, and sync and check print a note
-saying so: `settings.json` is written by the plugins slice, so declare `plugins` under `[pi]`, even
-as an empty list.
+`settings.json` is written by the plugins slice, so a `[pi] settings` fragment with no `plugins`
+is refused as a manifest error, exit 3: "pi: `settings` renders only through the plugins slice;
+declare `plugins` under [pi], even as an empty list". As a note, it let the next sync retire the
+whole file, `defaultModel` included, once `plugins` was removed.
 
 ## Resolution
 

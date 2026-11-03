@@ -216,7 +216,9 @@ Pi's plugin declaration shares `settings.json` with `lastChangelogVersion`, a cu
 after upgrades. The built-in Pi preset preserves that live key; it does not belong in a settings
 fragment, and loadout refuses a fragment that tries to manage it. Pi's `settings` fragments are
 written only through that document, so they render only when `[pi]` declares `plugins`, even as
-`plugins = []`; without it, `sync` and `check` say so in a note.
+`plugins = []`. `settings` under `[pi]` without `plugins` is a configuration error, exit 3, in
+every command that reads the manifest. A `settings` list in `[all]` does not count: it reaches Pi
+only when `[pi]` declares `plugins`.
 
 ### Module configuration
 

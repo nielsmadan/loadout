@@ -106,9 +106,8 @@ A plugin reference takes `"enabled": false` to switch the plugin off; edit that 
 removing the reference, because Claude turns a plugin with no entry back on by default.
 
 Pi's `settings.json` is written by its `plugins` slice, so a Pi settings fragment renders only
-when `[pi]` also declares `plugins`, even as an empty list (`plugins = []`). Without it, sync and
-check print a `pi.settings` note and write nothing: add `plugins` rather than editing Pi's
-settings file.
+when `[pi]` also declares `plugins`, even as an empty list (`plugins = []`). Without it, every
+command refuses the manifest with exit 3: add `plugins` rather than editing Pi's settings file.
 
 Project settings reach Claude, Droid and OpenCode. `.claude/settings.json`,
 `.factory/settings.json` and `opencode.json` are shared between loadout's slices and the harness's
