@@ -76,6 +76,9 @@ OWNERS: dict[str, dict[str, tuple[str, ...]]] = {
     "opencode": {"permissions": ("permission",), "mcp": ("mcp",), "plugins": ("plugin",)},
     "pi": {"plugins": ("packages",)},
 }
+# Codex's renderers write only the keys they own into config.toml, so the rest of it renders
+# from `defaults`, not from a `settings` base.
+RESIDUAL_SLICE = {"codex": "defaults"}
 DROID_INERT_SETTINGS_HOOKS = (
     "hooks in settings.json are not adopted as hooks, because Droid reads them only when no "
     "hooks.json is beside them; they stay in the settings fragment"
@@ -456,7 +459,7 @@ class _PlanBuilder:
             if key not in claimed and not (moved and key == "hooks")
         }
         if not special or residual:
-            values = {"settings": residual, **values}
+            values = {RESIDUAL_SLICE.get(agent, "settings"): residual, **values}
         self.available_categories.update(
             (agent, category) for agent in candidate.harnesses for category in values
         )
@@ -492,9 +495,9 @@ class _PlanBuilder:
                     if spec.renderer == "codex-config" and existing:
                         self.codex_policy(candidate)
                 continue
-            if category == "settings" and (existing or value):
-                self.adopt_value(self.global_values, "settings", agent, value, candidate)
-                self.global_slices[agent].add("settings")
+            if category == RESIDUAL_SLICE.get(agent, "settings") and (existing or value):
+                self.adopt_value(self.global_values, category, agent, value, candidate)
+                self.global_slices[agent].add(category)
         if existing:
             self.records[candidate.destination] = self.record(
                 candidate.destination, candidate.harnesses, candidate.format
@@ -1038,7 +1041,12 @@ class _PlanBuilder:
                     else "settings.json"
                 )
             )
-            self.dormant(settings, (agent,), "settings", "toml" if agent == "codex" else "json")
+            self.dormant(
+                settings,
+                (agent,),
+                RESIDUAL_SLICE.get(agent, "settings"),
+                "toml" if agent == "codex" else "json",
+            )
             instruction = (
                 self.inventory.root / ("CLAUDE.md" if agent == "claude" else "AGENTS.md")
                 if project

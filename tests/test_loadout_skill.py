@@ -5,6 +5,7 @@ from pathlib import Path
 
 from loadout.commands import DRIFT_ADVICE
 from loadout.emit import render_global
+from loadout.errors import LoadoutError
 from loadout.harnesses import GLOBAL_PRESET
 from loadout.migration_models import Inventory, MigrationPlan
 from loadout.output import Merged
@@ -55,9 +56,12 @@ def _settings_reaches_output(root: Path, agent: str, extra: str = "") -> bool:
     settings.joinpath("model.json").write_text(
         '{"loadout-settings-probe": "survived"}\n', encoding="utf-8"
     )
+    try:
+        rendered = render_global(register(root))
+    except LoadoutError:
+        return False
     documents = (
-        output.document if isinstance(output, Merged) else output
-        for output in render_global(register(root)).values()
+        output.document if isinstance(output, Merged) else output for output in rendered.values()
     )
     return any(
         "loadout-settings-probe" in document for document in documents if isinstance(document, str)

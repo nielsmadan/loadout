@@ -120,6 +120,11 @@ therefore keeps an owned-key record beside its fragment (`loadout/defaults/<name
 union of that record and the fragment's current keys is what gets stripped, which is what makes
 deleting a key remove it from `config.toml` rather than stranding it there forever.
 
+`init` adopts every top-level key of an existing `config.toml` that no other slice owns into
+`defaults/codex.json`, apart from `projects` and `trust`, which Codex writes for itself, and
+declares `defaults = ["codex"]`. A `[codex] settings` fragment is refused: no Codex renderer
+reads one, so it would render nothing.
+
 ### Nested defaults
 
 A defaults fragment can contain nested JSON objects:

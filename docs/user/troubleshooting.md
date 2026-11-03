@@ -115,10 +115,11 @@ What each harness writes, by the version checked:
 | | Making auto mode the default | `permissions` (`defaultMode`) | same | `hand-edited`; `permissions` cannot be preserved, so set `defaultMode` under `permissions` in the settings fragment |
 | | Starting after an upgrade that retires a model name | `model` | same | `hand-edited` |
 | | `claude mcp add --scope user` | `mcpServers` | `~/.claude.json` | `owned-key` |
-| Codex 0.165.0 | `/model` | `model`, `model_reasoning_effort` | `~/.codex/config.toml` | `owned-key` when `defaults` sets them, `owned-key-removed` when Codex deletes one; nothing otherwise |
+| Codex 0.165.0 | `/model` | `model`, `model_reasoning_effort` | `~/.codex/config.toml` | `owned-key` when `defaults` sets them, as it does after `init` adopts them, `owned-key-removed` when Codex deletes one; nothing otherwise |
 | | Approving an MCP tool for good | `mcp_servers.<server>.tools.<tool>.approval_mode` | same | `owned-key` for a server the source defines |
 | | Installing, enabling or disabling a plugin | `plugins."<name>@<marketplace>"` | same | `owned-key` when `[codex]` declares `plugins` |
-| | Service tier, theme, status line, trusting a project | `service_tier`, `tui`, `projects` | same | nothing, unless `defaults` sets them |
+| | Service tier, theme, status line | `service_tier`, `tui` | same | `owned-key` when `defaults` sets them, as it does after `init` adopts them; nothing otherwise |
+| | Trusting a project | `projects` | same | nothing; `init` leaves it to Codex |
 | Droid 0.251.0 | `/model`, and the reasoning-effort and autonomy pickers | `sessionDefaultSettings` | `~/.factory/settings.json` | `hand-edited` |
 | | `/settings` | `theme` and the other keys it sets | same | `hand-edited` |
 | | Installing or enabling a plugin, adding a marketplace | `enabledPlugins`, `extraKnownMarketplaces` | same | `hand-edited` |

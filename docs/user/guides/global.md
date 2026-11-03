@@ -34,7 +34,9 @@ nothing. `init` writes `permissions.toml` unless Codex is the only harness and h
 `~/.codex/rules/permissions.rules` yet. A missing `permissions.toml` means the same as an empty
 one. `README.md` shows the full layout and how to add hooks, plugins and settings. Anything
 `init` adopts from your existing agent configuration lands beside these: instructions, settings,
-hooks, plugins and skills, each in its own directory.
+hooks, plugins and skills, each in its own directory. Codex's own settings in `config.toml`, such
+as `model`, `approval_policy` and `[profiles.*]`, become the `defaults` fragment
+`defaults/codex.json`; only `[projects.*]` and `trust`, which Codex writes for itself, stay out.
 
 When `~/agent-config` is not already inside a git repository, `init` creates one there. It
 commits nothing: its last line is the `git add` and `git commit` command to run once you have

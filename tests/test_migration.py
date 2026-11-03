@@ -671,7 +671,7 @@ def test_a_shared_document_is_planned_with_the_keys_loadout_owns(
     plan = plan_migration(discover(source, scope="global", harnesses=("codex",)))
 
     assert [(write.path, write.owned) for write in plan.generated_writes] == [
-        (config, ("marketplaces", "mcp_servers", "plugins"))
+        (config, ("marketplaces", "mcp_servers", "model", "plugins"))
     ]
 
 

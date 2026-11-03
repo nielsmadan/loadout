@@ -477,6 +477,11 @@ def _check_block(agent: str, declared: dict[str, object], offered: dict[str, Sli
             f"{agent}: unknown slice(s) {', '.join(stray)} "
             f"(this harness offers: {', '.join(sorted(offered))})"
         )
+    if agent == "codex" and "settings" in declared:
+        raise LoadoutError(
+            "codex: `settings` renders nothing for Codex, whose config.toml keys come from "
+            "`defaults`; move the fragment to defaults/<name>.json and name it under `defaults`"
+        )
     if agent == "codex" and "preserve" in declared:
         raise LoadoutError(
             "codex: preserve has nothing to keep, because loadout compares only the keys it "

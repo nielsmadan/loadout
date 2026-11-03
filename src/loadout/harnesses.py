@@ -152,7 +152,6 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
         "mcp": SliceOutput(
             renderer="codex-config",
             destination="${CODEX_HOME:-~/.codex}/config.toml",
-            takes_settings=True,
         ),
         # Opt-in, not automatic: it strips every key it manages, so a machine that
         # never asked for it must never have its hand-maintained settings touched.
@@ -162,7 +161,6 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
         "defaults": SliceOutput(
             renderer="codex-settings",
             destination="${CODEX_HOME:-~/.codex}/config.toml",
-            takes_settings=True,
             source_slice="defaults",
         ),
         # The same destination, disjoint keys. config.toml also holds
@@ -172,7 +170,6 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
         "plugins": SliceOutput(
             renderer="codex-plugins",
             destination="${CODEX_HOME:-~/.codex}/config.toml",
-            takes_settings=True,
             source_slice="plugins",
         ),
     },

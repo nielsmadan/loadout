@@ -142,7 +142,7 @@ so a manifest never spells out a machine path.
 | Key | Value |
 | --- | --- |
 | `instructions` | Ordered list of Markdown fragment names |
-| `settings` | JSON settings fragment name or ordered list |
+| `settings` | JSON settings fragment name or ordered list; an error under `[codex]`, whose settings are `defaults` |
 | `defaults` | Codex defaults fragment name or ordered list |
 | `hooks` | Hook fragment name or ordered list |
 | `plugins` | Plugin fragment name or ordered list, for supporting agents |
