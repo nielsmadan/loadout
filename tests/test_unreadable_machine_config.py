@@ -148,7 +148,7 @@ def test_a_machine_config_that_is_no_file_is_named(
     assert loadout.main(["sync", "--root", str(root)]) == 3
 
     assert capsys.readouterr().err == (
-        f"loadout: {folder / 'config.toml'}: cannot be read: {reason}\n"
+        f"loadout: {folder / 'config.toml'}: cannot be read: {reason}; fix it or delete it\n"
     )
 
 
@@ -206,4 +206,7 @@ def test_an_unreadable_machine_config_wins_over_a_staged_manifest(
     finally:
         machine.chmod(0o600)
 
-    assert capsys.readouterr().err == f"loadout: {machine}: cannot be read: Permission denied\n"
+    assert (
+        capsys.readouterr().err
+        == f"loadout: {machine}: cannot be read: Permission denied; fix it or delete it\n"
+    )

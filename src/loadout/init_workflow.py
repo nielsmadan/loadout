@@ -114,7 +114,7 @@ def _registration(
     existing_text: str | None = None
     if path.exists() or path.is_symlink():
         same = False
-        if not path.is_symlink() and path.is_file():
+        if not path.is_symlink():
             # Raises when it does not load, so replace never discards a file reported as fine.
             machine = load_machine_config(path, require_source=False)
             existing_text = path.read_text(encoding="utf-8")

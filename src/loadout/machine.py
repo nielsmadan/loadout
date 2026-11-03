@@ -58,15 +58,24 @@ def _read_config(path: Path) -> dict[str, object] | None:
     except FileNotFoundError:
         return None
     except UnicodeDecodeError as error:
-        raise LoadoutError(f"{path}: not UTF-8: {error.reason}; re-encode it as UTF-8") from error
+        raise LoadoutError(f"{path}: not UTF-8: {error.reason}") from error
     except tomllib.TOMLDecodeError as error:
-        raise LoadoutError(f"{path}: invalid TOML: {error}; fix it or delete it") from error
+        raise LoadoutError(f"{path}: invalid TOML: {error}") from error
     except OSError as error:
         # As a config that does not parse: the lenient paths fall back (review 4, 2.5).
         raise LoadoutError(f"{path}: cannot be read: {error.strerror or error}") from error
 
 
 def load_machine_config(path: Path, *, require_source: bool = True) -> MachineConfig | None:
+    """The machine config, or None when there is none. One that cannot be read, parsed or
+    validated is an error that says how to get past it."""
+    try:
+        return _load_machine_config(path, require_source=require_source)
+    except LoadoutError as error:
+        raise LoadoutError(f"{error}; fix it or delete it") from error
+
+
+def _load_machine_config(path: Path, *, require_source: bool) -> MachineConfig | None:
     data = _read_config(path)
     if data is None:
         return None

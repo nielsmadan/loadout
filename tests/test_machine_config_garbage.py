@@ -54,3 +54,39 @@ def test_init_global_names_a_machine_config_that_does_not_parse(
 def test_other_commands_name_it_the_same_way(machine: Path, capsys, command: list[str]) -> None:
     assert loadout.main(command) == 3
     assert capsys.readouterr().err == _refusal(machine)
+
+
+@pytest.mark.parametrize(
+    "extra", [["--dry-run"], ["--yes"], ["--registration", "replace", "--yes"]]
+)
+def test_init_global_names_a_machine_config_that_is_a_folder(
+    tmp_path: Path, machine: Path, capsys, extra: list[str]
+) -> None:
+    machine.unlink()
+    machine.mkdir()
+    argv = ["init", "global", str(tmp_path / "agent-config"), "--harness", "claude", *extra]
+
+    assert loadout.main(argv) == 3
+    assert capsys.readouterr().err == (
+        f"loadout: {machine}: cannot be read: Is a directory; fix it or delete it\n"
+    )
+    assert machine.is_dir()
+
+
+def test_a_machine_config_of_the_wrong_shape_ends_the_same_way(machine: Path, capsys) -> None:
+    machine.write_text("source = 3\n")
+
+    assert loadout.main(["sync", "--global"]) == 3
+    assert capsys.readouterr().err == (
+        f"loadout: {machine}: source must be a non-empty string naming a directory; "
+        "fix it or delete it\n"
+    )
+
+
+def test_a_machine_config_that_is_not_utf8_ends_the_same_way(machine: Path, capsys) -> None:
+    machine.write_bytes(b"\xff\n")
+
+    assert loadout.main(["sync", "--global"]) == 3
+    assert capsys.readouterr().err == (
+        f"loadout: {machine}: not UTF-8: invalid start byte; fix it or delete it\n"
+    )

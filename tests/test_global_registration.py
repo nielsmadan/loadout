@@ -264,7 +264,10 @@ def test_a_broken_machine_config_is_named_rather_than_called_unregistered(
 
     assert loadout.main(["sync", "--root", str(source), "--profile", "x"]) == 3
 
-    assert capsys.readouterr().err == f"loadout: {machine}: unknown key(s) profle\n"
+    assert (
+        capsys.readouterr().err
+        == f"loadout: {machine}: unknown key(s) profle; fix it or delete it\n"
+    )
 
 
 def test_a_failed_hook_suggests_the_retry_that_fits(
