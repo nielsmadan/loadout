@@ -310,6 +310,12 @@ CODEX_RULES_ABSORBED = (
 JSONC_ABSORBED = "Its settings are adopted into opencode.json, and OpenCode would read both files."
 
 
+SKILL_BELOW_TOP = (
+    "This skill folder holds SKILL.md only below its top, so it is not one skill init can "
+    "adopt. Move each skill in it to the top of the skills folder, then run init again."
+)
+
+
 class _Refusal(LoadoutError):
     """A plan issue found while composing, naming its own code and original."""
 
@@ -827,7 +833,7 @@ class _PlanBuilder:
             None,
         )
         if document is None:
-            raise LoadoutError("canonical skill migration requires SKILL.md")
+            raise _Refusal(Issue("source-composition", (destination / name,), SKILL_BELOW_TOP))
         source_support = Path("skills") / f"{name}{suffix}"
         source_document = source_support / "SKILL.md"
         self.write(
