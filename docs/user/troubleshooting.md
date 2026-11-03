@@ -160,6 +160,12 @@ that does not load is reported as its own error, by `init global` too, which nev
 fix the key it names, or delete the file and run `loadout init global` again, or, when it cannot
 be read, fix the file's or its folder's permissions.
 
+A machine config kept as a symlink, such as one into a dotfiles repository, is read through the
+link by every command. Loadout never writes through it: `init global` of the source it already
+registers changes nothing there, and an init that would change the registration exits 3, naming
+the link's target and printing the lines to put in it. Add them yourself, or replace the link
+with a regular file and run init again.
+
 ## Sync refuses a skill or agent name
 
 ```text

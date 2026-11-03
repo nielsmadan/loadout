@@ -110,18 +110,32 @@ def _updated_registration(path: Path, text: str, agents: tuple[str, ...]) -> Sou
 def _registration(
     options: InitOptions, plan: MigrationPlan
 ) -> tuple[SourceWrite | None, Issue | None]:
+    write, issue = _planned_registration(options, plan)
+    if write is not None and write.path.is_symlink():
+        target = write.path.resolve()
+        raise LoadoutError(
+            f"{write.path} is a symlink to {target}, and loadout does not write through it. "
+            f"Put these lines in {target}, or replace the link with a regular file, then run "
+            f"init again:\n\n{write.content.decode()}"
+        )
+    return write, issue
+
+
+def _planned_registration(
+    options: InitOptions, plan: MigrationPlan
+) -> tuple[SourceWrite | None, Issue | None]:
     if plan.inventory.scope != "global" or options.registration == "keep":
         return None, None
     path = machine_config_path().absolute()
     source = plan.inventory.source_root.resolve()
     existing_text: str | None = None
     if path.exists() or path.is_symlink():
-        same = False
-        if not path.is_symlink():
-            # Raises when it does not load, so replace never discards a file reported as fine.
-            machine = load_machine_config(path, require_source=False)
+        # Read through a link, as every command reads it. Raises when it does not load, so
+        # replace never discards a file reported as fine.
+        machine = load_machine_config(path, require_source=False)
+        if machine is not None:
             existing_text = path.read_text(encoding="utf-8")
-            same = machine is not None and machine.source.resolve() == source
+        same = machine is not None and machine.source.resolve() == source
         if same:
             return _updated_registration(path, existing_text or "", plan.inventory.harnesses), None
         # Keeping another registration leaves a source init is creating nothing it may
