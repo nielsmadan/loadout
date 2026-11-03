@@ -3,11 +3,14 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
+import signal
 import stat
 import tempfile
-from collections.abc import Callable
+import threading
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import BinaryIO
 
@@ -52,8 +55,11 @@ def replace_atomically(
     """The one way a file is replaced (review 3, batch 4.4): `fill` writes a file beside `path`,
     which is renamed over it, so a kill never leaves `path` torn. The mode is set before
     the rename, so an executable never appears without its bit."""
-    descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix=TEMPORARY_PREFIX)
+    temporary: str | None = None
     try:
+        # Ctrl-C waits until the name is held, so the cleanup below always knows the file.
+        with _sigint_deferred():
+            descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix=TEMPORARY_PREFIX)
         with os.fdopen(descriptor, "wb") as handle:
             fill(handle)
             if mode is not None:
@@ -64,8 +70,21 @@ def replace_atomically(
         before_rename()
         os.replace(temporary, path)
     except BaseException:
-        Path(temporary).unlink(missing_ok=True)
+        if temporary is not None:
+            Path(temporary).unlink(missing_ok=True)
         raise
+
+
+@contextlib.contextmanager
+def _sigint_deferred() -> Iterator[None]:
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+    previous = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
+    try:
+        yield
+    finally:
+        signal.pthread_sigmask(signal.SIG_SETMASK, previous)
 
 
 def atomic_install(path: Path, frozen: FrozenFile, boundary: Path | None = None) -> None:

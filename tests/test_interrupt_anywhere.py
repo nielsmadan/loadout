@@ -81,7 +81,7 @@ def test_ctrl_c_while_sync_renders_exits_130(
     monkeypatch.setattr(commands, "render_all", _interrupting(commands.render_all))
 
     assert loadout.main(["sync", "--root", str(project)]) == 130
-    assert capsys.readouterr().err == "loadout: stopped with Ctrl-C\n"
+    assert capsys.readouterr().err == "loadout: sync stopped with Ctrl-C; run it again to finish\n"
 
 
 def test_ctrl_c_while_check_renders_prints_only_the_envelope(

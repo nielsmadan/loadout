@@ -4,6 +4,19 @@
 both decide what a file on disk is. The drift kinds `check` reports, and the advice for each, are
 listed in the [CLI reference](../user/reference/cli.md#render-and-check).
 
+## An interrupted sync
+
+Sync is not transactional: it writes the outputs one by one, records them, then retires orphans,
+and an interrupt stops it wherever it is. Each step leaves a state the next sync finishes:
+
+- **Writing.** Each file is replaced atomically, and Ctrl-C waits until a temporary file's name
+  is held, so its cleanup always runs. The record is written only after every output, so it still
+  describes the previous sync; a file written since equals what the source renders, which the
+  guard accepts.
+- **Recording.** The record is replaced atomically: the previous one or the new one.
+- **Retiring.** The record still names every orphan until retirement ends. An orphan already
+  deleted is skipped, and the skill folder it emptied is pruned then.
+
 ## Files modified outside loadout
 
 Generated files look like ordinary files, so they get hand-edited, and the edit is then lost on

@@ -501,6 +501,8 @@ def _run(args: argparse.Namespace) -> int:
         stopped = "stopped with Ctrl-C"
         if args.command == "init":
             stopped = f"init {stopped}; nothing was changed"
+        elif args.command == "sync":
+            stopped = f"sync {stopped}; run it again to finish"
         return _refused(args, INTERRUPTED, LoadoutError(stopped))
     except Exception as error:  # noqa: BLE001 - top-level handler reports unexpected errors
         if isinstance(error, OSError) and write_denied(error):

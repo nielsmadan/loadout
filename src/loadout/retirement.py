@@ -71,12 +71,14 @@ def orphan_drift(orphans: Mapping[Path, WrittenEntry]) -> list[Drift]:
 def retire(orphans: Mapping[Path, WrittenEntry], recorded: Iterable[Path]) -> list[Path]:
     """Delete each orphaned file, or strip loadout's keys from a shared one.
 
-    Returns the paths changed on disk. An orphan already gone needs nothing.
+    Returns the paths changed on disk. An orphan already gone needs only its folder pruned.
     """
     skill_folders = {path.parent for path in recorded if path.name == SKILL_DOCUMENT}
     retired: list[Path] = []
     for path, entry in sorted(orphans.items()):
         if not path.is_file():
+            # Deleted by a sync stopped before it pruned, or by hand: prune what it emptied.
+            _prune_skill_folder(path, skill_folders)
             continue
         if entry.kind == "merged":
             existing = read_document(path)

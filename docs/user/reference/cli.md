@@ -35,6 +35,10 @@ loadout check --staged
 `--root` and `--global` are mutually exclusive. `--global` without a machine config exits 3 with
 ``no machine config at <path>; run `loadout init global` first``.
 
+An interrupted sync is completed by the next sync. Ctrl-C stops it with exit 130 and
+`sync stopped with Ctrl-C; run it again to finish`; the files it wrote stay, `check` reports the
+rest as `source-changed` or `missing`, never as hand-edited, and no partly written file is left.
+
 Every run picks its profile by one rule: `--profile` when given; otherwise the machine config's
 `profile` when the root is the registered global source, whether named by `--global`, by `--root`,
 by a git hook or by init; otherwise `default`. So a manual sync and a hook-run sync of the global
