@@ -51,6 +51,26 @@ def write_json(path: Path, document: object) -> None:
     path.write_text(json.dumps(document, indent=2) + "\n")
 
 
+# What macOS's sysctl adds about the hardware; each is optional, as Linux has none of them.
+SYSCTL_FIELDS = ("hw.model", "hw.memsize", "machdep.cpu.brand_string")
+
+
+def hardware() -> str:
+    uname = os.uname()
+    described = [f"{uname.sysname} {uname.release} {uname.machine}", *map(_sysctl, SYSCTL_FIELDS)]
+    return "\n".join(filter(None, described))
+
+
+def _sysctl(field: str) -> str:
+    try:
+        result = subprocess.run(
+            ["sysctl", "-n", field], capture_output=True, text=True, check=False
+        )
+    except OSError:
+        return ""
+    return result.stdout.strip()
+
+
 def code_identity() -> dict:
     env = {**os.environ, "GIT_OPTIONAL_LOCKS": "0"}
     files = sorted((CHECKOUT / "src/loadout").rglob("*.py"))
@@ -72,12 +92,7 @@ def code_identity() -> dict:
         "tracked_patch_sha256": digest(git(CHECKOUT, "diff", "HEAD", "--", "src", env=env)),
         "python": sys.version,
         "platform": platform.platform(),
-        "hardware": subprocess.run(
-            ["sysctl", "-n", "hw.model", "hw.memsize", "machdep.cpu.brand_string"],
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.strip(),
+        "hardware": hardware(),
         "git": subprocess.run(
             ["git", "--version"], capture_output=True, text=True, check=True
         ).stdout.strip(),
