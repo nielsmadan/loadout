@@ -255,7 +255,7 @@ def render_pi(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
                 bash[pattern] = decision
 
     # `[shell] default` governs bash only; MCP policy has its own three lists.
-    permission: dict[str, Any] = {"*": "allow", "bash": bash, "mcp__*": MCP_SEED}
+    permission: dict[str, Any] = {"bash": bash, "mcp__*": MCP_SEED}
     for key, decision in _pi_mcp_keys(rules, tuple(category for category, _ in ordered)):
         permission.pop(key, None)
         permission[key] = decision

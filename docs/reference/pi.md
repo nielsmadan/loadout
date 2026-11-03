@@ -60,7 +60,6 @@ Order is `allow`, `ask`, `deny` — deny last.
 {
   "$schema": "...",
   "permission": {
-    "*": "allow",
     "bash": { "*": "ask", ... },
     "mcp__*": "ask",
     "mcp__docs__search": "allow",
@@ -74,13 +73,25 @@ source states none. MCP rules are top-level keys after it, seeded with `mcp__*`,
 `ask`: `[shell] default` is a shell key, and MCP policy has its own three lists. See
 [The catch-all default](README.md#the-catch-all-default).
 
+There is no top-level `"*"`, the extension's universal fallback, so every tool no surface names,
+such as `read`, `write` and `edit`, resolves to the extension's default, `ask`
+(`src/permission-manager.ts` at the pinned 23.0.0):
+
+```ts
+  /** Universal fallback when permission["*"] is absent from all scopes. */
+  const DEFAULT_UNIVERSAL_FALLBACK: PermissionState = "ask";
+```
+
+Loadout 0.9.3 and earlier wrote `"*": "allow"`, which let them all run without asking.
+
 `render_pi_project` writes the catch-all only when the project source states a default, and no
 `mcp__*`. Pi merges
 the project config over the global one, shallow-merging each pattern map
 (`mergeFlatPermissions` in pi-permission-system's `src/policy/permission-merge.ts`:
 `{ ...baseVal, ...value }`), and resolves a map last-match-wins (`patterns.findLast` in
 `src/policy/wildcard-matcher.ts`). So a project `*` replaces the global `*`'s verdict in its
-first position, and a project that states nothing keeps the global catch-all. With no rule and no
+first position, and a project that states nothing keeps the global catch-all. Neither file has a
+top-level `"*"`, so a project inherits none from loadout's global file either. With no rule and no
 default, the project file is not written at all.
 
 ## Pattern shape

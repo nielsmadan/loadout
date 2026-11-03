@@ -60,7 +60,7 @@ def test_pi_keeps_a_glob_literal() -> None:
 def test_pi_seeds_catch_alls_first() -> None:
     doc = render_pi(Rules(allow=("pwd",)), {})
     assert next(iter(doc["permission"]["bash"])) == "*"
-    assert list(doc["permission"]).index("mcp__*") == 2
+    assert list(doc["permission"]).index("mcp__*") == 1
 
 
 def test_pi_seeds_bash_with_the_stated_default_and_leaves_mcp_alone() -> None:
@@ -97,8 +97,7 @@ def test_pi_emits_deny_last_so_it_wins_under_last_match() -> None:
 def test_pi_document_shape() -> None:
     doc = render_pi(EMPTY_RULES, {})
     assert list(doc) == ["$schema", "permission"]
-    assert list(doc["permission"]) == ["*", "bash", "mcp__*"]
-    assert doc["permission"]["*"] == "allow"
+    assert list(doc["permission"]) == ["bash", "mcp__*"]
 
 
 def test_pi_reorders_cross_key_entries_so_later_category_wins_position() -> None:

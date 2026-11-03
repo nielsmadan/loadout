@@ -374,8 +374,7 @@ def _collapse_pi_mcp(
 
 # --------------------------------------------------------------------------
 # pi / pi-project — the renderer builds the whole document, so there is no
-# base to separate out. `$schema` and the top-level `permission["*"]` are
-# structure, not rules.
+# base to separate out. `$schema` is structure, not a rule.
 # --------------------------------------------------------------------------
 
 

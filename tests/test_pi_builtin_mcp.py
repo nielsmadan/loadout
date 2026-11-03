@@ -125,7 +125,6 @@ def test_a_target_becomes_the_tool_name_pi_gives_it(entry: str, key: str) -> Non
 def test_global_policy_is_top_level_tool_keys_after_an_mcp_catch_all() -> None:
     rules = Rules(mcp_allow=("docs/*",), mcp_deny=("docs/drop",), mcp_ask=("web/fetch",))
     assert render_pi(rules, {})["permission"] == {
-        "*": "allow",
         "bash": {"*": "ask"},
         "mcp__*": "ask",
         "mcp__docs__*": "allow",
