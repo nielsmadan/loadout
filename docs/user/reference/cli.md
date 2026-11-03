@@ -171,9 +171,12 @@ them. Init never creates a project's repository. How it treats symlinked folders
 across harnesses, `.claude/settings.local.json` and `.agents/skills` is in the
 [migration reference](https://github.com/nielsmadan/loadout/blob/main/docs/reference/migration.md).
 `init project` needs no machine config: it uses `--harness` or discovery, and closes by noting that
-global scope is not configured. At the registered global source that also holds a project,
-`init project` previews, compares and writes the project's outputs alone; the global ones stay for
-`sync`. Re-running project initialisation on an initialised project reports it as already
+global scope is not configured. When the registered global source keeps its `loadout.toml` at the
+repository's top level, the repository can also hold a project: `init project` there previews,
+compares and writes the project's outputs alone, and the global ones stay for `sync`. When the
+global source is the repository's `loadout/` folder, as `init global` creates it, a project source
+would be that same folder, so `init project` refuses and names the global source. `init global`
+likewise refuses a directory whose `loadout/` folder is already a project source. Re-running project initialisation on an initialised project reports it as already
 initialised and changes nothing; it does not reinterpret an existing source.
 
 **What init leaves for you.** A skill or subagent whose copies differ between harnesses, or a

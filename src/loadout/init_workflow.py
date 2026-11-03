@@ -29,6 +29,7 @@ from .machine import (
     registration,
     resolve_profile,
 )
+from .manifest import manifest_path
 from .migration import plan_migration
 from .migration_backup import Backup, create_backup, discard, interrupted_backup, restore
 from .migration_models import Issue, MigrationPlan, SourceWrite, secrets_document
@@ -40,7 +41,7 @@ from .migration_transaction import (
     prepare_migration,
 )
 from .output import Merged, Output
-from .project import PROJECT_DIR, gitignore_entries
+from .project import PROJECT_DIR, gitignore_entries, project_config_path
 from .skill_copy import cmd_skill_copy, copy_command
 from .state import sync_state
 from .sync import RenderedChange, compare_with_disk, deploy
@@ -145,6 +146,33 @@ def _registration(
     if plan.inventory.harnesses:
         registration["harnesses"] = list(plan.inventory.harnesses)
     return SourceWrite(path, tomlkit.dumps(registration).encode(), 0o600, True), None
+
+
+def _refuse_a_project_sharing_the_global_source(root: Path) -> None:
+    """A project source that is, or holds, the registered global source would write over its
+    files, so this refuses before planning can advise moving one of them aside."""
+    found = registration().source
+    project = (root / PROJECT_DIR).resolve()
+    if found is None or not found.resolve().is_relative_to(project):
+        return
+    raise LoadoutError(
+        f"{found} is this machine's registered global source, so a project in {root} would "
+        "share its files; nothing was changed. Run `loadout sync --global` to render the "
+        "global source"
+    )
+
+
+def _refuse_a_global_source_sharing_a_project(root: Path) -> None:
+    """A new global source in `root/loadout` would be the project source already there."""
+    project = root / PROJECT_DIR
+    if not project_config_path(root).is_file() or any(
+        manifest_path(folder).is_file() for folder in (root, project)
+    ):
+        return
+    raise LoadoutError(
+        f"{project} is the project source of {root}, so a global source there would share "
+        "its files; nothing was changed. Run `loadout init global` in a dedicated directory"
+    )
 
 
 def _refuse_unregistered_render(plan: MigrationPlan, machine: SourceWrite | None) -> None:
@@ -511,6 +539,9 @@ def _run_init(options: InitOptions) -> int:
         return pending
     if options.scope == "project":
         refuse_unregistered_global(options.root)
+        _refuse_a_project_sharing_the_global_source(options.root)
+    else:
+        _refuse_a_global_source_sharing_a_project(options.root)
     options, plan = _resolve(options)
     machine, issue = _registration(options, plan)
     if issue:
