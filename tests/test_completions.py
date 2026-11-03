@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import argparse
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -181,3 +183,73 @@ def test_the_script_parses_in_its_own_shell(shell: str, tmp_path: Path) -> None:
     result = subprocess.run([shell, "-n", str(script)], capture_output=True, text=True, check=False)
 
     assert (result.returncode, result.stderr) == (0, "")
+
+
+INTEGRATE = {"completions", "git-hooks", "skill"}
+
+
+def _tree(parser: argparse.ArgumentParser, prefix: str = "_shtab_loadout"):
+    """Each command with subcommands, by its zsh function prefix, and its listed children."""
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            public = {each.dest: action.choices[each.dest] for each in action._choices_actions}
+            yield prefix, public
+            for name, child in public.items():
+                yield from _tree(child, f"{prefix}_{name.replace('-', '_')}")
+
+
+def _zsh_block(script: str, start: str, end: str) -> list[str]:
+    body = script.split(start, 1)[1].split(end, 1)[0]
+    return [line.strip() for line in body.strip("\n").split("\n")]
+
+
+def test_zsh_lists_each_command_with_only_its_own_subcommands() -> None:
+    script = render("zsh", build_parser())
+    for prefix, children in _tree(build_parser()):
+        listed = _zsh_block(script, f"\n{prefix}_commands() {{\n  local _commands=(\n", "\n  )")
+        cases = _zsh_block(script, f"\n{prefix}() {{\n", "\n      esac")
+        cases = cases[cases.index("case $line[1] in") + 1 :]
+        assert {line.split(":", 1)[0] for line in listed} == set(children), prefix
+        assert sorted(cases) == sorted(
+            f"{name}) {prefix}_{name.replace('-', '_')} ;;"
+            if any(isinstance(a, argparse._SubParsersAction) for a in child._actions)
+            else f"{name}) _arguments -C -s ${prefix}_{name.replace('-', '_')}_options ;;"
+            for name, child in children.items()
+        ), prefix
+
+
+@pytest.mark.skipif(shutil.which("zsh") is None, reason="needs zsh")
+def test_zsh_offers_integrates_own_subcommands(tmp_path: Path) -> None:
+    script = tmp_path / "_loadout"
+    script.write_text(render("zsh", build_parser()))
+    probe = (
+        'compdef() { : }; _describe() { print -l -- ${(P)2} }; eval "$(<$1)"; '
+        "_shtab_loadout_integrate_commands"
+    )
+    result = subprocess.run(
+        ["zsh", "-f", "-c", probe, "probe", str(script)], capture_output=True, text=True, check=True
+    )
+    assert {line.split(":", 1)[0] for line in result.stdout.splitlines()} == INTEGRATE
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
+def test_bash_offers_integrates_own_subcommands(tmp_path: Path) -> None:
+    script = tmp_path / "loadout"
+    script.write_text(render("bash", build_parser()))
+    probe = (
+        'source "$1" || exit 1\n'
+        'COMP_WORDS=(loadout integrate ""); COMP_CWORD=2; COMP_LINE="loadout integrate "\n'
+        'COMP_POINT=${#COMP_LINE}; _shtab_loadout\necho "${COMPREPLY[*]}"\n'
+    )
+    result = subprocess.run(
+        ["bash", "-c", probe, "probe", str(script)], capture_output=True, text=True, check=True
+    )
+    assert set(result.stdout.split()) == INTEGRATE
+
+
+def test_fish_offers_integrates_own_subcommands() -> None:
+    offered = re.findall(
+        r"_shtab_loadout_using integrate; and test \$_shtab_loadout_npos -eq 0' -a (\S+)",
+        render("fish", build_parser()),
+    )
+    assert set(offered) == INTEGRATE

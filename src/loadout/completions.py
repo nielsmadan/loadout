@@ -9,9 +9,12 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
+import shlex
 import subprocess
 from collections.abc import Mapping
 from enum import Enum
+from functools import partial
 from pathlib import Path
 
 import shtab
@@ -39,9 +42,53 @@ class CompletionState(Enum):
 
 def render(shell: str, parser: argparse.ArgumentParser) -> str:
     """The script, with the marker after zsh's `#compdef` line, which must stay first."""
-    lines = shtab.complete(parser, shell=shell).splitlines()
+    script = shtab.complete(parser, shell=shell)
+    if shell == "zsh":
+        script = _direct_children_only(
+            script, _subcommands(parser, shtab.wordify(f"_shtab_{parser.prog}"))
+        )
+    lines = script.splitlines()
     at = 1 if lines and lines[0].startswith("#compdef") else 0
     return "\n".join([*lines[:at], MARKER, *lines[at:]]).rstrip("\n") + "\n"
+
+
+def _subcommands(parser: argparse.ArgumentParser, prefix: str) -> dict[str, frozenset[str]]:
+    """Each command with subcommands, by shtab's function prefix, with its direct children."""
+    found: dict[str, frozenset[str]] = {}
+    for action in parser._actions:
+        if not isinstance(action, argparse._SubParsersAction):
+            continue
+        listed = [each.dest for each in action._choices_actions]
+        found[prefix] = frozenset(listed)
+        for name in listed:
+            found |= _subcommands(action.choices[name], f"{prefix}_{shtab.wordify(name)}")
+    return found
+
+
+def _direct_children_only(script: str, subcommands: dict[str, frozenset[str]]) -> str:
+    """shtab 1.12.1's zsh script lists every descendant of a nested command as its child, so
+    `integrate <TAB>` offered `skill`'s and `completions`' own subcommands."""
+    for prefix, children in subcommands.items():
+        listed = re.compile(
+            rf"^({re.escape(prefix)}_commands\(\) \{{\n  local _commands=\(\n)(.*?)(\n  \))",
+            re.MULTILINE | re.DOTALL,
+        )
+        cased = re.compile(
+            rf"^({re.escape(prefix)}\(\) \{{\n.*?case \$line\[1\] in\n)(.*?)(\n      esac)",
+            re.MULTILINE | re.DOTALL,
+        )
+        script = listed.sub(partial(_kept, children, ":"), script, count=1)
+        script = cased.sub(partial(_kept, children, ")"), script, count=1)
+    return script
+
+
+def _kept(children: frozenset[str], end: str, match: re.Match[str]) -> str:
+    lines = [
+        line
+        for line in match[2].split("\n")
+        if shlex.split(line.strip().split(end, 1)[0])[0] in children
+    ]
+    return match[1] + "\n".join(lines) + match[3]
 
 
 def completion_path(shell: str, environ: Mapping[str, str], home: Path) -> Path:
