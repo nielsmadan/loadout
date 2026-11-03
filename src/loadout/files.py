@@ -12,7 +12,7 @@ from typing import BinaryIO, Literal, assert_never
 
 from .atomic import replace_atomically
 from .credentials import credential_material
-from .errors import LoadoutError
+from .errors import LoadoutError, unwritable, write_denied
 from .output import Copied, FrozenFile, Merged, Output, SharedText, file_sha256, sha256
 from .surgery import DocumentFormat, apply
 from .written import owned_values
@@ -87,6 +87,19 @@ def atomic_write(path: Path, content: str, umask: int | None = None) -> None:
     replace_atomically(target, lambda handle: handle.write(data), mode=mode)
 
 
+def _write_output(path: Path, content: str | FrozenFile | Copied, umask: int) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    match content:
+        case FrozenFile():
+            _atomic_frozen_copy(path, content.content, content.mode)
+        case Copied():
+            _atomic_stream_copy(path, content)
+        case str():
+            atomic_write(path, content, umask)
+        case _:
+            assert_never(content)
+
+
 def write_outputs(
     outputs: Mapping[Path, Output], sources: Callable[[Path], str] | None = None
 ) -> list[Path]:
@@ -99,16 +112,12 @@ def write_outputs(
     for path, frozen_content in frozen.items():
         if _unchanged(path, frozen_content, sources):
             continue
-        path.parent.mkdir(parents=True, exist_ok=True)
-        match frozen_content:
-            case FrozenFile():
-                _atomic_frozen_copy(path, frozen_content.content, frozen_content.mode)
-            case Copied():
-                _atomic_stream_copy(path, frozen_content)
-            case str():
-                atomic_write(path, frozen_content, umask)
-            case _:
-                assert_never(frozen_content)
+        try:
+            _write_output(path, frozen_content, umask)
+        except OSError as error:
+            if write_denied(error):
+                raise unwritable(path, error) from error
+            raise
         written.append(path)
     return written
 

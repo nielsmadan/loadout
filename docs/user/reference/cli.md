@@ -402,7 +402,7 @@ without it is refused.
 | `0` | Success: nothing to do, or a check that found no differences |
 | `1` | Drift, a refused safe update, or an init that failed, whether or not it could put everything back |
 | `2` | Invalid command-line usage, unresolved init choices, missing noninteractive approval, or an interrupted init found by the next one |
-| `3` | Source, configuration, or resolution error: missing or invalid input, such as a source file that is not UTF-8, which the message names; an unsafe destination; or an ownership collision |
+| `3` | Source, configuration, or resolution error: missing or invalid input, such as a source file that is not UTF-8, which the message names; an unsafe destination, or a folder loadout cannot write into, which the message names; or an ownership collision |
 | `4` | Unexpected internal error, with a traceback |
 | `130` | `init` stopped with Ctrl-C, after putting back every path it changed or trying to |
 

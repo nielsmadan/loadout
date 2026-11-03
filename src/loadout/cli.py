@@ -27,7 +27,7 @@ from .completions import (
 )
 from .discovery import project_root
 from .emit import refuse_unregistered_global
-from .errors import LoadoutError, UsageError
+from .errors import LoadoutError, UsageError, write_denied
 from .git_hook_commands import run_hook
 from .git_hooks import EVENTS, install_hooks, status_hooks, uninstall_hooks
 from .harnesses import KNOWN_HARNESSES
@@ -486,20 +486,28 @@ def main(argv: list[str] | None = None) -> int:
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
+    return _run(args)
+
+
+def _run(args: argparse.Namespace) -> int:
     try:
         return _dispatch(args)
     except UsageError as error:
-        _error_json(args, 2, error)
-        print(f"loadout: {error}", file=sys.stderr)
-        return 2
+        return _refused(args, 2, error)
     except LoadoutError as error:
-        _error_json(args, 3, error)
-        print(f"loadout: {error}", file=sys.stderr)
-        return 3
+        return _refused(args, 3, error)
     except Exception as error:  # noqa: BLE001 - top-level handler reports unexpected errors
+        if isinstance(error, OSError) and write_denied(error):
+            return _refused(args, 3, LoadoutError(f"{error.filename}: {error.strerror}"))
         traceback.print_exc()
         _error_json(args, 4, error)
         return 4
+
+
+def _refused(args: argparse.Namespace, code: int, error: LoadoutError) -> int:
+    _error_json(args, code, error)
+    print(f"loadout: {error}", file=sys.stderr)
+    return code
 
 
 def _json_requested(argv: list[str]) -> bool:

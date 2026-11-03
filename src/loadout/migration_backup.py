@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from .atomic import atomic_install, temporary_name
-from .errors import LoadoutError
+from .errors import LoadoutError, unwritable, write_denied
 from .machine import state_dir
 from .migration_images import Image, install, snapshot
 from .output import FrozenFile, sha256
@@ -100,7 +100,12 @@ def create_backup(paths: Iterable[Path], *, now: datetime, root: Path) -> Backup
         ],
     }
     backups = backups_root()
-    backups.mkdir(mode=0o700, parents=True, exist_ok=True)
+    try:
+        backups.mkdir(mode=0o700, parents=True, exist_ok=True)
+    except OSError as error:
+        if write_denied(error):
+            raise unwritable(backups, error) from error
+        raise
     backup = Backup(backups / now.strftime("%Y%m%dT%H%M%S%fZ"))
     try:
         backup.directory.mkdir(mode=0o700)

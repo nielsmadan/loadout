@@ -16,7 +16,7 @@ from pathlib import Path
 
 import shtab
 
-from .errors import LoadoutError, UsageError
+from .errors import LoadoutError, UsageError, unwritable, write_denied
 from .files import atomic_write
 
 SHELLS = ("bash", "zsh", "fish")
@@ -119,8 +119,13 @@ def install_completions(shell: str, parser: argparse.ArgumentParser) -> int:
     if state is CompletionState.CURRENT:
         print(f"{shell} completions already current at {path}")
         return 0
-    path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write(path, expected)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write(path, expected)
+    except OSError as error:
+        if write_denied(error):
+            raise unwritable(path, error) from error
+        raise
     print(f"wrote {shell} completions to {path}")
     print(f"  {_hint(shell, path)}")
     return 0
