@@ -194,6 +194,11 @@ Rendering is not injective, and five forms have to be undone:
   splits unambiguously, and its `server_tool`, `mcp_server_<server>` and `mcp_connect_<server>`
   companions consumed. The rules are carried as tool names, with a note: the adapter is not
   supported, and is not governed by them.
+- **Pi shapes render never writes.** pi-permission-system also reads a deny with a reason,
+  `{"action": "deny", "reason": "…"}`, as a pattern's verdict, and a string such as
+  `"bash": "ask"` as a surface holding only `*`. Extraction reports either as unrecognised, so
+  init refuses it with `uncarried-rule`; write the plain verdict, or the `*` map, and run init
+  again.
 
 The catch-all that Pi and OpenCode write first is not a source rule. A leading `*` in the
 **bash** map is read back as `[shell] default` and taken out of the rules; `ask` reads back as

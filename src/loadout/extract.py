@@ -321,7 +321,7 @@ def _collapse_shell(
     buckets: dict[str, list[str]] = {category: [] for category in CATEGORIES}
     notes: list[Note] = []
     for pattern, decision in patterns.items():
-        if decision not in buckets:
+        if not isinstance(decision, str) or decision not in buckets:
             notes.append(Note("unrecognised", f"{label}: decision {decision!r} for {pattern!r}"))
             continue
         bare = pattern.removesuffix(ARGUMENT_SUFFIX)
@@ -360,7 +360,7 @@ def _collapse_pi_mcp(
         server, separator, tool = pattern.partition(":")
         if not separator or not server or not tool:
             continue
-        if decision not in buckets:
+        if not isinstance(decision, str) or decision not in buckets:
             notes.append(Note("unrecognised", f"{label}: decision {decision!r} for {pattern!r}"))
             continue
         entry = f"{server}/{tool}"
@@ -405,11 +405,22 @@ def _pi_tool_keys(
         server, separator, tool = key.removeprefix(PI_TOOL_PREFIX).partition("__")
         if not separator or not server or not tool:
             notes.append(Note("unrecognised", f"{label}: {key!r} is not mcp__<server>__<tool>"))
-        elif decision not in buckets:
+        elif not isinstance(decision, str) or decision not in buckets:
             notes.append(Note("unrecognised", f"{label}: decision {decision!r} for {key!r}"))
         else:
             buckets[decision].append(f"{server}/{tool}")
     return buckets, keys, notes
+
+
+def _pi_map(
+    permission: Mapping[str, Any], key: str, label: str
+) -> tuple[dict[str, Any], list[Note]]:
+    """A surface as the pattern map render writes. The extension also reads a string as a
+    map holding only `*`, which render never writes, so that is reported, not read."""
+    value = permission.get(key, {})
+    if isinstance(value, dict):
+        return value, []
+    return {}, [Note("unrecognised", f"{label}: {key} is {value!r}, not a map of patterns")]
 
 
 def _extract_pi(document: Any, label: str, seeded: bool) -> Extraction:
@@ -420,15 +431,18 @@ def _extract_pi(document: Any, label: str, seeded: bool) -> Extraction:
     map is seeded at global scope only.
     """
     permission = document.get("permission", {})
-    raw_bash = permission.get("bash", {})
+    raw_bash, bash_shape = _pi_map(permission, "bash", label)
     default, bash, default_notes = _split_default(raw_bash, label, seeded=seeded)
-    raw_mcp = _drop_mcp_seed(permission.get("mcp", {})) if seeded else permission.get("mcp", {})
+    found_mcp, mcp_shape = _pi_map(permission, "mcp", label)
+    raw_mcp = _drop_mcp_seed(found_mcp) if seeded else found_mcp
     shell, shell_notes = _collapse_shell(bash, label)
     tools, tool_keys, tool_notes = _pi_tool_keys(permission, label, seeded)
     adapter, adapter_notes = _collapse_pi_mcp(raw_mcp, label)
     mcp = {category: tools[category] + adapter[category] for category in CATEGORIES}
     notes = (
-        default_notes
+        bash_shape
+        + mcp_shape
+        + default_notes
         + shell_notes
         + tool_notes
         + adapter_notes

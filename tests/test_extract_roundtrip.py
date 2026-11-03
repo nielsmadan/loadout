@@ -28,7 +28,7 @@ from typing import Any
 import pytest
 
 from loadout.errors import LoadoutError
-from loadout.extract import EXTRACTORS, VALUE_EXTRACTORS, extract, states_catch_all
+from loadout.extract import EXTRACTORS, VALUE_EXTRACTORS, Note, extract, states_catch_all
 from loadout.permissions.renderers import (
     OPENCODE_UNNAMEABLE,
     PI_UNNAMEABLE,
@@ -641,3 +641,33 @@ def test_a_claude_rule_that_is_not_one_command_stays_claude_only(pattern: str) -
 def test_a_bare_form_without_its_argument_companion_is_an_exact_entry(name: str) -> None:
     document = _render(name, Rules(allow=("=git status", "ls")), {})
     assert extract(name, document).rules.allow == ("=git status", "ls")
+
+
+@pytest.mark.parametrize("name", ["pi", "pi-project"])
+@pytest.mark.parametrize(
+    ("permission", "detail"),
+    [
+        (
+            {"bash": {"npm *": {"action": "deny", "reason": "Use pnpm"}}},
+            "decision {'action': 'deny', 'reason': 'Use pnpm'} for 'npm *'",
+        ),
+        ({"bash": "ask"}, "bash is 'ask', not a map of patterns"),
+        (
+            {"mcp__docs__search": {"*": "allow"}},
+            "decision {'*': 'allow'} for 'mcp__docs__search'",
+        ),
+        (
+            {"mcp": {"docs:search": {"action": "deny"}}},
+            "decision {'action': 'deny'} for 'docs:search'",
+        ),
+        ({"mcp": "ask"}, "mcp is 'ask', not a map of patterns"),
+    ],
+    ids=["deny-with-reason", "bash-shorthand", "tool-map", "adapter-object", "mcp-shorthand"],
+)
+def test_a_pi_rule_in_a_shape_render_never_writes_is_reported(
+    name: str, permission: dict[str, Any], detail: str
+) -> None:
+    """pi-permission-system accepts a deny with a reason and a string standing for a
+    `*` map; extraction raised TypeError or AttributeError on both."""
+    notes = extract(name, {"permission": permission}).notes
+    assert Note("unrecognised", f"{name}: {detail}") in notes
