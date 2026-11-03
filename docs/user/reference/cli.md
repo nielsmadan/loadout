@@ -234,7 +234,7 @@ Under `--json`, `init` prints one JSON object on stdout, whatever happens. It al
 | `complete` | 0 | applied; `written` (the source), `rendered` (the generated files), `untracked`, `already_initialized`, `delinked`, `unadopted` and `secrets` |
 | `restored` | 1, or 130 | init failed, or Ctrl-C stopped it (130), and put every path back; `error` says why, `restored` names what was put back, and `recommendation` and `install_command` are as for `incomplete` |
 | `interrupted` | 2, 1 or 130 | an earlier init was killed part way (2), or this one failed (1) or was stopped with Ctrl-C (130) and could not put everything back; `backup` names the backup and `error` says what to do |
-| `error` | 2, 3 or 4 | a usage error (an unknown option or `--harness` name, or a missing `--yes`, included), a source error, or an unexpected one; `error` holds the message |
+| `error` | 2, 3, 4 or 130 | a usage error (an unknown option or `--harness` name, or a missing `--yes`, included), a source error, an unexpected one, or Ctrl-C before init applied anything (130); `error` holds the message |
 
 ## Add a project harness
 
@@ -408,7 +408,7 @@ without it is refused.
 | `2` | Invalid command-line usage, unresolved init choices, missing noninteractive approval, or an interrupted init found by the next one |
 | `3` | Source, configuration, or resolution error: missing or invalid input, such as a source file that is not UTF-8, which the message names; an unsafe destination, or a folder loadout cannot write into, which the message names; or an ownership collision |
 | `4` | Unexpected internal error, with a traceback |
-| `130` | `init` stopped with Ctrl-C, after putting back every path it changed or trying to |
+| `130` | Stopped with Ctrl-C, without a traceback. `init` puts back every path it changed, or tries to; stopped before it applies anything, it has changed nothing |
 
 A modified vendored template is a source change. `check` can report it without failing solely
 for that reason. `template sync` on a directory template you edited prints the diff, changes

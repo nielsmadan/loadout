@@ -32,7 +32,7 @@ from .git_hook_commands import run_hook
 from .git_hooks import EVENTS, install_hooks, status_hooks, uninstall_hooks
 from .harnesses import KNOWN_HARNESSES
 from .init_options import InitOptions
-from .init_workflow import run_init
+from .init_workflow import INTERRUPTED, run_init
 from .machine import load_machine_config, machine_config_path, profile_for, resolve_profile
 from .project import project_config_path
 from .skill_copy import cmd_skill_copy
@@ -496,6 +496,12 @@ def _run(args: argparse.Namespace) -> int:
         return _refused(args, 2, error)
     except LoadoutError as error:
         return _refused(args, 3, error)
+    except KeyboardInterrupt:
+        # Init's apply puts every path back and answers itself, so only its planning gets here.
+        stopped = "stopped with Ctrl-C"
+        if args.command == "init":
+            stopped = f"init {stopped}; nothing was changed"
+        return _refused(args, INTERRUPTED, LoadoutError(stopped))
     except Exception as error:  # noqa: BLE001 - top-level handler reports unexpected errors
         if isinstance(error, OSError) and write_denied(error):
             return _refused(args, 3, LoadoutError(f"{error.filename}: {error.strerror}"))
