@@ -60,7 +60,7 @@ def _read_config(path: Path) -> dict[str, object] | None:
     except UnicodeDecodeError as error:
         raise LoadoutError(f"{path}: not UTF-8: {error.reason}; re-encode it as UTF-8") from error
     except tomllib.TOMLDecodeError as error:
-        raise LoadoutError(f"{path}: invalid TOML: {error}") from error
+        raise LoadoutError(f"{path}: invalid TOML: {error}; fix it or delete it") from error
     except OSError as error:
         # As a config that does not parse: the lenient paths fall back (review 4, 2.5).
         raise LoadoutError(f"{path}: cannot be read: {error.strerror or error}") from error

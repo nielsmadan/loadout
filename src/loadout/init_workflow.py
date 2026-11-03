@@ -4,7 +4,6 @@ import json
 import shlex
 import sys
 import tempfile
-import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -115,13 +114,10 @@ def _registration(
     if path.exists() or path.is_symlink():
         same = False
         if not path.is_symlink() and path.is_file():
-            try:
-                existing_text = path.read_text(encoding="utf-8")
-                data = tomllib.loads(existing_text)
-                raw = data.get("source")
-                same = isinstance(raw, str) and Path(raw).expanduser().resolve() == source
-            except (ValueError, OSError):
-                pass
+            # Raises when it does not load, so replace never discards a file reported as fine.
+            machine = load_machine_config(path, require_source=False)
+            existing_text = path.read_text(encoding="utf-8")
+            same = machine is not None and machine.source.resolve() == source
         if same:
             return _updated_registration(path, existing_text or "", plan.inventory.harnesses), None
         # Keeping another registration leaves a source init is creating nothing it may

@@ -156,8 +156,9 @@ A folder holding a `loadout.toml` renders only if it is this machine's registere
 Anywhere else, `sync` and `check` exit 3 before reading it, and say why: this machine has no
 registered source, so run `loadout init global <folder>` to register this one; or another source
 is registered, so add `--registration replace` to register this one instead. A machine config
-that does not load is reported as its own error: fix the key it names, or, when it cannot be
-read, the file's or its folder's permissions.
+that does not load is reported as its own error, by `init global` too, which never replaces it:
+fix the key it names, or delete the file and run `loadout init global` again, or, when it cannot
+be read, fix the file's or its folder's permissions.
 
 ## Sync refuses a skill or agent name
 

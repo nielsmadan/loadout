@@ -159,7 +159,9 @@ replaced and which later additions to the repo will not appear; see
 A conflicting machine registration needs `--registration replace`, or at a terminal an answer to
 the prompt. `--registration keep` is offered only for a source that is already initialised:
 keeping another registration while init sets up a new source exits 3 before writing anything, since
-the first sync renders global scope, which only the registered source may.
+the first sync renders global scope, which only the registered source may. A machine config that
+does not load is not a conflict: init exits 3 naming it, and `--registration replace` does not
+overwrite it.
 
 **Project init.** `init project` adopts only configuration with a known slice destination. It
 extracts permissions, instructions, settings, hooks, plugins, MCP servers and skills into canonical
