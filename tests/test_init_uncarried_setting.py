@@ -124,6 +124,26 @@ def test_an_opencode_server_switched_off(tmp_path: Path, capsys) -> None:
     _refused(*_project(root, "opencode", capsys), root / "opencode.json", "docs carries enabled")
 
 
+def test_an_opencode_document_gives_its_rule_and_setting_refusals_together(
+    tmp_path: Path, capsys
+) -> None:
+    """The permission refusal used to end the run before the server was read."""
+    root = _git(tmp_path / "p")
+    entry = {"type": "local", "command": ["docs-mcp"], "enabled": False}
+    document = {"permission": {"bash": {"ls": "yolo"}}, "mcp": {"docs": entry}}
+    _write(root / "opencode.json", json.dumps(document))
+
+    code, preview = _project(root, "opencode", capsys)
+
+    assert code == 2
+    assert [(i["code"], i["paths"]) for i in preview["issues"]] == [
+        ("uncarried-rule", [str(root / "opencode.json")]),
+        ("uncarried-setting", [str(root / "opencode.json")]),
+    ]
+    assert "decision 'yolo' for 'ls'" in preview["issues"][0]["message"]
+    assert "docs carries enabled" in preview["issues"][1]["message"]
+
+
 def test_a_pi_server_switched_off(tmp_path: Path, fake_home: Path, capsys) -> None:
     mcp = fake_home / ".pi/agent/mcp.json"
     _write(mcp, json.dumps({"mcpServers": {"docs": {"command": "docs-mcp", "enabled": False}}}))
@@ -176,6 +196,26 @@ def test_a_codex_writes_approval_mode(tmp_path: Path, fake_home: Path, capsys) -
     )
 
     _refused(*_global(tmp_path / "source", "codex", capsys), config, "approval mode 'writes'")
+
+
+def test_a_codex_server_key_and_approval_mode_are_refused_in_one_run(
+    tmp_path: Path, fake_home: Path, capsys
+) -> None:
+    """Both come from config.toml, read one after the other; the first used to end the run."""
+    config = fake_home / ".codex/config.toml"
+    _write(
+        config,
+        '[mcp_servers.docs]\ncommand = "docs-mcp"\nenabled_tools = ["search"]\n\n'
+        '[mcp_servers.web]\ncommand = "web-mcp"\ndefault_tools_approval_mode = "writes"\n',
+    )
+
+    code, preview = _global(tmp_path / "source", "codex", capsys)
+
+    assert code == 2
+    messages = [i["message"] for i in preview["issues"] if i["paths"] == [str(config)]]
+    assert len(messages) == 2
+    assert "docs carries enabled_tools" in messages[0]
+    assert "approval mode 'writes'" in messages[1]
 
 
 def test_a_codex_plugin_s_server_policy(tmp_path: Path, fake_home: Path, capsys) -> None:

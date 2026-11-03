@@ -266,9 +266,24 @@ def test_a_key_the_extension_does_not_know_is_refused(
     assert _refused(code, preview, original) == _refusal(["defaultPolicy"])
 
 
-def test_the_extensions_example_config_is_refused_naming_its_keys(
+def _rules_refusal(details: list[str]) -> str:
+    return (
+        "The source has no place for these rules, so converting would lose them: "
+        f"{'; '.join(details)}."
+    )
+
+
+UNREADABLE = [
+    "decision {'action': 'deny', 'reason': 'Use pnpm instead'} for 'npm *'",
+    "unpaired mcp pattern 'mcp_status'",
+    "unpaired mcp pattern 'mcp_list'",
+]
+
+
+def test_the_extensions_example_config_gives_every_refusal_in_one_run(
     tmp_path: Path, fake_home: Path, capsys
 ) -> None:
+    """Removing only the keys the first refusal named used to bring a second one."""
     code, preview, original = _global(tmp_path, fake_home, EXAMPLE, capsys)
 
     keys = [
@@ -280,12 +295,21 @@ def test_the_extensions_example_config_is_refused_naming_its_keys(
         "permission.skill",
         "permission.external_directory",
     ]
-    assert _refused(code, preview, original) == _refusal(keys)
+    assert code == 2
+    assert preview["issues"] == [
+        {"code": "uncarried-setting", "paths": [str(original)], "message": _refusal(keys)},
+        {
+            "code": "uncarried-rule",
+            "paths": [str(original)],
+            "message": _rules_refusal([f"pi: {detail}" for detail in UNREADABLE]),
+        },
+    ]
 
 
-def test_the_example_config_in_a_project_also_names_what_a_project_replaces(
+def test_the_example_config_in_a_project_gives_every_refusal_in_one_run(
     tmp_path: Path, capsys
 ) -> None:
+    """A project also refuses what it would replace, and its mcp map takes no seed."""
     code, preview, original = _project(tmp_path, EXAMPLE, capsys)
 
     keys = [
@@ -301,4 +325,13 @@ def test_the_example_config_in_a_project_also_names_what_a_project_replaces(
         "permission.skill",
         "permission.external_directory",
     ]
-    assert _refused(code, preview, original) == _refusal(keys)
+    details = [UNREADABLE[0], "unpaired mcp pattern '*'", *UNREADABLE[1:]]
+    assert code == 2
+    assert preview["issues"] == [
+        {"code": "uncarried-setting", "paths": [str(original)], "message": _refusal(keys)},
+        {
+            "code": "uncarried-rule",
+            "paths": [str(original)],
+            "message": _rules_refusal([f"pi-project: {detail}" for detail in details]),
+        },
+    ]

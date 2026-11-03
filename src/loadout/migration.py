@@ -318,24 +318,22 @@ SKILL_BELOW_TOP = (
 
 
 class _Refusal(LoadoutError):
-    """A plan issue found while composing, naming its own code and original."""
+    """Plan issues found while composing, each naming its own code and original."""
 
-    def __init__(self, issue: Issue) -> None:
-        super().__init__(issue.message)
-        self.issue = issue
+    def __init__(self, *issues: Issue) -> None:
+        super().__init__("; ".join(issue.message for issue in issues))
+        self.issues = issues
 
 
-def _refuse_lost(candidate: Candidate, notes: Iterable[Note]) -> None:
+def _lost(candidate: Candidate, notes: Iterable[Note]) -> list[Issue]:
     lost = _grouped(note for note in notes if note.kind == "lost")
-    if lost:
-        raise _Refusal(
-            Issue(
-                "uncarried-setting",
-                (candidate.path,),
-                "The source has no place for these settings, so converting would change "
-                f"what the harness does: {lost}.",
-            )
-        )
+    if not lost:
+        return []
+    message = (
+        "The source has no place for these settings, so converting would change what the "
+        f"harness does: {lost}."
+    )
+    return [Issue("uncarried-setting", (candidate.path,), message)]
 
 
 class _PlanBuilder:
@@ -350,6 +348,7 @@ class _PlanBuilder:
         self.issues: list[Issue] = []
         self.notes: list[str] = []
         self.stated_catch_alls: set[str] = set()
+        self.refused: list[Issue] = []
         self.selected: tuple[Candidate, ...] = ()
         self.project_values: dict[str, list[tuple[str, object]]] = defaultdict(list)
         self.project_instructions: list[Candidate] = []
@@ -699,11 +698,16 @@ class _PlanBuilder:
             candidate.destination, candidate.harnesses, candidate.format
         )
 
+    def refuse(self, issues: Iterable[Issue]) -> None:
+        """Hold a refusal until the document it came from is read to the end, so one run
+        names everything in it that init cannot carry."""
+        self.refused.extend(issues)
+
     def value_notes(self, candidate: Candidate, notes: Iterable[Note]) -> None:
         """What extracting a value from an original could not carry. A drop that would
         change what the harness does refuses, as an uncarried rule does; any other is noted."""
         notes = tuple(notes)
-        _refuse_lost(candidate, notes)
+        self.refuse(_lost(candidate, notes))
         self.notes.extend(f"{candidate.destination}: {note.text}" for note in notes)
 
     def extracted_rules(
@@ -717,16 +721,18 @@ class _PlanBuilder:
             self.stated_catch_alls.add(renderer)
         if not existing:
             return extracted.rules
-        _refuse_lost(candidate, extracted.notes)
+        self.refuse(_lost(candidate, extracted.notes))
         uncarried = [n.detail for n in extracted.notes if n.kind in {"dropped", "unrecognised"}]
         if uncarried:
-            raise _Refusal(
-                Issue(
-                    "uncarried-rule",
-                    (candidate.path,),
-                    f"The source has no place for these rules, so converting would lose them: "
-                    f"{'; '.join(uncarried)}.",
-                )
+            self.refuse(
+                [
+                    Issue(
+                        "uncarried-rule",
+                        (candidate.path,),
+                        f"The source has no place for these rules, so converting would lose "
+                        f"them: {'; '.join(uncarried)}.",
+                    )
+                ]
             )
         self.notes.extend(f"{candidate.destination}: {note.detail}" for note in extracted.notes)
         return extracted.rules
@@ -878,10 +884,15 @@ class _PlanBuilder:
         for mapping in self.inventory.mappings:
             self.original_mapping(mapping, remaining)
         for candidate in remaining.values():
-            if candidate.format in {"json", "toml"}:
-                self.document(candidate)
-            else:
-                self.opaque(candidate)
+            self.original(candidate)
+
+    def original(self, candidate: Candidate) -> None:
+        if candidate.format in {"json", "toml"}:
+            self.document(candidate)
+        else:
+            self.opaque(candidate)
+        if self.refused:
+            raise _Refusal(*self.refused)
 
     def original_mapping(
         self, mapping: RootMapping, remaining: dict[Path | None, Candidate]
@@ -1267,7 +1278,7 @@ def plan_migration(inventory: Inventory) -> MigrationPlan:
         builder.shared_skill_copies()
         builder.dormant_routes()
     except _Refusal as refusal:
-        return MigrationPlan(inventory, issues=(refusal.issue,))
+        return MigrationPlan(inventory, issues=refusal.issues)
     except (LoadoutError, UnicodeError, ValueError, TypeError) as error:
         return MigrationPlan(
             inventory,

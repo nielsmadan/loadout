@@ -145,8 +145,8 @@ Why each setting falls where it does, from the source at the pinned tag:
 
 The extension's shipped `config/config.example.json` is refused at either scope: it holds
 `shellTools`, `path`, `read`, `write`, `edit`, `skill` and `external_directory`, and in a project
-also `yoloMode`, `piInfrastructureReadPaths`, `authorizerChain` and `"*"`. With those gone, init
-refuses it again as `uncarried-rule` for three rules it cannot read: the deny with a reason
+also `yoloMode`, `piInfrastructureReadPaths`, `authorizerChain` and `"*"`. The same run also
+refuses it as `uncarried-rule` for three rules it cannot read: the deny with a reason
 `"npm *": { "action": "deny", "reason": "Use pnpm instead" }`, and `mcp_status` and `mcp_list` in
 the `mcp` map, which name no server ([extraction.md](extraction.md)).
 

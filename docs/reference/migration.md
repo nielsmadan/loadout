@@ -118,6 +118,9 @@ its own skills or agents folder, each only in that folder: Claude Code's `skills
 
 Discovery has no option to point it at another layout, so a refusal about a file names that
 file; fix it on disk and run init again. An incomplete preview exits 2 and changes nothing.
+Init reads a refused file to the end before it stops, so every refusal for that file comes in the
+same run, such as an `uncarried-rule` and an `uncarried-setting` for one `opencode.json`; it still
+stops at the first file it refuses.
 
 | code | when |
 |---|---|
