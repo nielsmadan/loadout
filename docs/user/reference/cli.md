@@ -201,6 +201,12 @@ is the harness's own: init neither adopts it nor stops for it, and it stays wher
 leaves it.
 Configuration init cannot carry is refused instead; see
 [what init refuses](https://github.com/nielsmadan/loadout/blob/main/docs/reference/migration.md#what-init-refuses).
+Loadout 1.0 carries only Pi's shell and MCP rules, so a pi-permission-system config holding any
+other key the extension acts on, such as `"write": "deny"`, a top-level `"*"` other than `ask`, or
+`"yoloMode": true`, is refused with `uncarried-setting`, naming each key and the file. Remove those
+keys from the file, or leave Pi out of this init by naming only the other harnesses with
+`--harness`. A key that changes only the extension's logs or prompts, such as `debugLog`, is noted
+and not carried.
 A file holding a secret is adopted as it is: the preview and `--json` (`secrets`) name each source
 file that looks like it holds one, so keep the source's remote private or move the secret into an
 environment variable; see

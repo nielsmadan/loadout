@@ -46,7 +46,7 @@ which do not break the round trip belong at render time, where they can still be
 | `codex-mcp-permissions` | MCP | **source order.** `render_codex_mcp` groups by server and sorts servers and tools, and resolves an entry listed twice to its last category. The emitted order is canonical, so re-rendering is stable. |
 | `droid` | non-glob shell; an exact deny as its word run | exact allow and ask, the exactness of a deny, MCP policy, trailing shell globs, and `[shell] default`; Droid's command lists have no representation for them |
 | `opencode` | shell, MCP, `opencode.extra` | see *order loss* below |
-| `pi`, `pi-project` | shell, MCP | see *order loss* below |
+| `pi`, `pi-project` | shell, MCP | every other surface, such as `write` or `path`, a top-level `"*"`, and the extension's own settings: init refuses those that change what Pi allows and notes the rest ([pi.md](pi.md#what-init-reads-from-a-pi-config)); and see *order loss* below |
 
 **Order loss.** `render_pi_project` and `render_opencode` assign into their pattern map in place,
 so a rule listed in two categories keeps its *first* category's position while carrying its

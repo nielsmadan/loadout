@@ -325,6 +325,19 @@ class _Refusal(LoadoutError):
         self.issue = issue
 
 
+def _refuse_lost(candidate: Candidate, notes: Iterable[Note]) -> None:
+    lost = _grouped(note for note in notes if note.kind == "lost")
+    if lost:
+        raise _Refusal(
+            Issue(
+                "uncarried-setting",
+                (candidate.path,),
+                "The source has no place for these settings, so converting would change "
+                f"what the harness does: {lost}.",
+            )
+        )
+
+
 class _PlanBuilder:
     def __init__(self, inventory: Inventory) -> None:
         self.inventory = inventory
@@ -690,16 +703,7 @@ class _PlanBuilder:
         """What extracting a value from an original could not carry. A drop that would
         change what the harness does refuses, as an uncarried rule does; any other is noted."""
         notes = tuple(notes)
-        lost = _grouped(note for note in notes if note.kind == "lost")
-        if lost:
-            raise _Refusal(
-                Issue(
-                    "uncarried-setting",
-                    (candidate.path,),
-                    "The source has no place for these settings, so converting would change "
-                    f"what the harness does: {lost}.",
-                )
-            )
+        _refuse_lost(candidate, notes)
         self.notes.extend(f"{candidate.destination}: {note.text}" for note in notes)
 
     def extracted_rules(
@@ -713,6 +717,7 @@ class _PlanBuilder:
             self.stated_catch_alls.add(renderer)
         if not existing:
             return extracted.rules
+        _refuse_lost(candidate, extracted.notes)
         uncarried = [n.detail for n in extracted.notes if n.kind in {"dropped", "unrecognised"}]
         if uncarried:
             raise _Refusal(

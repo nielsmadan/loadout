@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import copy
 import itertools
+import json
 import math
 import re
 import shlex
@@ -422,6 +423,72 @@ def _pi_map(
     return {}, [Note("unrecognised", f"{label}: {key} is {value!r}, not a map of patterns")]
 
 
+# pi-permission-system 23.0.0's own settings (`schemas/permissions.schema.json`, which allows no
+# other key). These four change what it allows; each value here is the one it applies without it.
+PI_GATING_DEFAULTS: dict[str, Any] = {
+    "yoloMode": False,
+    "piInfrastructureReadPaths": [],
+    "authorizerChain": [],
+    "shellTools": {},
+}
+PI_DISPLAY_SETTINGS = frozenset(
+    {
+        "debugLog",
+        "permissionReviewLog",
+        "doublePressToConfirm",
+        "toolInputPreviewMaxLength",
+        "toolTextSummaryMaxLength",
+    }
+)
+PI_CARRIED = frozenset({"$schema", "permission"})
+PI_UNCARRIED = (
+    "Pi would run without them, since loadout 1.0 carries only Pi's shell and MCP rules; remove "
+    "them from this file, or leave Pi out of this init by naming only the other harnesses with "
+    "--harness"
+)
+PI_NOT_CARRIED = "which the extension applies without it, so it is not carried"
+# `DEFAULT_UNIVERSAL_FALLBACK` in pi-permission-system 23.0.0's `src/permission-manager.ts`.
+PI_UNIVERSAL_FALLBACK = "ask"
+
+
+def _pi_settings(document: Mapping[str, Any], label: str, seeded: bool) -> list[Note]:
+    """The extension's keys beside `permission`. A project value replaces the global one, so
+    only at global scope does a value equal to the extension's default change nothing."""
+    notes = []
+    for key, value in document.items():
+        if key in PI_CARRIED:
+            continue
+        if key in PI_DISPLAY_SETTINGS:
+            notes.append(
+                Note(
+                    "cannot",
+                    f"{label}: {key} is not carried; it changes the extension's logs or prompts, "
+                    "not what it allows",
+                )
+            )
+        elif seeded and key in PI_GATING_DEFAULTS and value == PI_GATING_DEFAULTS[key]:
+            notes.append(Note("cannot", f"{label}: {key} is {json.dumps(value)}, {PI_NOT_CARRIED}"))
+        else:
+            notes.append(Note("lost", key, PI_UNCARRIED))
+    return notes
+
+
+def _pi_surfaces(permission: Mapping[str, Any], label: str, seeded: bool) -> list[Note]:
+    """Surfaces other than the shell and MCP ones loadout renders. The universal fallback `*`
+    is `ask` when absent, but a project `*` replaces the global one when the two merge."""
+    notes = []
+    for key, value in permission.items():
+        if key in {"bash", "mcp"} or key.startswith(PI_TOOL_PREFIX):
+            continue
+        if key == CATCH_ALL_ENTRY and seeded and value == PI_UNIVERSAL_FALLBACK:
+            notes.append(Note("cannot", f'{label}: the top-level "*" is "ask", {PI_NOT_CARRIED}'))
+        elif key == CATCH_ALL_ENTRY:
+            notes.append(Note("lost", 'permission."*"', PI_UNCARRIED))
+        else:
+            notes.append(Note("lost", f"permission.{key}", PI_UNCARRIED))
+    return notes
+
+
 def _extract_pi(document: Any, label: str, seeded: bool) -> Extraction:
     """Shared body. `seeded` is the whole difference between the two scopes.
 
@@ -439,7 +506,9 @@ def _extract_pi(document: Any, label: str, seeded: bool) -> Extraction:
     adapter, adapter_notes = _collapse_pi_mcp(raw_mcp, label)
     mcp = {category: tools[category] + adapter[category] for category in CATEGORIES}
     notes = (
-        bash_shape
+        _pi_settings(document, label, seeded)
+        + _pi_surfaces(permission, label, seeded)
+        + bash_shape
         + mcp_shape
         + default_notes
         + shell_notes

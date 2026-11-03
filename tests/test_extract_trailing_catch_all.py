@@ -22,7 +22,7 @@ from loadout.permissions.rules import Rules
 BASH = {"echo *": "allow", "echo": "allow", "*": "ask", "rm *": "deny", "rm": "deny"}
 DOCUMENTS: dict[str, dict[str, Any]] = {
     "opencode": {"permission": {"bash": BASH}},
-    "pi": {"permission": {"*": "allow", "bash": BASH, "mcp": {"*": "ask"}}},
+    "pi": {"permission": {"bash": BASH, "mcp": {"*": "ask"}}},
 }
 RENDERERS = {"opencode": render_opencode, "pi": render_pi}
 

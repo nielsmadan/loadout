@@ -211,7 +211,7 @@ def test_an_adapter_policy_map_is_carried_as_tool_keys_and_noted() -> None:
         "mcp_server_docs": "allow",
         "mcp_connect_docs": "allow",
     }
-    document = {"permission": {"*": "allow", "bash": {"*": "ask"}, "mcp": adapter}}
+    document = {"permission": {"bash": {"*": "ask"}, "mcp": adapter}}
     extraction = extract_pi(document)
     assert extraction.rules.mcp_allow == ("docs/*",)
     assert [(note.kind, note.text) for note in extraction.notes] == [

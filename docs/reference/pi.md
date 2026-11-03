@@ -94,6 +94,62 @@ first position, and a project that states nothing keeps the global catch-all. Ne
 top-level `"*"`, so a project inherits none from loadout's global file either. With no rule and no
 default, the project file is not written at all.
 
+## What init reads from a Pi config
+
+Loadout 1.0 carries only Pi's shell and MCP rules: `permission.bash`, the `mcp__*` tool keys, and
+pi-mcp-adapter's `mcp` map. Init sorts every other key of an original by whether losing it changes
+what Pi allows (`_pi_settings` and `_pi_surfaces` in `src/loadout/extract.py`). It refuses those
+that do as `uncarried-setting`, in one issue naming each key and the file, and notes the rest.
+The settings are the ones `schemas/permissions.schema.json` lists at the pinned 23.0.0, and its
+`additionalProperties: false` is enforced (`strictObject` in `src/config-schema.ts`), so the
+extension rejects a file holding any other key.
+
+| key | global | project |
+|---|---|---|
+| a top-level `"*"` of `ask` | noted: the extension's own fallback | refused |
+| any other top-level `"*"`, and every other surface, such as `read`, `write`, `edit`, `path`, `skill` or `external_directory` | refused | refused |
+| `yoloMode`, `piInfrastructureReadPaths`, `authorizerChain`, `shellTools` at the value the extension applies without them (`false`, `[]`, `[]`, `{}`) | noted | refused |
+| the same four at any other value | refused | refused |
+| `debugLog`, `permissionReviewLog`, `doublePressToConfirm`, `toolInputPreviewMaxLength`, `toolTextSummaryMaxLength` | noted | noted |
+| a key the schema does not list, such as the legacy `defaultPolicy` | refused | refused |
+
+A project value replaces the global one, so at project scope even a default value is not
+inert: a project `"yoloMode": false` switches off a global `true`. `mergeUnifiedConfigs` in
+`src/config-loader.ts`, for the scalars:
+
+```ts
+    const value = override[key] ?? base[key];
+```
+
+and `mergeFlatPermissions` in `src/permission-merge.ts` does the same for a string surface such as
+`"*"`: `merged[key] = value;`.
+
+Why each setting falls where it does, from the source at the pinned tag:
+
+- `yoloMode` rewrites every `ask` to `allow` (`src/permission-manager.ts`, whose comment says
+  "only the resolution path sees the ask→allow rewrite"): `? rewriteAsksToYolo(composedWithSession)`
+- `piInfrastructureReadPaths` adds directories whose reads skip the `external_directory` gate
+  (`src/permission-session.ts`): `...(this.config.piInfrastructureReadPaths ?? []),`
+- `authorizerChain` names the authority links consulted before the terminal authorizer
+  (`src/index.ts`): `getAuthorizerChain: () => configStore.current().authorizerChain ?? [],`
+- `shellTools` routes another tool through the bash rules (`src/access-intent/tool-kind.ts`):
+  `const alias = aliases?.[name];`
+- `debugLog` and `permissionReviewLog` only switch log files (`src/logging.ts`):
+  `if (!options.getConfig().debugLog) {` and `if (!options.getConfig().permissionReviewLog) {`
+- `doublePressToConfirm` asks for a second key press in the prompt
+  (`src/authority/permission-prompt-decision.ts`):
+  `if (!config.doublePressToConfirm || state.armedKey === key) {`
+- `toolInputPreviewMaxLength` and `toolTextSummaryMaxLength` truncate the prompt's preview
+  (`src/tool-preview-formatter.ts`):
+  `config.toolInputPreviewMaxLength ?? TOOL_INPUT_PREVIEW_MAX_LENGTH,`
+
+The extension's shipped `config/config.example.json` is refused at either scope: it holds
+`shellTools`, `path`, `read`, `write`, `edit`, `skill` and `external_directory`, and in a project
+also `yoloMode`, `piInfrastructureReadPaths`, `authorizerChain` and `"*"`. With those gone, init
+refuses it again as `uncarried-rule` for three rules it cannot read: the deny with a reason
+`"npm *": { "action": "deny", "reason": "Use pnpm instead" }`, and `mcp_status` and `mcp_list` in
+the `mcp` map, which name no server ([extraction.md](extraction.md)).
+
 ## Pattern shape
 
 Pi matches with its own wildcard regex, not minimatch: `*` compiles to `.*`, `?` to one

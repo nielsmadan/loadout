@@ -83,7 +83,10 @@ Read the complete JSON `issues`, `notes`, candidates and dispositions. An incomp
 2 and changes nothing. A permission rule init cannot carry into the source is an issue
 (`uncarried-rule`), not a note, and so is any other setting whose loss would change what the
 harness does (`uncarried-setting`), such as a server key, a header holding a reference or an
-`sse` server. A `source-refused` issue carries the refusal sync would give for the source init
+`sse` server. Loadout 1.0 carries only Pi's shell and MCP rules, so a pi-permission-system key
+beyond them that changes what Pi allows, such as `"write": "deny"` or `"yoloMode": true`, is one
+too; offer the two answers the issue names, removing those keys from that file or leaving Pi out
+of this init, and never edit the file without the user's say. A `source-refused` issue carries the refusal sync would give for the source init
 would write, such as two servers to rename; show it to the user as written. `notes` name what init changes or reports without refusing, such
 as comments a file will lose, an agent it does not adopt, or a harness that will now ask before
 shell commands because init seeded its catch-all; show every one to the user before applying, and
