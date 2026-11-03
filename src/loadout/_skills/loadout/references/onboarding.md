@@ -85,8 +85,9 @@ Read the complete JSON `issues`, `notes`, candidates and dispositions. An incomp
 harness does (`uncarried-setting`), such as a server key, a header holding a reference or an
 `sse` server. A `source-refused` issue carries the refusal sync would give for the source init
 would write, such as two servers to rename; show it to the user as written. `notes` name what init changes or reports without refusing, such
-as comments a file will lose or an agent it does not adopt; show every one to the user before
-applying. Prompts are available in an interactive terminal; JSON and dry-run never prompt.
+as comments a file will lose, an agent it does not adopt, or a harness that will now ask before
+shell commands because init seeded its catch-all; show every one to the user before applying, and
+offer to set `[shell] default` if they want another verdict. Prompts are available in an interactive terminal; JSON and dry-run never prompt.
 Init reads only the live deployment at each harness's known paths. A dotfiles copy in the
 selected directory is not read; if the user keeps one, install it first so the live deployment
 holds what they want adopted. Each refusal names the file to change; fix it on disk and run init

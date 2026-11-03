@@ -191,6 +191,11 @@ initialised and changes nothing; it does not reinterpret an existing source.
 project `CLAUDE.md` that disagrees with `AGENTS.md`, does not stop init: that one item is left in
 place and reported for the `/loadout` skill to merge, and everything else is adopted; see
 [what init leaves out](https://github.com/nielsmadan/loadout/blob/main/docs/reference/migration.md#what-init-leaves-out).
+When no original states a shell catch-all for OpenCode, or for Pi's permission extension at
+global scope, the first render seeds one of `ask` and the preview notes it, for example `OpenCode
+will now ask before any shell command no rule allows or denies; set [shell] default in the source to
+change that`. Init never loosens a policy to keep the harness's old behaviour; set `[shell] default`
+to choose the verdict.
 A dot entry at the top of a skills folder, such as the `.system` skills Codex installs for itself,
 is the harness's own: init neither adopts it nor stops for it, and it stays where it is, as `sync`
 leaves it.

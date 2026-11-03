@@ -29,6 +29,7 @@ from .extract import (
     extract_codex_servers,
     extract_droid_settings_hooks,
     extract_value,
+    states_catch_all,
 )
 from .harnesses import DIRECTORY_SLICES, GLOBAL_PRESET, KNOWN_HARNESSES, SHARED_SKILL_READERS
 from .manifest import MANIFEST_NAME, load_manifest
@@ -335,6 +336,7 @@ class _PlanBuilder:
         self.private_skill_names: set[str] = set()
         self.issues: list[Issue] = []
         self.notes: list[str] = []
+        self.stated_catch_alls: set[str] = set()
         self.selected: tuple[Candidate, ...] = ()
         self.project_values: dict[str, list[tuple[str, object]]] = defaultdict(list)
         self.project_instructions: list[Candidate] = []
@@ -707,6 +709,8 @@ class _PlanBuilder:
             extracted = extract(renderer, document)
         except LoadoutError as error:
             raise LoadoutError(f"{candidate.destination}: {error}") from None
+        if states_catch_all(document):
+            self.stated_catch_alls.add(renderer)
         if not existing:
             return extracted.rules
         uncarried = [n.detail for n in extracted.notes if n.kind in {"dropped", "unrecognised"}]
@@ -1201,6 +1205,36 @@ def _global_config(inventory: Inventory, builder: _PlanBuilder) -> dict[str, Any
     return config
 
 
+# The renderers that write a shell catch-all of `ask` when the source states none, and who
+# then asks.
+SEEDED_CATCH_ALLS = {"opencode": "OpenCode", "pi": "Pi's permission extension"}
+
+
+def _seeded_catch_alls(
+    inventory: Inventory, config: dict[str, Any], builder: _PlanBuilder
+) -> list[str]:
+    """A note for each harness that will ask before shell commands only because init seeded
+    its catch-all: the source states no default, and no original stated one."""
+    project = inventory.scope == "project"
+    values = (builder.project_values if project else builder.global_values).get("permissions", [])
+    if _merged_rules(values).default is not None:
+        return []
+    preset = PROJECT_PRESET if project else GLOBAL_PRESET
+    renderers = dict.fromkeys(
+        spec.renderer
+        for agent in inventory.harnesses
+        if project or config.get(agent, {}).get("permissions")
+        for spec in (preset[agent].get("permissions"),)
+        if spec is not None
+    )
+    return [
+        f"{SEEDED_CATCH_ALLS[renderer]} will now ask before any shell command no rule allows or "
+        "denies; set [shell] default in the source to change that."
+        for renderer in renderers
+        if renderer in SEEDED_CATCH_ALLS and renderer not in builder.stated_catch_alls
+    ]
+
+
 def plan_migration(inventory: Inventory) -> MigrationPlan:
     if inventory.initialized is not None:
         return _initialized(inventory)
@@ -1246,6 +1280,7 @@ def plan_migration(inventory: Inventory) -> MigrationPlan:
         else _global_config(inventory, builder)
     )
     preset_routes = _preset_routes(inventory, config) if inventory.scope == "global" else ()
+    builder.notes.extend(_seeded_catch_alls(inventory, config, builder))
     if builder.skill_policies:
         config["skills"] = builder.skill_policies
     builder.write(

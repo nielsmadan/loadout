@@ -246,14 +246,8 @@ def _split_default(
     """
     items = list(patterns.items())
     position = next((i for i, (pattern, _) in enumerate(items) if pattern == CATCH_ALL_ENTRY), None)
-    if position is None and not seeded:
-        return None, dict(patterns), []
     if position is None:
-        return (
-            None,
-            dict(patterns),
-            [Note("cannot", f"{label}: no catch-all to read a default from")],
-        )
+        return None, dict(patterns), []
     verdict = items[position][1]
     if verdict not in DECISIONS:
         return None, dict(patterns), []
@@ -267,6 +261,12 @@ def _split_default(
     ]
     unstated = verdict == UNSTATED_DEFAULT and seeded
     return (None if unstated else verdict), dict(items[position + 1 :]), shadowed
+
+
+def states_catch_all(document: Any) -> bool:
+    """Whether an OpenCode or Pi permission document's bash map has the `*` catch-all."""
+    bash = document.get("permission", {}).get("bash", {}) if isinstance(document, dict) else {}
+    return isinstance(bash, dict) and CATCH_ALL_ENTRY in bash
 
 
 def _drop_mcp_seed(patterns: dict[str, str]) -> dict[str, str]:

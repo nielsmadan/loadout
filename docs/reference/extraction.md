@@ -201,6 +201,13 @@ The catch-all that Pi and OpenCode write first is not a source rule. A leading `
 confuse it with — `parse_rules` refuses a bare `*` entry — and an unrecognised verdict stays in
 the map so the shell collapse reports it, the same contract every other decision gets.
 
+**A catch-all no original states.** When the source has no `[shell] default` and no adopted
+OpenCode or global Pi document has a bash `*`, the first render seeds `ask` for that harness, so
+init's preview carries a note: `OpenCode will now ask before any shell command no rule allows or
+denies; set [shell] default in the source to change that` (for Pi, `Pi's permission extension`).
+A `*` in one harness's document becomes the source's default and renders for every harness, so
+then neither is noted. The rule is `_seeded_catch_alls` in `src/loadout/migration.py`.
+
 **A `*` that is not first.** Loadout writes the catch-all first, but a hand-written map may put
 it later, as in `{"echo *": "allow", "*": "ask"}`. Both harnesses apply the last matching entry,
 so nothing before the `*` can ever apply: `echo` asks. Extraction still reads the `*` as
@@ -212,7 +219,7 @@ unchanged, and `init`'s first-sync diff shows the rewritten map.
 **At project scope the `*` is never a seed.** `render_pi_project` writes the catch-all only when
 the source states a default, because the project map is merged over the global one and an
 unstated `*` would override the global catch-all. So in a project Pi document a `*` reads back as
-exactly the verdict written, `ask` included, and a map without one carries no note. Reading (b)
+exactly the verdict written, `ask` included, and a map without one is not seeded. Reading (b)
 applies there as well. With loadout's global Pi file the project `*` takes the global `*`'s first
 position when the two maps merge, so entries before it would in fact have applied; dropping them
 can only make the policy stricter, never looser. Pi's **mcp** map takes no default either, so

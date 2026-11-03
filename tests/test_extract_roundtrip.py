@@ -28,7 +28,7 @@ from typing import Any
 import pytest
 
 from loadout.errors import LoadoutError
-from loadout.extract import EXTRACTORS, VALUE_EXTRACTORS, extract
+from loadout.extract import EXTRACTORS, VALUE_EXTRACTORS, extract, states_catch_all
 from loadout.permissions.renderers import (
     OPENCODE_UNNAMEABLE,
     PI_UNNAMEABLE,
@@ -448,12 +448,13 @@ def _refused(name: str, rules: Rules) -> bool:
 
 
 @pytest.mark.parametrize("name", ["opencode", "pi"])
-def test_a_carrier_without_a_catch_all_reports_rather_than_assuming_one(name: str) -> None:
-    """A foreign document with no `*` is not a document that said `ask` — the
-    harness's own built-in applies and loadout cannot know it."""
-    extraction = extract(name, {"permission": {"bash": {"ls": "allow"}}})
-    assert extraction.rules.default is None
-    assert any("catch-all" in note.detail for note in extraction.notes)
+def test_a_carrier_without_a_catch_all_leaves_the_default_unstated(name: str) -> None:
+    """A foreign document with no `*` is not a document that said `ask`; init notes the
+    `ask` the first render seeds instead (test_init_seeded_catch_all.py)."""
+    document = {"permission": {"bash": {"ls": "allow"}}}
+    assert extract(name, document).rules.default is None
+    stated = {"permission": {"bash": {"*": "ask", "ls": "allow"}}}
+    assert (states_catch_all(document), states_catch_all(stated)) == (False, True)
 
 
 @pytest.mark.parametrize("name", ["opencode", "pi"])
