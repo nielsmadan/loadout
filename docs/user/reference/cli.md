@@ -412,7 +412,7 @@ without it is refused.
 | `2` | Invalid command-line usage, unresolved init choices, missing noninteractive approval, or an interrupted init found by the next one |
 | `3` | Source, configuration, or resolution error: missing or invalid input, such as a source file that is not UTF-8, which the message names; an unsafe destination, or a folder loadout cannot write into, which the message names; or an ownership collision |
 | `4` | Unexpected internal error, with a traceback |
-| `130` | Stopped with Ctrl-C, without a traceback. `init` puts back every path it changed, or tries to; stopped before it applies anything, it has changed nothing |
+| `130` | Stopped with Ctrl-C, without a traceback. `init` puts back every path it changed, or tries to; stopped before it applies anything, it has changed nothing. A Ctrl-C after the conversion finished lets init complete and exit `0`, saying so |
 
 A modified vendored template is a source change. `check` can report it without failing solely
 for that reason. `template sync` on a directory template you edited prints the diff, changes

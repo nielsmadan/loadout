@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import shlex
 import shutil
+import signal
 import sys
 import tempfile
-from collections.abc import Mapping
+import threading
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,7 +20,7 @@ from .containment import first_link, refuse_escaping
 from .diffs import diff_lines, report_diff
 from .discovery import discover, initialized_project_path
 from .emit import RenderContext, refuse_unregistered_global, render_all, render_project
-from .errors import LoadoutError, UsageError
+from .errors import Interrupted, LoadoutError, UsageError
 from .git_privacy import in_repository
 from .harnesses import KNOWN_HARNESSES
 from .init_options import InitOptions
@@ -550,6 +553,14 @@ def _interrupted(options: InitOptions) -> int | None:
 def _run_init(options: InitOptions) -> int:
     if (pending := _interrupted(options)) is not None:
         return pending
+    try:
+        return _plan_and_apply(options)
+    except KeyboardInterrupt as error:
+        raise Interrupted(NOTHING_CHANGED) from error
+
+
+def _plan_and_apply(options: InitOptions) -> int:
+    """Everything up to `_apply` changes nothing, which is what a Ctrl-C in it reports."""
     _require_git(options)
     if options.scope == "project":
         refuse_unregistered_global(options.root)
@@ -631,6 +642,7 @@ def _apply(
     backup = create_backup(
         _touched(prepared, render), now=datetime.now(UTC), root=plan.inventory.root
     )
+    finishing = contextlib.ExitStack()
     try:
         result = apply_migration(prepared)
         rendered = (
@@ -638,16 +650,40 @@ def _apply(
             if plan.already_initialized
             else _first_sync(plan, profile, render, as_json=options.json)
         )
+        # From here the conversion is done: a Ctrl-C is noted, and the cleanup finishes.
+        late = finishing.enter_context(_sigint_noted())
     except BaseException as error:
+        finishing.close()
         # Whatever stopped it, the paths go back before anything else happens.
         interrupted = not isinstance(error, Exception)
-        code = _failed(backup, plan, options, str(error) or type(error).__name__, interrupted)
+        reason = (
+            STOPPED if isinstance(error, KeyboardInterrupt) else str(error) or type(error).__name__
+        )
+        code = _failed(backup, plan, options, reason, interrupted)
         if interrupted and not isinstance(error, KeyboardInterrupt):
             raise
         return code
-    discard(backup)
-    _result(replace(result, rendered=tuple(rendered)), delinked, plan, as_json=options.json)
-    return _after_migration(plan, already=plan.already_initialized, as_json=options.json)
+    with finishing:
+        discard(backup)
+        _result(replace(result, rendered=tuple(rendered)), delinked, plan, as_json=options.json)
+        code = _after_migration(plan, already=plan.already_initialized, as_json=options.json)
+    if late and not options.json:
+        print(LATE_INTERRUPT)
+    return code
+
+
+@contextlib.contextmanager
+def _sigint_noted() -> Iterator[list[int]]:
+    """Ctrl-C is recorded in the yielded list rather than raised, then handled as before."""
+    if threading.current_thread() is not threading.main_thread():
+        yield []
+        return
+    arrived: list[int] = []
+    previous = signal.signal(signal.SIGINT, lambda number, _frame: arrived.append(number))
+    try:
+        yield arrived
+    finally:
+        signal.signal(signal.SIGINT, previous)
 
 
 def _touched(prepared: MigrationPreparation, render: tuple[RenderedChange, ...]) -> list[Path]:
@@ -670,8 +706,8 @@ def _failed(
         put_back = restore(backup)
     except (OSError, LoadoutError) as error:
         message = (
-            f"init failed ({reason}), and putting back what it changed failed too ({error}); "
-            "the next init puts it back first"
+            f"{_stopped(reason, interrupted)}, and putting back what it changed failed too "
+            f"({error}); the next init puts it back first"
         )
         if options.json:
             return _envelope("interrupted", code, error=message, backup=str(backup.directory))
@@ -683,7 +719,10 @@ def _failed(
         return _envelope(
             "restored", code, error=reason, restored=restored, **_skill_fields(harnesses)
         )
-    print(f"loadout: init failed ({reason}); everything it changed was put back", file=sys.stderr)
+    print(
+        f"loadout: {_stopped(reason, interrupted)}; everything it changed was put back",
+        file=sys.stderr,
+    )
     # Stopped by the user: advise, but ask nothing more of them.
     _offer_skill(harnesses, options, ask=not interrupted)
     return code
@@ -691,6 +730,14 @@ def _failed(
 
 # The shell's exit status for a process stopped by SIGINT.
 INTERRUPTED = 130
+STOPPED = "stopped with Ctrl-C"
+NOTHING_CHANGED = f"init {STOPPED}; nothing was changed"
+LATE_INTERRUPT = "Ctrl-C arrived after the conversion had finished, so it was completed."
+
+
+def _stopped(reason: str, interrupted: bool) -> str:
+    return f"init {reason}" if reason == STOPPED and interrupted else f"init failed ({reason})"
+
 
 # Issues a flag answers: the choice is the user's, and the skill cannot make it for them.
 CHOICES = frozenset({"harnesses-required", "scope-required", "registration-conflict"})

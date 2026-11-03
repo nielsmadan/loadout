@@ -27,7 +27,7 @@ from .completions import (
 )
 from .discovery import project_root
 from .emit import refuse_unregistered_global
-from .errors import LoadoutError, UsageError, write_denied
+from .errors import Interrupted, LoadoutError, UsageError, write_denied
 from .git_hook_commands import run_hook
 from .git_hooks import EVENTS, install_hooks, status_hooks, uninstall_hooks
 from .harnesses import KNOWN_HARNESSES
@@ -495,12 +495,12 @@ def _run(args: argparse.Namespace) -> int:
     except UsageError as error:
         return _refused(args, 2, error)
     except LoadoutError as error:
-        return _refused(args, 3, error)
+        return _refused(args, INTERRUPTED if isinstance(error, Interrupted) else 3, error)
     except KeyboardInterrupt:
-        # Init's apply puts every path back and answers itself, so only its planning gets here.
+        # Init raises Interrupted for each phase it can name; this is any other moment.
         stopped = "stopped with Ctrl-C"
         if args.command == "init":
-            stopped = f"init {stopped}; nothing was changed"
+            stopped = f"init {stopped}"
         elif args.command == "sync":
             stopped = f"sync {stopped}; run it again to finish"
         return _refused(args, INTERRUPTED, LoadoutError(stopped))

@@ -12,6 +12,10 @@ class UsageError(LoadoutError):
     pass
 
 
+class Interrupted(LoadoutError):
+    """Ctrl-C, reported with what it left: the message says what was and was not changed."""
+
+
 WRITE_DENIED = frozenset({errno.EACCES, errno.EPERM, errno.EROFS})
 
 
