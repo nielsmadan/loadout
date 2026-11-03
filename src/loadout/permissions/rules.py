@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from ..errors import LoadoutError
+from ..source_text import read_source_text
 
 
 def dedupe(items: Sequence[str]) -> list[str]:
@@ -160,8 +161,7 @@ def parse_rules(path: Path) -> Rules:
     if not path.is_file():
         raise LoadoutError(f"permissions source not found: {path}")
     try:
-        with path.open("rb") as handle:
-            data = tomllib.load(handle)
+        data = tomllib.loads(read_source_text(path))
     except tomllib.TOMLDecodeError as error:
         raise LoadoutError(f"{path}: invalid TOML: {error}") from error
 

@@ -5,6 +5,7 @@ from pathlib import Path
 from .errors import LoadoutError
 from .manifest import InstructionTarget, Manifest
 from .resolve import resolve_fragment
+from .source_text import read_source_text
 
 # States a consequence, not a prohibition. "do not edit" is a rule, and an
 # instruction file is loaded into a session's context next to the project's own
@@ -20,7 +21,7 @@ HEADER = (
 def load_fragment(path: Path) -> str:
     if not path.is_file():
         raise LoadoutError(f"fragment not found: {path}")
-    return path.read_text(encoding="utf-8").strip()
+    return read_source_text(path).strip()
 
 
 def fragment_paths(target: InstructionTarget, manifest: Manifest) -> tuple[Path, ...]:

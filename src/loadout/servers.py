@@ -19,6 +19,7 @@ from typing import Any, Literal
 import tomlkit
 
 from .errors import LoadoutError
+from .source_text import read_source_text
 
 __all__ = [
     "SERVERS_SOURCE",
@@ -114,7 +115,7 @@ def parse_servers(path: Path) -> dict[str, Server]:
     if not path.is_file():
         return {}
     try:
-        data = tomllib.loads(path.read_text(encoding="utf-8"))
+        data = tomllib.loads(read_source_text(path))
     except tomllib.TOMLDecodeError as error:
         raise LoadoutError(f"{path}: invalid TOML: {error}") from error
 

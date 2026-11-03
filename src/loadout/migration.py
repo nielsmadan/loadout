@@ -76,6 +76,7 @@ OWNERS: dict[str, dict[str, tuple[str, ...]]] = {
     "opencode": {"permissions": ("permission",), "mcp": ("mcp",), "plugins": ("plugin",)},
     "pi": {"plugins": ("packages",)},
 }
+NOT_UTF8_TEXT = "Text document is not UTF-8; re-encode it as UTF-8, then run init again."
 # Codex's renderers write only the keys they own into config.toml, so the rest of it renders
 # from `defaults`, not from a `settings` base.
 RESIDUAL_SLICE = {"codex": "defaults"}
@@ -222,11 +223,22 @@ def _authored(candidate: Candidate, scope: str | None) -> Candidate:
     return replace(candidate, content=content)
 
 
+def _utf8(content: bytes) -> bool:
+    try:
+        content.decode()
+    except UnicodeDecodeError:
+        return False
+    return True
+
+
 def _choose(inventory: Inventory) -> tuple[tuple[Candidate, ...], tuple[Issue, ...]]:
     grouped: dict[Path, list[Candidate]] = defaultdict(list)
     issues: list[Issue] = []
     for candidate in inventory.candidates:
         if candidate.disposition != "migrated" or candidate.destination is None:
+            continue
+        if candidate.category == "instructions" and not _utf8(candidate.content):
+            issues.append(Issue("invalid-native-document", (candidate.path,), NOT_UTF8_TEXT))
             continue
         try:
             authored = _authored(candidate, inventory.scope)

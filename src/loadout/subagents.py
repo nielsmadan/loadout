@@ -24,6 +24,7 @@ from .errors import LoadoutError
 from .harnesses import KNOWN_HARNESSES
 from .output import item_name
 from .skills import TOP_LEVEL_KEY, apply_body, split_frontmatter
+from .source_text import read_source_text
 
 AGENTS_SUBDIR = "agents"
 
@@ -160,7 +161,7 @@ def _harness_map(children: list[str], label: str, key: str) -> dict[str, str]:
 
 def parse_agent(path: Path) -> Agent:
     label = f"agents/{path.name}"
-    frontmatter, body = split_frontmatter(path.read_text(encoding="utf-8"))
+    frontmatter, body = split_frontmatter(read_source_text(path))
     if frontmatter is None:
         raise LoadoutError(f"{label}: an agent needs frontmatter with a description")
     blocks = _blocks(frontmatter, label)
