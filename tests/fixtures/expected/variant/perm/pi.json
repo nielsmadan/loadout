@@ -1,7 +1,6 @@
 {
   "$schema": "https://cdn.jsdelivr.net/npm/@gotgenes/pi-permission-system@23.0.0/schemas/permissions.schema.json",
   "permission": {
-    "*": "allow",
     "bash": {
       "*": "allow",
       "alpha": "allow",
