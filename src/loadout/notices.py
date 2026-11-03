@@ -36,7 +36,6 @@ from .emit import (
     SKILLS_SUBDIR,
     RenderContext,
     global_rules,
-    global_servers,
     project_agents,
     project_instruction_sources,
     project_rules,
@@ -63,7 +62,6 @@ from .project import (
     project_config_path,
     project_slices,
 )
-from .servers import Server
 from .skill_policy import SkillPolicy, render_skill_for, selected_skill_agents
 from .skills import Skill, loose_skill_files, render_skill
 from .subagents import AGENTS_SUBDIR, Agent, agent_notes, discover_agents
@@ -77,7 +75,6 @@ __all__ = [
     "notices_for",
     "opencode_skills_race",
     "template_notices",
-    "unpermitted_servers",
     "unreached_catch_all",
     "unsupported_shell_globs",
 ]
@@ -244,20 +241,6 @@ def inexact_shell_entries(agent: str, renderer: str, rules: Rules) -> tuple[Noti
     return omitted + widened
 
 
-def unpermitted_servers(servers: Mapping[str, Server], rules: Rules) -> tuple[str, ...]:
-    """Servers defined but named by no tool policy, in declaration order.
-
-    Two files, two edits: define the server, then allow its tools. Forgetting the
-    second gives a server whose tools are all denied and no error anywhere. This
-    is the locality benefit of one section, without giving one file two merge
-    algebras.
-    """
-    named = {
-        entry.split("/", 1)[0] for entry in (*rules.mcp_allow, *rules.mcp_ask, *rules.mcp_deny)
-    }
-    return tuple(name for name in servers if name not in named)
-
-
 def notices_for(
     agent: str,
     slice_name: str,
@@ -391,30 +374,6 @@ def _permission_notices(manifest: Manifest, profile: str) -> tuple[Notice, ...]:
     return tuple(dict.fromkeys(found))
 
 
-def _unpermitted_servers(manifest: Manifest) -> tuple[Notice, ...]:
-    """Every server no source's `[mcp]` policy names, across every source.
-
-    Two files, two merge algebras (docs/reference/config.md), so this reads both
-    independently rather than through `project_servers`. Silent when no source
-    offers mcp.toml: a manifest defining no servers has nothing to check.
-    """
-    servers = global_servers(manifest)
-    if not servers:
-        return ()
-    rules = global_rules(manifest)
-    return tuple(
-        Notice(
-            owner="mcp",
-            slice="servers",
-            message=(
-                f"{name} is defined but no [mcp] policy allow/ask/deny entry names it "
-                f"— its tools are all denied with no error"
-            ),
-        )
-        for name in unpermitted_servers(servers, rules)
-    )
-
-
 def _loose_skill_notices(skill_roots: Iterable[Path]) -> tuple[Notice, ...]:
     return tuple(
         Notice(
@@ -523,7 +482,6 @@ def collect_notices(
     )
     found.extend(_stranded_settings(manifest.stranded_settings))
     found.extend(_permission_notices(manifest, profile))
-    found.extend(_unpermitted_servers(manifest))
     for target in manifest.permissions:
         # A legacy `[permissions.*]` target names no agent and carries no slice
         # content, so there is nothing to report about it.

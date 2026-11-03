@@ -259,56 +259,6 @@ def test_a_source_with_no_skills_has_no_collision_to_report(tmp_path: Path, monk
     assert collect_notices(root) == ()
 
 
-def _root_with_unpermitted_server(tmp_path: Path) -> Path:
-    """A minimal source with one mcp.toml server and no `[mcp]` policy naming it."""
-    root = tmp_path / "src"
-    root.mkdir(parents=True)
-    (root / "mcp.toml").write_text(
-        '[jina]\ntransport = "http"\nurl = "https://x"\n', encoding="utf-8"
-    )
-    (root / "permissions.toml").write_text("[shell]\nallow = ['ls']\n", encoding="utf-8")
-    (root / "loadout.toml").write_text(
-        '[[source]]\nname = "test"\npath = "."\n\n[claude]\n', encoding="utf-8"
-    )
-    return root
-
-
-def test_an_unpermitted_server_does_not_move_the_exit_code(tmp_path: Path, capsys) -> None:
-    """Same contract as every other notice: the render is correct — mcp.toml
-    defines a server the `[mcp]` policy never mentions — so `check` must still
-    say the generated files are up to date and exit 0."""
-    root = register(_root_with_unpermitted_server(tmp_path))
-    assert loadout.main(["sync", "--root", str(root), "--force"]) == 0
-    capsys.readouterr()
-
-    assert loadout.main(["check", "--root", str(root)]) == 0
-    out = capsys.readouterr().out
-    assert "note: mcp.servers: jina is defined" in out
-    assert "generated files are up to date" in out
-
-
-def test_a_server_named_by_policy_says_nothing(tmp_path: Path, capsys) -> None:
-    """Any policy entry naming the server is enough — even one tool, not just a
-    wildcard — so a source that mentions it must stay silent."""
-    root = tmp_path / "src"
-    register(root)
-    root.mkdir(parents=True)
-    (root / "mcp.toml").write_text(
-        '[jina]\ntransport = "http"\nurl = "https://x"\n', encoding="utf-8"
-    )
-    (root / "permissions.toml").write_text(
-        "[shell]\nallow = ['ls']\n\n[mcp]\nallow = ['jina/search']\n", encoding="utf-8"
-    )
-    (root / "loadout.toml").write_text(
-        '[[source]]\nname = "test"\npath = "."\n\n[claude]\n', encoding="utf-8"
-    )
-    assert loadout.main(["sync", "--root", str(root), "--force"]) == 0
-    capsys.readouterr()
-
-    assert loadout.main(["check", "--root", str(root)]) == 0
-    assert "mcp.servers" not in capsys.readouterr().out
-
-
 def test_a_loose_file_in_skills_gets_one_notice_and_a_readme_none(
     project: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -333,3 +283,23 @@ def test_a_project_hooks_document_is_checked_against_its_harness(bare_project: P
     messages = [notice.render() for notice in collect_notices(bare_project, environ=quiet)]
 
     assert "droid.hooks: NoSuchEvent is not in this harness's known event list" in messages
+
+
+def test_a_server_no_policy_names_renders_without_a_note(tmp_path: Path, capsys) -> None:
+    """QA C-obs-1: the note said such a server's tools are all denied, but no harness output
+    denies them; each harness applies its own default, as it did before init adopted it."""
+    root = tmp_path / "src"
+    root.mkdir()
+    (root / "mcp.toml").write_text(
+        '[docs]\ntransport = "stdio"\ncommand = "docs-server"\n', encoding="utf-8"
+    )
+    (root / "loadout.toml").write_text(
+        '[[source]]\nname = "test"\npath = "."\n\n[claude]\n', encoding="utf-8"
+    )
+    register(root)
+
+    assert loadout.main(["sync", "--global"]) == 0
+    captured = capsys.readouterr()
+    assert (captured.err, captured.out.splitlines()[-1]) == ("", "2 written, 0 unchanged")
+    assert loadout.main(["check", "--global", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["notes"] == []

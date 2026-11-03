@@ -170,22 +170,12 @@ At project scope Claude reads `.mcp.json` — a file loadout owns outright, no C
 CLI problem is global-only, which is why project scope is the easier half despite being the
 motivating one.
 
-## A server defined but not permitted is reported
+## A server no policy names keeps each harness's default
 
-At global scope, `unpermitted_servers` (`notices.py`) names every server `mcp.toml` defines that
-no `[mcp]` policy entry — allow, ask or deny — mentions by name, in declaration order. Two files,
-two edits: define the server, then allow its tools. Forgetting the second gives a server whose tools are all denied
-and no error anywhere. The notice is silent as soon as a policy names the server at all, even for
-one tool — it flags a definition nobody has said anything about, not policy completeness.
-
-```
-$ loadout check --global
-note: mcp.servers: jina is defined but no [mcp] policy allow/ask/deny entry names it — its tools are all denied with no error
-```
-
-`sync --global` prints the same note. Project scope does not check this: `_unpermitted_servers`
-is called from `collect_notices` only, never from `project_notices`. Advisory only, like every
-notice — it never moves the exit code.
+Loadout renders no approval rule for a server `mcp.toml` defines and no `[mcp]` entry names, so
+each harness applies its own default to its tools. For Pi that default is loadout's `mcp__*`
+seed, `ask`. Sync and check say nothing about it: init adopts servers that had no policy before,
+and a server with none is an ordinary state, not a forgotten step.
 
 ## Codex renderers whose inverse is not registered
 
@@ -234,9 +224,7 @@ sends the header and the adapter the variable.
 
 ## Not built
 
-- **The reverse notice.** Reporting was designed in both directions — a policy entry naming a server nothing defines, as well
-  as a server nothing permits. Only the second direction is built (`unpermitted_servers` above);
-  the first has no function and no test.
+- **A notice for a policy entry naming a server nothing defines.** No function reports it.
 
 ## Not verified
 
