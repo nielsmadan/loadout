@@ -1,0 +1,16 @@
+{
+  "model": "opus",
+  "permissions": {
+    "defaultMode": "plan"
+  },
+  "commandAllowlist": [
+    "ls",
+    "git status"
+  ],
+  "commandDenylist": [
+    "git push"
+  ],
+  "commandBlocklist": [
+    "rm -rf"
+  ]
+}

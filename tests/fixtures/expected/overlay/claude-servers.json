@@ -1,0 +1,18 @@
+{
+  "docs": {
+    "type": "http",
+    "url": "https://docs.example/mcp",
+    "headers": {
+      "Authorization": "Bearer ${DOCS_TOKEN}"
+    }
+  },
+  "local-tool": {
+    "type": "stdio",
+    "command": "npx",
+    "args": [
+      "-y",
+      "local-tool-mcp"
+    ],
+    "env": {}
+  }
+}

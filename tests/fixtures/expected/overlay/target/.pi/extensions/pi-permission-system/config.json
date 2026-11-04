@@ -1,0 +1,15 @@
+{
+  "permission": {
+    "bash": {
+      "ls": "allow",
+      "ls *": "allow",
+      "git status": "allow",
+      "git status *": "allow",
+      "git push": "ask",
+      "git push *": "ask",
+      "rm -rf": "deny",
+      "rm -rf *": "deny"
+    },
+    "mcp__docs__search": "allow"
+  }
+}

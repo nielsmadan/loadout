@@ -1,0 +1,17 @@
+{
+  "model": "opus",
+  "permissions": {
+    "defaultMode": "plan",
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(git status:*)",
+      "mcp__docs__search"
+    ],
+    "ask": [
+      "Bash(git push:*)"
+    ],
+    "deny": [
+      "Bash(rm -rf:*)"
+    ]
+  }
+}

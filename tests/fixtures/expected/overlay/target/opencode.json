@@ -1,0 +1,35 @@
+{
+  "permission": {
+    "bash": {
+      "ls": "allow",
+      "ls *": "allow",
+      "git status": "allow",
+      "git status *": "allow",
+      "rm -rf": "deny",
+      "rm -rf *": "deny",
+      "git push": "ask",
+      "git push *": "ask"
+    },
+    "docs_search": "allow"
+  },
+  "mcp": {
+    "docs": {
+      "type": "remote",
+      "url": "https://docs.example/mcp",
+      "headers": {
+        "Authorization": "Bearer {env:DOCS_TOKEN}"
+      }
+    },
+    "local-tool": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "local-tool-mcp"
+      ]
+    }
+  },
+  "instructions": [
+    "$TMP/overlay/.loadout/opencode-instructions.md"
+  ]
+}
