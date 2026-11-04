@@ -5,7 +5,7 @@ import json
 import sys
 import traceback
 from pathlib import Path
-from typing import NoReturn
+from typing import Any, NoReturn
 
 from . import __version__
 from .commands import (
@@ -34,6 +34,7 @@ from .harnesses import KNOWN_HARNESSES
 from .init_options import InitOptions
 from .init_workflow import INTERRUPTED, run_init
 from .machine import load_machine_config, machine_config_path, profile_for, resolve_profile
+from .overlay_commands import cmd_overlay_add, cmd_overlay_list
 from .project import project_config_path
 from .skill_copy import cmd_skill_copy
 from .staged import check_staged
@@ -199,9 +200,19 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="active profile to render (default: resolved when the hook runs, as for sync)",
     )
+    _add_overlay(subparsers)
     subparsers.metavar = "{" + ",".join(n for n in subparsers.choices if n != "hook-event") + "}"
 
     return parser
+
+
+def _add_overlay(subparsers: Any) -> None:
+    overlay = subparsers.add_parser("overlay", help="manage registered overlays")
+    commands = overlay.add_subparsers(dest="overlay_command", required=True)
+    add = commands.add_parser("add", help="register an overlay folder")
+    add.add_argument("directory", nargs="?", type=Path, default=None)
+    add.add_argument("--name", default=None, help="overlay name (default: the folder's name)")
+    commands.add_parser("list", help="list registered overlays")
 
 
 def _add_skill(parser: argparse.ArgumentParser) -> None:
@@ -418,7 +429,7 @@ def _dispatch_skill(args: argparse.Namespace) -> int:
     return cmd_skill_uninstall(root, profile, args.source, yes=args.yes)
 
 
-def _dispatch(args: argparse.Namespace) -> int:
+def _dispatch(args: argparse.Namespace) -> int:  # noqa: PLR0911
     if args.command == "hook-event":
         root = args.root.resolve()
         profile = resolve_profile(root, args.profile, lenient=True)
@@ -435,7 +446,15 @@ def _dispatch(args: argparse.Namespace) -> int:
         return _dispatch_init(args)
     if args.command == "template":
         return _dispatch_template(args)
+    if args.command == "overlay":
+        return _dispatch_overlay(args)
     return _dispatch_outputs(args)
+
+
+def _dispatch_overlay(args: argparse.Namespace) -> int:
+    if args.overlay_command == "add":
+        return cmd_overlay_add(args.directory, args.name)
+    return cmd_overlay_list()
 
 
 def _dispatch_git_hooks(args: argparse.Namespace) -> int:

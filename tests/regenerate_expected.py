@@ -24,7 +24,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from fixture_root import EXPECTED, FIXTURES, build_project_root, build_root
+from fixture_root import (
+    EXPECTED,
+    FIXTURES,
+    build_project_root,
+    build_root,
+    render_overlay_expected,
+)
 from loadout.emit import RenderContext, declared_profiles, render_global, render_project
 from loadout.machine import registered_at
 from loadout.output import Copied, Merged
@@ -59,6 +65,9 @@ def render_everything() -> dict[str, str]:
             files[f"project/{path.relative_to(root)}"] = (
                 _decode(content) if isinstance(content, Copied) else content
             )
+
+    with tempfile.TemporaryDirectory() as directory:
+        files.update(render_overlay_expected(Path(directory)))
     return files
 
 

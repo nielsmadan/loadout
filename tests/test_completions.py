@@ -151,7 +151,7 @@ class TestCli:
             text=True,
             check=True,
         )
-        typed = {"sync", "check", "init", "template", "integrate"}
+        typed = {"sync", "check", "init", "template", "integrate", "overlay"}
         assert set(result.stdout.split()) == typed
 
     @pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")

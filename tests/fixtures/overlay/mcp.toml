@@ -1,0 +1,9 @@
+[docs]
+transport = "http"
+url = "https://docs.example/mcp"
+auth_env_var = "DOCS_TOKEN"
+
+[local-tool]
+transport = "stdio"
+command = "npx"
+args = ["-y", "local-tool-mcp"]

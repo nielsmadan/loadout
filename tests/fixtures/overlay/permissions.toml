@@ -1,0 +1,7 @@
+[shell]
+allow = ["ls", "git status"]
+ask = ["git push"]
+deny = ["rm -rf"]
+
+[mcp]
+allow = ["docs/search"]

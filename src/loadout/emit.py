@@ -27,6 +27,7 @@ from .manifest import (
 )
 from .module_config import MODULE_CONFIG_SUBDIR, discover_module_config
 from .output import Copied, Merged, Output, SharedText, output_record_paths
+from .overlay_registry import find_by_folder, load_registry, overlays_path
 from .permissions.merge import merge_rules
 from .permissions.renderers import (
     MCP_NAMESPACE_HARNESS,
@@ -105,6 +106,19 @@ def refuse_unregistered_global(root: Path, context: RenderContext | None = None)
     refuse_unregistered_manifest(root, held=manifest_path(root).is_file(), context=context)
 
 
+def _overlay_refusal(root: Path) -> LoadoutError | None:
+    from .overlay_manifest import holds_overlay  # noqa: PLC0415 - overlay_manifest imports emit
+
+    if not holds_overlay(root):
+        return None
+    if (found := find_by_folder(load_registry(overlays_path()), root.resolve())) is not None:
+        return LoadoutError(
+            f"{root} is the registered overlay {found.name}; sync and check it with "
+            f"`loadout sync --overlay {found.name}`; other commands do not apply to an overlay folder"
+        )
+    return LoadoutError(f"{root} holds an overlay; register it with `loadout overlay add {root}`")
+
+
 def refuse_unregistered_manifest(
     root: Path,
     *,
@@ -121,6 +135,8 @@ def refuse_unregistered_manifest(
     found = (context or RenderContext()).registration()
     if is_registered(root, found.source):
         return
+    if (refusal := _overlay_refusal(root)) is not None:
+        raise refusal
     if (source := linked_worktree_source(root, found)) is not None:
         raise LoadoutError(
             f"{root} is a linked worktree of the registered source {source}; run this from {source}"

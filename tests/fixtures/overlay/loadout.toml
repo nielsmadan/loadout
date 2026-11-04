@@ -1,0 +1,23 @@
+[overlay]
+targets = ["~/overlay-fixture*"]
+
+[[source]]
+name = "fixture"
+path = "."
+
+[claude]
+instructions = ["personal", "workflow"]
+settings = "local"
+
+[codex]
+instructions = ["workflow", "personal"]
+
+[droid]
+instructions = ["personal", "workflow"]
+settings = "local"
+
+[opencode]
+instructions = ["workflow", "personal"]
+
+[pi]
+instructions = ["personal", "workflow"]
