@@ -91,6 +91,7 @@ def _rmdir_if_ours(lock_dir: Path, identity: tuple[int, int]) -> None:
 @contextmanager
 def claude_json_locks(path: Path) -> Iterator[None]:
     lock_dir = Path(f"{os.path.abspath(path)}.lock")
+    lock_dir.parent.mkdir(parents=True, exist_ok=True)
     with file_lock(path):
         # Claude Code 2.1.317 locks with proper-lockfile: lockfilePath:`${y}.lock`, taken by fs.mkdir.
         deadline = time.monotonic() + CLAUDE_LOCK_WAIT_SECONDS

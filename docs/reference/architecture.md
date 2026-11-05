@@ -156,6 +156,8 @@ Left as they are on purpose; each says what it costs.
   changes the contract for every caller. The next `overlay remove` cleans up.
 - **A hand-edited `overlays.toml` may list one folder under two case spellings.** Only `overlay
   add` refuses it; the file still loads with both entries.
-- **Global `sync` writes `~/.claude.json` without Claude's lock.** Only the overlay's leaf writer
-  takes `claude_json_locks`, so a global sync that overlaps a save by Claude can lose one of them.
-  The same holds for any other file a harness writes and locks while loadout rewrites it.
+- **Harness-locked files other than `~/.claude.json` are rewritten without the harness's lock.**
+  Pi locks its global `settings.json` with proper-lockfile (`settings.json.lock`, Pi's
+  `dist/core/settings-manager.js` `acquireLockSyncWithRetry`), and loadout's global write of that
+  file does not take it yet. Whether Codex, Droid and OpenCode lock their config files is not
+  established.

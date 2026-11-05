@@ -8,6 +8,7 @@ Whether it is still loadout's own output is the guard's question, answered once 
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from contextlib import nullcontext
 from pathlib import Path
 
 from .files import (
@@ -20,6 +21,7 @@ from .files import (
     shown_document,
 )
 from .output import Output
+from .overlay_lock import claude_json_locks
 from .skills import SKILL_DOCUMENT
 from .surgery import EMPTY, apply
 from .written import WrittenEntry, owned_values
@@ -81,13 +83,15 @@ def retire(orphans: Mapping[Path, WrittenEntry], recorded: Iterable[Path]) -> li
             _prune_skill_folder(path, skill_folders)
             continue
         if entry.kind == "merged":
-            existing = read_document(path)
-            if existing is None:
-                raise UnparsableDocument(path, document_format(path), orphaned=True)
-            remaining = stripped(path, entry, existing)
-            if remaining == existing:
-                continue
-            atomic_write(path, remaining)
+            lock = claude_json_locks(path) if path.name == ".claude.json" else nullcontext()
+            with lock:
+                existing = read_document(path)
+                if existing is None:
+                    raise UnparsableDocument(path, document_format(path), orphaned=True)
+                remaining = stripped(path, entry, existing)
+                if remaining == existing:
+                    continue
+                atomic_write(path, remaining)
         else:
             path.unlink()
             _prune_skill_folder(path, skill_folders)

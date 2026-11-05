@@ -189,7 +189,8 @@ installed 2.1.317 binary: the strings contain ``lockfilePath:`${y}.lock` `` and 
 lock is a directory named `<config path>.lock`, made with `mkdir`, and taken over once ten seconds
 old. The config path is the config directory joined with `.claude.json` and is never resolved, so a
 symlinked `~/.claude.json` is locked at the link's path. Loadout joins that lock
-(`overlay_lock.claude_json_locks`) and never breaks it.
+(`overlay_lock.claude_json_locks`) and never breaks it; the global scope's `~/.claude.json` write
+takes the same lock around its read, merge and replace, as the overlay does.
 
 **Files Claude reads instead.** Verified in the same binary:
 `function h_(){…let o=U($e(),".config.json"),t=cAr();try{let _=le().statSync(o);if(_.isFile()&&(_.size>0||(_.mode&146)!==0&&!le().existsSync(t)))return o}catch{}return t}`.

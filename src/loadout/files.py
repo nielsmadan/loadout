@@ -14,6 +14,7 @@ from .atomic import replace_atomically
 from .credentials import credential_material
 from .errors import LoadoutError, unwritable, write_denied
 from .output import Copied, FrozenFile, Merged, Output, SharedText, file_sha256, sha256
+from .overlay_lock import claude_json_locks
 from .surgery import DocumentFormat, apply
 from .written import owned_values
 
@@ -100,25 +101,54 @@ def _write_output(path: Path, content: str | FrozenFile | Copied, umask: int) ->
             assert_never(content)
 
 
-def write_outputs(
-    outputs: Mapping[Path, Output], sources: Callable[[Path], str] | None = None
+def _write_frozen(
+    frozen: Mapping[Path, str | FrozenFile | Copied],
+    sources: Callable[[Path], str] | None,
+    umask: int,
 ) -> list[Path]:
-    """`sources` is a digest of copied sources a caller already reads them through."""
-    frozen: dict[Path, str | FrozenFile | Copied] = {}
-    for path, content in outputs.items():
-        frozen.update(_frozen(path, content))
     written: list[Path] = []
-    umask = process_umask()
-    for path, frozen_content in frozen.items():
-        if _unchanged(path, frozen_content, sources):
+    for path, content in frozen.items():
+        if _unchanged(path, content, sources):
             continue
         try:
-            _write_output(path, frozen_content, umask)
+            _write_output(path, content, umask)
         except OSError as error:
             if write_denied(error):
                 raise unwritable(path, error) from error
             raise
         written.append(path)
+    return written
+
+
+def _is_claude_json(path: Path, content: Output) -> bool:
+    return isinstance(content, Merged) and path.name == ".claude.json"
+
+
+def _write_claude_json(
+    path: Path, content: Output, sources: Callable[[Path], str] | None, umask: int
+) -> list[Path]:
+    pending = _frozen(path, content)
+    if all(_unchanged(target, text, sources) for target, text in pending.items()):
+        return []
+    with claude_json_locks(path):
+        return _write_frozen(_frozen(path, content), sources, umask)
+
+
+def write_outputs(
+    outputs: Mapping[Path, Output], sources: Callable[[Path], str] | None = None
+) -> list[Path]:
+    """`sources` is a digest of copied sources a caller already reads them through."""
+    frozen: dict[Path, dict[Path, str | FrozenFile | Copied]] = {}
+    for path, content in outputs.items():
+        if not _is_claude_json(path, content):
+            frozen[path] = _frozen(path, content)
+    umask = process_umask()
+    written: list[Path] = []
+    for path, content in outputs.items():
+        if path in frozen:
+            written.extend(_write_frozen(frozen[path], sources, umask))
+        else:
+            written.extend(_write_claude_json(path, content, sources, umask))
     return written
 
 
