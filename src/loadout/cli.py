@@ -59,6 +59,9 @@ class _Parser(argparse.ArgumentParser):
         raise _ArgumentError(self.format_usage(), message)
 
 
+TEMPLATE_ROOT_HELP = "project root: the folder holding loadout/ (default: cwd)"
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = _Parser(
         prog="loadout",
@@ -68,15 +71,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"loadout {__version__}")
     subparsers = parser.add_subparsers(dest="command")
 
-    def add_root(sub: argparse.ArgumentParser, *, allow_global: bool = False) -> None:
+    def add_root(
+        sub: argparse.ArgumentParser,
+        *,
+        allow_global: bool = False,
+        help_text: str = "source root: the folder holding loadout.toml, a project root holding "
+        "loadout/, an overlay folder, or a repository an overlay targets (default: cwd)",
+    ) -> None:
         target = sub.add_mutually_exclusive_group() if allow_global else sub
-        target.add_argument(
-            "--root",
-            type=Path,
-            default=Path.cwd(),
-            help="source root: the folder holding loadout.toml, a project root holding loadout/, "
-            "an overlay folder, or a repository an overlay targets (default: cwd)",
-        )
+        target.add_argument("--root", type=Path, default=Path.cwd(), help=help_text)
         if allow_global:
             target.add_argument(
                 "--global",
@@ -169,7 +172,7 @@ def build_parser() -> argparse.ArgumentParser:
         const="vendored",
         help="copy the template into this project and record its content hash",
     )
-    add_root(add_template)
+    add_root(add_template, help_text=TEMPLATE_ROOT_HELP)
     add_template.add_argument(
         "--yes",
         action="store_true",
@@ -180,7 +183,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("sync", "update the vendored copy from its source"),
     ):
         template_sub = template_subparsers.add_parser(sub_name, help=sub_help)
-        add_root(template_sub)
+        add_root(template_sub, help_text=TEMPLATE_ROOT_HELP)
         if sub_name == "sync":
             template_sub.add_argument("name", help="template name")
             template_sub.add_argument(
@@ -352,8 +355,9 @@ def _resolve_global(profile: str | None) -> tuple[Path, str]:
 
 TEMPLATE_OUTSIDE_PROJECT = (
     "template commands manage a project's templates; to author one, add a "
-    "`templates/<name>.toml` manifest to your global source. To see the templates your "
-    "sources offer, run `loadout template add` with no name in a project."
+    "`templates/<name>/` folder or `templates/<name>.toml` manifest to your global source. "
+    "To see the templates your sources offer, run `loadout template add` with no name in a "
+    "project."
 )
 
 

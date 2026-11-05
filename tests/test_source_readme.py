@@ -27,3 +27,10 @@ def test_the_layout_names_every_category_a_source_holds() -> None:
 
 def test_a_skill_is_a_folder_holding_skill_md() -> None:
     assert _layout()["skills"] == "skills, one folder each holding a SKILL.md"
+
+
+def test_a_template_is_a_folder_or_a_manifest() -> None:
+    assert (
+        _layout()["templates"]
+        == "project templates, one <name>/ folder or <name>.toml manifest each"
+    )

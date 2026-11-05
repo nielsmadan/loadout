@@ -135,7 +135,7 @@ configuration; edit here rather than in the generated files.
     skills/            skills, one folder each holding a SKILL.md
     agents/            subagents, one Markdown file each
     module-config/     files copied verbatim into an agent's config directory
-    templates/         project templates, one <name>.toml manifest each
+    templates/         project templates, one <name>/ folder or <name>.toml manifest each
 
 Only what you use has to exist.
 
