@@ -216,3 +216,38 @@ differ only in `-` and `_`, since Pi rejects the second.
 `/mcp` saves enable and exposure changes into the file that defines the server, and "Disable in
 this project" adds an override entry to `.pi/mcp.json`. Both files are written whole, so either
 change is drift.
+
+## Overlay destinations
+
+An [overlay](../user/guides/overlays.md) writes `.pi/APPEND_SYSTEM.md`, `.pi/mcp.json`,
+`.pi/extensions/pi-permission-system/config.json` and `.pi/skills/<name>/` (or the shared
+`.agents/skills/<name>/`), all whole files and none tracked. The permission file is written only
+when the overlay has a rule or states a `[shell] default`.
+
+Pi 1.4.0's `docs/configuration.md`: "`.pi/APPEND_SYSTEM.md` | Adds project-specific instructions
+to the system prompt", and "For `SYSTEM.md` and `APPEND_SYSTEM.md`, the trusted project file takes
+precedence over the corresponding agent-directory file. Files with the same name are not
+combined." So the overlay's file displaces a personal `<agent dir>/APPEND_SYSTEM.md`.
+
+**Project trust.** Pi loads `.pi/` and a project's `.agents/skills` only in a trusted project.
+`check` reads the trust store to say whether this folder is. Source, installed Pi 1.4.0:
+
+- `docs/security.md`: "If no saved decision applies, Pi follows the global `defaultProjectTrust`
+  setting, whose default is `"ask"`", and "Saved decisions use canonical directory paths and live
+  in: ~/.pi/agent/trust.json".
+- `dist/core/trust-manager.js` gives the shape: `readTrustFile` accepts a JSON object whose values
+  are `true`, `false` or `null`; `findNearestTrustEntry` walks from the canonical project path up
+  through its parents and takes the first entry whose value is `true` or `false`; and
+  `hasTrustRequiringProjectResources` names what needs trust: `settings.json`, `mcp.json`,
+  `extensions`, `skills`, `prompts`, `themes`, `SYSTEM.md` and `APPEND_SYSTEM.md` under `.pi/`, and
+  `.agents/skills` in the folder or an ancestor.
+
+Loadout reads the file with `${PI_CODING_AGENT_DIR:-~/.pi/agent}/trust.json` and never writes it.
+An unreadable file is treated as holding no decision, and the note then says Pi will follow
+`defaultProjectTrust`. Not established: the value of `defaultProjectTrust` on this machine (the
+note does not read Pi's `settings.json`).
+
+**`/mcp`.** "Disable in this project" adds an override entry to `.pi/mcp.json` (see
+[Server definitions](#server-definitions)). The overlay owns that file whole, so the edit is
+`hand-edited` drift; `check` says to make the change in the overlay source
+([sync.md](sync.md#known-limitations)).

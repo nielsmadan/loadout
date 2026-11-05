@@ -6,7 +6,7 @@ import shlex
 import sys
 from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from .atomic import atomic_install
 from .bundled_skill import bundled_skill_path
@@ -378,19 +378,22 @@ DRIFT_ADVICE: dict[DriftKind, str] = {
 }
 
 
-def _check_json(root: Path, profile: str) -> int:
+def check_result(root: Path, profile: str) -> dict[str, Any]:
     context = RenderContext(registration=fixed(registration()))
     drift = classified_drift(root, profile, context)
     notes = _check_notes(root, profile, context)
-    code = 1 if drift else 0
-    result = {
+    return {
         "status": "drift" if drift else "clean",
-        "exit_code": code,
+        "exit_code": 1 if drift else 0,
         "drift": [{"path": str(d.path), "kind": d.kind} for d in drift],
         "notes": notes,
     }
+
+
+def _check_json(root: Path, profile: str) -> int:
+    result = check_result(root, profile)
     print(json.dumps(result, indent=2))
-    return code
+    return int(result["exit_code"])
 
 
 def cmd_check(root: Path, profile: str, *, as_json: bool = False) -> int:

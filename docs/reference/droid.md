@@ -266,3 +266,28 @@ Shell permissions, hooks, MCP definitions, and plugin declarations all have inve
 extractors. Unsupported shell globs remain reported rather than guessed. Global and project
 migration recognize `.factory`, split co-owned `settings.json` into its native categories, and
 verify isolated reconstruction before changing originals.
+
+## Overlay destinations
+
+An [overlay](../user/guides/overlays.md) writes `.factory/AGENTS.md`, `.factory/mcp.json`,
+`.factory/settings.local.json` and `.factory/skills/<name>/`.
+
+`.factory/settings.local.json` is shared with whatever else writes it: the overlay owns the keys
+of its `settings` fragment (except the three command lists) and the entries it writes into
+`commandAllowlist`, `commandDenylist` and `commandBlocklist`. Probed 2026-10-31 on Droid 0.251.0
+(ran it, binary and docs):
+
+- From an untracked project `.factory/settings.local.json`, `model` applies and wins over the
+  project `settings.json`; `commandBlocklist` and `commandDenylist` apply and accumulate with
+  the user's and the project's.
+- **`hooks` there do not fire**, even with no project `settings.json`, while the user's hook
+  fired. A settings fragment with `hooks` therefore has no effect from an overlay.
+- Not established: `commandAllowlist`. In `droid exec` it rescued nothing at any level, the
+  project `settings.json` control included, so the probe could not tell the files apart.
+
+`.factory/mcp.json` is written whole. How Droid merges a project `mcp.json` with
+`~/.factory/mcp.json` is not established: it was not probed (the 2026-10-31 round covered
+`settings.json` and `settings.local.json` only), and Droid 1.1.0's bundled code, read with
+`strings`, merges `mcpServers` by name across settings layers without showing which layer the
+project's file is. Nothing was run, and 1.1.0 ships no docs folder. An overlay therefore refuses a
+server name the user's file already defines.

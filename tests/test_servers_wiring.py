@@ -37,11 +37,9 @@ def test_pi_gets_pi_mcp_json(project: Path) -> None:
     }
 
 
-def test_codex_gets_no_project_destination_yet(project: Path) -> None:
-    """Whether [mcp_servers.*] survives Codex's project-config filter is
-    unverified — its own warning says unsupported project-local keys are ignored.
-    An absent entry is honest; one written on an assumption is the failure this
-    project has recorded six times. Delete this test when the probe answers."""
+def test_project_scope_renders_no_codex_config(project: Path) -> None:
+    """Codex applies [mcp_servers.*] from a trusted project's .codex/config.toml,
+    but project scope writes none; only an overlay does."""
     (project / "loadout" / "mcp.toml").write_text(
         '[jina]\ntransport = "http"\nurl = "https://x"\n', encoding="utf-8"
     )

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from . import commands, emit, extract, manifest
+from . import commands, emit, extract, manifest, unmanaged
 from .permissions import renderers
 
 read_toml = manifest._read_toml
@@ -13,3 +13,4 @@ opencode_mcp_keys = renderers._opencode_mcp_keys
 codex_rules = extract._codex_rules
 abort_sentences = commands._abort_sentences
 write_full_diff = commands._write_full_diff
+readers = unmanaged._readers

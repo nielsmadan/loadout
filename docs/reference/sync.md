@@ -126,3 +126,202 @@ since even empty it makes `bash` ask; its project file is written only with a ru
 `[shell] default`. Keys inside shared files such as `settings.json` and `opencode.json` are always
 written, empty when there are no rules. Sync does not create `~/.codex/config.toml` just to leave
 it empty.
+
+## Overlays
+
+An [overlay](../user/guides/overlays.md) renders into repositories that have not adopted loadout
+([0045](../decisions/0045-an-overlay-source-renders-into-repositories-that-have-not-adopted-loadout.md)).
+It shares the guard, the drift kinds and the diffs with everything above, and keeps its own
+record, claims and ignore lines. Code: `overlay_*.py`, `claude_json.py`, `exclude.py`,
+`json_paths.py`.
+
+### The overlay record
+
+One record per overlay folder, at `$XDG_CONFIG_HOME/loadout/overlay-written/<key>.json`, where
+`<key>` is the first 16 hex digits of the SHA-256 of the folder's resolved path. It is not stored
+in `written/`, so `prune_vanished` never sees it and a deleted target does not take its record
+with it. It holds, as JSON (`version` 2):
+
+- the `HOME` the targets were matched under;
+- the overlay-folder files it wrote (OpenCode's instructions file);
+- per target: the git common directory, the device (`st_dev`) of the root, the name of its
+  `info/exclude` block, each whole file it wrote with its digest, each shared document with
+  the digests of its owned keys and the entries of its owned rules, with the keys and rules still
+  pending, and the `~/.claude.json` leaves, per file, with their digests and the digests still
+  pending.
+
+The decoder rejects an unknown key, so a new field means a `version` bump. A record with a newer
+`version` is `newer`: every command that needs it refuses (exit 3, `was written by a newer
+loadout; upgrade loadout`), `--force` included. An unreadable record is refused with exit 3 until
+`--force` treats it as empty. Another overlay's unreadable or newer record blocks `sync` and
+`overlay add` for the others, because their claims cannot be checked; the message names the file
+and offers `loadout overlay remove NAME --force`. `overlay remove` of a different overlay still
+works. A record is decoded again before it replaces the file, written with `fsync`, and not
+replaced if it would not read back as written. A record whose stored folder no longer hashes to
+its file name (the folder was moved or renamed) is still found, by the stored folder or by the file
+name, and is written under the new name by the next write. The answer to the global-ignore offer
+is not in `overlay-written/`, where every `*.json` is read as a record: it is
+`$XDG_CONFIG_HOME/loadout/overlay-global-ignore.json`. Nothing in a generated file names the record
+([0008](../decisions/0008-generated-files-carry-no-machine-state.md)).
+
+Two exceptions to 0008 are bounded: `CLAUDE.local.md` may start with `@AGENTS.md`, and OpenCode's
+`opencode.json` names a file in the overlay folder by absolute path
+([0049](../decisions/0049-the-conditional-agents-md-line-and-opencode-instructions-by-absolute-path.md)).
+
+### The guard and claims
+
+A whole file is judged as above: against the record, and against the render. A file with no
+record at an overlay destination is `unknown`, refused until `--force`. A shared document is judged
+key by key and rule by rule ([configuration](../user/reference/configuration.md#owned-documents)):
+`owned-key` and `owned-key-removed` are guard findings (exit 1, `--force` overwrites); a key the
+overlay would write that holds a different value it did not write is `user-defined`, refused with
+exit 3 and not overridden by `--force`. Diffs go through `diffs.diff_lines`, so a file holding
+a secret is withheld ([0032](../decisions/0032-a-file-holding-a-secret-is-never-diffed.md)). A
+guard finding on any output holds back the whole target: nothing is written to it, `check` still
+reports its drift and unmanaged files, and the `~/.claude.json` servers are not compared.
+
+Each path has one owner. A path that another overlay's record, or a project or the global source
+in `written/`, holds is refused as `claimed`; a skill folder is claimed whole, so an overlay
+never writes a file into a folder another owner records anything in. A path the team tracks is
+refused as `tracked`: a unit is a file, or a skill folder, and a unit is tracked when git lists
+it or anything below it. The check runs again for each target just before it writes and deletes,
+and **no flag overrides it**, `--force` and `overlay remove --force` included. The git facts are
+asked for the same units the plan collapses paths to (`overlay_plan.plan_units`), and a path also
+counts as tracked when its own path below the root is listed, so a different spelling of a unit
+cannot skip the check. Tracked names are compared case-insensitively, as a case-insensitive disk
+reads them. A recorded output
+that the team starts tracking is never retired: whenever the overlay would retire it (under
+`overlay remove`, for a target no longer matched, or for an output the source stopped rendering),
+it is left in place, dropped from the record and noted with exit 0, so the record lets the
+repository go. A unit that a committed `.gitignore` re-includes (`!/CLAUDE.local.md`) is refused
+as `unignored` while planning, so `check` reports what `sync` refuses.
+
+### Scoped retirement
+
+A run retires only what its scope covers. Syncing from inside a target handles that target alone.
+A full run (`--overlay`, the overlay folder, `--global`) also retires the recorded targets its
+patterns no longer match. A recorded target that is errored, refused, skipped or unreachable is
+left wholly untouched: its files, documents, `~/.claude.json` leaves, record entry and exclude
+lines. Only a target that is positively gone, or healthy and no longer matched, is retired. A
+recorded target that no longer matches and cannot be examined is reported as skipped (exit 0).
+
+- **Gone is decided by device.** A target is gone when `lstat` of its root raises
+  `FileNotFoundError` and the nearest existing ancestor has the `st_dev` the record holds for the
+  root. A different device, or any other error, makes it unreachable: an unmounted volume, an empty
+  mount point or an unreadable folder is never read as removal. A deleted parent tree is still gone.
+- **A pattern whose fixed parent cannot be listed** makes its recorded targets unreachable, with a
+  note.
+- **HOME must be the same.** When the record's `HOME` differs from the run's, nothing is retired
+  (exit 3, naming the `HOME` to run with). When the patterns match no folder at all while the
+  record names targets, nothing is retired unless `--force`.
+- **A git failure is not absence.** `git` reporting that a folder with a `.git` entry is not a
+  repository (dubious ownership, an unreadable git directory) is `git-failed`, never `not a
+  checkout`. A folder with no `.git` entry is a note.
+- **The `~/.claude.json` leaves outlive their target.** They are stripped when the target is
+  gone, because the record holds them under the config file's path as Claude derives it. After a
+  `CLAUDE_CONFIG_DIR` change the old file's leaves are retired too, but only under the record's
+  `HOME`: a run under another `HOME` keeps them. A recorded path that resolves, or is the same
+  file, as the current one is the current one, and its leaves are re-recorded under that spelling.
+- **`overlay remove` retires everything** from the record alone, and the overlay-folder file only
+  after every recorded target was retired or dropped.
+- **A target that has adopted loadout is retired.** A recorded target that now holds
+  `loadout/config.toml` is retired like one the patterns stopped matching, in a scoped run too,
+  with the note `adopted loadout; the overlay retired its files here`; an unrecorded one is
+  skipped. In a run that also renders the project, the overlay part runs first, so the project
+  never adopts the overlay's keys as foreign ones
+  ([0052](../decisions/0052-a-target-that-adopts-loadout-is-retired-by-the-overlay.md)).
+
+### Order and crashes
+
+For each target, in this order:
+
+1. The record is saved with the entries about to be written, so a crash leaves a record that
+   claims too much, never too little. A whole file keeps its old entry until the final record.
+   A shared document keeps its old keys and rules, and the keys and rules about to be written
+   are pending, as are the leaves, with digests. The overlay-folder file is recorded as soon as
+   it is written, before any target.
+2. The overlay's block in `info/exclude` is written with every path it is about to write.
+3. Sync asks git (`check-ignore --no-index`) about each unit it will write. A unit that would
+   still show is dropped with a refusal (exit 3).
+4. Files are written, then deleted; shared documents are replaced only if their bytes are those
+   that were judged, and a whole file only if it still passes the guard (unless `--force`); a
+   mismatch is re-planned.
+5. The block is shortened, after the deletes, and the final record is saved.
+
+So an interrupted run can leave a path ignored that does not exist, never one that exists and is
+shown, and the next run finishes it: a file equal to its render is accepted, a pending leaf, key
+or rule equal to its value is adopted, a pending one that is absent is created rather than judged
+removed, and an orphan already deleted is skipped. A pending leaf or key that holds any other
+value was never written by loadout: one still rendered is refused as the user's, and one being
+retired is left as it is, even with `--force`, and dropped from the record. Leaves and
+shared-document keys are judged by one set of rules (`json_paths.wanted_verdict` and
+`dropped_verdict`).
+
+The global ignore block is recomputed from every overlay record after each run, and left as it
+is while any record cannot be read or is newer, since that record's paths would otherwise drop
+out of it.
+
+### Locks
+
+- One `flock` per overlay folder for the whole run, in
+  `$XDG_STATE_HOME/loadout/overlay-locks/overlay-<key>.lock`.
+- One `flock` per file edited in a read-modify-write: each `info/exclude`, the global ignore file,
+  `overlays.toml` and `~/.claude.json`, keyed by the file's resolved path, with the PID written in.
+  Git reads `info/exclude` and takes no lock on it (it writes the file only when a repository is
+  created from its template), so there is no git lock to follow
+  ([0047](../decisions/0047-writing-info-exclude-inside-git-despite-containment-protected.md)).
+- For `~/.claude.json`, also Claude Code's own: the directory `<path>.lock`, made with `mkdir`
+  at the path Claude derives, without resolving links
+  ([0048](../decisions/0048-nested-json-ownership-claude-json-leaves-and-owned-keys-in-shared-documents.md)).
+  The bytes are compared again just before the rename, inside both locks.
+
+Nesting runs one way: the overlay-folder lock, then a file's lock, then Claude's directory.
+`flock` is not reentrant across descriptors, so a function that takes a file's lock itself is
+called without an outer one: `exclude.write_global_block` takes the global ignore file's lock and
+computes the personal units inside it from a callback that is given the file's current user lines,
+so that read-modify-write is one. `claude_json_locks` is keyed by the file's resolved path for
+`flock` and by the unresolved path for Claude's directory. It removes that directory only if its
+inode is still the one it made, since Claude takes over a lock older than ten seconds.
+
+A wait ends after 30 seconds (15 for Claude's lock) with an error naming the holder where known.
+Neither lock is ever broken, and no message tells the user to delete one.
+
+### Known limitations
+
+- **An owned rule edited on disk reads as one removed plus a saved approval.** Rules are compared
+  as strings, so an edited string cannot be told from an approval Claude or Droid saved. `sync
+  --force` writes the original back and carries the edited text; delete that line by hand. The
+  fix would need ownership by position, which a list does not give.
+- **Pi's `/mcp` "Disable in this project" writes into the overlay's `.pi/mcp.json`**
+  ([pi.md](pi.md#server-definitions)), which the overlay owns whole, so it shows as `hand-edited`.
+  `check` says so; make the change in the overlay source.
+- **The Droid user-level merge is not established.** The overlay's `.factory/mcp.json` is written
+  whole, and a server name that `~/.factory/mcp.json` already defines is refused. Not
+  established: no probe of how Droid merges a project `mcp.json` with the user's was run, and the
+  earlier probe round (Droid 0.251.0) covered `settings.json` and `settings.local.json` only.
+  Droid 1.1.0 ships no docs folder next to its binary. Its bundled code, read with `strings`,
+  loads each folder's `mcp.json` through `loadMcp` and merges two layers' `mcpServers` by server
+  name, the later layer winning. Which layer a project's `.factory/mcp.json` is, and whether the
+  user's file is another, was not read, and nothing was run.
+- **The crash edge of one digest per whole file.** A whole file, and the overlay-folder file, keep
+  one digest. A crash after such a file is written and before its record is saved, followed by an
+  edit of the source before the next run, reads as an edit outside loadout (exit 1; `--force`
+  clears it). Shared documents and leaves carry pending digests, so they recover.
+- **Floats in `~/.claude.json`.** Parts of the file the overlay does not own are rewritten with
+  Python's number spelling, so Node's `0.0000123` can come back as `1.23e-05`. The value is the
+  same. The global scope has the same limit.
+- **A key restored with `--force` moves to the end of its object.** When an owned key such as
+  `model` was deleted from `.claude/settings.local.json` (or another shared document) and
+  `sync --force` writes it back, it goes after the keys the user kept, not at its old position.
+  The record stores which keys loadout owns, not where they sat, and the values are the same.
+- **Adding and then removing the `info/exclude` block restores the file byte for byte only when
+  the file ends with exactly one newline.** More trailing blank lines lose one, and a file with
+  no final newline gains one.
+- **Retirement leaves empty folders behind.** Removing an overlay, or retiring its outputs,
+  deletes the files it wrote but not a folder such as `.codex/`, `.factory/` or `.pi/` that the
+  first write created. The record does not say which folders loadout created, and an empty folder
+  shows nothing in `git status`.
+- **A branch switch can replace an overlay file.** If a local branch tracks one of its paths,
+  checking it out replaces the overlay's copy and drops edits made to it; `check` names the
+  branch. The next `sync` writes the copy again, unless the team now tracks the path, which it
+  refuses.

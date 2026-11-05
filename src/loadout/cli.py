@@ -9,11 +9,9 @@ from typing import Any, NoReturn
 
 from . import __version__
 from .commands import (
-    cmd_check,
     cmd_skill_install,
     cmd_skill_status,
     cmd_skill_uninstall,
-    cmd_sync,
     cmd_template_add,
     cmd_template_list,
     cmd_template_sync,
@@ -34,7 +32,15 @@ from .harnesses import KNOWN_HARNESSES
 from .init_options import InitOptions
 from .init_workflow import INTERRUPTED, run_init
 from .machine import load_machine_config, machine_config_path, profile_for, resolve_profile
-from .overlay_commands import cmd_overlay_add, cmd_overlay_list
+from .overlay_commands import (
+    cmd_check_selection,
+    cmd_overlay_add,
+    cmd_overlay_list,
+    cmd_overlay_remove,
+    cmd_sync_selection,
+    refuse_targeted_init,
+    resolve_selection,
+)
 from .project import project_config_path
 from .skill_copy import cmd_skill_copy
 from .staged import check_staged
@@ -68,27 +74,39 @@ def build_parser() -> argparse.ArgumentParser:
             "--root",
             type=Path,
             default=Path.cwd(),
-            help="source root: the folder holding loadout.toml, or a project root holding loadout/ (default: cwd)",
+            help="source root: the folder holding loadout.toml, a project root holding loadout/, "
+            "an overlay folder, or a repository an overlay targets (default: cwd)",
         )
         if allow_global:
             target.add_argument(
                 "--global",
                 dest="use_global",
                 action="store_true",
-                help="use this machine's configured global source instead of --root",
+                help="use this machine's configured global source instead of --root, "
+                "then every registered overlay",
+            )
+            target.add_argument(
+                "--overlay",
+                default=None,
+                metavar="NAME",
+                help="the registered overlay NAME, for every target it matches",
             )
 
     for name, help_text in (
         (
             "sync",
             (
-                "regenerate a project's generated files, or this machine's with --global; "
-                "preview with `loadout check`"
+                "regenerate a project's generated files, or this machine's with --global and "
+                "then every overlay's, or one overlay's with --overlay; preview with "
+                "`loadout check`"
             ),
         ),
         (
             "check",
-            "exit 1 if a project's generated files, or this machine's with --global, have drifted",
+            (
+                "exit 1 if a project's generated files, or this machine's with --global and "
+                "then every overlay's, or one overlay's with --overlay, have drifted"
+            ),
         ),
     ):
         sub = subparsers.add_parser(name, help=help_text, description=help_text)
@@ -210,9 +228,25 @@ def _add_overlay(subparsers: Any) -> None:
     overlay = subparsers.add_parser("overlay", help="manage registered overlays")
     commands = overlay.add_subparsers(dest="overlay_command", required=True)
     add = commands.add_parser("add", help="register an overlay folder")
-    add.add_argument("directory", nargs="?", type=Path, default=None)
+    add.add_argument(
+        "directory",
+        nargs="?",
+        type=Path,
+        default=None,
+        help="overlay folder holding a loadout.toml with an [overlay] table (default: cwd)",
+    )
     add.add_argument("--name", default=None, help="overlay name (default: the folder's name)")
     commands.add_parser("list", help="list registered overlays")
+    remove = commands.add_parser(
+        "remove", help="retire every output an overlay wrote, then unregister it"
+    )
+    remove.add_argument("name", help="overlay name, or the name of an unregistered record")
+    remove.add_argument(
+        "--force",
+        action="store_true",
+        help="retire hand-edited outputs, and drop targets that cannot be reached",
+    )
+    remove.add_argument("--yes", action="store_true", help="remove without a prompt")
 
 
 def _add_skill(parser: argparse.ArgumentParser) -> None:
@@ -402,13 +436,11 @@ def _dispatch_init(args: argparse.Namespace) -> int:
                 yes=args.yes,
             )
         )
+    root = args.root.expanduser().absolute() if args.root is not None else project_root(Path.cwd())
+    refuse_targeted_init(root)
     return run_init(
         InitOptions(
-            root=(
-                args.root.expanduser().absolute()
-                if args.root is not None
-                else project_root(Path.cwd())
-            ),
+            root=root,
             scope="project",
             harnesses=tuple(args.harnesses or ()),
             dry_run=args.dry_run,
@@ -454,6 +486,8 @@ def _dispatch(args: argparse.Namespace) -> int:  # noqa: PLR0911
 def _dispatch_overlay(args: argparse.Namespace) -> int:
     if args.overlay_command == "add":
         return cmd_overlay_add(args.directory, args.name)
+    if args.overlay_command == "remove":
+        return cmd_overlay_remove(args.name, force=args.force, yes=args.yes)
     return cmd_overlay_list()
 
 
@@ -467,14 +501,23 @@ def _dispatch_git_hooks(args: argparse.Namespace) -> int:
 
 
 def _dispatch_outputs(args: argparse.Namespace) -> int:
-    root, profile = _resolve_root_and_profile(args)
+    staged = getattr(args, "staged", False)
+    selection = resolve_selection(
+        args.root,
+        use_global=args.use_global,
+        overlay=args.overlay,
+        profile=args.profile,
+        force=getattr(args, "force", False),
+        staged=staged,
+        resolve=lambda: _resolve_root_and_profile(args),
+    )
     if args.command == "sync":
-        return cmd_sync(root, profile=profile, force=args.force)
-    if args.staged:
+        return cmd_sync_selection(selection, force=args.force)
+    if staged and selection.root is not None and selection.profile is not None:
         if args.json:
             raise UsageError("--json is not available with --staged")
-        return check_staged(root, profile)
-    return cmd_check(root, profile=profile, as_json=args.json)
+        return check_staged(selection.root, selection.profile)
+    return cmd_check_selection(selection, as_json=args.json)
 
 
 def main(argv: list[str] | None = None) -> int:

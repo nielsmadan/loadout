@@ -1,13 +1,26 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import re
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Literal
 
 from .errors import LoadoutError
 from .written import canonical
 
 JsonPath = tuple[str, ...]
+_BARE = re.compile(r"[A-Za-z0-9_-]+")
+OwnershipKind = Literal[
+    "create",
+    "unchanged",
+    "update",
+    "adopt",
+    "retire",
+    "user-defined",
+    "owned-key",
+    "owned-key-removed",
+]
 
 
 def lookup(document: Mapping[str, Any], path: JsonPath) -> tuple[bool, Any]:
@@ -50,6 +63,38 @@ def leaf_digest(value: Any) -> str:
     return hashlib.sha256(canonical(value).encode()).hexdigest()
 
 
+def wanted_verdict(
+    document: Mapping[str, Any],
+    path: JsonPath,
+    value: Any,
+    owned: frozenset[str],
+    pending: str | None,
+) -> OwnershipKind:
+    present, on_disk = lookup(document, path)
+    if not present:
+        return "owned-key-removed" if owned else "create"
+    digest = leaf_digest(on_disk)
+    if digest == leaf_digest(value):
+        return "unchanged" if owned else "adopt"
+    if digest == pending:
+        return "update"
+    if not owned:
+        return "user-defined"
+    return "update" if digest in owned else "owned-key"
+
+
+def dropped_verdict(
+    document: Mapping[str, Any], path: JsonPath, owned: frozenset[str], pending: str | None
+) -> OwnershipKind | None:
+    present, value = lookup(document, path)
+    if not present:
+        return None
+    digest = leaf_digest(value)
+    if digest in owned or digest == pending:
+        return "retire"
+    return "owned-key" if owned else None
+
+
 def encode_path(path: JsonPath) -> list[str]:
     return list(path)
 
@@ -61,4 +106,7 @@ def decode_path(raw: object) -> JsonPath | None:
 
 
 def display_path(path: JsonPath) -> str:
-    return ".".join(path)
+    return "".join(
+        (f".{key}" if index else key) if _BARE.fullmatch(key) else f"[{json.dumps(key)}]"
+        for index, key in enumerate(path)
+    )

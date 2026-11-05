@@ -291,3 +291,55 @@ def test_a_refused_owned_leaf_keeps_its_recorded_digest_not_the_wanted_one(
     result = write_leaves(path, {DOCS_PATH: DOCS}, owned, (), force=False)
     assert result.refused == (LeafVerdict(DOCS_PATH, "owned-key"),)
     assert result.digests == {DOCS_PATH: leaf_digest(recorded)}
+
+
+def test_a_present_leaf_equal_to_its_pending_digest_is_adopted_and_updated(
+    fake_home: Path,
+) -> None:
+    crashed = {"type": "stdio", "command": "written-before-the-crash"}
+    path = claude_file(fake_home, {"projects": {str(PROJECT): {"mcpServers": {"docs": crashed}}}})
+    pending = {DOCS_PATH: leaf_digest(crashed)}
+    result = write_leaves(path, {DOCS_PATH: DOCS}, {}, (), force=False, pending=pending)
+    assert result.written == (DOCS_PATH,)
+    assert result.refused == ()
+    assert result.digests == {DOCS_PATH: leaf_digest(DOCS)}
+    assert path.read_text() == json.dumps(
+        {"projects": {str(PROJECT): {"mcpServers": {"docs": DOCS}}}}, indent=2
+    )
+
+
+def test_a_pending_digest_adopts_only_the_value_it_names() -> None:
+    crashed = {"type": "stdio", "command": "written-before-the-crash"}
+    mine = {"type": "stdio", "command": "mine"}
+    pending = {DOCS_PATH: leaf_digest(crashed)}
+
+    def at(value: object) -> dict[str, object]:
+        return {"projects": {str(PROJECT): {"mcpServers": {"docs": value}}}}
+
+    assert judge_leaves(at(mine), {DOCS_PATH: DOCS}, {}, (), pending=pending) == (
+        LeafVerdict(DOCS_PATH, "user-defined"),
+    )
+    assert judge_leaves({}, {DOCS_PATH: DOCS}, {}, (), pending=pending) == (
+        LeafVerdict(DOCS_PATH, "create"),
+    )
+    assert judge_leaves(at(crashed), {}, {}, (DOCS_PATH,), pending=pending) == (
+        LeafVerdict(DOCS_PATH, "retire"),
+    )
+    assert judge_leaves(at(mine), {}, {DOCS_PATH: frozenset({"recorded"})}, (DOCS_PATH,)) == (
+        LeafVerdict(DOCS_PATH, "owned-key"),
+    )
+
+
+def test_a_forced_retirement_keeps_a_server_only_a_pending_digest_names(fake_home: Path) -> None:
+    crashed = {"type": "stdio", "command": "written-before-the-crash"}
+    mine = {"type": "stdio", "command": "mine"}
+    old = server_path(PROJECT, "old")
+    servers = {"docs": mine, "old": DOCS}
+    path = claude_file(fake_home, {"projects": {str(PROJECT): {"mcpServers": servers}}})
+    pending = {DOCS_PATH: leaf_digest(crashed)}
+    owned = {old: frozenset({leaf_digest(DOCS)})}
+    result = write_leaves(path, {}, owned, (DOCS_PATH, old), force=True, pending=pending)
+    assert result.retired == (old,)
+    assert json.loads(path.read_text()) == {
+        "projects": {str(PROJECT): {"mcpServers": {"docs": mine}}}
+    }

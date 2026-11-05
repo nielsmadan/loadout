@@ -138,7 +138,7 @@ def test_recorded_keys_are_judged_against_the_record() -> None:
         DocumentVerdict(("model",), "owned-key"),
     )
     assert judge_document({"model": "opus"}, OwnedJson(keys=(), rules=()), record) == (
-        DocumentVerdict(("model",), "remove"),
+        DocumentVerdict(("model",), "retire"),
     )
 
 
@@ -168,9 +168,9 @@ def test_strip_keeps_saved_approvals_and_claude_keys() -> None:
         "outputStyle": "Explanatory",
     }
     assert judge_strip(on_disk, first.record) == (
-        DocumentVerdict(("model",), "remove"),
-        DocumentVerdict(ALLOW, "remove"),
-        DocumentVerdict(DENY, "remove"),
+        DocumentVerdict(("model",), "retire"),
+        DocumentVerdict(ALLOW, "retire"),
+        DocumentVerdict(DENY, "retire"),
     )
     assert dumped(strip_owned(on_disk, first.record)) == dumped(
         {"permissions": {"allow": ["Bash(npm run x)"]}, "outputStyle": "Explanatory"}
@@ -223,3 +223,59 @@ def test_a_list_path_the_overlay_renders_nothing_for_gets_no_verdict() -> None:
     applied = apply_owned(existing, owned, None)
     assert applied.document == {"permissions": {"allow": "everything", "deny": ["Bash(rm -rf /)"]}}
     assert applied.record.owned_rules == {DENY: ("Bash(rm -rf /)",)}
+
+
+def test_pending_keys_and_rules_are_created_when_absent_and_adopted_when_written() -> None:
+    record = DocumentRecord(
+        created=False,
+        owned_keys={},
+        owned_rules={ALLOW: ("Bash(ls)",)},
+        pending_keys={("model",): leaf_digest("opus")},
+        pending_rules={ALLOW: ("Read",), DENY: ("Bash(rm -rf /)",)},
+    )
+    before_the_write = {"permissions": {"allow": ["Bash(ls)", "Bash(npm test)"]}}
+    assert judge_document(before_the_write, claude_owned(), record) == (
+        DocumentVerdict(("model",), "create"),
+        DocumentVerdict(ALLOW, "update"),
+        DocumentVerdict(DENY, "create"),
+    )
+
+    after_the_write = apply_owned(before_the_write, claude_owned(), record).document
+    edited_source = claude_owned("sonnet")
+    assert judge_document(after_the_write, edited_source, record) == (
+        DocumentVerdict(("model",), "update"),
+        DocumentVerdict(ALLOW, "adopt"),
+        DocumentVerdict(DENY, "adopt"),
+    )
+    adopted = apply_owned(after_the_write, edited_source, record)
+    assert adopted.record == DocumentRecord(
+        created=False,
+        owned_keys={("model",): leaf_digest("sonnet")},
+        owned_rules={ALLOW: ("Bash(ls)", "Read"), DENY: ("Bash(rm -rf /)",)},
+    )
+    assert adopted.carried == ("permissions.allow: Bash(npm test)",)
+
+
+def test_a_pending_key_is_stripped_only_while_it_holds_the_pending_value() -> None:
+    record = DocumentRecord(
+        created=False,
+        owned_keys={},
+        owned_rules={},
+        pending_keys={("model",): leaf_digest("opus"), ("theme",): leaf_digest("dark")},
+        pending_rules={ALLOW: ("Read",)},
+    )
+    existing = {"model": "opus", "theme": "light", "permissions": {"allow": ["Read", "Mine"]}}
+    assert strip_owned(existing, record) == {"theme": "light", "permissions": {"allow": ["Mine"]}}
+    assert judge_strip(existing, record) == (
+        DocumentVerdict(("model",), "retire"),
+        DocumentVerdict(ALLOW, "retire"),
+    )
+
+
+def test_a_rule_that_holds_a_secret_is_carried_without_its_text() -> None:
+    token = "ghp_" + "a1B2c3D4" * 4 + "e5F6"
+    existing = {"permissions": {"allow": [f"Bash(curl -H 'Authorization: Bearer {token}':*)"]}}
+    applied = apply_owned(existing, claude_owned(), None)
+    withheld = "a rule not shown because it holds a secret (a token in a provider's format)"
+    assert applied.carried == (f"permissions.allow: {withheld}",)
+    assert applied.document["permissions"]["allow"][-1].endswith(f"{token}':*)")

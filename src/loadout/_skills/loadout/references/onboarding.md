@@ -8,6 +8,7 @@ loadout init global /work/dotfiles --harness pi --dry-run --json
 ```
 
 Scope is a subcommand: `init project` or `init global`. Global source selection defaults to cwd.
+`init project` exits 3 in a repository an overlay has written into ("an overlay writes personal files here"), and while any overlay record is unreadable or newer. Do not work around it: for personal configuration there, edit the overlay (see “Overlays” in [configuration](configuration.md)); to adopt the repository, narrow the overlay's `targets` so they no longer match it and run `loadout sync --overlay <name>` (a plain `loadout sync` inside the repository no longer reaches that overlay), or run `loadout overlay remove <name>` when the user asks.
 Use a dedicated directory, never HOME or the filesystem
 root for a new repository. Without `--root`, project init resolves the enclosing Loadout/Git root
 from a nested directory; `--root` is used as given, so a monorepo folder such as `apps/web` becomes

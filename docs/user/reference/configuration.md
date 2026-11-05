@@ -1,6 +1,6 @@
 ---
 title: Configuration files
-description: The machine configuration, the global manifest, project configuration, the permissions format, and the source layouts at both scopes.
+description: The machine configuration, the global manifest, project configuration, overlay sources, the permissions format, and the source layouts.
 ---
 
 # Configuration files
@@ -36,7 +36,8 @@ someone who only uses project scope.
 
 The file is machine state: never version-controlled and never generated. It is not the only thing
 loadout keeps on the machine. `sync` records what it wrote, per root, in
-`$XDG_CONFIG_HOME/loadout/written/`, and init's backups and a refused sync's full diff,
+`$XDG_CONFIG_HOME/loadout/written/` (an overlay's own record is in `overlay-written/`, and the
+overlays themselves are registered in [`overlays.toml`](#overlaystoml)), and init's backups and a refused sync's full diff,
 `sync-abort.diff`, live under `$XDG_STATE_HOME/loadout/` (`~/.local/state/loadout/` when unset).
 None of it is stamped into a generated file
 ([0008](https://github.com/nielsmadan/loadout/blob/main/docs/decisions/0008-generated-files-carry-no-machine-state.md);
@@ -207,7 +208,8 @@ command.
 `hooks` and `plugins` take fragment names, resolved as `<source>/hooks/<name>.json` and
 `<source>/plugins/<name>.json` and deep-merged in order: maps merge key by key, lists concatenate,
 and `null` removes. A plugin reference takes `enabled = false` to switch it off, so a profile
-switches one off with a one-key overlay instead of restating a list:
+switches one off with a one-key fragment overlay (a merge, unrelated to an
+[overlay source](#overlay-sources)) instead of restating a list:
 `{"plugins": {"my-tools": {"enabled": false}}}`. Claude and Droid render it as `false`; Codex and
 Pi leave the plugin out. See [plugins](https://github.com/nielsmadan/loadout/blob/main/docs/reference/plugins.md)
 for what a plugin reference holds and what each harness makes of it.
@@ -550,6 +552,165 @@ it is not an overlay.
 Loadout never adds `permissions.local.toml` to `.gitignore`: add it to `.gitignore`, or to
 `.git/info/exclude` for this clone alone, yourself. Keep a `.local` skill you create out of Git the
 same way.
+
+## Overlay sources
+
+An **overlay source** is a folder registered on this machine whose `loadout.toml` renders
+personal, never-committed configuration into repositories that have not adopted loadout. It is
+unrelated to the "overlay" in a profile or a plugin reference, which is a fragment merged over
+another. The [overlays guide](../guides/overlays.md) walks through one; this section is the schema.
+
+```toml title="~/agent-config/work/loadout.toml"
+[overlay]
+targets = ["~/work/app*"]
+
+[[source]]
+name = "work"
+path = "."
+
+[all]
+instructions = ["work"]
+
+[claude]
+settings = "local"
+
+[codex]
+[opencode]
+```
+
+It is a global-style manifest (`[[source]]`, `[all]`, one table per agent, the same validation) plus
+an `[overlay]` table. A `loadout.toml` that holds an `[overlay]` table renders only when registered;
+see [`overlays.toml`](#overlaystoml).
+
+### The `[overlay]` table
+
+| Key | Meaning |
+| --- | --- |
+| `targets` | Required, non-empty list of absolute or `~/` patterns. Expanded again on every run. Each match must be the top of a git checkout |
+| `follow_worktrees` | Reserved for a later release. `false` or absent; `true` is refused |
+| `git_hook` | Reserved for a later release. `false` or absent; `true` is refused |
+
+Any other key is refused by name. A pattern may use `*`, `?` and `[...]`. A match that is not a
+git checkout, a bare repository, a submodule or a linked worktree is skipped with a message, not
+an error, so a broad pattern does not fail every run. So is a repository that has adopted loadout
+(it holds `loadout/config.toml`); what the overlay wrote there before is retired, as for a
+repository the patterns stopped matching. A match that is the home folder, holds a
+harness home or the overlay folder, is inside the overlay folder, or has a `.git` of its own but
+is not the top of its checkout, is refused with exit 3. A pattern whose fixed parent folder
+cannot be listed is reported, and its targets are neither written nor retired. Targets are
+compared by file identity, so spelling and case do not matter.
+
+### Allowed slices
+
+An overlay renders four slices, for every agent: `instructions`, `mcp` (server definitions),
+`permissions` and `skills`. Claude and Droid also accept `settings`, which names a fragment of
+the rest of their settings file, and every agent accepts `substitute`. A key in `[all]` applies to
+each declared agent that allows it, and is refused only when none does.
+
+| Named in the manifest | Result |
+| --- | --- |
+| `hooks`, `plugins`, `agents`, `module-config`, `defaults` | Refused: would need a destination the team's config does not merge, so an overlay cannot write it additively |
+| `mcp = [...]` | Refused, an empty list included: servers are not picked by name; the overlay's sources supply them. Only `mcp = false` switches the slice off |
+| Claude `mcp-permissions` | Refused: Claude's MCP approvals are in `permissions` |
+| `preserve` | Refused: an overlay owns only the keys it writes |
+| `profile`, `extends`, `remove` | Refused: an overlay has one profile, its `loadout.toml` |
+| `[instructions.*]`, `[permissions.*]` | Refused: an overlay writes only to its fixed destinations; declare agent tables instead |
+| any other key | Refused: an overlay does not render it |
+
+A source folder that holds `agents/` or `module-config/` is not an error: the overlay renders
+neither. An overlay renders the `default` profile only, and a slice with nothing to write writes
+nothing.
+
+### Destinations
+
+Each destination is relative to the target's root. The files an overlay owns whole are marked
+(whole); in the three shared documents the overlay owns only the keys and rules it renders
+(see [owned documents](#owned-documents)).
+
+| Agent | Instructions | MCP servers | Permissions and settings | Skills |
+| --- | --- | --- | --- | --- |
+| Claude | `CLAUDE.local.md` (whole) | `~/.claude.json`, one server at a time under `projects.<root>.mcpServers` | `.claude/settings.local.json` (shared) | `.claude/skills/<name>/` |
+| Codex | `developer_instructions` in `.codex/config.toml` (whole) | `mcp_servers` in `.codex/config.toml` | `.codex/rules/<overlay>.rules` (whole) | `.agents/skills/<name>/` |
+| Droid | `.factory/AGENTS.md` (whole) | `.factory/mcp.json` (whole) | `.factory/settings.local.json` (shared) | `.factory/skills/<name>/` |
+| OpenCode | `instructions` in `opencode.json` (shared), naming a file in the overlay folder | `mcp` in `opencode.json` | `permission` in `opencode.json` | `.opencode/skills/<name>/` |
+| Pi | `.pi/APPEND_SYSTEM.md` (whole) | `.pi/mcp.json` (whole) | `.pi/extensions/pi-permission-system/config.json` (whole) | `.pi/skills/<name>/` |
+
+- Skills are rendered as at project scope. When Codex, OpenCode and Pi render a skill
+  identically, one `.agents/skills/<name>/` copy serves all three.
+- Codex's `.codex/config.toml` holds the instructions and the servers together, and Codex applies
+  it only in a trusted project. A project `developer_instructions` replaces the user-level one. The
+  rules file is written only when the overlay has a shell rule Codex can express.
+- An MCP approval for a server the overlay does not define is not written to Codex, because a
+  project table of that name would merge into the user's server.
+- OpenCode's `opencode.json` is written at the repository root, where a tracked
+  `.opencode/opencode.json` outranks it. The `instructions` entry names
+  `<overlay folder>/.loadout/opencode-instructions.md`, a file the overlay renders into its own
+  folder and records. The `permission` object has no `"*"` catch-all unless the overlay's
+  permissions state `[shell] default`.
+- Pi's permission file is written only when the overlay has a rule or a stated `[shell] default`.
+- `CLAUDE.local.md` starts with `@AGENTS.md` when the target has an `AGENTS.md` and no other
+  memory file Claude would load: no `CLAUDE.md` or `.claude/CLAUDE.md` at the target or above it,
+  and no `CLAUDE.local.md` above it. Claude reads `AGENTS.md` only when it finds none of these, and
+  the overlay's own `CLAUDE.local.md` is one. Claude's user memory file does not count.
+- A path the team tracks is never written. `CLAUDE.local.md`, `.claude/settings.local.json` and
+  `.factory/settings.local.json` can be ignored in every repository; see
+  [overlays](../guides/overlays.md#what-stays-out-of-git).
+
+### Owned documents
+
+`.claude/settings.local.json`, `.factory/settings.local.json` and `opencode.json` often exist
+already and hold keys that are not the overlay's. The overlay owns two kinds of part, and nothing
+else in the file is judged, written or retired:
+
+| Document | Owned keys | Owned rules |
+| --- | --- | --- |
+| `.claude/settings.local.json` | The keys of the `settings` fragment, at the top level and under `permissions` except `allow`, `ask` and `deny` | The entries it writes into `permissions.allow`, `permissions.ask` and `permissions.deny` |
+| `.factory/settings.local.json` | The keys of the `settings` fragment, except the three command lists | The entries it writes into `commandAllowlist`, `commandDenylist` and `commandBlocklist` |
+| `opencode.json` | `permission`, `mcp` and `instructions` | none |
+
+- **Saved approvals are kept.** A rule already in a list that the overlay did not write, such as a
+  Claude "don't ask again" approval, stays after the overlay's own entries, and `check` lists it
+  as `saved by the harness, not in the overlay source: <rule>; add it to the overlay's
+  permissions.toml or delete it`. The same applies to a command-list entry Droid saved. It is not
+  drift and never blocks `sync`. A rule that holds a secret, such as a token in a `curl` header,
+  is listed as `a rule not shown because it holds a secret (<reason>)`; read the file for it.
+- **A rule the overlay no longer renders is removed.** So is an owned key the source stopped
+  setting, so a removed rule or setting never comes back from disk.
+- **A key the overlay would write that already holds a different value, and was not written by the
+  overlay, is refused**, naming it, with exit 3 and even under `--force`. The same value is adopted.
+- **An owned key edited outside loadout** is `owned-key`; a key, or a rule that is still rendered,
+  that was removed is `owned-key-removed`. Both are refused with exit 1 until `--force`. An owned
+  rule that was edited reads as a removed rule plus a saved approval, so `--force` restores the
+  original and keeps the edited text; delete the edited line yourself.
+- **A file is rendered only when the overlay has content for it.** Saved approvals alone never
+  make the overlay take a file over.
+- **Retirement strips the owned parts.** The file is deleted only when the overlay created it and
+  nothing is left but `{}`. When a whole target is retired, a file left behind is also taken out
+  of the overlay's `info/exclude` block, so `git status` shows what is left in it.
+
+Every other destination is a whole file the overlay owns. If one already exists at that path and
+loadout never wrote it, `sync` refuses it as `unknown` (exit 1) and `sync --force` replaces it. The
+overlay's lines in `.git/info/exclude` then hide the replaced content from git, so copy it first.
+
+### `overlays.toml`
+
+Overlays are registered in `$XDG_CONFIG_HOME/loadout/overlays.toml` (`~/.config/loadout/` when
+unset), beside the machine config but separate from it. `loadout overlay add` and
+`loadout overlay remove` manage it; edit it by hand only to repair it.
+
+```toml title="~/.config/loadout/overlays.toml"
+[overlay.work]
+path = "/Users/me/agent-config/work"
+```
+
+Tables are sorted by name, which matches `[a-z0-9][a-z0-9-]{0,62}`. `path` is absolute and
+resolved when registered. `removing = true` is written while an `overlay remove` is unfinished, and
+`sync` and `check` then refuse that overlay. A missing file registers nothing. Any other key, a
+folder registered twice, a bad name or a relative path is an error naming the file, and so is a
+file that does not parse. Every `sync` and `check` reports that error with exit 3 and still runs
+the global source or the project. A file that cannot be read is a warning in a project instead. What an
+overlay wrote is recorded in `$XDG_CONFIG_HOME/loadout/overlay-written/`, one file per overlay
+folder; see [the sync reference](https://github.com/nielsmadan/loadout/blob/main/docs/reference/sync.md#overlays).
 
 ## Skills
 

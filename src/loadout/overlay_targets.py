@@ -13,7 +13,15 @@ from .destinations import resolve_destination
 from .errors import LoadoutError
 from .overlay_manifest import OverlaySettings
 
-SkipKind = Literal["submodule", "linked-worktree", "not-a-checkout", "git-failed", "unsafe"]
+SkipKind = Literal[
+    "submodule",
+    "linked-worktree",
+    "not-a-checkout",
+    "adopted",
+    "unexamined",
+    "git-failed",
+    "unsafe",
+]
 RecordedFate = Literal["present", "gone", "unreachable"]
 
 _HOME_TEMPLATES = {
@@ -30,13 +38,12 @@ _SUBMODULE = (
     "submodules are not supported as targets; the parent repository still renders "
     "when the pattern matches it"
 )
-_LINKED_WORKTREE = "linked worktrees are rendered once worktree support (follow_worktrees) lands"
+_LINKED_WORKTREE = "linked worktrees are not rendered as targets"
 
 
 @dataclass(frozen=True)
 class Target:
     root: Path
-    git_dir: Path
     common_dir: Path
     device: int
 
@@ -46,7 +53,10 @@ class SkippedTarget:
     folder: Path
     kind: SkipKind
     reason: str
-    failure: bool
+
+    @property
+    def failure(self) -> bool:
+        return self.kind in ("git-failed", "unsafe")
 
 
 @dataclass(frozen=True)
@@ -60,7 +70,6 @@ class Expansion:
     targets: tuple[Target, ...]
     skipped: tuple[SkippedTarget, ...]
     matched: frozenset[Path]
-    unmatched: tuple[str, ...]
     unlisted: tuple[str, ...]
     unlisted_under: tuple[Path, ...]
 
@@ -143,9 +152,7 @@ def _unique(folders: Iterable[Path]) -> tuple[Path, ...]:
 
 
 def _skipped(folder: Path, kind: SkipKind, reason: str) -> SkippedTarget:
-    return SkippedTarget(
-        folder=folder, kind=kind, reason=reason, failure=kind in ("git-failed", "unsafe")
-    )
+    return SkippedTarget(folder=folder, kind=kind, reason=reason)
 
 
 def _inside(path: Path, folder: Path) -> bool:
@@ -204,7 +211,6 @@ def probe(folder: Path, homes: HarnessHomes, overlay_folder: Path) -> Target | S
         return _skipped(root, *skip)
     return Target(
         root=root,
-        git_dir=found.git_dir,
         common_dir=found.common_dir,
         device=os.stat(root).st_dev,
     )
@@ -230,7 +236,6 @@ def expand_targets(
         targets=tuple(result for result in probed if isinstance(result, Target)),
         skipped=tuple(result for result in probed if isinstance(result, SkippedTarget)),
         matched=matched,
-        unmatched=tuple(pattern for pattern, found in matches.items() if not found),
         unlisted=unlisted,
         unlisted_under=tuple(_split(pattern, homes.home)[0].resolve() for pattern in unlisted),
     )

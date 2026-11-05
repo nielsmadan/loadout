@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import posixpath
 import subprocess
 import tempfile
 from collections.abc import Iterable, Iterator
@@ -17,6 +18,7 @@ _UNSET = 1
 _NOTHING_IGNORED = 1
 _HEADS = "refs/heads/"
 _IDENTITY_LINES = 3
+_SAFE = ("-c", "core.fsmonitor=false", "-c", "protocol.allow=never")
 
 
 class GitFailure(LoadoutError):
@@ -47,10 +49,16 @@ def _failure(
     return GitFailure(f"{root}: git {command} failed: {_detail(result)}")
 
 
+def _run(
+    root: Path, *arguments: str, data: bytes | None = None
+) -> subprocess.CompletedProcess[bytes]:
+    return git_runner.run(root, *_SAFE, *arguments, data=data)
+
+
 def _checked(
     root: Path, *arguments: str, data: bytes | None = None, allowed: frozenset[int] = frozenset({0})
 ) -> subprocess.CompletedProcess[bytes]:
-    result = git_runner.run(root, *arguments, data=data)
+    result = _run(root, *arguments, data=data)
     if result.returncode not in allowed:
         raise _failure(root, arguments, result)
     return result
@@ -74,7 +82,7 @@ def identity(folder: Path) -> GitIdentity | None:
         "--absolute-git-dir",
         "--git-common-dir",
     )
-    result = git_runner.run(folder, *arguments)
+    result = _run(folder, *arguments)
     if result.returncode == git_runner.NOT_RUN:
         raise _failure(folder, arguments, result)
     if result.returncode and _NOT_A_REPOSITORY in result.stderr:
@@ -104,15 +112,42 @@ def _names(output: bytes) -> tuple[str, ...]:
     return tuple(os.fsdecode(name) for name in output.split(b"\0") if name)
 
 
-def tracked_units(root: Path, units: Iterable[str]) -> frozenset[str]:
+def case_blind(root: Path) -> bool:
+    try:
+        return os.path.samefile(root / ".git", root / ".GIT")
+    except OSError:
+        return False
+
+
+def _respelled(listed: str, names: tuple[str, ...]) -> str:
+    folded = listed.lower()
+    for name in names:
+        if folded == name.lower() or folded.startswith(f"{name.lower()}/"):
+            return name + listed[len(name) :]
+    return listed
+
+
+def tracked_files(root: Path, units: Iterable[str]) -> frozenset[str]:
     names = tuple(units)
     if not names:
         return frozenset()
-    result = _checked(root, "ls-files", "-z", "--", *(f":(literal){name}" for name in names))
+    magic = "literal,icase" if case_blind(root) else "literal"
+    result = _checked(root, "ls-files", "-z", "--", *(f":({magic}){name}" for name in names))
     listed = _names(result.stdout)
+    if magic == "literal":
+        return frozenset(listed)
+    return frozenset(_respelled(name, names) for name in listed)
+
+
+def units_in(listed: frozenset[str], units: Iterable[str]) -> frozenset[str]:
     return frozenset(
-        name for name in names if any(f == name or f.startswith(f"{name}/") for f in listed)
+        name for name in units if any(f == name or f.startswith(f"{name}/") for f in listed)
     )
+
+
+def tracked_units(root: Path, units: Iterable[str]) -> frozenset[str]:
+    names = tuple(units)
+    return units_in(tracked_files(root, names), names)
 
 
 def branches_tracking(root: Path, units: Iterable[str]) -> dict[str, tuple[str, ...]]:
@@ -138,7 +173,13 @@ def branches_tracking(root: Path, units: Iterable[str]) -> dict[str, tuple[str, 
 
 def excludes_file(root: Path) -> Path:
     result = _checked(
-        root, "config", "--path", "--get", "core.excludesFile", allowed=frozenset({0, _UNSET})
+        root,
+        "config",
+        "--global",
+        "--path",
+        "--get",
+        "core.excludesFile",
+        allowed=frozenset({0, _UNSET}),
     )
     configured = os.fsdecode(result.stdout).strip()
     if configured:
@@ -207,3 +248,19 @@ def unignored(root: Path, units: Iterable[str], folders: frozenset[str]) -> dict
         for source, line, pattern, path in matches
         if not pattern or pattern.startswith("!")
     }
+
+
+def reincluded(root: Path, units: Iterable[str], folders: frozenset[str]) -> dict[str, str]:
+    queries = _queries(units, folders)
+    if not queries:
+        return {}
+    matches = _check_ignore(root, queries, non_matching=True)
+    return {
+        queries[path]: f"{source}:{line}:{pattern}"
+        for source, line, pattern, path in matches
+        if pattern.startswith("!") and _team_file(source)
+    }
+
+
+def _team_file(source: str) -> bool:
+    return not posixpath.isabs(source) and posixpath.basename(source) == ".gitignore"

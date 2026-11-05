@@ -76,7 +76,7 @@ Five harnesses, two scopes:
 | harness | global | project |
 |---|---|---|
 | Claude | `${CLAUDE_CONFIG_DIR:-~}/.claude.json` → `mcpServers` | `.mcp.json` |
-| Codex | `~/.codex/config.toml` → `[mcp_servers.*]` | **none — open question** |
+| Codex | `~/.codex/config.toml` → `[mcp_servers.*]` | **none for a project source** — an [overlay](#codex-project-config-applies-in-a-trusted-project) writes `.codex/config.toml` |
 | Droid | `${FACTORY_HOME_OVERRIDE:-~}/.factory/mcp.json` | `.factory/mcp.json` |
 | OpenCode | `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` → `mcp` | `opencode.json` → `mcp` |
 | Pi | `${PI_CODING_AGENT_DIR:-~/.pi/agent}/mcp.json` | **none — `.mcp.json` already serves it** |
@@ -99,25 +99,36 @@ trusted; `.mcp.json` is Claude's. `pi-mcp-adapter`, which read `.mcp.json`, is n
 1.0: when installed it replaces the built-in and Pi reads neither file. See
 [pi.md](pi.md#server-definitions).
 
-### Codex has no project destination yet
+### Codex project config applies in a trusted project
 
-Whether `[mcp_servers.*]` survives Codex's project-config filter is unverified. Codex's own
-warning: **"Ignored unsupported project-local config keys in `<path>`. If you want these settings
-to apply, manually set them in your user-level config.toml."** So a project `.codex/config.toml`
-is a *subset* of the global schema, and some keys are silently dropped with that warning — whether
-`mcp_servers` is one of them has not been checked.
+A project `.codex/config.toml` is read by Codex only when the project is trusted, and it is a
+subset of the global schema: Codex warns **"Ignored unsupported project-local config keys in
+`<path>`. If you want these settings to apply, manually set them in your user-level config.toml."**
+for the keys on its project-local denylist. The probe on 2026-10-30 (Codex 0.165.0, `codex exec`
+and `codex mcp list` in a scratch `CODEX_HOME`, source read at `rust-v0.165.0`) answered what the
+earlier note left open:
 
-The probe that would settle it: write a scratch `.codex/config.toml` containing
-`[mcp_servers.probe]`, trust the directory, run Codex, and see whether the ignored-keys warning
-names `mcp_servers`. That needs an authenticated Codex, so it stays open rather than guessed at —
-an absent entry is honest, whereas one written on an assumption is a failure this project has
-recorded six times ([AGENTS.md](../../AGENTS.md), "This machine is not the world").
-`test_codex_gets_no_project_destination_yet` in `tests/test_servers_wiring.py` names the day to
-delete it: when the probe answers.
+- **`mcp_servers` and `developer_instructions` in an untracked `.codex/config.toml` apply**, in a
+  trusted project. Neither is on the denylist (`PROJECT_LOCAL_CONFIG_DENYLIST` in
+  `codex-rs/config/src/loader/mod.rs`: `openai_base_url`, `chatgpt_base_url`,
+  `apps_mcp_product_sku`, `responses_api_metadata`, `model_provider`, `model_providers`, `notify`,
+  `profile`, `profiles`, two `experimental_realtime_*` URLs and `otel`). In an untrusted project the
+  whole project layer is ignored, with no warning.
+- **`mcp_servers` deep-merges per field.** A project server with a new name is added; a project
+  server that reuses a user server's name overrides only the fields it sets and inherits the rest
+  (`command`, `args`, other `env` keys). Arrays are replaced whole. A project
+  `developer_instructions` replaces the user-level one, since it is a scalar.
+- **Project scope still writes none.** `PROJECT_PRESET["codex"]` has no `mcp` entry, and
+  `test_project_scope_renders_no_codex_config` in `tests/test_servers_wiring.py` pins that. The
+  probe settled that the file applies; adding it to the project preset is a separate decision.
+- **An overlay writes one**, because it can refuse the collision: it reads `~/.codex/config.toml`
+  and refuses a server name the user already defined, and `check` notes an untrusted project and a
+  user-level `developer_instructions` it would displace. See
+  [codex.md](codex.md#overlay-destinations).
 
 Codex's *global* destination is unaffected by this question — loadout writes `[mcp_servers.*]`
 into `~/.codex/config.toml` itself, owning that one key and passing the rest of the file
-through. The open question is project scope only.
+through. Project scope is covered above.
 
 Note the global renderer is `codex-config`, not `codex-servers`: definitions and approval
 policy share the `[mcp_servers.<name>]` table, so one renderer emits both. `codex-servers`
@@ -228,6 +239,5 @@ sends the header and the adapter the variable.
 
 ## Not verified
 
-- **Whether `[mcp_servers.*]` survives Codex's project-config filter** — the open question above.
-  It blocks nothing: project scope already serves Claude, Droid, Pi (through `.mcp.json`) and
-  OpenCode. Codex's project destination is the remaining one, added when the probe answers.
+- **Project-scope Codex servers.** The file applies (above); whether a project source should
+  write it is undecided, and project scope writes none.

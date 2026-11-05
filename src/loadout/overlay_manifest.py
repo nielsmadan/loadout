@@ -46,8 +46,6 @@ _MCP_REFUSAL = (
 @dataclass(frozen=True)
 class OverlaySettings:
     targets: tuple[str, ...]
-    follow_worktrees: bool = False
-    git_hook: bool = False
 
 
 @dataclass(frozen=True)
@@ -73,7 +71,7 @@ def _parse_settings(raw: object, path: Path) -> OverlaySettings:
     if stray:
         raise LoadoutError(
             f"{path}: [{OVERLAY_TABLE}] has unknown key(s) {', '.join(stray)} "
-            f"(allowed: {', '.join(_OVERLAY_KEYS)})"
+            f"(allowed: targets; follow_worktrees and git_hook are reserved)"
         )
     targets = raw.get("targets")
     if (
@@ -85,18 +83,16 @@ def _parse_settings(raw: object, path: Path) -> OverlaySettings:
             f"{path}: [{OVERLAY_TABLE}] targets must be a non-empty list of absolute or "
             f'"~/" patterns'
         )
-    flags = {}
     for key in ("follow_worktrees", "git_hook"):
         value = raw.get(key, False)
         if not isinstance(value, bool):
             raise LoadoutError(f"{path}: [{OVERLAY_TABLE}] {key} must be true or false")
         if value:
             raise LoadoutError(
-                f"{path}: [{OVERLAY_TABLE}] {key} arrives with worktree support; "
-                f"set it to false or remove it"
+                f"{path}: `[{OVERLAY_TABLE}] {key}` is not available yet; it arrives in a later "
+                "release — set it to false or remove it"
             )
-        flags[key] = value
-    return OverlaySettings(targets=tuple(targets), **flags)
+    return OverlaySettings(targets=tuple(targets))
 
 
 def _reason(harness: str | None, key: str) -> str:
@@ -123,7 +119,7 @@ def _refuse_top_level(data: dict[str, object], path: Path) -> None:
 def _refuse_key(path: Path, harness: str, key: str, value: object) -> None:
     allowed = OVERLAY_SLICES[harness] | OVERLAY_EXTRAS[harness]
     if key in allowed:
-        if key == "mcp" and value is not False and value != []:
+        if key == "mcp" and value is not False:
             raise LoadoutError(f"{path}: {harness}.mcp: {_MCP_REFUSAL}")
         return
     raise LoadoutError(f"{path}: {harness}.{key} is refused in an overlay: {_reason(harness, key)}")
@@ -153,7 +149,7 @@ def _filtered_data(data: dict[str, object], path: Path) -> dict[str, object]:
                 f"{path}: [{COMMON_BLOCK}] {key} applies to no declared harness: "
                 f"{_reason(None, key)}"
             )
-        if key == "mcp" and value is not False and value != []:
+        if key == "mcp" and value is not False:
             raise LoadoutError(f"{path}: [{COMMON_BLOCK}] mcp: {_MCP_REFUSAL}")
     rest = {k: v for k, v in data.items() if k != COMMON_BLOCK}
     return {

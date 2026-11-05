@@ -143,12 +143,32 @@ error that every command reports, exit 3, so sync stops before it could retire t
 `plugins = []` to keep the settings.
 
 At project scope, Claude Code saves a "don't ask again" permission to `.claude/settings.local.json`,
-which loadout does not write; record it in `permissions.local.toml` to keep it with the source. A
+which a project source does not write (an [overlay](guides/overlays.md) does, and keeps it); record it in `permissions.local.toml` to keep it with the source. A
 plugin enabled at project scope goes into `.claude/settings.json` or `.factory/settings.json`.
 Claude Code's `enabledPlugins` there stays as the harness wrote it until the project has a
 `loadout/settings/claude.json`; from then on that file holds every key no slice writes, and a key
 the harness adds is `hand-edited`. Droid's project `enabledPlugins` belongs to the `plugins` slice,
 so a plugin enabled there is `hand-edited`: declare it in `loadout/plugins.json`.
+
+## An overlay refuses a target or an output
+
+Overlay messages start `overlay NAME:` and name the target. Each refusal leaves the rest of that
+target's outputs, and the other targets, to proceed unless noted. See the
+[overlays guide](guides/overlays.md).
+
+| Message | Cause and fix |
+| --- | --- |
+| `the team tracks X; the overlay does not write it` (exit 3) | A commit or branch now tracks that path. The overlay never writes or retires a tracked path, and `--force` does not change that; take the output out of the overlay, or stop tracking the path |
+| `X is written by overlay OTHER; the overlay does not write it` (exit 3) | Another overlay, a project or the global source records that path. Each path has one owner |
+| `X would show in git status: …` (exit 3) | After the `info/exclude` block was written, git would still show the path, because a later `!` line in an ignore file re-includes it or nothing ignores it. Remove that line |
+| `X exists and loadout did not write it` or `X was edited outside loadout` (exit 1) | A guard finding; the whole target is held back. Port the edit into the overlay, or `sync --overlay NAME --force`. For a file that existed before the overlay, `--force` replaces it and the exclude block then hides what was there |
+| `… already holds a value the overlay did not write` or `MCP server S … was not written by loadout` (exit 3) | A key in a shared document, or a server in `~/.claude.json`, has a different value that the overlay never wrote. `--force` does not replace it; remove it, or move it into the overlay source |
+| `F already defines the MCP server S, which the overlay also defines` (exit 3) | A user-level file of Codex, Droid, OpenCode or Pi defines that name; the overlay would merge into or replace it. Rename one |
+| `the overlay record F cannot be read` or `… was written by a newer loadout; upgrade loadout` (exit 3) | Fix the file; `--force` treats an unreadable record as empty, and never a newer one. Another overlay's bad record blocks `sync`: run `loadout overlay remove NAME --force` for it, or delete it when the message says it names no overlay |
+| `another loadout process (pid N) is syncing …` or `Claude Code holds F.lock` (exit 3) | A concurrent run, or a Claude session saving `~/.claude.json`. Wait and run again; never delete the lock |
+| `Claude Code reads F, not …/.claude.json` (exit 3) | A legacy `.config.json` or `CLAUDE_CODE_CUSTOM_OAUTH_URL` makes Claude read another file. Move the legacy file, or unset the variable |
+| `the targets were matched under HOME …` (exit 3) | The record was written under another `HOME`. Nothing is retired; run with that `HOME` |
+| `skipped: …` | The folder is not a git checkout, is a submodule or a linked worktree, or is a bare repository. Nothing was written and the exit code is unchanged. `skipped: …` with a git error, or an unsafe target, is exit 3 |
 
 ## Sync or check refuses a global setup
 

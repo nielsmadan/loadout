@@ -166,3 +166,40 @@ folder, directly in Claude's skills folder; a `synced` anywhere else, such as in
 folder or inside a skill, is the user's (`HARNESS_RUNTIME_ENTRIES` in `runtime_paths.py`).
 A source skill named `synced` that would render into Claude's skills folder is refused with exit 3
 by `sync`, `check` and `init`, since it would land on the account's skills; rename the skill.
+
+## Overlays
+
+An [overlay](../user/guides/overlays.md) writes `CLAUDE.local.md`, `.claude/settings.local.json`
+(keys and rules it owns, beside whatever Claude saved there), `.claude/skills/<name>/` and, for MCP
+servers, leaves of `~/.claude.json` at `projects.<repository>.mcpServers.<name>`
+([0048](../decisions/0048-nested-json-ownership-claude-json-leaves-and-owned-keys-in-shared-documents.md)).
+
+**`@AGENTS.md`.** Claude reads `AGENTS.md` only without a `CLAUDE.md` or `CLAUDE.local.md` in the
+working directory or above it. Run on 2.1.314 (`claude -p`, scratch config directory, 2026-10-30):
+a `CLAUDE.local.md` whose first line is `@AGENTS.md` loads `AGENTS.md` exactly once, also under
+`claude-md-and-agents-md`; without the import the team's `AGENTS.md` is dropped; and with no
+`AGENTS.md` the line is skipped silently, exit 0, nothing in the debug log
+([0049](../decisions/0049-the-conditional-agents-md-line-and-opencode-instructions-by-absolute-path.md)).
+The memory docs say the same: "Because `CLAUDE.local.md` counts, adding one to keep your own
+uncommitted instructions in a project that relies on `AGENTS.md` stops Claude from reading
+`AGENTS.md` for you." Not established: the interactive UI.
+
+**The lock.** Claude Code saves `~/.claude.json` under proper-lockfile. Verified 2026-11-03 in the
+installed 2.1.317 binary: the strings contain ``lockfilePath:`${y}.lock` `` and `stale:1e4`, so the
+lock is a directory named `<config path>.lock`, made with `mkdir`, and taken over once ten seconds
+old. The config path is the config directory joined with `.claude.json` and is never resolved, so a
+symlinked `~/.claude.json` is locked at the link's path. Loadout joins that lock
+(`overlay_lock.claude_json_locks`) and never breaks it.
+
+**Files Claude reads instead.** Verified in the same binary:
+`function h_(){…let o=U($e(),".config.json"),t=cAr();try{let _=le().statSync(o);if(_.isFile()&&(_.size>0||(_.mode&146)!==0&&!le().existsSync(t)))return o}catch{}return t}`.
+A legacy `.config.json` in the config directory that has content, or is writable while
+`.claude.json` is absent, is the file Claude reads and writes. And
+``cAr()`` builds ``.claude${P1()}.json`` with
+`function P1(){if(process.env.CLAUDE_CODE_CUSTOM_OAUTH_URL)return"-custom-oauth"…`, so that variable
+makes the config `.claude-custom-oauth.json`. Loadout refuses to write MCP servers in either case,
+naming the file Claude reads, rather than write a file Claude ignores. A relative
+`CLAUDE_CONFIG_DIR` is refused too.
+
+Claude's `settings.local.json` also receives approvals Claude saves ("don't ask again"); an
+overlay carries those after its own rules.

@@ -9,8 +9,15 @@ import pytest
 import loadout
 from loadout import machine
 from loadout.errors import LoadoutError
+from loadout.overlay_record import (
+    NEWER_RECORD,
+    empty_record,
+    overlay_record_path,
+    write_overlay_record,
+)
 from loadout.overlay_registry import (
     RegisteredOverlay,
+    find_by_folder,
     load_registry,
     marked_removing,
     overlays_path,
@@ -137,11 +144,30 @@ def test_add_refuses_a_second_registration_of_the_same_folder(
     assert "already registered" in capsys.readouterr().err
 
 
+def test_add_refuses_the_same_folder_under_another_case_spelling(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    folder = make_overlay(tmp_path, "OV")
+    respelled = tmp_path / "ov"
+    if not respelled.exists():
+        pytest.skip("the temporary file system is case-sensitive")
+    assert loadout.main(["overlay", "add", str(folder)]) == 0
+    capsys.readouterr()
+
+    assert loadout.main(["overlay", "add", str(respelled), "--name", "ov2"]) == 3
+
+    assert "already registered as the overlay ov" in capsys.readouterr().err
+    assert load_registry(overlays_path()) == (RegisteredOverlay("ov", folder.resolve()),)
+    assert find_by_folder(load_registry(overlays_path()), respelled.resolve()) == (
+        RegisteredOverlay("ov", folder.resolve())
+    )
+
+
 def test_add_refuses_a_name_that_does_not_fit_and_says_to_pass_name(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     folder = make_overlay(tmp_path, "My_App")
-    assert loadout.main(["overlay", "add", str(folder)]) == 3
+    assert loadout.main(["overlay", "add", str(folder)]) == 2
     assert "pass --name" in capsys.readouterr().err
     assert not overlays_path().exists()
 
@@ -169,24 +195,47 @@ def test_add_refuses_a_folder_an_unregistered_record_holds_under_another_name(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     folder = make_overlay(tmp_path)
-    records = machine.config_dir() / "overlay-written"
-    records.mkdir(parents=True)
-    (records / "x.json").write_text(
-        f'{{"version": 1, "overlay": "{folder.resolve()}", "name": "old"}}', encoding="utf-8"
-    )
+    write_overlay_record(empty_record(folder.resolve(), "old", tmp_path))
     assert loadout.main(["overlay", "add", str(folder)]) == 3
     assert "loadout overlay remove old" in capsys.readouterr().err
+
+
+def test_add_refuses_while_a_partial_record_holds_the_folder(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    folder = make_overlay(tmp_path)
+    path = overlay_record_path(folder.resolve())
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        f'{{"version": 2, "overlay": "{folder.resolve()}", "name": "old"}}', encoding="utf-8"
+    )
+    assert loadout.main(["overlay", "add", str(folder)]) == 3
+    err = capsys.readouterr().err
+    assert str(path) in err
+    assert "loadout overlay remove old --force" in err
+    assert not overlays_path().exists()
+
+
+def test_add_refuses_while_another_folder_s_record_is_from_a_newer_loadout(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    other = make_overlay(tmp_path, "Other")
+    folder = make_overlay(tmp_path)
+    write_overlay_record(empty_record(other.resolve(), "other", tmp_path))
+    path = overlay_record_path(other.resolve())
+    path.write_text(path.read_text(encoding="utf-8").replace('"version": 2', '"version": 3'))
+    assert loadout.main(["overlay", "add", str(folder)]) == 3
+    err = capsys.readouterr().err
+    assert f"{path} {NEWER_RECORD}" in err
+    assert "loadout overlay remove other --force" in err
+    assert not overlays_path().exists()
 
 
 def test_add_ignores_a_record_whose_name_is_registered_elsewhere(tmp_path: Path) -> None:
     moved = make_overlay(tmp_path, "Moved")
     folder = make_overlay(tmp_path)
     assert loadout.main(["overlay", "add", str(moved), "--name", "old"]) == 0
-    records = machine.config_dir() / "overlay-written"
-    records.mkdir(parents=True)
-    (records / "x.json").write_text(
-        f'{{"version": 1, "overlay": "{folder.resolve()}", "name": "old"}}', encoding="utf-8"
-    )
+    write_overlay_record(empty_record(folder.resolve(), "old", tmp_path))
     assert loadout.main(["overlay", "add", str(folder), "--name", "x"]) == 0
     assert [o.name for o in load_registry(overlays_path())] == ["old", "x"]
 

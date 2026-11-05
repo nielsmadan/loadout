@@ -161,3 +161,32 @@ the first sync is immediately clean under check. If the existing parent is an in
 editing is refused: expand that parent into a regular TOML table before retrying. Managing
 a child inside an array-table element is likewise refused. Invalid TOML is rejected before
 writing anything.
+
+## Overlay destinations
+
+An [overlay](../user/guides/overlays.md) writes `.codex/config.toml`, `.codex/rules/<overlay>.rules`
+and `.agents/skills/<name>/` into a repository, none of them tracked.
+
+**`.codex/config.toml`.** Probed 2026-10-30 on Codex 0.165.0 (ran it, with source read at
+`rust-v0.165.0`): in a *trusted* project an untracked `.codex/config.toml` applies both
+`developer_instructions` and `mcp_servers`. Neither is on the project-local denylist
+(`PROJECT_LOCAL_CONFIG_DENYLIST`, listed in [servers.md](servers.md#codex-project-config-applies-in-a-trusted-project)).
+A project `developer_instructions` **replaces** the user-level one, so the overlay's displaces
+yours in that repository, and `check` says so when `~/.codex/config.toml` sets one. `mcp_servers`
+merges per server and per field, so an overlay refuses a server name the user's
+`~/.codex/config.toml` already defines. In an untrusted project, or one with no trust entry, the
+whole project layer is ignored and Codex prints no warning; `check` notes it with the
+`[projects."<path>"] trust_level = "trusted"` entry to add, and counts a trusted ancestor.
+
+**`.codex/rules/<overlay>.rules`.** Probed 2026-10-31 on Codex 0.165.0 (ran it, source read at
+`rust-v0.165.0`): in a trusted project Codex reads the project's `.codex/rules/` folder whole,
+every regular file ending in `.rules`, sorted by path, tracked or not. An untracked
+`overlay.rules` applies beside the team's `team.rules` and the user's `$CODEX_HOME/rules/`. A
+parse error in a rules file aborts `codex exec`, so loadout checks a rules document with the
+extraction parser before it writes it, and writes the file only when it holds a `prefix_rule(`.
+The file is named for the overlay's registered name, which is why the name is restricted to
+`[a-z0-9][a-z0-9-]*`.
+
+**MCP approvals.** An approval for a server the overlay does not define is not written, with a
+note: a `[mcp_servers.<name>]` table in the project would merge into the user's server of that
+name.

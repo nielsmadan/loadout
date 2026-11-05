@@ -18,12 +18,17 @@ Edit the declared source for each configured consumer. Generated harness files a
    Locate the existing config and follow its declared producers: the manifest's agent blocks and
    the source slices they name. Ask before widening scope or changing a source shared by other
    consumers.
+   A repository that has not adopted loadout, where the user wants personal configuration, is
+   covered by an overlay if one targets it: edit the overlay's source files and sync with
+   `loadout sync --overlay <name>`, never `init project` or a new `loadout/` there; see the
+   overlay row of the scope table and “Overlays” in the same reference.
 3. Apply a generic request to configured harnesses with a sound mapping. Report unsupported consumers.
    Keep MCP server definitions separate from MCP tool-approval policy. Preserve ordering, comments,
    private sources and unrelated fields; never create overlapping producers.
 4. Sync the edited source: `loadout sync --root <repo>` for project/personal changes;
    `loadout sync --global` for the active global profile, or
-   `loadout sync --global --profile <name>` when explicitly selected. Ask whether an unnamed change
+   `loadout sync --global --profile <name>` when explicitly selected; `loadout sync --overlay <name>`
+   for an overlay. Rendered files are output: edit the source folder. Ask whether an unnamed change
    under a non-default profile belongs to that profile or its inherited default.
 5. Report source files changed, agents reached, unsupported consumers and the sync result.
 
@@ -33,6 +38,9 @@ Edit the declared source for each configured consumer. Generated harness files a
   writes and removals before applying. Success leaves editable, uncommitted source.
 - “Allow `just test` for me” edits the existing personal permissions producer and syncs. If the
   project has no personal producer, ask before changing committed ownership.
+- “Add my own MCP server for the work repositories” in a repository an overlay targets edits the
+  overlay's `mcp.toml` and runs `loadout sync --overlay <name>`; it does not touch the repository's
+  `.mcp.json` or `opencode.json`.
 - “Change the global Pi model” follows the settings fragment Pi's agent block names, edits its
   `defaultModel` value and syncs the selected profile. Pi renders settings only when its block
   also declares `plugins`.

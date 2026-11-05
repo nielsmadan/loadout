@@ -102,8 +102,8 @@ to **`mcp-permissions`** — its outputs already said so (`mcp-permissions.json`
 `mcp-permissions.toml`) — which freed `mcp` for what the table below, and every upstream document,
 already meant by it: server definitions. `mcp` now renders `<source>/mcp.toml` to nine of the ten
 harness/scope destinations, all but Codex's project scope; see [servers.md](servers.md) for the
-slice — the format, why Pi's project destination is `.pi/mcp.json`, why Codex's is still an open
-question, and how Claude's global entry co-owns `.claude.json`.
+slice — the format, why Pi's project destination is `.pi/mcp.json`, why Codex's project source
+has none (only an overlay writes one), and how Claude's global entry co-owns `.claude.json`.
 
 `~/ac/mcp/servers.toml` already kept the two apart in its own header: *"This file defines which
 servers EXIST. Which of their tools may be called is the separate `[mcp]` section of

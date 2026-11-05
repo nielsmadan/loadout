@@ -200,9 +200,7 @@ PROJECT_PRESET: dict[str, dict[str, SliceOutput]] = {
         "instructions": SliceOutput(output="AGENTS.md"),
         "skills": SliceOutput(output=".agents/skills"),
         "agents": SliceOutput(output=".codex/agents"),
-        # No mcp entry either: whether [mcp_servers.*] survives Codex's
-        # project-config filter is unverified, and its own warning says
-        # unsupported project-local keys are ignored. See docs/reference/servers.md.
+        # No mcp entry: only an overlay writes [mcp_servers.*]; see docs/reference/servers.md.
     },
     "droid": {
         "permissions": SliceOutput(

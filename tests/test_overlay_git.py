@@ -78,7 +78,10 @@ def test_branches_tracking_reads_one_tree_per_branch_and_names_untracked_units_e
         "README.md": ("main", "other"),
         "CLAUDE.local.md": (),
     }
-    assert [call[0] for call in calls] == ["for-each-ref", "ls-tree", "ls-tree"]
+    assert {call[:4] for call in calls} == {
+        ("-c", "core.fsmonitor=false", "-c", "protocol.allow=never")
+    }
+    assert [call[4] for call in calls] == ["for-each-ref", "ls-tree", "ls-tree"]
     assert tracked_units(root, ["opencode.json", "README.md"]) == frozenset({"README.md"})
 
 
@@ -118,13 +121,14 @@ def test_covered_by_names_units_the_excludes_file_ignores_through_a_link(tmp_pat
 
 
 def test_covered_by_reads_the_excludes_file_alone_not_the_targets_info_exclude(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "gitconfig"))
     root = _repo(tmp_path / "repo")
     (root / ".git" / "info").mkdir(exist_ok=True)
     (root / ".git" / "info" / "exclude").write_text("**/CLAUDE.local.md\n")
     (tmp_path / "ignore").write_text("*.log\n")
-    _git(root, "config", "core.excludesFile", str(tmp_path / "ignore"))
+    _git(root, "config", "--global", "core.excludesFile", str(tmp_path / "ignore"))
 
     with scratch_repo() as scratch:
         covered = covered_by(scratch, excludes_file(root), ["CLAUDE.local.md"], frozenset())
@@ -150,11 +154,15 @@ def test_unignored_names_the_team_negation_that_re_includes_a_unit(tmp_path: Pat
     }
 
 
-def test_excludes_file_reads_core_excludes_file_resolved(tmp_path: Path) -> None:
+def test_excludes_file_reads_the_global_core_excludes_file_resolved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "gitconfig"))
     root = _repo(tmp_path / "repo")
     (tmp_path / "real").mkdir()
     (tmp_path / "link").symlink_to(tmp_path / "real")
-    _git(root, "config", "core.excludesFile", str(tmp_path / "link" / "ignore"))
+    _git(root, "config", "--global", "core.excludesFile", str(tmp_path / "link" / "ignore"))
+    _git(root, "config", "core.excludesFile", str(tmp_path / "repo-local-ignore"))
 
     assert excludes_file(root) == (tmp_path / "real" / "ignore").resolve()
 
@@ -162,6 +170,7 @@ def test_excludes_file_reads_core_excludes_file_resolved(tmp_path: Path) -> None
 def test_excludes_file_falls_back_to_xdg_then_home(
     tmp_path: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "gitconfig"))
     root = _repo(tmp_path / "repo")
 
     home_default = excludes_file(root)

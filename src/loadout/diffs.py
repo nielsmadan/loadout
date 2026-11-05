@@ -15,7 +15,9 @@ DIFF_LIMIT = 40
 NO_NEWLINE = "\\ No newline at end of file\n"
 
 
-def diff_lines(rel: str, actual: str, expected: str, context: int) -> list[str]:
+def diff_lines(
+    rel: str, actual: str, expected: str, context: int, *, format_name: str | None = None
+) -> list[str]:
     """A unified diff whose every line ends in a newline: a last line that lacks one is
     terminated and marked, as git marks it, so it never runs into the next. A file either
     side of which holds a secret is never diffed, on a terminal or in a file: one line
@@ -27,7 +29,7 @@ def diff_lines(rel: str, actual: str, expected: str, context: int) -> list[str]:
     groups = list(matcher.get_grouped_opcodes(context))
     if not groups:
         return []
-    format_name = PurePath(rel).suffix[1:]
+    format_name = format_name or PurePath(rel).suffix[1:]
     reason = secret_reason(actual, format_name) or secret_reason(expected, format_name)
     if reason is not None:
         count = sum(

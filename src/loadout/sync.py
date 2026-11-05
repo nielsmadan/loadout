@@ -336,6 +336,32 @@ def unaccepted_outputs(
     return modified
 
 
+def unaccepted_against_record(
+    outputs: Mapping[Path, Output],
+    written: Mapping[Path, WrittenEntry],
+    orphans: Mapping[Path, WrittenEntry],
+    sources: Callable[[Path], str] | None = None,
+) -> list[Unaccepted]:
+    # This render's own forms, since `_unaccepted_text` accepts a path with none.
+    forms = {
+        path: {normalise(path, content)}
+        for path, content in outputs.items()
+        if isinstance(content, str)
+    }
+
+    def unaccepted(path: Path, actual: str, expected: str) -> Unaccepted:
+        kind: GuardKind = "hand-edited" if written.get(path) is not None else "unknown"
+        return Unaccepted(path=path, kind=kind, actual=actual, expected=expected)
+
+    run = _Pass(lambda: forms, unaccepted, digests(), sources or digests())
+    modified = [
+        found
+        for path, expected in outputs.items()
+        if path.is_file() and (found := _judged(path, expected, written.get(path), run)) is not None
+    ]
+    return modified + _unaccepted_orphans(orphans, lambda: forms)
+
+
 @dataclass(frozen=True)
 class _Pass:
     """What one run of the guard shares across its outputs: the variants it builds only

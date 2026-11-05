@@ -50,6 +50,28 @@ instructions = ["b", "a"]
     ]
 
 
+def test_a_harness_key_wins_over_the_same_key_in_all_and_all_still_reaches_the_rest(
+    tmp_path: Path,
+) -> None:
+    folder = overlay(
+        tmp_path,
+        """
+[all]
+instructions = ["shared"]
+
+[claude]
+instructions = ["mine"]
+
+[codex]
+""",
+    )
+    manifest = load_overlay_manifest(folder).manifest
+    assert [(t.name, t.fragments) for t in manifest.targets] == [
+        ("claude", ("mine",)),
+        ("codex", ("shared",)),
+    ]
+
+
 @pytest.mark.parametrize(
     ("block", "slice_name", "reason"),
     [
@@ -99,6 +121,12 @@ def test_an_all_mcp_list_is_refused_naming_all(tmp_path: Path) -> None:
         load_overlay_manifest(folder)
 
 
+@pytest.mark.parametrize("block", ["[claude]\nmcp = []", "[all]\nmcp = []\n\n[claude]"])
+def test_an_empty_mcp_list_is_refused_like_a_named_one(tmp_path: Path, block: str) -> None:
+    with pytest.raises(LoadoutError, match=r"mcp: servers are not picked by name.*`mcp = false`"):
+        load_overlay_manifest(overlay(tmp_path, f"\n{block}\n"))
+
+
 def test_mcp_permissions_gets_claudes_reason_only_for_claude(tmp_path: Path) -> None:
     with pytest.raises(LoadoutError) as codex:
         load_overlay_manifest(overlay(tmp_path / "c", "\n[codex]\nmcp-permissions = []\n"))
@@ -134,7 +162,6 @@ def test_the_old_spellings_and_remove_are_refused(tmp_path: Path, body: str, mes
         ("targets = []", "non-empty list"),
         ("targets = [1]", "non-empty list"),
         ('targets = ["~/x"]\nbogus = 1', "unknown key.*bogus"),
-        ('targets = ["~/x"]\ngit_hook = true', "git_hook arrives with worktree support"),
     ],
 )
 def test_bad_overlay_table_entries_are_refused(
@@ -145,17 +172,19 @@ def test_bad_overlay_table_entries_are_refused(
         load_overlay_manifest(overlay(tmp_path, "\n[claude]\n", head))
 
 
-def test_follow_worktrees_and_a_relative_target_are_refused(tmp_path: Path) -> None:
-    with pytest.raises(LoadoutError, match="arrives with worktree support"):
-        load_overlay_manifest(
-            overlay(
-                tmp_path / "a",
-                "\n[claude]\n",
-                HEAD.replace(
-                    'targets = ["~/wrksp/app*"]', 'targets = ["~/x"]\nfollow_worktrees = true'
-                ),
-            )
-        )
+@pytest.mark.parametrize("key", ["follow_worktrees", "git_hook"])
+def test_a_reserved_key_set_true_is_refused_as_not_available_yet(tmp_path: Path, key: str) -> None:
+    head = HEAD.replace('targets = ["~/wrksp/app*"]', f'targets = ["~/x"]\n{key} = true')
+    folder = overlay(tmp_path, "\n[claude]\n", head)
+    with pytest.raises(LoadoutError) as raised:
+        load_overlay_manifest(folder)
+    assert str(raised.value) == (
+        f"{folder / 'loadout.toml'}: `[overlay] {key}` is not available yet; it arrives in a "
+        "later release — set it to false or remove it"
+    )
+
+
+def test_a_relative_target_is_refused(tmp_path: Path) -> None:
     with pytest.raises(LoadoutError, match="absolute or"):
         load_overlay_manifest(
             overlay(tmp_path / "b", "\n[claude]\n", HEAD.replace("~/wrksp/app*", "wrksp/app*"))

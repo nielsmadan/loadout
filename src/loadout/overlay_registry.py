@@ -10,7 +10,7 @@ from pathlib import Path
 from . import machine
 from .atomic import replace_atomically
 from .errors import LoadoutError
-from .overlay_lock import file_lock
+from .overlay_lock import file_lock, same_path
 
 OVERLAYS_FILE = "overlays.toml"
 NAME_PATTERN = re.compile(r"[a-z0-9][a-z0-9-]{0,62}")
@@ -65,12 +65,18 @@ def parse_registry(text: str, path: Path) -> tuple[RegisteredOverlay, ...]:
     return overlays
 
 
+class UnreadableRegistry(LoadoutError):
+    pass
+
+
 def load_registry(path: Path) -> tuple[RegisteredOverlay, ...]:
     try:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
         return ()
-    except (OSError, UnicodeDecodeError) as error:
+    except OSError as error:
+        raise UnreadableRegistry(f"{path}: {error}") from None
+    except UnicodeDecodeError as error:
         raise LoadoutError(f"{path}: {error}") from None
     return parse_registry(text, path)
 
@@ -110,15 +116,8 @@ def marked_removing(
     return tuple(replace(o, removing=True) if o.name == name else o for o in overlays)
 
 
-def find_by_name(overlays: Sequence[RegisteredOverlay], name: str) -> RegisteredOverlay:
-    for overlay in overlays:
-        if overlay.name == name:
-            return overlay
-    raise LoadoutError(f"no overlay named {name} is registered; see `loadout overlay list`")
-
-
 def find_by_folder(overlays: Sequence[RegisteredOverlay], folder: Path) -> RegisteredOverlay | None:
-    return next((o for o in overlays if o.folder == folder), None)
+    return next((o for o in overlays if same_path(o.folder, folder)), None)
 
 
 def update_registry(
@@ -130,7 +129,9 @@ def update_registry(
         text = render_registry(updated)
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            replace_atomically(path, lambda handle: handle.write(text.encode("utf-8")))
+            replace_atomically(
+                path, lambda handle: handle.write(text.encode("utf-8")), durable=True
+            )
         except OSError as error:
             raise LoadoutError(f"{path}: {error}") from None
     return updated

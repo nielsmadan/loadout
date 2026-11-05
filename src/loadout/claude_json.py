@@ -7,23 +7,24 @@ import stat
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from types import MappingProxyType
+from typing import Any
 
 from .atomic import replace_atomically
 from .errors import LoadoutError
-from .json_paths import JsonPath, leaf_digest, lookup, with_path, without_path
+from .json_paths import (
+    JsonPath,
+    OwnershipKind,
+    dropped_verdict,
+    leaf_digest,
+    lookup,
+    wanted_verdict,
+    with_path,
+    without_path,
+)
 from .overlay_lock import claude_json_locks
 
-LeafKind = Literal[
-    "create",
-    "unchanged",
-    "update",
-    "adopt",
-    "retire",
-    "user-defined",
-    "owned-key",
-    "owned-key-removed",
-]
+LeafKind = OwnershipKind
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,7 @@ class _Retry(Exception):
 _FORCEABLE: frozenset[LeafKind] = frozenset({"owned-key", "owned-key-removed"})
 _WRITES: frozenset[LeafKind] = frozenset({"create", "update", *_FORCEABLE})
 _SURROGATE = re.compile("[\ud800-\udfff]")
+_NO_PENDING: Mapping[JsonPath, str] = MappingProxyType({})
 
 
 def _unparsable(path: Path) -> LoadoutError:
@@ -91,18 +93,8 @@ def server_path(project: Path, server: str) -> JsonPath:
     return ("projects", str(project), "mcpServers", server)
 
 
-def _wanted_verdict(
-    document: Mapping[str, Any], path: JsonPath, value: Any, digests: frozenset[str] | None
-) -> LeafKind:
-    present, on_disk = lookup(document, path)
-    if not present:
-        return "owned-key-removed" if digests else "create"
-    digest = leaf_digest(on_disk)
-    if digest == leaf_digest(value):
-        return "unchanged" if digests else "adopt"
-    if not digests:
-        return "user-defined"
-    return "update" if digest in digests else "owned-key"
+def escape_surrogates(text: str) -> str:
+    return _SURROGATE.sub(lambda match: f"\\u{ord(match.group()):04x}", text)
 
 
 def judge_leaves(
@@ -110,20 +102,23 @@ def judge_leaves(
     wanted: Mapping[JsonPath, Any],
     owned: Mapping[JsonPath, frozenset[str]],
     retiring: Iterable[JsonPath],
+    *,
+    pending: Mapping[JsonPath, str] = _NO_PENDING,
 ) -> tuple[LeafVerdict, ...]:
-    retire: list[LeafVerdict] = []
-    for path in dict.fromkeys(retiring):
-        present, on_disk = lookup(document, path)
-        if path in wanted or not present:
-            continue
-        kind: LeafKind = "retire" if leaf_digest(on_disk) in owned.get(path, ()) else "owned-key"
-        retire.append(LeafVerdict(path, kind))
+    def held(path: JsonPath) -> frozenset[str]:
+        return owned.get(path, frozenset())
+
+    dropped = (
+        (path, dropped_verdict(document, path, held(path), pending.get(path)))
+        for path in dict.fromkeys(retiring)
+        if path not in wanted
+    )
     return (
         *(
-            LeafVerdict(path, _wanted_verdict(document, path, value, owned.get(path)))
+            LeafVerdict(path, wanted_verdict(document, path, value, held(path), pending.get(path)))
             for path, value in wanted.items()
         ),
-        *retire,
+        *(LeafVerdict(path, kind) for path, kind in dropped if kind is not None),
     )
 
 
@@ -145,15 +140,15 @@ def apply_leaves(
 
 
 def leaf_refusal(verdict: LeafVerdict) -> str:
-    project, server = verdict.path[1], verdict.path[-1]
+    server = verdict.path[-1]
     if verdict.kind == "user-defined":
         return (
-            f"MCP server {server} for {project} in .claude.json was not written by loadout; "
-            f"run `claude mcp remove {server} -s local` in {project}, then sync again"
+            f"MCP server {server} in .claude.json was not written by loadout; run "
+            f"`claude mcp remove {server} -s local` in this repository, then sync again"
         )
     if verdict.kind == "owned-key-removed":
-        return f"MCP server {server} for {project} was removed outside loadout; sync with --force to restore it"
-    return f"MCP server {server} for {project} was edited outside loadout; sync with --force to replace it"
+        return f"MCP server {server} was removed outside loadout"
+    return f"MCP server {server} was edited outside loadout"
 
 
 def _read_bytes(path: Path) -> bytes | None:
@@ -175,9 +170,12 @@ def _parse(path: Path, raw: bytes | None) -> dict[str, Any]:
     return document
 
 
+def read_claude_document(path: Path) -> dict[str, Any]:
+    return _parse(path, _read_bytes(path))
+
+
 def _serialize(path: Path, document: Mapping[str, Any], raw: bytes | None) -> bytes:
-    dumped = json.dumps(document, indent=2, ensure_ascii=False)
-    text = _SURROGATE.sub(lambda match: f"\\u{ord(match.group()):04x}", dumped)
+    text = escape_surrogates(json.dumps(document, indent=2, ensure_ascii=False))
     try:
         return (text + "\n" if raw is not None and raw.endswith(b"\n") else text).encode()
     except UnicodeEncodeError as error:
@@ -221,17 +219,18 @@ def _owned_after(
     return {**taken, **{path: digest for path, digest in survivors.items() if digest is not None}}
 
 
-def _write_once(
+def _write_once(  # noqa: PLR0913, PLR0917
     path: Path,
     wanted: Mapping[JsonPath, Any],
     owned: Mapping[JsonPath, frozenset[str]],
     retiring: tuple[JsonPath, ...],
+    pending: Mapping[JsonPath, str],
     force: bool,
 ) -> LeafResult:
     target = Path(os.path.realpath(path))
     raw = _read_bytes(target)
     document = _parse(path, raw)
-    verdicts = judge_leaves(document, wanted, owned, retiring)
+    verdicts = judge_leaves(document, wanted, owned, retiring, pending=pending)
     refused = _refused(verdicts, force)
     refused_paths = {verdict.path for verdict in refused}
     acting = [verdict for verdict in verdicts if verdict.path not in refused_paths]
@@ -243,7 +242,7 @@ def _write_once(
     )
     if not result.written and not result.retired:
         return result
-    content = _serialize(path, apply_leaves(document, wanted, retiring, refused_paths), raw)
+    content = _serialize(path, apply_leaves(document, wanted, result.retired, refused_paths), raw)
     mode = stat.S_IMODE(target.stat().st_mode) if raw is not None else 0o600
 
     def unchanged_since_read() -> None:
@@ -259,19 +258,20 @@ def _write_once(
     return result
 
 
-def write_leaves(
+def write_leaves(  # noqa: PLR0913
     path: Path,
     wanted: Mapping[JsonPath, Any],
     owned: Mapping[JsonPath, frozenset[str]],
     retiring: Iterable[JsonPath],
     *,
     force: bool,
+    pending: Mapping[JsonPath, str] = _NO_PENDING,
 ) -> LeafResult:
     retire = tuple(retiring)
     with claude_json_locks(path):
         for _ in range(2):
             try:
-                return _write_once(path, wanted, owned, retire, force)
+                return _write_once(path, wanted, owned, retire, pending, force)
             except _Retry:
                 continue
     raise LoadoutError(f"{path} changed while loadout held the locks; run sync again")

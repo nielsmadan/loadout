@@ -86,7 +86,6 @@ def test_a_pattern_under_an_unlistable_parent_is_unlisted(tmp_path: Path) -> Non
 
     assert expansion.unlisted == ("~/locked/app*",)
     assert expansion.unlisted_under == ((tmp_path / "locked").resolve(),)
-    assert expansion.unmatched == ("~/missing/app*",)
 
 
 def test_a_present_root_is_present(tmp_path: Path) -> None:
@@ -118,7 +117,7 @@ def test_a_root_that_cannot_be_stated_is_unreachable(tmp_path: Path) -> None:
 
 
 def _target(root: Path) -> Target:
-    return Target(root=root, git_dir=root / ".git", common_dir=root / ".git", device=0)
+    return Target(root=root, common_dir=root / ".git", device=0)
 
 
 def test_refuse_unsafe_outputs_refuses_a_path_in_a_nested_repository(tmp_path: Path) -> None:
@@ -192,12 +191,10 @@ def test_checkouts_are_targets_and_a_plain_folder_is_a_note(tmp_path: Path) -> N
     )
 
     assert expansion.targets == (
-        Target(app1, app1 / ".git", app1 / ".git", os.stat(app1).st_dev),
-        Target(app2, app2 / ".git", app2 / ".git", os.stat(app2).st_dev),
+        Target(app1, app1 / ".git", os.stat(app1).st_dev),
+        Target(app2, app2 / ".git", os.stat(app2).st_dev),
     )
-    assert expansion.skipped == (
-        SkippedTarget(app3, "not-a-checkout", "not a git checkout", False),
-    )
+    assert expansion.skipped == (SkippedTarget(app3, "not-a-checkout", "not a git checkout"),)
     assert expansion.matched == frozenset({app1, app2, app3})
 
 
@@ -291,7 +288,7 @@ def test_without_git_on_path_a_probe_is_a_git_failure(
 
     assert isinstance(result, SkippedTarget)
     assert (result.kind, result.failure) == ("git-failed", True)
-    assert "git could not be run" in result.reason
+    assert "git is not on PATH" in result.reason
 
 
 @pytest.mark.integration
@@ -350,9 +347,7 @@ def test_a_plain_folder_in_an_enclosing_checkout_is_a_note_and_a_nested_clone_is
     )
 
     assert [target.root for target in expansion.targets] == [app1]
-    assert expansion.skipped == (
-        SkippedTarget(plain, "not-a-checkout", "not a git checkout", False),
-    )
+    assert expansion.skipped == (SkippedTarget(plain, "not-a-checkout", "not a git checkout"),)
 
 
 @pytest.mark.integration
@@ -373,9 +368,7 @@ def test_a_bare_repository_matched_by_a_pattern_is_a_not_a_checkout_note(
 
     assert [target.root for target in expansion.targets] == [app]
     assert expansion.skipped == (
-        SkippedTarget(
-            bare.resolve(), "not-a-checkout", "a bare repository has no working tree", False
-        ),
+        SkippedTarget(bare.resolve(), "not-a-checkout", "a bare repository has no working tree"),
     )
 
 

@@ -1,11 +1,22 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
-from typing import Any, Literal
+from dataclasses import dataclass, field
+from typing import Any
 
+from .credentials import credential_material
 from .errors import LoadoutError
-from .json_paths import JsonPath, display_path, leaf_digest, lookup, with_path, without_path
+from .json_paths import (
+    JsonPath,
+    OwnershipKind,
+    display_path,
+    dropped_verdict,
+    leaf_digest,
+    lookup,
+    wanted_verdict,
+    with_path,
+    without_path,
+)
 
 
 @dataclass(frozen=True)
@@ -19,18 +30,11 @@ class DocumentRecord:
     created: bool
     owned_keys: Mapping[JsonPath, str]
     owned_rules: Mapping[JsonPath, tuple[str, ...]]
+    pending_keys: Mapping[JsonPath, str] = field(default_factory=dict)
+    pending_rules: Mapping[JsonPath, tuple[str, ...]] = field(default_factory=dict)
 
 
-DocumentKind = Literal[
-    "create",
-    "unchanged",
-    "update",
-    "adopt",
-    "remove",
-    "user-defined",
-    "owned-key",
-    "owned-key-removed",
-]
+DocumentKind = OwnershipKind
 
 
 @dataclass(frozen=True)
@@ -62,6 +66,12 @@ def carry_saved_rules(
     return [*_ordered_unique(rendered), *carried], carried
 
 
+def _carried_entry(path: JsonPath, entry: str) -> str:
+    reason = credential_material(entry.encode())
+    shown = entry if reason is None else f"a rule not shown because it holds a secret ({reason})"
+    return f"{display_path(path)}: {shown}"
+
+
 def _recorded_keys(recorded: DocumentRecord | None) -> Mapping[JsonPath, str]:
     return recorded.owned_keys if recorded is not None else {}
 
@@ -70,8 +80,29 @@ def _recorded_rules(recorded: DocumentRecord | None) -> Mapping[JsonPath, tuple[
     return recorded.owned_rules if recorded is not None else {}
 
 
+def _pending_keys(recorded: DocumentRecord | None) -> Mapping[JsonPath, str]:
+    return recorded.pending_keys if recorded is not None else {}
+
+
+def _pending_rules(recorded: DocumentRecord | None) -> Mapping[JsonPath, tuple[str, ...]]:
+    return recorded.pending_rules if recorded is not None else {}
+
+
 def _rule_paths(owned: OwnedJson, recorded: DocumentRecord | None) -> list[JsonPath]:
-    return list(dict.fromkeys([*(path for path, _ in owned.rules), *_recorded_rules(recorded)]))
+    return list(
+        dict.fromkeys(
+            [
+                *(path for path, _ in owned.rules),
+                *_recorded_rules(recorded),
+                *_pending_rules(recorded),
+            ]
+        )
+    )
+
+
+def _holds_pending(document: Mapping[str, Any], path: JsonPath, digest: str) -> bool:
+    present, value = lookup(document, path)
+    return present and leaf_digest(value) == digest
 
 
 def _disk_list(document: Mapping[str, Any], path: JsonPath) -> tuple[bool, list[str] | None]:
@@ -83,29 +114,8 @@ def _disk_list(document: Mapping[str, Any], path: JsonPath) -> tuple[bool, list[
     return True, None
 
 
-def _key_verdict(
-    existing: Mapping[str, Any], path: JsonPath, wanted: Any, digest: str | None
-) -> DocumentKind:
-    present, value = lookup(existing, path)
-    if digest is None:
-        if not present:
-            return "create"
-        return "adopt" if leaf_digest(value) == leaf_digest(wanted) else "user-defined"
-    if not present:
-        return "owned-key-removed"
-    on_disk = leaf_digest(value)
-    if on_disk == leaf_digest(wanted):
-        return "unchanged"
-    return "update" if on_disk == digest else "owned-key"
-
-
-def _dropped_key_verdict(
-    existing: Mapping[str, Any], path: JsonPath, digest: str
-) -> DocumentKind | None:
-    present, value = lookup(existing, path)
-    if not present:
-        return None
-    return "remove" if leaf_digest(value) == digest else "owned-key"
+def _owned(digest: str | None) -> frozenset[str]:
+    return frozenset() if digest is None else frozenset({digest})
 
 
 def _rule_verdict(
@@ -113,6 +123,7 @@ def _rule_verdict(
     path: JsonPath,
     rendered: tuple[str, ...],
     before: tuple[str, ...],
+    pending: tuple[str, ...],
 ) -> DocumentKind | None:
     present, disk = _disk_list(existing, path)
     if disk is None:
@@ -121,8 +132,8 @@ def _rule_verdict(
         return "owned-key-removed"
     if any(entry not in disk for entry in rendered):
         return "update" if present else "create"
-    if any(entry not in rendered and entry in disk for entry in before):
-        return "update" if rendered else "remove"
+    if any(entry not in rendered and entry in disk for entry in (*before, *pending)):
+        return "update" if rendered else "retire"
     if not rendered:
         return None
     return "unchanged" if all(entry in before for entry in rendered) else "adopt"
@@ -137,22 +148,33 @@ def judge_document(
             *(DocumentVerdict(path, "create") for path, entries in owned.rules if entries),
         )
     digests = _recorded_keys(recorded)
+    pending = _pending_keys(recorded)
     rendered_keys = {path for path, _ in owned.keys}
     rendered_rules = dict(owned.rules)
     before_rules = _recorded_rules(recorded)
+    pending_rules = _pending_rules(recorded)
     keys = [
-        DocumentVerdict(path, _key_verdict(existing, path, value, digests.get(path)))
+        DocumentVerdict(
+            path,
+            wanted_verdict(existing, path, value, _owned(digests.get(path)), pending.get(path)),
+        )
         for path, value in owned.keys
     ]
     dropped = [
-        (path, _dropped_key_verdict(existing, path, digest))
-        for path, digest in digests.items()
+        (path, dropped_verdict(existing, path, _owned(digests.get(path)), pending.get(path)))
+        for path in dict.fromkeys([*digests, *pending])
         if path not in rendered_keys
     ]
     rules = [
         (
             path,
-            _rule_verdict(existing, path, rendered_rules.get(path, ()), before_rules.get(path, ())),
+            _rule_verdict(
+                existing,
+                path,
+                rendered_rules.get(path, ()),
+                before_rules.get(path, ()),
+                pending_rules.get(path, ()),
+            ),
         )
         for path in _rule_paths(owned, recorded)
     ]
@@ -167,20 +189,25 @@ def apply_owned(
 ) -> AppliedDocument:
     base: Mapping[str, Any] = existing if existing is not None else {}
     rendered_keys = {path for path, _ in owned.keys}
+    pending = _pending_keys(recorded)
     document = dict(base)
     for path in _recorded_keys(recorded):
         if path not in rendered_keys:
+            document = without_path(document, path)
+    for path, digest in pending.items():
+        if path not in rendered_keys and _holds_pending(base, path, digest):
             document = without_path(document, path)
     for path, value in owned.keys:
         document = with_path(document, path, value)
     rendered_rules = dict(owned.rules)
     before_rules = _recorded_rules(recorded)
+    pending_rules = _pending_rules(recorded)
     carried: list[str] = []
     owned_rules: dict[JsonPath, tuple[str, ...]] = {}
     for path in _rule_paths(owned, recorded):
         present, disk = _disk_list(base, path)
         rendered = rendered_rules.get(path, ())
-        before = before_rules.get(path, ())
+        before = (*before_rules.get(path, ()), *pending_rules.get(path, ()))
         if disk is None:
             if rendered:
                 raise LoadoutError(f"{display_path(path)} is not a list of rules")
@@ -188,11 +215,11 @@ def apply_owned(
         merged, kept = carry_saved_rules(rendered, disk, before)
         if merged or present:
             document = with_path(document, path, merged)
-        carried.extend(f"{display_path(path)}: {entry}" for entry in kept)
+        carried.extend(_carried_entry(path, entry) for entry in kept)
         written = tuple(
             entry for entry in _ordered_unique(rendered) if entry in before or entry not in disk
         )
-        if written or (path in before_rules and present and not merged):
+        if written or (path in {**before_rules, **pending_rules} and present and not merged):
             owned_rules[path] = written
     verdicts = judge_document(existing, owned, recorded)
     record = DocumentRecord(
@@ -229,11 +256,20 @@ def _prune_emptied(
 
 def strip_owned(existing: Mapping[str, Any], recorded: DocumentRecord) -> dict[str, Any] | None:
     document = dict(existing)
-    for path in recorded.owned_keys:
+    pending = [
+        path
+        for path, digest in recorded.pending_keys.items()
+        if _holds_pending(existing, path, digest)
+    ]
+    for path in dict.fromkeys([*recorded.owned_keys, *pending]):
         present, _ = lookup(document, path)
         if present:
             document = _prune_emptied(without_path(document, path), existing, path[:-1])
-    for path, entries in recorded.owned_rules.items():
+    rules = {
+        path: (*recorded.owned_rules.get(path, ()), *recorded.pending_rules.get(path, ()))
+        for path in dict.fromkeys([*recorded.owned_rules, *recorded.pending_rules])
+    }
+    for path, entries in rules.items():
         present, disk = _disk_list(document, path)
         if not present or disk is None:
             continue

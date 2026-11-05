@@ -20,6 +20,15 @@ def path_key(path: Path) -> str:
     return hashlib.sha256(str(path.resolve()).encode()).hexdigest()[:16]
 
 
+def same_path(left: Path, right: Path) -> bool:
+    if left == right or path_key(left) == path_key(right):
+        return True
+    try:
+        return os.path.samefile(left, right)
+    except OSError:
+        return False
+
+
 def _holder_pid(lock_path: Path) -> str:
     try:
         return lock_path.read_text().strip() or "unknown"

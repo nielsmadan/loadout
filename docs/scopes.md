@@ -146,6 +146,7 @@ of the five do have one — Claude's `CLAUDE.local.md`, Codex's `AGENTS.override
 represented here, so the merge path
 must exist anyway, and the only thing native mechanisms would buy is committed outputs, which
 nobody needs given all-or-nothing adoption. Revisit only if that adoption model ever changes.
+That model changed for repositories that have not adopted loadout; see [0045](decisions/0045-an-overlay-source-renders-into-repositories-that-have-not-adopted-loadout.md).
 
 Consequences:
 
