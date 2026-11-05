@@ -520,7 +520,10 @@ def retire_orphans(state: SyncState, outputs: Mapping[Path, Output]) -> tuple[li
 
 
 def deploy(
-    state: SyncState, outputs: Mapping[Path, Output], sources: Callable[[Path], str] | None = None
+    state: SyncState,
+    outputs: Mapping[Path, Output],
+    sources: Callable[[Path], str] | None = None,
+    read: Mapping[Path, bytes | None] | None = None,
 ) -> tuple[list[Path], int]:
     """Write rendered outputs, record them, and ignore them: what sync does once the
     guard has passed, shared with init's first render. Returns the paths written and
@@ -533,7 +536,7 @@ def deploy(
             root, _in_project(root, (*outputs, *output_record_paths(outputs), *orphans)), outputs
         )
     sources = sources or digests()
-    written = write_outputs(outputs, sources)
+    written = write_outputs(outputs, sources, read)
     # A shared document that would stay empty is never created, so it is no record of
     # loadout's to undo (review 3, batch 2.5), and an entry from when it was is dropped:
     # its hashes would judge the next one the harness makes (review 4, batch 2.2).

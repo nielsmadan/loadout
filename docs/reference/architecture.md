@@ -156,8 +156,23 @@ Left as they are on purpose; each says what it costs.
   changes the contract for every caller. The next `overlay remove` cleans up.
 - **A hand-edited `overlays.toml` may list one folder under two case spellings.** Only `overlay
   add` refuses it; the file still loads with both entries.
-- **Harness-locked files other than `~/.claude.json` are rewritten without the harness's lock.**
-  Pi locks its global `settings.json` with proper-lockfile (`settings.json.lock`, Pi's
-  `dist/core/settings-manager.js` `acquireLockSyncWithRetry`), and loadout's global write of that
-  file does not take it yet. Whether Codex, Droid and OpenCode lock their config files is not
-  established.
+- **Droid's global `settings.json` is rewritten without Droid's lock.** Droid (binary of
+  2026-10-31) locks it with its own protocol, not proper-lockfile: a directory
+  `~/.factory/state/settings.json.lock` renamed into place from a `.pending` directory holding
+  `owner.json`, reclaimed when its owner's pid is dead or, ownerless, after ten seconds. An empty
+  directory loadout made there would be replaced by that rename, so joining it needs Droid's owner
+  record. Codex 0.166.0 names no lock for `config.toml`, `hooks.json`, `rules/` or `AGENTS.md`
+  (verified negative: every `.lock` and lock-error string in the binary). Whether OpenCode locks
+  `opencode.json` is not established: its binary is unreadable from the sandbox.
+- **The guard judges `~/.claude.json` and Pi's `settings.json` before their harness lock is
+  taken.** Sync's write of `~/.claude.json` merges again inside the lock, so Claude's own keys
+  survive, but a Claude save to a key loadout owns that lands between the guard and the write is
+  overwritten. Sync's write of Pi's `settings.json` re-reads it inside the lock and refuses when it
+  changed, but retiring that file deletes it inside the lock without the re-read, so a Pi save
+  after the guard goes with it, and init's first render writes it without the re-read.
+- **Init writes `~/.claude.json` and Pi's `settings.json` without either harness's lock** in two
+  places. When the topology phase is applied, a linked output is replaced by a copy of the file it
+  pointed at, read when the migration was planned (`migration_transaction._topology`, installed
+  by `migration_images.install`); and a rollback reinstalls each file's before-image
+  (`migration_backup.restore`). A Claude or Pi save made during `init global` over a linked file,
+  or between init's start and its rollback, is lost, replaced by the bytes init read earlier.

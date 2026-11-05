@@ -190,7 +190,10 @@ lock is a directory named `<config path>.lock`, made with `mkdir`, and taken ove
 old. The config path is the config directory joined with `.claude.json` and is never resolved, so a
 symlinked `~/.claude.json` is locked at the link's path. Loadout joins that lock
 (`overlay_lock.claude_json_locks`) and never breaks it; the global scope's `~/.claude.json` write
-takes the same lock around its read, merge and replace, as the overlay does.
+takes the same lock around its read, merge and replace, and around retiring loadout's keys, as the
+overlay does. A held lock is waited on for 15 seconds, then sync exits 3 naming the directory and
+writes nothing to the file; loadout refreshes its own directory's mtime every five seconds so
+Claude never takes it over ([sync.md](sync.md#files-a-harness-locks)).
 
 **Files Claude reads instead.** Verified in the same binary:
 `function h_(){…let o=U($e(),".config.json"),t=cAr();try{let _=le().statSync(o);if(_.isFile()&&(_.size>0||(_.mode&146)!==0&&!le().existsSync(t)))return o}catch{}return t}`.

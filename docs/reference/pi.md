@@ -43,6 +43,14 @@ is refused as a manifest error, exit 3: "pi: `settings` renders only through the
 declare `plugins` under [pi], even as an empty list". As a note, it let the next sync retire the
 whole file, `defaultModel` included, once `plugins` was removed.
 
+Pi 1.4.0 saves `settings.json` under proper-lockfile 4.1.2 (`lockfile.lockSync(path, { realpath: false })`
+in `dist/core/settings-manager.js`), so loadout's write and retirement of that file take the same
+lock: the directory `<agent dir>/settings.json.lock`, made with `mkdir` beside an unresolved link,
+never broken, its mtime refreshed every five seconds while held (`overlay_lock.harness_lock`). A
+held lock is waited on for 15 seconds, then sync exits 3 naming the directory and writes nothing to
+the file. Inside the lock sync reads the file again and, if Pi saved it since sync read it before
+rendering, writes nothing and exits 3 ([sync.md](sync.md#files-a-harness-locks)).
+
 ## Resolution
 
 **Last matching rule wins**; the package docs say "put broad catch-alls first."

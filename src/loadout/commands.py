@@ -20,7 +20,7 @@ from .emit import (
     template_skills,
 )
 from .errors import LoadoutError, UsageError
-from .files import DriftKind, refuse_unparsable
+from .files import DriftKind, pi_settings_as_read, refuse_unparsable
 from .git_privacy import still_tracked
 from .machine import fixed, registration, state_dir
 from .notices import collect_notices
@@ -235,6 +235,7 @@ def cmd_sync(root: Path, profile: str, force: bool = False) -> int:
     context = RenderContext(registration=fixed(registration()))
     refuse_unregistered_global(root, context)
     prune_vanished()
+    read = pi_settings_as_read()
     # Rendered once and reused for the guard, the write and the record, so what is
     # recorded is provably what was written rather than a third render of it.
     outputs = render_all(root, profile, context)
@@ -276,7 +277,7 @@ def cmd_sync(root: Path, profile: str, force: bool = False) -> int:
 
     # Read before writing: once deployed, the value a key held is gone.
     managed = newly_managed(before, outputs)
-    written, ignored = deploy(before, outputs, sources)
+    written, ignored = deploy(before, outputs, sources, read)
     for path in written:
         print(f"wrote {_display(path, root)}")
     for path, key, was in managed:

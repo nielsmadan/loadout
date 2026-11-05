@@ -165,7 +165,7 @@ target's outputs, and the other targets, to proceed unless noted. See the
 | `… already holds a value the overlay did not write` or `MCP server S … was not written by loadout` (exit 3) | A key in a shared document, or a server in `~/.claude.json`, has a different value that the overlay never wrote. `--force` does not replace it; remove it, or move it into the overlay source |
 | `F already defines the MCP server S, which the overlay also defines` (exit 3) | A user-level file of Codex, Droid, OpenCode or Pi defines that name; the overlay would merge into or replace it. Rename one |
 | `the overlay record F cannot be read` or `… was written by a newer loadout; upgrade loadout` (exit 3) | Fix the file; `--force` treats an unreadable record as empty, and never a newer one. Another overlay's bad record blocks `sync`: run `loadout overlay remove NAME --force` for it, or delete it when the message says it names no overlay |
-| `another loadout process (pid N) is syncing …` or `Claude Code holds F.lock` (exit 3) | A concurrent run, or a Claude session saving `~/.claude.json`. Wait and run again; never delete the lock |
+| `another loadout process (pid N) is syncing …`, `another process holds L; wait for it to finish …` or `Claude Code holds F.lock` (exit 3) | A concurrent run (with no live loadout pid to name, the lock file `L` is named instead), or a Claude session saving `~/.claude.json`. Wait and run again. If it keeps failing with no `claude` process running, `F.lock` was left by a killed process: Claude reclaims one older than 10 seconds, or remove that directory by hand ([below](#sync-waits-then-fails-naming-a-lock)) |
 | `Claude Code reads F, not …/.claude.json` (exit 3) | A legacy `.config.json` or `CLAUDE_CODE_CUSTOM_OAUTH_URL` makes Claude read another file. Move the legacy file, or unset the variable |
 | `the targets were matched under HOME …` (exit 3) | The record was written under another `HOME`. Nothing is retired; run with that `HOME` |
 | `skipped: …` | The folder is not a git checkout, is a submodule or a linked worktree, or is a bare repository. Nothing was written and the exit code is unchanged. `skipped: …` with a git error, or an unsafe target, is exit 3 |
@@ -185,6 +185,22 @@ link by every command. Loadout never writes through it: `init global` of the sou
 registers changes nothing there, and an init that would change the registration exits 3, naming
 the link's target and printing the lines to put in it. Add them yourself, or replace the link
 with a regular file and run init again.
+
+## Sync waits, then fails naming a `.lock`
+
+`Claude Code holds …/.claude.json.lock` or `Pi holds …/settings.json.lock` (exit 3), after sync
+has waited about 15 seconds. The harness was saving that file, `~/.claude.json` or Pi's
+`settings.json`, and holds its lock; sync waits for it and writes nothing to the file without it.
+Close the session that is saving, or wait, then run sync again.
+
+A lock directory can outlive the process that made it, when a harness or sync is killed mid-save.
+Claude Code and Pi treat a lock directory older than 10 seconds as stale and reclaim it the next
+time they lock the file, but loadout never removes a directory it did not make. If sync keeps
+failing with no harness running, check that no `claude` or `pi` process is running, then remove the
+`.lock` directory the message names by hand and run sync again.
+
+`Pi saved …/settings.json during the sync, so it was not written; run sync again` (exit 3) means
+Pi saved its settings while sync was rendering them. Sync wrote nothing to the file; run it again.
 
 ## Sync refuses a skill or agent name
 

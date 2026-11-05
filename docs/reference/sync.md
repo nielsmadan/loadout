@@ -127,6 +127,37 @@ since even empty it makes `bash` ask; its project file is written only with a ru
 written, empty when there are no rules. Sync does not create `~/.codex/config.toml` just to leave
 it empty.
 
+## Files a harness locks
+
+Two files sync rewrites are ones a harness saves under a lock of its own, and both use
+proper-lockfile: Claude Code's `~/.claude.json` ([claude-code.md](claude-code.md)) and Pi's global
+`settings.json` ([pi.md](pi.md)). The lock is a directory, `<file>.lock`, made with `mkdir` at the
+path the harness derives, without resolving links, so a symlinked file is locked beside the link.
+
+The global sync takes that lock around writing such a file and around retiring it, after a
+`flock` of its own on the file's resolved path (`overlay_lock.harness_lock`). What the lock covers
+differs between the two files:
+
+- `~/.claude.json` is merged, so inside the lock sync reads it again, merges loadout's keys into
+  what it finds, compares the result with what is there and replaces it atomically. Claude's own
+  keys saved meanwhile survive.
+- Pi's `settings.json` is rendered whole before the lock, carrying `lastChangelogVersion` from the
+  file as sync read it before rendering. Inside the lock sync reads the file again and compares it
+  with those bytes; if Pi saved it in between, sync writes nothing to it and exits 3, `Pi saved
+  <file> during the sync, so it was not written; run sync again`.
+
+A lock already held is waited on for up to 15 seconds; then sync exits 3 naming the directory,
+`<Harness> holds <file>.lock; close the <Harness> session that is saving, or wait, then run sync
+again`, and has written nothing to that file. The directory is never removed unless loadout made
+it, and never taken over however old. Both harnesses take over a lock whose mtime is more than ten
+seconds old, so loadout touches its own every five seconds while it holds it, as proper-lockfile
+does for its holder, and only while the directory is still the one it made and carries the mtime
+it last set. What is still written without the lock, or judged before it, is listed in
+[architecture.md](architecture.md#known-gaps).
+
+Droid also locks its global `settings.json`, with a protocol of its own that loadout does not join
+yet; see [architecture.md](architecture.md#known-gaps).
+
 ## Overlays
 
 An [overlay](../user/guides/overlays.md) renders into repositories that have not adopted loadout
@@ -272,7 +303,8 @@ out of it.
   ([0047](../decisions/0047-writing-info-exclude-inside-git-despite-containment-protected.md)).
 - For `~/.claude.json`, also Claude Code's own: the directory `<path>.lock`, made with `mkdir`
   at the path Claude derives, without resolving links
-  ([0048](../decisions/0048-nested-json-ownership-claude-json-leaves-and-owned-keys-in-shared-documents.md)).
+  ([0048](../decisions/0048-nested-json-ownership-claude-json-leaves-and-owned-keys-in-shared-documents.md)),
+  the same lock the global sync takes ([Files a harness locks](#files-a-harness-locks)).
   The bytes are compared again just before the rename, inside both locks.
 
 Nesting runs one way: the overlay-folder lock, then a file's lock, then Claude's directory.

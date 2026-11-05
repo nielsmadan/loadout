@@ -14,7 +14,7 @@ from .atomic import replace_atomically
 from .credentials import credential_material
 from .errors import LoadoutError, unwritable, write_denied
 from .output import Copied, FrozenFile, Merged, Output, SharedText, file_sha256, sha256
-from .overlay_lock import claude_json_locks
+from .overlay_lock import harness_lock, locking_harness, pi_settings
 from .surgery import DocumentFormat, apply
 from .written import owned_values
 
@@ -120,35 +120,54 @@ def _write_frozen(
     return written
 
 
-def _is_claude_json(path: Path, content: Output) -> bool:
-    return isinstance(content, Merged) and path.name == ".claude.json"
+def _current_bytes(path: Path) -> bytes | None:
+    try:
+        return path.read_bytes()
+    except OSError:
+        return None
 
 
-def _write_claude_json(
-    path: Path, content: Output, sources: Callable[[Path], str] | None, umask: int
+def pi_settings_as_read() -> dict[Path, bytes | None]:
+    settings = pi_settings()
+    return {} if settings is None else {settings: _current_bytes(settings)}
+
+
+def _write_locked(
+    path: Path,
+    content: Output,
+    sources: Callable[[Path], str] | None,
+    umask: int,
+    read: Mapping[Path, bytes | None],
 ) -> list[Path]:
     pending = _frozen(path, content)
     if all(_unchanged(target, text, sources) for target, text in pending.items()):
         return []
-    with claude_json_locks(path):
+    with harness_lock(path):
+        key = Path(os.path.abspath(path))
+        if key in read and _current_bytes(path) != read[key]:
+            raise LoadoutError(
+                f"Pi saved {path} during the sync, so it was not written; run sync again"
+            )
         return _write_frozen(_frozen(path, content), sources, umask)
 
 
 def write_outputs(
-    outputs: Mapping[Path, Output], sources: Callable[[Path], str] | None = None
+    outputs: Mapping[Path, Output],
+    sources: Callable[[Path], str] | None = None,
+    read: Mapping[Path, bytes | None] | None = None,
 ) -> list[Path]:
     """`sources` is a digest of copied sources a caller already reads them through."""
-    frozen: dict[Path, dict[Path, str | FrozenFile | Copied]] = {}
-    for path, content in outputs.items():
-        if not _is_claude_json(path, content):
-            frozen[path] = _frozen(path, content)
+    locked = {path for path in outputs if locking_harness(path) is not None}
+    frozen = {
+        path: _frozen(path, content) for path, content in outputs.items() if path not in locked
+    }
     umask = process_umask()
     written: list[Path] = []
     for path, content in outputs.items():
         if path in frozen:
             written.extend(_write_frozen(frozen[path], sources, umask))
         else:
-            written.extend(_write_claude_json(path, content, sources, umask))
+            written.extend(_write_locked(path, content, sources, umask, read or {}))
     return written
 
 
