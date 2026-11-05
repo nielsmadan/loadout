@@ -76,7 +76,17 @@ outright; plain `sync` refuses with exit 3 and names the file. One the source no
 has nothing to replace it, so `sync` refuses it with or without `--force` until it is fixed or
 deleted). Settings a harness saves itself, such as Claude Code's `/model`, are drift too; see
 [settings a harness saves itself](../troubleshooting.md#settings-a-harness-saves-itself).
-`check --json` reports the same kind per path and exits with the same code as `check`. How `sync`
+
+`check --json` prints one object with `status`, `exit_code`, `drift`, a list of `{"path", "kind"}`
+with the same kind per path, and `notes`, and exits with the same code as `check`:
+
+| `status` | `exit_code` | When |
+| --- | --- | --- |
+| `clean` | 0 | every generated file matches the source |
+| `drift` | 1 | at least one file is listed in `drift` |
+| `error` | 2, 3, 4 or 130 | a usage, source or unexpected error, or Ctrl-C; `error` holds the message. When an overlay takes part, `errors` lists each one instead (see [overlays](#overlays)) |
+
+How `sync`
 tells its own output from an edit, what it retires, and what it leaves alone is described in
 [what sync protects, retires and reports](https://github.com/nielsmadan/loadout/blob/main/docs/reference/sync.md).
 A refused `sync` prints the diff for each file it refuses; when the terminal shortens it, the
@@ -259,7 +269,7 @@ loadout init global --dry-run --json
 | `--root PATH` | `init project` | Project directory to initialise, used as given, also a folder below the repository's top level such as `apps/web`; default the Loadout or Git root enclosing the current directory |
 | `DIR` (positional) | `init global` | Existing directory: a global source, or the directory to hold a new one; default the current directory |
 | `--registration keep\|replace` | `init global` | Resolve a conflict with the source this machine already registers |
-| `--dry-run` | `init project`, `init global` | Preview without changing the source, Git or any destination; exits 0 |
+| `--dry-run` | `init project`, `init global` | Preview without changing the source, Git or any destination; exits 0, or 2 when the plan is incomplete |
 | `--yes` | `init project`, `init global` | Apply a fully resolved plan without asking |
 | `--json` | `init project`, `init global` | Print one JSON object instead of text; see the status table below |
 
@@ -355,7 +365,11 @@ Configuration init cannot carry is refused instead; see
 [what init refuses](https://github.com/nielsmadan/loadout/blob/main/docs/reference/migration.md#what-init-refuses).
 Loadout 1.0 carries only Pi's shell and MCP rules, so a pi-permission-system config holding any
 other key the extension acts on, such as `"write": "deny"`, a top-level `"*"` other than `ask`, or
-`"yoloMode": true`, is refused with `uncarried-setting`, naming each key and the file. Remove those
+`"yoloMode": true`, is refused with `uncarried-setting`, naming each key and the file. At project
+scope a project value replaces the global one, so any top-level `"*"`, and `yoloMode`,
+`piInfrastructureReadPaths`, `authorizerChain` or `shellTools` at any value, is refused too; the
+[full table](https://github.com/nielsmadan/loadout/blob/main/docs/reference/pi.md#what-init-reads-from-a-pi-config)
+is in the Pi reference. Remove those
 keys from the file, or leave Pi out of this init by naming only the other harnesses with
 `--harness`. A key that changes only the extension's logs or prompts, such as `debugLog`, is noted
 and not carried.
@@ -428,7 +442,7 @@ loadout template sync python
 loadout template list
 ```
 
-All four accept `--root PATH` and work on a project. Outside one they exit 3: templates are
+All three accept `--root PATH` and work on a project. Outside one they exit 3: templates are
 applied to projects and authored in your global source, as `templates/<name>.toml` manifests or
 `templates/<name>/` directories.
 Bare `template add` in a project lists the templates your sources offer.

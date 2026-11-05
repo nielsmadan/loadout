@@ -124,7 +124,8 @@ harnesses = ["claude", "codex", "opencode"]
 ```
 
 Then run `loadout sync`. OpenCode uses the existing `AGENTS.md` and receives its own
-`opencode.json`, and `.gitignore` gains its generated paths.
+`opencode.json`, and `.gitignore` gains its generated paths. With no `[shell] default` in
+`loadout/permissions.toml`, OpenCode asks before any shell command no rule names.
 For OpenCode skills, also follow the [setup note](reference/harnesses.md#opencode-skills).
 
 ## Use this in an existing repository

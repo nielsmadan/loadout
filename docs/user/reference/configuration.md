@@ -38,7 +38,8 @@ The file is machine state: never version-controlled and never generated. It is n
 loadout keeps on the machine. `sync` records what it wrote, per root, in
 `$XDG_CONFIG_HOME/loadout/written/` (an overlay's own record is in `overlay-written/`, and the
 overlays themselves are registered in [`overlays.toml`](#overlaystoml)), and init's backups and a refused sync's full diff,
-`sync-abort.diff`, live under `$XDG_STATE_HOME/loadout/` (`~/.local/state/loadout/` when unset).
+`sync-abort.diff`, and the lock files sync takes, in `overlay-locks/`, live under
+`$XDG_STATE_HOME/loadout/` (`~/.local/state/loadout/` when unset).
 None of it is stamped into a generated file
 ([0008](https://github.com/nielsmadan/loadout/blob/main/docs/decisions/0008-generated-files-carry-no-machine-state.md);
 see also [0010](https://github.com/nielsmadan/loadout/blob/main/docs/decisions/0010-a-machine-config-locates-the-global-source.md)
@@ -149,7 +150,7 @@ so a manifest never spells out a machine path.
 | `plugins` | Plugin fragment name or ordered list, for supporting agents |
 | `substitute` | Map from selected instruction name to replacement name |
 | `preserve` | Foreign top-level keys to carry forward where the target supports them; an error under `[codex]`, where loadout already leaves the keys it does not own alone |
-| `permissions`, `mcp-permissions`, `mcp`, `skills`, `agents`, `module-config` | Automatic; `false` opts out, and `permissions = []` selects no rules |
+| `permissions`, `mcp-permissions`, `mcp`, `skills`, `agents`, `module-config` | Automatic; `true` is the same as leaving the key out, `false` opts out, and `permissions = []` selects no rules |
 
 `[codex]` and `[pi]` with no keys are complete declarations. An unknown agent name, or a slice an
 agent does not offer, is an error listing what is available.
@@ -157,7 +158,7 @@ agent does not offer, is an error listing what is available.
 **Automatic slices.** `permissions`, `mcp-permissions`, `mcp`, `skills`, `agents` and
 `module-config` render without being asked for, for agents that offer them, because none has an
 authoring decision to make. For the last three the directory is the declaration, so dropping a
-tree in renders it. Any of them takes `= false` to opt out; an absent key means automatic:
+tree in renders it. Any of them takes `= false` to opt out; an absent key, or `= true`, means automatic:
 
 ```toml
 [codex]
@@ -801,7 +802,7 @@ A project names templates in `config.toml` (`templates = [...]`), by name and ne
 resolves to `loadout/templates/<name>/` or `loadout/templates/<name>.toml` when the project vendored
 it, then to the `templates/` folder of a source the machine's global manifest declares, and finally
 to the bundled `frontend` or `backend` template. With no machine config, the bundled templates come
-first. Two sources offering one name is an error. The bundled templates ship in the package and work
+first. Two sources offering one name is an error unless it is qualified as `source/name`. The bundled templates ship in the package and work
 offline; they add no dependencies, permission grants, models or credentials.
 
 Templates contribute instructions, skills, MCP servers and permissions through the same project

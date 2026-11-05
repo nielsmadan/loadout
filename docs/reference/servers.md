@@ -69,7 +69,7 @@ the way they vote on which decision is stricter. One section holding both would 
 rules keyed by which field is being read — the kind of thing that reads fine when written and
 produces a defect later.
 
-## Ten destinations, eight built
+## Ten destinations, nine built
 
 Five harnesses, two scopes:
 
@@ -79,7 +79,7 @@ Five harnesses, two scopes:
 | Codex | `~/.codex/config.toml` → `[mcp_servers.*]` | **none for a project source** — an [overlay](#codex-project-config-applies-in-a-trusted-project) writes `.codex/config.toml` |
 | Droid | `${FACTORY_HOME_OVERRIDE:-~}/.factory/mcp.json` | `.factory/mcp.json` |
 | OpenCode | `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` → `mcp` | `opencode.json` → `mcp` |
-| Pi | `${PI_CODING_AGENT_DIR:-~/.pi/agent}/mcp.json` | **none — `.mcp.json` already serves it** |
+| Pi | `${PI_CODING_AGENT_DIR:-~/.pi/agent}/mcp.json` | `.pi/mcp.json` |
 
 Renderers, keyed the way `RENDERERS` in `permissions/renderers.py` names them: `claude-servers`
 (global — the per-entry map wrapped in `{"mcpServers": …}`, a `MergedJsonSpec` that owns only the

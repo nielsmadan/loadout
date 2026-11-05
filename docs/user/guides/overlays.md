@@ -151,8 +151,9 @@ loadout overlay remove work
 ```
 
 This deletes what the overlay wrote in every target, takes its lines out of each exclude file,
-removes its servers from `~/.claude.json`, and unregisters the folder. It works from the record,
-so it also works after the overlay folder or a target is gone. Files edited since sync wrote
+removes its servers from `~/.claude.json`, and unregisters the folder. Folders that held its
+files, such as `.claude/` or `.codex/`, stay in the target even when empty. It works from the
+record, so it also works after the overlay folder or a target is gone. Files edited since sync wrote
 them are refused; `--force` discards the edits, and also forgets a target that cannot be
 reached, such as a repository on an unmounted volume. Without a terminal it needs `--yes`.
 

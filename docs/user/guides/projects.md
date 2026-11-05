@@ -108,7 +108,7 @@ writes that Git still tracks is named in a `WARNING` with the `git rm -r --cache
 untracks it, and `check` reports the same as a note rather than drift, since the file is as
 rendered.
 
-Of the eleven documents a project can generate, three are also the harness's own settings files:
+Of the twelve documents a project can generate, three are also the harness's own settings files:
 `.claude/settings.json`, `.factory/settings.json` and `opencode.json`. Loadout writes its own keys
 into them (permissions, MCP servers, plugins) and keeps the rest; see
 [shared settings files](#shared-settings-files). Edit permission rules in the Loadout source.
@@ -127,7 +127,7 @@ Loadout derives every output path from its project preset. Each harness can gene
 | `codex` | `.codex/rules/permissions.rules`, `AGENTS.md`, `.agents/skills/`, `.codex/agents/` (`<name>.toml`) |
 | `droid` | `.factory/settings.json`, `.factory/hooks.json`, `.factory/mcp.json`, `AGENTS.md`, `.factory/skills/`, `.factory/droids/` |
 | `opencode` | `opencode.json`, `AGENTS.md`, `.opencode/skills/`, `.opencode/agents/` |
-| `pi` | `.pi/extensions/pi-permission-system/config.json`, `AGENTS.md`, `.pi/skills/`, `.pi/agents/` |
+| `pi` | `.pi/extensions/pi-permission-system/config.json`, `.pi/mcp.json`, `AGENTS.md`, `.pi/skills/`, `.pi/agents/` |
 
 A missing `permissions.toml` means the same as an empty one. The harnesses you declare are what make
 loadout own their permission keys, not the file's existence, so without it `sync` writes each key
@@ -154,9 +154,9 @@ code. When Codex and OpenCode need different variants of the same skill, also se
 ### MCP servers
 
 `loadout/mcp.toml` reaches Claude (`.mcp.json`), Droid (`.factory/mcp.json`), OpenCode
-(`opencode.json`'s `mcp` key) and Pi (`.pi/mcp.json`, read once the project is trusted). Codex has
-none yet: whether a server survives Codex's
-project-config filter is unverified. A template contributes its own `mcp.toml` beneath the project.
+(`opencode.json`'s `mcp` key) and Pi (`.pi/mcp.json`, read once the project is trusted). Codex gets
+none at project scope; an [overlay](overlays.md) writes Codex servers. A template contributes its
+own `mcp.toml` beneath the project.
 
 ### Shared settings files
 

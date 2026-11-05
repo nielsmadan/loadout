@@ -49,6 +49,10 @@ The first release defaults to `0.1.0`. Later proposals use git-cliff: `feat` pro
 bump, `fix` a patch, and a breaking change a major bump. Before 1.0 a breaking change bumped the
 minor version instead, since `cliff.toml` sets `breaking_always_bump_major = false`.
 
+A proposal therefore never reaches 1.0 on its own: from `v0.9.3`, `git-cliff --bumped-version`
+proposes `v0.10.0`. Cut 1.0 by naming the version, `just release 1.0.0`; later releases bump from
+it as above.
+
 After confirmation, curtains runs `scripts/prepare_release.py` to update both version fields,
 refreshes `uv.lock`, generates `CHANGELOG.md`, commits those files, creates an annotated
 `vVERSION` tag and atomically pushes the branch and that tag. Existing local commits are
@@ -102,7 +106,7 @@ For source installations, use the GitHub URL in the getting-started guide. A tag
 can be selected explicitly:
 
 ```sh
-uv tool install --python 3.13 git+https://github.com/nielsmadan/loadout.git@v0.1.0
+uv tool install --python 3.13 git+https://github.com/nielsmadan/loadout.git@v0.9.3
 ```
 
 ## Maintenance and recovery

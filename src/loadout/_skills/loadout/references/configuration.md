@@ -121,9 +121,8 @@ into it every key of the current file that no slice writes. Codex and Pi have no
 source. Init writes the settings source gitignored when the file it adopted was untracked or
 ignored, so check whether Git ignores it before calling a change there shared.
 
-Project MCP server definitions reach Claude, Droid, and OpenCode directly.
-Pi reads Claude's `.mcp.json` when that shared destination is present; a Pi-only project has no
-MCP output. Codex has no verified project MCP destination. Global MCP server definitions render
+Project MCP server definitions reach Claude, Droid, OpenCode and Pi (`.pi/mcp.json`). Codex project
+scope writes no server config; an overlay writes Codex servers. Global MCP server definitions render
 for all five configured harnesses. Claude's output owns only `mcpServers` in `.claude.json`; Droid
 writes `.factory/mcp.json`.
 

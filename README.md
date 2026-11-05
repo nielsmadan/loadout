@@ -58,9 +58,9 @@ Install the bundled `/loadout` skill, so your agents can make those edits for yo
     loadout check [--root PATH | --global | --overlay NAME] [--profile NAME] [--json | --staged]
     loadout init global [DIR] [--harness NAME]... [--registration keep|replace] [--dry-run] [--json] [--yes]
     loadout init project [--root PATH] [--harness NAME]... [--dry-run] [--json] [--yes]
-    loadout template add [NAME] [--tracked | --vendored] [--yes]
-    loadout template sync NAME [--yes]
-    loadout template list
+    loadout template add [NAME] [--tracked | --vendored] [--root PATH] [--yes]
+    loadout template sync NAME [--root PATH] [--yes]
+    loadout template list [--root PATH]
     loadout overlay add [DIRECTORY] [--name NAME]
     loadout overlay list
     loadout overlay remove NAME [--force] [--yes]
@@ -116,7 +116,7 @@ The full schema, from the machine config to permission rules and both source lay
 | 2 | usage error, unresolved init choices, missing noninteractive approval, or an init killed part way, found by the next one |
 | 3 | source error: missing or invalid input, an unsafe destination, or an ownership collision |
 | 4 | internal error: an unexpected exception; a traceback is printed to stderr |
-| 130 | `init` stopped with Ctrl-C, after putting back every path it changed or trying to |
+| 130 | stopped with Ctrl-C; `init` puts back every path it changed, or tries to |
 
 ## Documentation
 

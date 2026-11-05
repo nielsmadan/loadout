@@ -46,14 +46,11 @@ Unrelated state in those co-owned files is preserved.
 | Instructions | `CLAUDE.md` | `AGENTS.md` | `AGENTS.md` | `AGENTS.md` | `AGENTS.md` |
 | Shell permissions | Yes | Yes | Yes | Yes | Permission extension |
 | MCP tool policy | Yes | Not rendered | Not rendered | Yes | Permission extension |
-| MCP definitions | `.mcp.json` | Not rendered | `.factory/mcp.json` | `opencode.json` | Reads shared `.mcp.json` through adapter |
+| MCP definitions | `.mcp.json` | Not rendered | `.factory/mcp.json` | `opencode.json` | `.pi/mcp.json`, read once the project is trusted |
 | Skills | `.claude/skills/` | `.agents/skills/` | `.factory/skills/` | `.opencode/skills/`, or shared `.agents/skills/` | `.pi/skills/`, or shared `.agents/skills/` |
 | Agents | `.claude/agents/` | `.codex/agents/`, as TOML | `.factory/droids/` | `.opencode/agents/` | `.pi/agents/`, read by `pi-subagents` |
 | Hooks | Not rendered | Not rendered | `.factory/hooks.json` | Not rendered | Not rendered |
 | Plugin declarations | Not rendered | Not rendered | `.factory/settings.json` | Not rendered | Not rendered |
-
-The Pi MCP case requires the shared file to exist, for example because Claude is also enabled.
-A Pi-only project has no MCP-definition output.
 
 A project skill is written once to `.agents/skills/`, which Codex, OpenCode and Pi all read, when
 Codex is selected and every one of those agents selected for the skill gets the same bytes.

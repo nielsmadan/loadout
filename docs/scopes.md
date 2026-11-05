@@ -122,15 +122,15 @@ Per-repo configuration, layered on top of global. Two sources per artifact type:
 | project | yes | rules and instructions everyone working on this repo gets |
 | personal | **no** | your rules for this repo — machine paths, local tools |
 
-loadout merges the two and writes **generated outputs that are always gitignored** — eleven
+loadout merges the two and writes **generated outputs that are always gitignored** — twelve
 documents across five harnesses (`claude`, `codex`, `droid`, `opencode`, `pi`), of which
 `AGENTS.md` is one file four of them read, plus a skills directory and an agents directory for
 each of the five (Codex, OpenCode and Pi may share `.agents/skills`, below).
 Claude's fourth non-skill file is
 `.mcp.json`, the document its `mcp` slice adds at project scope on top of its permission and
 instruction outputs — OpenCode's `mcp` key composes into `opencode.json`, an
-existing output, so it adds no file of its own; Droid adds `.factory/mcp.json`; Codex and Pi
-have no project `mcp` destination
+existing output, so it adds no file of its own; Droid adds `.factory/mcp.json` and Pi
+`.pi/mcp.json`; Codex has no project `mcp` destination
 (see [reference/servers.md](reference/servers.md)). `.codex/config.toml`, in the system this
 replaces, turned out to be a one-byte leftover of the old tooling rather than a real output, so
 the port does not reproduce it.
@@ -173,7 +173,7 @@ Consequences:
   than ownership tracking: the owned subtree is still regenerated unconditionally on every
   render, so it can never feed back — only foreign keys survive. A project that keeps those keys
   in `loadout/settings/<harness>.json` gets them from that fragment instead of from the file, so
-  a fresh clone renders them too. The other eight documents are loadout-only and still render
+  a fresh clone renders them too. The other nine documents are loadout-only and still render
   from a blank document.
 
 **Both scopes now describe a slice the same way.** `SliceOutput` is one type in two tables —

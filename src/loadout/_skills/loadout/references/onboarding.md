@@ -86,7 +86,8 @@ Read the complete JSON `issues`, `notes`, candidates and dispositions. An incomp
 harness does (`uncarried-setting`), such as a server key, a header holding a reference or an
 `sse` server. Loadout 1.0 carries only Pi's shell and MCP rules, so a pi-permission-system key
 beyond them that changes what Pi allows, such as `"write": "deny"` or `"yoloMode": true`, is one
-too; offer the two answers the issue names, removing those keys from that file or leaving Pi out
+too, and at project scope so is any top-level `"*"` and `yoloMode`, `piInfrastructureReadPaths`,
+`authorizerChain` or `shellTools` at any value; offer the two answers the issue names, removing those keys from that file or leaving Pi out
 of this init, and never edit the file without the user's say. A `source-refused` issue carries the refusal sync would give for the source init
 would write, such as two servers to rename; show it to the user as written. `notes` name what init changes or reports without refusing, such
 as comments a file will lose, an agent it does not adopt, or a harness that will now ask before
