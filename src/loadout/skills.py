@@ -66,13 +66,13 @@ class Concept:
     fallback: str | None = None
 
     def expand(self, harness: str, argument: str, name: str) -> str:
-        template = self.expansions.get(harness, self.fallback)
-        if template is None:
+        expansion = self.expansions.get(harness, self.fallback)
+        if expansion is None:
             raise LoadoutError(
                 f"concept {name!r} has no expansion for {harness} and no fallback — "
                 f"add one to the concept table or mark the section instead"
             )
-        return template.replace("{}", argument)
+        return expansion.replace("{}", argument)
 
 
 # Starts empty and grows only against demonstrated need (spec 4a, out of scope).

@@ -1,11 +1,11 @@
-"""Templates — shared configuration for a kind of project.
+"""Kits — shared configuration for a kind of project.
 
-A template is a source (spec 3): a named bundle of the portable slices that a
+A kit is a source (spec 3): a named bundle of the portable slices that a
 project opts into, merged beneath everything the project itself declares. It
 resolves by **name**, never by path, because a path in a committed file means
 nothing on a colleague's machine and less in CI.
 
-Declared and vendored are the same source resolved from two places, not a primary
+Linked and vendored are the same source resolved from two places, not a primary
 path and an escape hatch. What makes vendoring safe is the recorded content hash:
 it answers the one question `sync` has to ask before it overwrites anything.
 """
@@ -20,41 +20,41 @@ from pathlib import Path
 
 import tomlkit
 
-from .bundled_templates import BUNDLED, STARTERS, bundled_template
+from .bundled_kits import BUNDLED, BUNDLED_KITS, bundled_kit
 from .containment import no_symlinks as _no_symlinks
 from .containment import refuse_external_links
 from .errors import LoadoutError
 from .gitignore import replace_text
+from .kit_catalog import kit_name, load_catalog
 from .machine import load_machine_config, machine_config_path
 from .manifest import load_manifest, manifest_path
 from .project import PROJECT_DIR, load_project_config, project_config_path
 from .resolve import ResolvedItem, Slice
 from .skills import EXCLUDED_DIRECTORIES, excluded
 from .sources import Source
-from .template_catalog import load_catalog, template_name
 from .toml_paths import apply_paths, key_name
 
 HASH_PREFIX = "sha256:"
 
-TEMPLATES_SUBDIR = "templates"
-TEMPLATES = Slice(use="templates", subdir=TEMPLATES_SUBDIR, suffix="", directory=True)
+KITS_SUBDIR = "kits"
+KITS = Slice(use="kits", subdir=KITS_SUBDIR, suffix="", directory=True)
 
-# The `source` a vendored template reports. Parenthesised so it cannot collide
+# The `source` a vendored kit reports. Parenthesised so it cannot collide
 # with a real source name, which is a bare identifier.
 VENDORED = "(vendored)"
 
-# A `templates/` directory's shared-part collections, never templates themselves.
+# A `kits/` directory's shared-part collections, never kits themselves.
 PART_DIRECTORIES = frozenset({"instructions", "permissions", "mcp", "skills"})
-# A directory template's own source documents: an empty one parses as a catalog, which
+# A directory kit's own source documents: an empty one parses as a catalog, which
 # it is not (review 5, batch 3.3).
 SOURCE_DOCUMENTS = frozenset({"permissions.toml", "mcp.toml"})
 
 
 def vendored_root(root: Path) -> Path:
-    """Vendored templates get a directory of their own, never merged into the
-    project's own fragments — otherwise nothing could later tell template-owned
+    """Vendored kits get a directory of their own, never merged into the
+    project's own fragments — otherwise nothing could later tell kit-owned
     content from content you wrote, and sync would be impossible."""
-    return root / PROJECT_DIR / TEMPLATES_SUBDIR
+    return root / PROJECT_DIR / KITS_SUBDIR
 
 
 def vendored_names(root: Path) -> tuple[str, ...]:
@@ -98,16 +98,16 @@ def vendored_names(root: Path) -> tuple[str, ...]:
 
 
 def vendored_path(root: Path, name: str) -> Path:
-    template_name(name)
+    kit_name(name)
     directory = vendored_root(root) / name
     manifest = directory.with_name(directory.name + ".toml")
     if manifest.exists() and directory.exists():
-        raise LoadoutError(f"ambiguous template {name!r}: both {directory} and {manifest} exist")
+        raise LoadoutError(f"ambiguous kit {name!r}: both {directory} and {manifest} exist")
     return manifest if manifest.exists() else directory
 
 
 def contained(root: Path, name: str | None = None) -> None:
-    """What every template command checks before it reads or writes `loadout/`: sync's
+    """What every kit command checks before it reads or writes `loadout/`: sync's
     input containment, and no link at all on the way to the config or the copy, since
     both are written and a copy is replaced wholesale."""
     refuse_external_links(root, EXCLUDED_DIRECTORIES)
@@ -116,8 +116,8 @@ def contained(root: Path, name: str | None = None) -> None:
         _no_symlinks(vendored_path(root, name), root)
 
 
-class TemplateNotFound(LoadoutError):
-    """No vendored copy, source or bundled template answers to the name. `offered` is
+class KitNotFound(LoadoutError):
+    """No vendored copy, source or bundled kit answers to the name. `offered` is
     what the resolver that looked could have resolved, so the message lists those rather
     than reading the machine's sources again (review 3, batch 4.2)."""
 
@@ -127,14 +127,14 @@ class TemplateNotFound(LoadoutError):
 
 
 class NoGlobalSource(LoadoutError):
-    """No machine config, so no declared source can offer a template."""
+    """No machine config, so no source can offer a kit."""
 
 
-def declared_sources() -> tuple[Source, ...]:
-    """Every source the machine's global manifest declares that offers templates.
+def kit_sources() -> tuple[Source, ...]:
+    """Every source the machine's global manifest declares that offers kits.
 
     Project scope carries no `[[source]]` list of its own, and must not: a path in
-    a committed file is wrong for everyone who is not its author. So a declared
+    a committed file is wrong for everyone who is not its author. So a linked
     name resolves through the machine config, which is where this machine's paths
     already live (ADR 0010).
     """
@@ -142,22 +142,22 @@ def declared_sources() -> tuple[Source, ...]:
     machine = load_machine_config(path)
     if machine is None:
         raise NoGlobalSource(
-            f"no machine config at {path}, so a declared template has nowhere to resolve from; "
+            f"no machine config at {path}, so a linked kit has nowhere to resolve from; "
             f"run `loadout init global`"
         )
     manifest = load_manifest(manifest_path(machine.source))
-    sources = tuple(s for s in manifest.sources if TEMPLATES.use in s.use)
+    sources = tuple(s for s in manifest.sources if KITS.use in s.use)
     return sources
 
 
-def resolve_template(
+def resolve_kit(
     name: str, root: Path, *, upstream: Callable[[str], ResolvedItem] | None = None
 ) -> ResolvedItem:
-    """A template name, resolved the way a fragment name is — one level up.
+    """A kit name, resolved the way a fragment name is — one level up.
 
     A vendored copy stops resolution before the machine config is even read. That
-    is what lets a clone build without the template repo, and it is why switching
-    between declared and vendored is not a migration: same source, same list,
+    is what lets a clone build without the kit repo, and it is why switching
+    between linked and vendored is not a migration: same source, same list,
     a different place it resolves from.
     """
     local = vendored_path(root, name)
@@ -165,20 +165,20 @@ def resolve_template(
         return ResolvedItem(name=name, source=VENDORED, path=local, kind="vendored")
 
     try:
-        return (upstream or resolve_upstream_template)(name)
-    except TemplateNotFound as error:
+        return (upstream or resolve_upstream_kit)(name)
+    except KitNotFound as error:
         raise LoadoutError(_not_found(name, root, error.offered, configured=True)) from error
     except NoGlobalSource as error:
         raise LoadoutError(_not_found(name, root, (), configured=False)) from error
 
 
-def source_template_names(source: Source) -> tuple[str, ...]:
-    """Templates a source's `templates/` directory can resolve by name."""
-    templates_dir = source.path / TEMPLATES_SUBDIR
-    if not templates_dir.is_dir():
+def source_kit_names(source: Source) -> tuple[str, ...]:
+    """Kits a source's `kits/` directory can resolve by name."""
+    kits_dir = source.path / KITS_SUBDIR
+    if not kits_dir.is_dir():
         return ()
     names: list[str] = []
-    for entry in sorted(templates_dir.iterdir()):
+    for entry in sorted(kits_dir.iterdir()):
         if entry.name in PART_DIRECTORIES and entry.is_dir():
             continue
         if entry.is_file() and entry.suffix == ".toml":
@@ -193,23 +193,23 @@ def source_template_names(source: Source) -> tuple[str, ...]:
 
 
 def _not_found(name: str, root: Path, offered: Iterable[str], *, configured: bool) -> str:
-    names = sorted(set(offered) | set(vendored_names(root)) | set(STARTERS))
-    sentences = [f"template {name!r} not found."]
+    names = sorted(set(offered) | set(vendored_names(root)) | set(BUNDLED_KITS))
+    sentences = [f"kit {name!r} not found."]
     if not configured:
         sentences.append(
-            "No global source is configured, so only vendored and bundled templates resolve."
+            "No global source is configured, so only vendored and bundled kits resolve."
         )
     sentences.append(f"Available: {', '.join(names)}.")
-    sentences.append("Run 'loadout template add' to choose.")
+    sentences.append("Run 'loadout kit add' to choose.")
     return " ".join(sentences)
 
 
-def resolve_upstream_template(name: str) -> ResolvedItem:
-    template_name(name)
-    bundled = bundled_template(name)
+def resolve_upstream_kit(name: str) -> ResolvedItem:
+    kit_name(name)
+    bundled = bundled_kit(name)
     if bundled is not None and not machine_config_path().exists():
-        return _bundled_template(name, bundled)
-    sources = declared_sources()
+        return _bundled_kit(name, bundled)
+    sources = kit_sources()
     bare = name
     if "/" in name:
         qualifier, bare = name.split("/")
@@ -220,17 +220,15 @@ def resolve_upstream_template(name: str) -> ResolvedItem:
     searched: list[str] = []
     for source in sources:
         for suffix in ("", ".toml"):
-            candidate = source.path / TEMPLATES_SUBDIR / (bare + suffix)
+            candidate = source.path / KITS_SUBDIR / (bare + suffix)
             searched.append(str(candidate))
             if candidate.exists() or candidate.is_symlink():
-                if not candidate.resolve().is_relative_to(
-                    (source.path / TEMPLATES_SUBDIR).resolve()
-                ):
-                    raise LoadoutError(f"template name escapes its source: {name!r}")
+                if not candidate.resolve().is_relative_to((source.path / KITS_SUBDIR).resolve()):
+                    raise LoadoutError(f"kit name escapes its source: {name!r}")
                 if suffix and not candidate.is_file():
-                    raise LoadoutError(f"template manifest is not a file: {candidate}")
+                    raise LoadoutError(f"kit manifest is not a file: {candidate}")
                 if not suffix and not candidate.is_dir():
-                    raise LoadoutError(f"template is not a directory: {candidate}")
+                    raise LoadoutError(f"kit is not a directory: {candidate}")
                 hits.append(ResolvedItem(bare, source.name, candidate))
     if len(hits) > 1:
         raise LoadoutError(
@@ -240,16 +238,16 @@ def resolve_upstream_template(name: str) -> ResolvedItem:
     if hits:
         return hits[0]
     if bundled is not None:
-        return _bundled_template(name, bundled)
-    raise TemplateNotFound(
-        f"templates not found: {name!r}. Searched {', '.join(searched) or '(no source offers templates)'}.",
-        offered=(offer for source in sources for offer in source_template_names(source)),
+        return _bundled_kit(name, bundled)
+    raise KitNotFound(
+        f"kits not found: {name!r}. Searched {', '.join(searched) or '(no source offers kits)'}.",
+        offered=(offer for source in sources for offer in source_kit_names(source)),
     )
 
 
-def _bundled_template(name: str, path: Path) -> ResolvedItem:
+def _bundled_kit(name: str, path: Path) -> ResolvedItem:
     if not (path / "instructions.md").is_file():
-        raise LoadoutError(f"bundled template missing at {path}; reinstall the loadout package")
+        raise LoadoutError(f"bundled kit missing at {path}; reinstall the loadout package")
     return ResolvedItem(name=name, source=BUNDLED, path=path, kind="bundled")
 
 
@@ -258,11 +256,11 @@ def declare(root: Path, name: str) -> bool:
     path = project_config_path(root)
     _no_symlinks(path, root)
     config = load_project_config(path)
-    if name in config.templates:
+    if name in config.kits:
         return False
-    template_name(name)
+    kit_name(name)
     document = tomlkit.parse(path.read_text(encoding="utf-8"))
-    document["templates"] = [*config.templates, name]
+    document["kits"] = [*config.kits, name]
     replace_text(path, tomlkit.dumps(document), root)
     return True
 
@@ -271,8 +269,8 @@ def record_hash(root: Path, name: str, digest: str) -> None:
     """Record the content hash of a vendored copy, replacing any earlier one."""
     path = project_config_path(root)
     _no_symlinks(path, root)
-    key = key_name(("template", name, "vendored"))
-    document = f"[{key_name(('template', name))}]\nvendored = {json.dumps(digest)}\n"
+    key = key_name(("kit", name, "vendored"))
+    document = f"[{key_name(('kit', name))}]\nvendored = {json.dumps(digest)}\n"
     replace_text(
         path, apply_paths(path.read_text(encoding="utf-8"), frozenset({key}), document), root
     )
@@ -282,7 +280,7 @@ def remove_vendored(root: Path, name: str) -> None:
     """Delete a vendored copy: a directory wholesale, a catalog manifest alone.
 
     A manifest's shared parts sit in the shared parts folder and may belong to
-    another template, so only the manifest is removed.
+    another kit, so only the manifest is removed.
     """
     local = vendored_path(root, name)
     _no_symlinks(local, root)
@@ -293,10 +291,10 @@ def remove_vendored(root: Path, name: str) -> None:
 
 
 def unrecord_hash(root: Path, name: str) -> None:
-    """Drop the `[template.<name>]` block so the template resolves from a source."""
+    """Drop the `[kit.<name>]` block so the kit resolves from a source."""
     path = project_config_path(root)
     _no_symlinks(path, root)
-    key = key_name(("template", name))
+    key = key_name(("kit", name))
     replace_text(path, apply_paths(path.read_text(encoding="utf-8"), frozenset({key}), ""), root)
 
 
@@ -325,15 +323,15 @@ def copy_tree(source: Path, destination: Path) -> None:
     if destination.exists():
         shutil.rmtree(destination)
     destination.mkdir(parents=True)
-    for relative in template_files(source):
+    for relative in kit_files(source):
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source / relative, target)
         shutil.copymode(source / relative, target)
 
 
-def template_divergence(root: Path) -> list[str]:
-    """Vendored templates whose content no longer matches the recorded hash.
+def kit_divergence(root: Path) -> list[str]:
+    """Vendored kits whose content no longer matches the recorded hash.
 
     Reported rather than failed: a vendored copy is source, and a user editing
     their own source is not drift. See ADR 0014.
@@ -344,19 +342,19 @@ def template_divergence(root: Path) -> list[str]:
     config = load_project_config(path)
     return [
         name
-        for name in config.templates
+        for name in config.kits
         if (recorded := config.vendored_hash(name)) is not None
         and (local := vendored_path(root, name)).exists()
         and tree_hash(local) != recorded
     ]
 
 
-def unverifiable_templates(root: Path) -> list[str]:
+def unverifiable_kits(root: Path) -> list[str]:
     """Vendored copies with no recorded hash, so nothing can vouch for them.
 
     A distinct state from divergence, and it has to be reported separately
     because it is the *absence* of the evidence divergence is measured against:
-    `template_divergence` can only speak about copies it has a base for, so a
+    `kit_divergence` can only speak about copies it has a base for, so a
     missing hash reads there as "no divergence" rather than "cannot say".
 
     `loadout harness add` produced exactly this state until it stopped rewriting
@@ -368,12 +366,12 @@ def unverifiable_templates(root: Path) -> list[str]:
     config = load_project_config(path)
     return [
         name
-        for name in config.templates
+        for name in config.kits
         if config.vendored_hash(name) is None and vendored_path(root, name).exists()
     ]
 
 
-def template_files(tree: Path) -> tuple[Path, ...]:
+def kit_files(tree: Path) -> tuple[Path, ...]:
     """Sorted content paths relative to the directory or manifest parent, excluding build output."""
     if tree.is_file():
         return tuple(p.relative_to(tree.parent) for p in load_catalog(tree).files())
@@ -389,17 +387,17 @@ def template_files(tree: Path) -> tuple[Path, ...]:
 
 
 def tree_hash(tree: Path) -> str:
-    """A content hash of a template, independent of where the tree sits.
+    """A content hash of a kit, independent of where the tree sits.
 
-    Path-independent by construction — only paths *relative* to the template root
+    Path-independent by construction — only paths *relative* to the kit root
     are hashed — so vendoring does not change the hash, which is what lets one
     recorded value compare a copy against its upstream.
 
-    A git SHA would not do: a template may come from a plain directory with no
+    A git SHA would not do: a kit may come from a plain directory with no
     repository behind it.
     """
     digest = hashlib.sha256()
-    for relative in template_files(tree):
+    for relative in kit_files(tree):
         path = (tree.parent if tree.is_file() else tree) / relative
         payload = path.read_bytes()
         digest.update(relative.as_posix().encode("utf-8"))

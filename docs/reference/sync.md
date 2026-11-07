@@ -30,7 +30,7 @@ itself at runtime is reported verbatim rather than silently discarded. When the 
 that diff, the whole of it goes to `$XDG_STATE_HOME/loadout/sync-abort.diff` (mode 0600), which the
 next such abort replaces and the next sync that completes removes; when that directory cannot be
 written, the abort says so by leaving the line out and still exits 1. A file holding a value the
-credential check recognises is never diffed, there, in `check`, in `template sync` or in the init
+credential check recognises is never diffed, there, in `check`, in `kit sync` or in the init
 preview: one line names it and counts the lines that differ, so read the file directly
 ([0032](../decisions/0032-a-file-holding-a-secret-is-never-diffed.md)). Port the edit into the
 source with the bundled `/loadout` skill, or pass `--force` to discard it.

@@ -6,14 +6,14 @@ from pathlib import Path
 import pytest
 import tomlkit
 
-from loadout import template_vendor
+from loadout import kit_vendor
 from loadout.cli import main
 from loadout.emit import render_global, render_project
 from loadout.errors import LoadoutError
+from loadout.kit_catalog import load_catalog
+from loadout.kits import kit_divergence, resolve_kit, tree_hash, vendored_path
 from loadout.machine import machine_config_path
 from loadout.project import load_project_config, project_config_path
-from loadout.template_catalog import load_catalog
-from loadout.templates import resolve_template, template_divergence, tree_hash, vendored_path
 
 pytestmark = pytest.mark.integration
 
@@ -27,10 +27,10 @@ def _write(path: Path, text: str) -> Path:
 @pytest.fixture
 def catalog(fake_home: Path) -> Path:
     source = fake_home / "ac"
-    catalog = source / "loadout/templates"
+    catalog = source / "loadout/kits"
     _write(
         source / "loadout.toml",
-        '[[source]]\nname = "ac"\npath = "loadout"\nuse = ["templates"]\n[claude]\ninstructions = []\n',
+        '[[source]]\nname = "ac"\npath = "loadout"\nuse = ["kits"]\n[claude]\ninstructions = []\n',
     )
     _write(machine_config_path(), f'source = "{source}"\n')
     _write(
@@ -65,20 +65,20 @@ def _answering(monkeypatch: pytest.MonkeyPatch, answer: object) -> None:
     monkeypatch.setattr("builtins.input", answer)
 
 
-def _template(root: Path, action: str, name: str, *extra: str) -> int:
+def _kit(root: Path, action: str, name: str, *extra: str) -> int:
     if action == "vendored":
-        return main(["template", "add", name, "--vendored", "--root", str(root)])
-    if action == "tracked":
-        return main(["template", "add", name, "--tracked", "--root", str(root)])
-    return main(["template", action, name, "--root", str(root), *extra])
+        return main(["kit", "add", name, "--vendored", "--root", str(root)])
+    if action == "linked":
+        return main(["kit", "add", name, "--linked", "--root", str(root)])
+    return main(["kit", action, name, "--root", str(root), *extra])
 
 
-def test_two_templates_share_one_vendored_part_and_render_once(
+def test_two_kits_share_one_vendored_part_and_render_once(
     bare_project: Path, catalog: Path
 ) -> None:
     for name in ("nextjs", "react-native"):
-        assert _template(bare_project, "vendored", name) == 0
-    local = bare_project / "loadout/templates"
+        assert _kit(bare_project, "vendored", name) == 0
+    local = bare_project / "loadout/kits"
     assert list(local.rglob("SKILL.md")) == [local / "skills/review-typescript/SKILL.md"]
     machine_config_path().unlink()
     output = render_project(bare_project)
@@ -90,47 +90,47 @@ def test_two_templates_share_one_vendored_part_and_render_once(
         json.loads(output[bare_project / ".mcp.json"])["mcpServers"]["github"]["command"]
         == "github-mcp"
     )
-    assert template_divergence(bare_project) == []
+    assert kit_divergence(bare_project) == []
 
 
-def test_shared_update_prompts_for_all_affected_templates(
+def test_shared_update_prompts_for_all_affected_kits(
     bare_project: Path,
     catalog: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     for name in ("nextjs", "react-native"):
-        assert _template(bare_project, "vendored", name) == 0
+        assert _kit(bare_project, "vendored", name) == 0
     path = catalog / "instructions/typescript.md"
     path.write_text("Updated shared advice\n")
     before = project_config_path(bare_project).read_bytes()
     _answering(monkeypatch, lambda _: "no")
-    assert _template(bare_project, "sync", "nextjs") == 0
+    assert _kit(bare_project, "sync", "nextjs") == 0
     assert project_config_path(bare_project).read_bytes() == before
     out = capsys.readouterr().out
-    assert "Affected templates: nextjs, react-native" in out
+    assert "Affected kits: nextjs, react-native" in out
     assert "declined; no changes made" in out
     _answering(monkeypatch, lambda _: "yes")
-    assert _template(bare_project, "sync", "nextjs") == 0
+    assert _kit(bare_project, "sync", "nextjs") == 0
     assert (
-        bare_project / "loadout/templates/instructions/typescript.md"
+        bare_project / "loadout/kits/instructions/typescript.md"
     ).read_text() == "Updated shared advice\n"
-    assert template_divergence(bare_project) == []
+    assert kit_divergence(bare_project) == []
     config = load_project_config(project_config_path(bare_project))
     assert config.vendored_hash("react-native") == tree_hash(
         vendored_path(bare_project, "react-native")
     )
 
 
-def test_shared_update_refuses_local_edits_in_other_affected_template(
+def test_shared_update_refuses_local_edits_in_other_affected_kit(
     bare_project: Path, catalog: Path
 ) -> None:
     for name in ("nextjs", "react-native"):
-        assert _template(bare_project, "vendored", name) == 0
-    local = bare_project / "loadout/templates"
+        assert _kit(bare_project, "vendored", name) == 0
+    local = bare_project / "loadout/kits"
     (local / "react-native.toml").write_text('instructions = ["typescript"]\n')
     (catalog / "instructions/typescript.md").write_text("upstream\n")
-    assert _template(bare_project, "sync", "nextjs") == 3
+    assert _kit(bare_project, "sync", "nextjs") == 3
     assert (local / "instructions/typescript.md").read_text() == "Shared TypeScript advice\n"
 
 
@@ -142,20 +142,19 @@ def test_references_cannot_escape_catalog(catalog: Path, reference: str) -> None
 
 
 def test_qualified_catalog_name_vendors_valid_toml(bare_project: Path, catalog: Path) -> None:
-    assert _template(bare_project, "vendored", "ac/nextjs") == 0
+    assert _kit(bare_project, "vendored", "ac/nextjs") == 0
     config = load_project_config(project_config_path(bare_project))
-    assert config.templates == ("ac/nextjs",)
+    assert config.kits == ("ac/nextjs",)
     assert (
-        resolve_template("ac/nextjs", bare_project).path
-        == bare_project / "loadout/templates/ac/nextjs.toml"
+        resolve_kit("ac/nextjs", bare_project).path == bare_project / "loadout/kits/ac/nextjs.toml"
     )
 
 
-def test_commented_template_list_remains_valid(bare_project: Path, catalog: Path) -> None:
+def test_commented_kit_list_remains_valid(bare_project: Path, catalog: Path) -> None:
     path = project_config_path(bare_project)
-    path.write_text(path.read_text() + '"templates" = [] # keep this list\n')
-    assert _template(bare_project, "tracked", "nextjs") == 0
-    assert load_project_config(path).templates == ("nextjs",)
+    path.write_text(path.read_text() + '"kits" = [] # keep this list\n')
+    assert _kit(bare_project, "linked", "nextjs") == 0
+    assert load_project_config(path).kits == ("nextjs",)
     assert "# keep this list" in path.read_text()
 
 
@@ -183,13 +182,13 @@ def test_catalog_parts_do_not_activate_global_outputs(catalog: Path) -> None:
     assert load_catalog(catalog / "nextjs.toml").skills()[0].name == "review-typescript"
 
 
-def test_adding_second_template_refuses_different_shared_bytes(
+def test_adding_second_kit_refuses_different_shared_bytes(
     bare_project: Path, catalog: Path
 ) -> None:
-    assert _template(bare_project, "vendored", "nextjs") == 0
+    assert _kit(bare_project, "vendored", "nextjs") == 0
     before = project_config_path(bare_project).read_bytes()
     (catalog / "instructions/typescript.md").write_text("new upstream")
-    assert _template(bare_project, "vendored", "react-native") == 3
+    assert _kit(bare_project, "vendored", "react-native") == 3
     assert project_config_path(bare_project).read_bytes() == before
 
 
@@ -199,44 +198,44 @@ def test_shared_skill_sync_removes_retired_support_file(
     support = _write(catalog / "skills/review-typescript/scripts/check", "old script")
     support.chmod(0o755)
     for name in ("nextjs", "react-native"):
-        assert _template(bare_project, "vendored", name) == 0
-    local = bare_project / "loadout/templates/skills/review-typescript/scripts/check"
+        assert _kit(bare_project, "vendored", name) == 0
+    local = bare_project / "loadout/kits/skills/review-typescript/scripts/check"
     assert local.stat().st_mode & 0o777 == 0o755
     support.unlink()
     _answering(monkeypatch, lambda _: "yes")
-    assert _template(bare_project, "sync", "nextjs") == 0
+    assert _kit(bare_project, "sync", "nextjs") == 0
     assert not local.exists()
-    assert template_divergence(bare_project) == []
+    assert kit_divergence(bare_project) == []
     assert tree_hash(vendored_path(bare_project, "nextjs")) == tree_hash(catalog / "nextjs.toml")
 
 
-def test_removing_reference_keeps_part_needed_by_other_template(
+def test_removing_reference_keeps_part_needed_by_other_kit(
     bare_project: Path, catalog: Path
 ) -> None:
     for name in ("nextjs", "react-native"):
-        assert _template(bare_project, "vendored", name) == 0
+        assert _kit(bare_project, "vendored", name) == 0
     (catalog / "nextjs.toml").write_text('instructions = ["nextjs"]\n')
-    assert _template(bare_project, "sync", "nextjs") == 0
+    assert _kit(bare_project, "sync", "nextjs") == 0
     assert (
-        bare_project / "loadout/templates/instructions/typescript.md"
+        bare_project / "loadout/kits/instructions/typescript.md"
     ).read_text() == "Shared TypeScript advice\n"
-    assert template_divergence(bare_project) == []
+    assert kit_divergence(bare_project) == []
 
 
 def test_new_local_skill_file_during_confirmation_refuses_update(
     bare_project: Path, catalog: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     for name in ("nextjs", "react-native"):
-        assert _template(bare_project, "vendored", name) == 0
+        assert _kit(bare_project, "vendored", name) == 0
     (catalog / "instructions/typescript.md").write_text("new upstream")
     before = project_config_path(bare_project).read_bytes()
 
     def answer(_: str) -> str:
-        _write(bare_project / "loadout/templates/skills/review-typescript/new.txt", "user edit")
+        _write(bare_project / "loadout/kits/skills/review-typescript/new.txt", "user edit")
         return "yes"
 
     _answering(monkeypatch, answer)
-    assert _template(bare_project, "sync", "nextjs") == 3
+    assert _kit(bare_project, "sync", "nextjs") == 3
     assert project_config_path(bare_project).read_bytes() == before
 
 
@@ -251,17 +250,15 @@ def test_catalog_rejects_symlink_to_active_skill(catalog: Path) -> None:
 def test_manifest_and_directory_same_name_are_ambiguous(tmp_path: Path, catalog: Path) -> None:
     (catalog / "nextjs").mkdir()
     with pytest.raises(LoadoutError, match="ambiguous"):
-        resolve_template("nextjs", tmp_path)
+        resolve_kit("nextjs", tmp_path)
 
 
-def test_undeclared_catalog_sync_cannot_bypass_provenance(
-    bare_project: Path, catalog: Path
-) -> None:
-    local = bare_project / "loadout/templates/nextjs.toml"
+def test_unlisted_catalog_sync_cannot_bypass_provenance(bare_project: Path, catalog: Path) -> None:
+    local = bare_project / "loadout/kits/nextjs.toml"
     _write(local, 'instructions = ["mine"]\n')
     own = _write(local.parent / "instructions/mine.md", "keep my local advice")
     before = project_config_path(bare_project).read_bytes()
-    assert _template(bare_project, "sync", "nextjs") == 3
+    assert _kit(bare_project, "sync", "nextjs") == 3
     assert own.read_text() == "keep my local advice"
     assert project_config_path(bare_project).read_bytes() == before
 
@@ -272,8 +269,8 @@ def test_shared_update_rolls_back_a_write_failure(
     retired = _write(catalog / "skills/review-typescript/retired.sh", "retired script")
     retired.chmod(0o750)
     for name in ("nextjs", "react-native"):
-        assert _template(bare_project, "vendored", name) == 0
-    local = bare_project / "loadout/templates"
+        assert _kit(bare_project, "vendored", name) == 0
+    local = bare_project / "loadout/kits"
 
     def snapshot() -> dict[Path, tuple[bytes, int]]:
         return {
@@ -289,15 +286,15 @@ def test_shared_update_rolls_back_a_write_failure(
     added = _write(catalog / "skills/review-typescript/added.sh", "new script")
     added.chmod(0o755)
     _answering(monkeypatch, lambda _: "yes")
-    install = template_vendor.atomic_install
+    install = kit_vendor.atomic_install
 
-    def fail(path: Path, content: template_vendor.FrozenFile) -> None:
+    def fail(path: Path, content: kit_vendor.FrozenFile) -> None:
         if path == project_config_path(bare_project) and content.content != original_config:
             raise OSError("injected write failure")
         install(path, content)
 
-    monkeypatch.setattr(template_vendor, "atomic_install", fail)
-    assert _template(bare_project, "sync", "nextjs") == 3
+    monkeypatch.setattr(kit_vendor, "atomic_install", fail)
+    assert _kit(bare_project, "sync", "nextjs") == 3
     assert snapshot() == before
     assert project_config_path(bare_project).read_bytes() == original_config
 
@@ -311,17 +308,17 @@ def test_shared_update_without_a_terminal_needs_yes(
 ) -> None:
     """Review 2.9: no terminal means no answer, so it is refused, not read as "no"."""
     for name in ("nextjs", "react-native"):
-        assert _template(bare_project, "vendored", name) == 0
+        assert _kit(bare_project, "vendored", name) == 0
     (catalog / "instructions/typescript.md").write_text("Updated shared advice\n")
     before = project_config_path(bare_project).read_bytes()
 
-    assert _template(bare_project, "sync", "nextjs") == 2
+    assert _kit(bare_project, "sync", "nextjs") == 2
 
     assert "--yes" in capsys.readouterr().err
     assert project_config_path(bare_project).read_bytes() == before
-    assert _template(bare_project, "sync", "nextjs", "--yes") == 0
+    assert _kit(bare_project, "sync", "nextjs", "--yes") == 0
     assert (
-        bare_project / "loadout/templates/instructions/typescript.md"
+        bare_project / "loadout/kits/instructions/typescript.md"
     ).read_text() == "Updated shared advice\n"
 
 
@@ -332,7 +329,7 @@ def test_a_catalog_under_a_linked_folder_above_it_still_loads(
     above it, such as a home under a linked prefix, was refused."""
     alias = tmp_path / "alias"
     alias.symlink_to(catalog.parent.parent, target_is_directory=True)
-    folder = alias / "loadout/templates"
+    folder = alias / "loadout/kits"
 
     loaded = load_catalog(folder / "nextjs.toml")
 

@@ -1,6 +1,6 @@
 site_name: loadout
 site_url: https://loadoutai.dev/
-site_description: Switch agents. Keep your setup. Share configuration across Claude Code, Codex, Factory Droid, OpenCode, and Pi with reusable templates and composable sources.
+site_description: Switch agents. Keep your setup. Share configuration across Claude Code, Codex, Factory Droid, OpenCode, and Pi with reusable kits and composable sources.
 repo_url: https://github.com/nielsmadan/loadout
 repo_name: nielsmadan/loadout
 copyright: '<a href="/legal/">Legal notice</a> · <a href="/privacy/">Privacy</a>'
@@ -42,7 +42,7 @@ nav:
   - Guides:
       - Global setup: guides/global.md
       - Project setup: guides/projects.md
-      - Templates: guides/templates.md
+      - Kits: guides/kits.md
       - Composition and inheritance: guides/composition.md
       - Configuring your agents: guides/configuration.md
       - Stealth sources: guides/stealth.md

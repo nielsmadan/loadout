@@ -7,11 +7,11 @@ from pathlib import Path
 
 from .atomic import atomic_install, read_file
 from .errors import LoadoutError, UsageError
+from .kit_catalog import load_catalog
+from .kits import declare, record_hash, tree_hash, vendored_path
 from .output import FrozenFile
 from .project import ProjectConfig, load_project_config, project_config_path
 from .resolve import ResolvedItem
-from .template_catalog import load_catalog
-from .templates import declare, record_hash, tree_hash, vendored_path
 
 
 def _install(path: Path, content: FrozenFile | None) -> None:
@@ -50,7 +50,7 @@ def _desired(
             and not (local.exists() and path in retained)
         ):
             raise LoadoutError(
-                f"shared template part conflicts with an existing file: {path}; sync its owning template first"
+                f"shared kit part conflicts with an existing file: {path}; sync its owning kit first"
             )
     return desired
 
@@ -76,7 +76,7 @@ def _affected(
         ):
             if other not in selected:
                 raise LoadoutError(
-                    f"shared update also affects undeclared manifest {manifest}; declare it before syncing"
+                    f"shared update also affects {manifest}, which `kits` does not list; add it before syncing"
                 )
             affected.add(other)
     return affected
@@ -106,7 +106,7 @@ def _clean(
 def _preview(
     root: Path, name: str, affected: set[str], desired: dict[Path, FrozenFile | None]
 ) -> FrozenFile | None:
-    with tempfile.TemporaryDirectory(prefix="loadout-template-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="loadout-kit-") as temporary:
         preview = Path(temporary).resolve()
         shutil.copytree(project_config_path(root).parent, preview / "loadout", symlinks=True)
         for path, content in desired.items():
@@ -120,19 +120,19 @@ def _preview(
 def _confirm(
     root: Path, changes: dict[Path, FrozenFile | None], affected: set[str], *, yes: bool
 ) -> bool:
-    print("Template changes:")
+    print("Kit changes:")
     for path, content in changes.items():
         print(f"    {'remove' if content is None else 'write'} {path.relative_to(root)}")
     if len(affected) <= 1 or yes:
         return True
-    print("Affected templates: " + ", ".join(sorted(affected)))
+    print("Affected kits: " + ", ".join(sorted(affected)))
     if not sys.stdin.isatty():
         raise UsageError(
-            "updating parts shared with other templates needs --yes after reviewing the changes; "
+            "updating parts shared with other kits needs --yes after reviewing the changes; "
             "no changes made"
         )
     try:
-        answer = input("Update these shared template parts? [y/N] ")
+        answer = input("Update these shared kit parts? [y/N] ")
     except (EOFError, OSError, KeyboardInterrupt):
         answer = ""
     return answer.strip().lower() in {"y", "yes"}
@@ -148,9 +148,7 @@ def _apply(changes: dict[Path, FrozenFile | None], before: dict[Path, FrozenFile
         for path in reversed(applied):
             _install(path, before[path])
         if isinstance(error, OSError):
-            raise LoadoutError(
-                f"template update failed; previous files restored: {error}"
-            ) from error
+            raise LoadoutError(f"kit update failed; previous files restored: {error}") from error
         raise
 
 
@@ -162,11 +160,11 @@ def vendor_catalog(
     local = vendored_path(root, name)
     if not update:
         if local.exists():
-            raise LoadoutError(f"{name} is already vendored; run `loadout template sync {name}`")
+            raise LoadoutError(f"{name} is already vendored; run `loadout kit sync {name}`")
         local = local.with_name(local.name + ".toml")
     if not upstream.path.is_file() or (update and not local.is_file()):
-        raise LoadoutError("template sync cannot change between a directory and a catalog manifest")
-    selected = {n: p for n in config.templates if (p := vendored_path(root, n)).is_file()}
+        raise LoadoutError("kit sync cannot change between a directory and a catalog manifest")
+    selected = {n: p for n in config.kits if (p := vendored_path(root, n)).is_file()}
     if update:
         selected[name] = local
     before = {config_path: read_file(config_path)}
@@ -189,7 +187,7 @@ def vendor_catalog(
     if any(read_file(path) != content for path, content in before.items()) or any(
         tree_hash(path) != digest for path, digest in hashes.items()
     ):
-        raise LoadoutError("template source changed during confirmation; nothing written, retry")
+        raise LoadoutError("kit source changed during confirmation; nothing written, retry")
     _apply(changes, before)
     print(
         f"{'updated' if update else 'vendored'} {name}; run `loadout sync` to regenerate project outputs"

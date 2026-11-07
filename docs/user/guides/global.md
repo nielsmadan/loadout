@@ -7,7 +7,7 @@ description: Keep machine-wide agent configuration in a shared source and render
 
 Global configuration holds instructions, permissions, skills, and tools you want available
 across projects. Project-specific context belongs in [project configuration](projects.md)
-or a [template](templates.md).
+or a [kit](kits.md).
 
 ## Create a source
 
@@ -57,7 +57,7 @@ An existing machine configuration is protected from reinitialisation.
 ## Choose your agents
 
 `init global` names the source `migrated` and gives it no `use` list, so it offers every
-category: instructions, skills, agents, templates and the rest. It writes one block per harness,
+category: instructions, skills, agents, kits and the rest. It writes one block per harness,
 holding what it adopted. Add to those blocks rather than replacing the file, which would drop
 what was adopted. A source that adds shared instructions looks like this:
 

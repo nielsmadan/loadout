@@ -87,13 +87,13 @@ refused with `no [<harness>], [instructions.<harness>] or [permissions.<name>] t
 
 | Field | Meaning |
 | --- | --- |
-| `name` | Name used to qualify fragments and templates, as `name/fragment` |
+| `name` | Name used to qualify fragments and kits, as `name/fragment` |
 | `path` | Source directory: absolute, `~/`, or relative to the manifest. It must exist |
 | `use` | Optional list of the categories this source contributes; without it, every category |
 | `overrides` | Optional table of skills, agents or module files this source replaces in an earlier one |
 
 The categories `use` accepts are `instructions`, `settings`, `permissions`, `hooks`, `mcp`,
-`plugins`, `defaults`, `skills`, `agents`, `module-config` and `templates`.
+`plugins`, `defaults`, `skills`, `agents`, `module-config` and `kits`.
 
 Loadout does not fetch, version or distribute a source. Getting a shared repository onto your disk
 is git's job.
@@ -489,7 +489,7 @@ source/
 ├── skills/                 <name>/SKILL.md with supporting files
 ├── agents/                 <name>.md subagents
 ├── module-config/          <harness>/<path>, copied verbatim
-└── templates/              <name>.toml manifests, <name>/ directories, and shared parts
+└── kits/                   <name>.toml manifests, <name>/ directories, and shared parts
 ```
 
 Only create the directories your configuration uses. Profiles live beside `loadout.toml`; slice
@@ -500,12 +500,12 @@ directories belong under the selected source paths.
 ```toml title="loadout/config.toml"
 harnesses = ["claude", "codex"]
 instructions = ["project", "testing"]
-templates = ["python"]
+kits = ["python"]
 
 [skills.review]
 agents = ["claude"]
 
-[template.python]
+[kit.python]
 vendored = "sha256:9f2a1c4e…"
 ```
 
@@ -513,17 +513,17 @@ vendored = "sha256:9f2a1c4e…"
 | --- | --- |
 | `harnesses` | Non-empty list of supported harness names |
 | `instructions` | Ordered project instruction fragment names, from `loadout/instructions/` |
-| `templates` | Ordered template names |
+| `kits` | Ordered kit names |
 | `[skills.NAME]` | `agents` and `render` for one skill; see [skill policy](#skill-policy) |
-| `[template.NAME].vendored` | Content hash maintained by `template add --vendored` and `template sync`; the only key it accepts |
+| `[kit.NAME].vendored` | Content hash maintained by `kit add --vendored` and `kit sync`; the only key it accepts |
 
 Any other key is refused by name. The project file has no source-path list or profile
-inheritance. Shared sources reach projects through templates.
+inheritance. Shared sources reach projects through kits.
 
 ### Project source layout
 
 ```text
-loadout/config.toml              configured harnesses, instructions, skill policy and templates
+loadout/config.toml              configured harnesses, instructions, skill policy and kits
 loadout/permissions.toml         shared permission rules, optional
 loadout/permissions.local.toml   your own permission rules, optional; keep it out of Git
 loadout/instructions/            ordered instruction fragments
@@ -533,7 +533,7 @@ loadout/mcp.toml                 MCP server definitions, optional
 loadout/hooks.json               hook declarations, for Droid
 loadout/plugins.json             plugin declarations, for Droid
 loadout/settings/<harness>.json  the rest of a shared settings file, for claude, droid or opencode
-loadout/templates/               vendored templates
+loadout/kits/                    vendored kits
 ```
 
 A missing `permissions.toml` means the same as an empty one. `loadout/` must be a real folder, and
@@ -734,8 +734,8 @@ copy also gets `context: fork`, and every other harness's copy opens with "Deleg
 the `reviewer` subagent." Naming an agent the source does not define is an error for a rendered
 skill.
 
-A template contributes `skills/` as a tier beneath the project, so a skill the project defines
-under the same name replaces the template's.
+A kit contributes `skills/` as a tier beneath the project, so a skill the project defines
+under the same name replaces the kit's.
 
 ## Subagents
 
@@ -794,38 +794,43 @@ be called, not which servers exist. Where each harness receives servers is in
 [harness support](harnesses.md); full detail is in
 [servers](https://github.com/nielsmadan/loadout/blob/main/docs/reference/servers.md).
 
-## Templates
+## Kits
 
-A project names templates in `config.toml` (`templates = [...]`), by name and never by path. A name
-resolves to `loadout/templates/<name>/` or `loadout/templates/<name>.toml` when the project vendored
-it, then to the `templates/` folder of a source the machine's global manifest declares, and finally
-to the bundled `frontend` or `backend` template. With no machine config, the bundled templates come
-first. Two sources offering one name is an error unless it is qualified as `source/name`. The bundled templates ship in the package and work
+A project names kits in `config.toml` (`kits = [...]`), by name and never by path. A name
+resolves to `loadout/kits/<name>/` or `loadout/kits/<name>.toml` when the project vendored
+it, then to the `kits/` folder of a source the machine's global manifest declares, and finally
+to the bundled `frontend` or `backend` kit. With no machine config, the bundled kits come
+first. Two sources offering one name is an error unless it is qualified as `source/name`. The bundled kits ship in the package and work
 offline; they add no dependencies, permission grants, models or credentials.
 
-Templates contribute instructions, skills, MCP servers and permissions through the same project
+Kits contribute instructions, skills, MCP servers and permissions through the same project
 slices as directly authored source, as a tier beneath the project, so anything the project
 declares outranks them. A vendored copy is source, not generated output: `check` reports one you
-edited without failing, and `template sync` refuses to overwrite it
+edited without failing, and `kit sync` refuses to overwrite it
 ([0014](https://github.com/nielsmadan/loadout/blob/main/docs/decisions/0014-a-vendored-template-is-source-not-output.md)).
 
-In a global source, a template is either a directory, `templates/<name>/`, holding its own files
+In a global source, a kit is either a directory, `kits/<name>/`, holding its own files
 such as `instructions.md`, `permissions.toml`, `mcp.toml` and `skills/`, or a manifest,
-`templates/<name>.toml`, that selects shared parts:
+`kits/<name>.toml`, that selects shared parts:
 
 ```toml
-# templates/nextjs.toml
+# kits/nextjs.toml
 skills = ["review-typescript"]
 instructions = ["typescript", "nextjs"]
 mcp = ["github"]
 permissions = ["node"]
 ```
 
-Parts live under `templates/skills/`, `templates/instructions/`, `templates/mcp/` and
-`templates/permissions/`, separate from the source's active folders, and several manifests can
+Parts live under `kits/skills/`, `kits/instructions/`, `kits/mcp/` and
+`kits/permissions/`, separate from the source's active folders, and several manifests can
 reference the same part. Vendoring keeps one shared copy of a part; an update to a shared part
-lists every affected template and asks first, and a locally modified copy blocks it. See [templates](../guides/templates.md) and the
-[templates reference](https://github.com/nielsmadan/loadout/blob/main/docs/reference/templates.md).
+lists every affected kit and asks first, and a locally modified copy blocks it. See [kits](../guides/kits.md) and the
+[kits reference](https://github.com/nielsmadan/loadout/blob/main/docs/reference/kits.md).
+
+0.10.0 called a kit a template. Its spellings, `templates = [...]`, `[template.NAME]`,
+`loadout/templates/`, a source's `templates/` folder and `templates` in `use`, are refused with an
+error naming the new one
+([0053](https://github.com/nielsmadan/loadout/blob/main/docs/decisions/0053-overlays-become-stealth-sources-and-templates-become-kits.md)).
 
 ## Permission rules
 
@@ -866,8 +871,8 @@ Codex's literal prefix rules and Droid's literal permission lists. Different mat
 [harness reference](harnesses.md#permission-portability).
 
 The same format serves a global source's `permissions.toml`, a project's `loadout/permissions.toml`,
-a template's `permissions.toml`, and a project's personal `loadout/permissions.local.toml`. In a
-project the tiers are template, shared and personal, merged with deny winning.
+a kit's `permissions.toml`, and a project's personal `loadout/permissions.local.toml`. In a
+project the tiers are kit, shared and personal, merged with deny winning.
 
 ### Harness-specific entries
 

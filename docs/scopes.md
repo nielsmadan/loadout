@@ -236,15 +236,15 @@ person's setup; a repo's configuration is the same for everyone who checks it ou
   and its plugin enablement was never established. `docs/reference/antigravity.md` keeps the
   findings and [0012](decisions/0012-antigravity-is-dropped-until-it-matures.md) lists what has
   to become true to re-add it.
-- Per-project-type templates — **done.** A template carries four artifact types — permissions,
+- Per-project-type kits — **done.** A kit carries four artifact types — permissions,
   instructions, skills, MCP — and each plugged into the same resolution as it shipped, which is
-  what "a dimension rather than a milestone" meant. A project declares `templates = ["web"]`, the
+  what "a dimension rather than a milestone" meant. A project lists `kits = ["web"]`, the
   name resolves against a vendored copy and then the global source's sources, and the result
   merges as the lowest tier. `aiconf`, the shell-and-skill mechanism this replaced, was retired
   from `~/ac` on 2026-08-31 (`a4e1228`), closing
   [0007](decisions/0007-loadout-owns-all-agent-configuration.md)'s consequence that it would
   disappear rather than shrink. See
-  [reference/templates.md](reference/templates.md) and
+  [reference/kits.md](reference/kits.md) and
   [0014](decisions/0014-a-vendored-template-is-source-not-output.md).
 - MCP **server definitions shipped** on 2026-08-24 — `mcp` now renders `<source>/mcp.toml` to
   eight of the ten harness/scope destinations, all but Codex's and Pi's project scope; see

@@ -79,7 +79,7 @@ def test_stdio_without_a_command_is_refused(tmp_path: Path) -> None:
 
 
 def test_a_missing_file_is_no_servers_rather_than_an_error(tmp_path: Path) -> None:
-    """A source offering no mcp.toml contributes nothing, the same way a template
+    """A source offering no mcp.toml contributes nothing, the same way a kit
     offering no permissions.toml contributes no tier."""
     assert parse_servers(tmp_path / "absent.toml") == {}
 

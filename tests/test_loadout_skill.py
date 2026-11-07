@@ -160,10 +160,10 @@ def test_capability_matrix_pins_every_scope_mapping() -> None:
                 "`module-config/<agent>/<relative path>`; Codex unsupported"
             ),
         ),
-        "templates": (
+        "kits": (
             "unsupported",
-            "declarations and vendored copies under `loadout/templates/`",
-            "definitions under `templates/<name>/` in declared sources",
+            "the `kits` list and vendored copies under `loadout/kits/`",
+            "definitions under `kits/<name>/` in selected sources",
         ),
         "harnesses": (
             "unsupported",
@@ -182,7 +182,7 @@ def test_capability_matrix_pins_every_scope_mapping() -> None:
         for slices in preset.values()
         for name in slices
     }
-    assert set(expected) == preset_slices | {"settings", "templates", "harnesses", "profiles"}
+    assert set(expected) == preset_slices | {"settings", "kits", "harnesses", "profiles"}
     assert _capability_matrix() == expected
 
 

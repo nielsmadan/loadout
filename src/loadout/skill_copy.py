@@ -13,7 +13,7 @@ from .bundled_skill import SKILL_NAME, bundled_skill_path
 from .destinations import resolve_destination
 from .errors import LoadoutError, unwritable, write_denied
 from .harnesses import GLOBAL_PRESET, SHARED_SKILL_READERS
-from .templates import tree_hash
+from .kits import tree_hash
 
 # Codex, OpenCode and Pi all read `~/.agents/skills` (docs/reference/config.md, Skills).
 SHARED_SKILLS = "~/.agents/skills"

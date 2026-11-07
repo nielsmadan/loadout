@@ -33,9 +33,9 @@ PROJECT_FIXTURES = FIXTURES / "project"
 PROJECT_HARNESSES = ("claude", "codex", "droid", "opencode", "pi")
 
 # Vendored, so resolution reads no machine config and the expected tree stays
-# machine-independent. It is what puts a template's contribution into the
+# machine-independent. It is what puts a kit's contribution into the
 # byte-compared output at all.
-PROJECT_TEMPLATES = ("web",)
+PROJECT_KITS = ("web",)
 
 # Declared in reverse alphabetical order on purpose: sorted, this pair would come
 # out the other way round, so the expected document proves the order is the
@@ -54,16 +54,16 @@ def build_project_root(destination: Path) -> Path:
     directory = destination / "loadout"
     directory.mkdir(parents=True, exist_ok=True)
     quoted = ", ".join(f'"{harness}"' for harness in PROJECT_HARNESSES)
-    templates = ", ".join(f'"{name}"' for name in PROJECT_TEMPLATES)
+    kits = ", ".join(f'"{name}"' for name in PROJECT_KITS)
     fragments = ", ".join(f'"{name}"' for name in PROJECT_INSTRUCTIONS)
     (directory / "config.toml").write_text(
-        f"harnesses = [{quoted}]\ntemplates = [{templates}]\ninstructions = [{fragments}]\n",
+        f"harnesses = [{quoted}]\nkits = [{kits}]\ninstructions = [{fragments}]\n",
         encoding="utf-8",
     )
-    for name in PROJECT_TEMPLATES:
+    for name in PROJECT_KITS:
         shutil.copytree(
-            PROJECT_FIXTURES / "templates" / name,
-            directory / "templates" / name,
+            PROJECT_FIXTURES / "kits" / name,
+            directory / "kits" / name,
             dirs_exist_ok=True,
         )
     shutil.copytree(

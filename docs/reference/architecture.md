@@ -33,7 +33,7 @@ harness defaults a fresh project init uses. `state_dir`, `$XDG_STATE_HOME/loadou
 loadout keeps for itself: the backup of an init in progress and sync's complete diff. It is not the only machine state that is *read*:
 `destinations.py:resolve_destination` expands `${VAR}` in a destination against the environment, per
 [0011](../decisions/0011-a-destination-follows-a-relocated-harness.md).
-A render takes an `emit.RenderContext`: the destination resolver, the resolver for a template
+A render takes an `emit.RenderContext`: the destination resolver, the resolver for a kit
 that is not vendored, the manifest source parser, and `registration`, the one root that may render
 global scope, read once with why there is none, so a refusal names what decided it. `render_global` refuses any other root before it reads the manifest
 (`emit.refuse_unregistered_global`, [0031](../decisions/0031-global-scope-renders-only-from-the-registered-source.md));
@@ -43,7 +43,7 @@ workers pass their own instead of patching modules. The guard (`sync.unaccepted_
 `sync.classified_drift` and `notices.collect_notices` render with the default context, since
 nothing renders them for another root; the guard hands its committed tree a copy that may render
 it. That tree holds what `git_tree.render_inputs` names at HEAD, the same set `check --staged`
-writes out, never the whole repository, and `collect_notices` takes the environment it reads. A template a resolver cannot find is
+writes out, never the whole repository, and `collect_notices` takes the environment it reads. A kit a resolver cannot find is
 named with what that resolver offered, never with a fresh read of the machine's sources.
 `written.py` stores the other half beside that config: what `sync` last wrote at each
 destination, which is the third variant the modified-outside-loadout guard compares against and
@@ -79,10 +79,10 @@ bytes do, which is what `check` reports as drift. `sync.compare_with_disk` norma
 guard does: a banner or a JSON re-serialisation alone is `normalised`, not `update`, which is what
 init's preview and its first render are judged by. A copied file is judged by one rule in both,
 `files.copy_matches`: its bytes and its mode.
-`templates.py` resolves a template *name* — the project's vendored copy first, then the
-`templates/` directory of every source the machine's global manifest declares, then a bundled
-starter. With no machine config a bundled starter comes straight after the vendored copy. It owns
-the tree hash `template sync` compares a vendored copy against. A template is a source, so it merges
+`kits.py` resolves a kit *name* — the project's vendored copy first, then the
+`kits/` directory of every source the machine's global manifest declares, then a bundled
+kit. With no machine config a bundled kit comes straight after the vendored copy. It owns
+the tree hash `kit sync` compares a vendored copy against. A kit is a source, so it merges
 through the slice's own operator and adds no merge rule.
 `emit.py:render_project` renders it; `render_all` unions it with `render_global`'s global-scope
 output, so `sync`/`check` regenerate whichever scopes are present.
@@ -126,7 +126,7 @@ pins this).
 | init | `init_workflow.py` (preview, apply, putting back on failure, the skill fallback), `init_options.py` (what was asked for), `discovery.py` (inventory), `runtime_paths.py` (what a harness writes for itself, shared with `unmanaged.py`), `migration.py` (plan), `migration_models.py`, `migration_paths.py`, `migration_transaction.py` (apply), `migration_validation.py` (isolated reconstruction), `migration_images.py` (what a path holds, captured and installed), `migration_backup.py` (the before-image of one run, and putting it back), `migration_git.py`, `git_privacy.py`, `native_documents.py`, `extract.py` (reading native documents back), `skill_copy.py` (the plain copy of the bundled skill init offers) |
 | git | `git_runner.py` (every git loadout starts, without a hook's repository variables), `git_tree.py` (a tree or the index as entries, what a render reads of it, and that written out: the link rules are the pure `select_inputs`), `staged.py` and `staged_render.py` (`check --staged`), `git_hooks.py` and `git_hook_commands.py`, `worktrees.py` (a linked worktree of the registered source) |
 | stealth source | `stealth_manifest.py` (the `[stealth]` table and the allowed slices), `stealth_registry.py` (`stealth.toml`), `stealth_commands.py` (`stealth add\|list\|remove` and selection for `sync` and `check`), `stealth_targets.py` and `stealth_git.py` (expanding patterns, probing a folder, every git question), `stealth_render.py` and `stealth_renderers.py` (`STEALTH_PRESET`, what each harness gets), `stealth_documents.py` and `json_paths.py` (owned keys and rules in shared documents), `claude_json.py` (leaves in `~/.claude.json`), `stealth_record.py` (the record), `stealth_plan.py` (the pure per-target decision), `stealth_sync.py` (applying it), `stealth_check.py`, `exclude.py` (the `info/exclude` and global ignore blocks), `stealth_lock.py`, `stealth_seams.py` (the private names it imports, pinned by `tests/test_stealth_seams.py`) |
-| templates | `templates.py` (resolution, vendored copies), `template_catalog.py`, `template_discover.py`, `template_vendor.py`, `bundled_templates.py` |
+| kits | `kits.py` (resolution, vendored copies), `kit_catalog.py`, `kit_discover.py`, `kit_vendor.py`, `bundled_kits.py` |
 | bundled skill | `skill_installation.py`, `bundled_skill.py` |
 
 Harness facts live in the presets: `harnesses.py:GLOBAL_PRESET` and `project.py:PROJECT_PRESET`

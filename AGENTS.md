@@ -76,8 +76,8 @@ place so the key **stays put**. Harmonising them looks like a tidy-up and silent
 output. See [0006](docs/decisions/0006-faithful-ports-reproduce-upstream-quirks.md).
 
 **A precedence test must prove the loser was there and lost.** Three have been found that did
-not: two ordering tests, and one named `test_a_project_deny_beats_a_template_allow` that passed
-before template merging existed at all — an unmerged allow and an absent allow look identical to
+not: two ordering tests, and one named `test_a_project_deny_beats_a_kit_allow` that passed
+before kit merging existed at all — an unmerged allow and an absent allow look identical to
 an assertion about the winner.
 
 So the check is not "would this fail if the ordering broke" — the third case survives that, since
@@ -191,7 +191,7 @@ The implementation path, renderer ownership boundaries, extraction flow, and sou
 - `docs/reference/` — per-harness matcher semantics, pattern shapes, verified quirks
 - `docs/reference/sync.md` — the sync guard, retirement, unmanaged files
 - `docs/reference/extraction.md` — the renderers run backwards: what round-trips, what is reported
-- `docs/reference/templates.md` — declared vs vendored, name resolution, the content hash, sync
+- `docs/reference/kits.md` — linked vs vendored, name resolution, the content hash, sync
 - `docs/decisions/` — ADRs; append-only, superseded rather than edited
 - `docs/releasing.md` — versioned packages and Homebrew distribution
 - `docs/publishing.md` — previewing, building and publishing the site

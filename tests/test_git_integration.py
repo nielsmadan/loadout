@@ -127,15 +127,15 @@ def test_staged_initial_producer_requires_its_generated_record(repo, fragment):
     assert check_staged(repo) == 0
 
 
-@pytest.mark.parametrize("name", ["frontend", "private-template"])
-def test_bare_templates_never_fall_back_to_machine_or_bundled_source(repo, fake_home, name):
+@pytest.mark.parametrize("name", ["frontend", "private-kit"])
+def test_bare_kits_never_fall_back_to_machine_or_bundled_source(repo, fake_home, name):
     source = _project(repo)
-    (source / "config.toml").write_text(f'harnesses=["codex"]\ntemplates=["{name}"]\n')
+    (source / "config.toml").write_text(f'harnesses=["codex"]\nkits=["{name}"]\n')
     (source / "permissions.toml").write_text("")
     external = fake_home / "private-source"
-    template = external / "templates" / name
-    template.mkdir(parents=True)
-    (template / "instructions.md").write_text("machine override\n")
+    kit = external / "kits" / name
+    kit.mkdir(parents=True)
+    (kit / "instructions.md").write_text("machine override\n")
     (external / "loadout.toml").write_text(
         '[[source]]\nname="private"\npath="."\n[claude]\npermissions=false\n'
     )
@@ -143,9 +143,9 @@ def test_bare_templates_never_fall_back_to_machine_or_bundled_source(repo, fake_
     machine.parent.mkdir(parents=True)
     machine.write_text(f'source="{external}"\n')
     _git(repo, "add", "loadout")
-    with pytest.raises(LoadoutError, match=f"template '{name}' is not staged") as error:
+    with pytest.raises(LoadoutError, match=f"kit '{name}' is not staged") as error:
         check_staged(repo)
-    assert f"loadout template add {name} --vendored" in str(error.value)
+    assert f"loadout kit add {name} --vendored" in str(error.value)
 
 
 def test_nested_global_snapshot_contains_sibling_sources_and_isolates_destinations(repo, fake_home):

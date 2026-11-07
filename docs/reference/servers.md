@@ -48,10 +48,10 @@ A source offering no `mcp.toml` contributes no servers, the same way one offerin
 server needs no per-agent authoring decision, so it renders without being named in a manifest's
 agent block (`AUTOMATIC_SLICES` in `manifest.py`).
 
-At project scope, a template contributes its own `mcp.toml` the same way it contributes
+At project scope, a kit contributes its own `mcp.toml` the same way it contributes
 `permissions.toml`, `instructions.md` and `skills/` — a tier beneath the project, so a project
-server of the same name replaces the template's rather than merging with it
-(`project_servers` in `emit.py`; see [templates.md](templates.md)).
+server of the same name replaces the kit's rather than merging with it
+(`project_servers` in `emit.py`; see [kits.md](kits.md)).
 
 ## Why definitions and policy stay separate
 

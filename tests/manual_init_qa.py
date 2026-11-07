@@ -285,24 +285,24 @@ def test_global_source_directory_copy_is_not_read(tmp_path, fake_home, evidence)
     evidence.save(result="Pass", scenarios=["Q04"])
 
 
-@pytest.mark.parametrize("template", ["frontend", "backend"])
-def test_bundled_template_after_init_through_cli(tmp_path, evidence, template):
-    root = _repository(tmp_path / template)
+@pytest.mark.parametrize("kit", ["frontend", "backend"])
+def test_bundled_kit_after_init_through_cli(tmp_path, evidence, kit):
+    root = _repository(tmp_path / kit)
     arguments = ["init", "project", "--harness", "codex", "--json"]
     result = json.loads(evidence.cli(root, *arguments, "--yes").stdout)
     assert result["status"] == "complete"
-    evidence.cli(root, "template", "add", template, "--vendored")
+    evidence.cli(root, "kit", "add", kit, "--vendored")
     evidence.cli(root, "sync")
     config = tomllib.loads((root / "loadout/config.toml").read_text())
-    assert config["templates"] == [template]
-    assert config["template"][template]["vendored"]
-    vendored = root / "loadout/templates" / template
+    assert config["kits"] == [kit]
+    assert config["kit"][kit]["vendored"]
+    vendored = root / "loadout/kits" / kit
     assert {path.name for path in vendored.iterdir() if path.is_dir()} == CATEGORIES
     instructions = (vendored / "instructions.md").read_text().strip()
     assert instructions
     assert instructions in (root / "AGENTS.md").read_text()
     evidence.cli(root, "check")
-    evidence.save(result="Pass", scenarios=["Q17"], template=template)
+    evidence.save(result="Pass", scenarios=["Q17"], kit=kit)
 
 
 def _read_pty(descriptor, process, predicate, timeout=30):

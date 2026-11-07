@@ -15,7 +15,7 @@ rules describe different operations.
 | skill catalog variants | public skill targets configured consumers | `<name>.local/` replaces the whole skill; `agents` narrows consumers | a loose file in `skills/` is not a skill and is reported |
 | skill frontmatter harness block | inherit shared keys, except Claude-only `model`, `effort`, `context`, `agent` outside Claude | harness value replaces the shared value | all harness blocks are stripped after selection |
 | MCP server definitions | keep other servers | later source replaces the whole same-named server | source order determines the winner |
-| project template skills/MCP | keep other entries | later template, then project, replaces the whole named entry | project declarations supply the highest tier |
+| project kit skills/MCP | keep other entries | later kit, then project, replaces the whole named entry | project declarations supply the highest tier |
 
 Permission strictness applies to identical portable rule entries. Pattern overlap still follows
 the harness matcher, and `opencode.extra` keeps last-tier precedence. Instruction ordering arranges
@@ -33,7 +33,7 @@ whole target before redeclaring it expresses whole-target replacement.
 
 After profiles are resolved, `[all]` supplies defaults to declared agents. Removing an agent's
 own field exposes that shared default. Existing `false` slice values disable automatic slices.
-There is no template or project `extends`: verified in `template_catalog.py:_load_catalog` and
+There is no kit or project `extends`: verified in `kit_catalog.py:_load_catalog` and
 `project.py:load_project_config`, whose accepted key sets reject it. Catalogs reuse selected parts.
 `emit.py:render_all` renders global and project scopes separately and rejects output collisions.
 
@@ -66,7 +66,7 @@ owned copy and its `loadout` override entry together, preserving other overrides
 comments and mode. The earlier skill becomes active and sync deploys it. Inherited source lists
 are changed in their declaring manifest, so every profile inheriting that list sees the removal.
 
-Source protection includes every inherited machine manifest used to resolve a declared template.
+Source protection includes every inherited machine manifest used to resolve a linked kit.
 
-See [templates](templates.md) and
+See [kits](kits.md) and
 [ADR 0020](../decisions/0020-composition-uses-explicit-operators.md).

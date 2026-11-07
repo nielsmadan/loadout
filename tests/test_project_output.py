@@ -36,7 +36,7 @@ SKILL_DIRS = {
     "opencode": ".opencode/skills",
     "pi": ".pi/skills",
 }
-SKILL_FILES = ("from-template/SKILL.md", "probe/SKILL.md", "probe/reference.md")
+SKILL_FILES = ("from-kit/SKILL.md", "probe/SKILL.md", "probe/reference.md")
 
 
 AGENT_FILES = {
@@ -56,7 +56,7 @@ def skill_outputs(*harnesses: str) -> set[str]:
     outputs = {f"{SKILL_DIRS[h]}/{f}" for h in harnesses for f in SKILL_FILES}
     if "codex" in harnesses:
         for harness in {"opencode", "pi"}.intersection(harnesses):
-            outputs.discard(f"{SKILL_DIRS[harness]}/from-template/SKILL.md")
+            outputs.discard(f"{SKILL_DIRS[harness]}/from-kit/SKILL.md")
     return outputs
 
 
@@ -303,7 +303,7 @@ def test_render_all_rejects_a_path_collision_between_scopes(root: Path, project:
 
 
 def _vendor(bare_project: Path, name: str, permissions: str) -> Path:
-    tree = bare_project / "loadout" / "templates" / name
+    tree = bare_project / "loadout" / "kits" / name
     tree.mkdir(parents=True)
     (tree / "permissions.toml").write_text(permissions, encoding="utf-8")
     return tree
@@ -312,23 +312,21 @@ def _vendor(bare_project: Path, name: str, permissions: str) -> Path:
 def _declare(bare_project: Path, *names: str) -> None:
     config = bare_project / "loadout" / "config.toml"
     quoted = ", ".join(f'"{name}"' for name in names)
-    config.write_text(
-        config.read_text(encoding="utf-8") + f"templates = [{quoted}]\n", encoding="utf-8"
-    )
+    config.write_text(config.read_text(encoding="utf-8") + f"kits = [{quoted}]\n", encoding="utf-8")
 
 
-def test_a_template_rule_reaches_the_output(bare_project: Path) -> None:
+def test_a_kit_rule_reaches_the_output(bare_project: Path) -> None:
     _vendor(bare_project, "web", '[shell]\nallow = ["vite build"]\n')
     _declare(bare_project, "web")
     doc = json.loads(render_project(bare_project)[bare_project / ".claude/settings.json"])
     assert "Bash(vite build:*)" in doc["permissions"]["allow"]
 
 
-def test_a_project_deny_beats_a_template_allow(bare_project: Path) -> None:
-    """The template is the lowest tier, so deny-wins resolves against it.
+def test_a_project_deny_beats_a_kit_allow(bare_project: Path) -> None:
+    """The kit is the lowest tier, so deny-wins resolves against it.
 
     The second rule is what makes this a real test: without it, the assertions
-    pass whether or not the template merged at all, because an unmerged allow is
+    pass whether or not the kit merged at all, because an unmerged allow is
     also an absent allow.
     """
     _vendor(bare_project, "web", '[shell]\nallow = ["vite build", "vite preview"]\n')
@@ -342,9 +340,9 @@ def test_a_project_deny_beats_a_template_allow(bare_project: Path) -> None:
     assert "Bash(vite build:*)" not in doc["permissions"]["allow"]
 
 
-def test_templates_merge_in_declared_order(bare_project: Path) -> None:
+def test_kits_merge_in_listed_order(bare_project: Path) -> None:
     """Emission order decides which rule applies on OpenCode and Pi, so the
-    declared order has to survive into the output."""
+    listed order has to survive into the output."""
     _vendor(bare_project, "one", '[shell]\nallow = ["one-tool"]\n')
     _vendor(bare_project, "two", '[shell]\nallow = ["two-tool"]\n')
     _declare(bare_project, "one", "two")
@@ -353,7 +351,7 @@ def test_templates_merge_in_declared_order(bare_project: Path) -> None:
     assert allow.index("Bash(one-tool:*)") < allow.index("Bash(two-tool:*)")
 
 
-def test_a_template_rule_is_emitted_before_the_projects_own(bare_project: Path) -> None:
+def test_a_kit_rule_is_emitted_before_the_projects_own(bare_project: Path) -> None:
     """Lowest tier first, because OpenCode and Pi are last-match-wins."""
     _vendor(bare_project, "web", '[shell]\nallow = ["vite build"]\n')
     _declare(bare_project, "web")
@@ -362,15 +360,15 @@ def test_a_template_rule_is_emitted_before_the_projects_own(bare_project: Path) 
     assert keys.index("vite build") < keys.index("alpha")
 
 
-def test_a_template_carrying_no_permissions_is_not_an_error(bare_project: Path) -> None:
+def test_a_kit_carrying_no_permissions_is_not_an_error(bare_project: Path) -> None:
     """`railway` in the live source offers skills only; a source's `use` already
-    covers that shape, so a template offering one slice needs no special case."""
-    (bare_project / "loadout" / "templates" / "railway" / "skills").mkdir(parents=True)
+    covers that shape, so a kit offering one slice needs no special case."""
+    (bare_project / "loadout" / "kits" / "railway" / "skills").mkdir(parents=True)
     _declare(bare_project, "railway")
     assert render_project(bare_project)
 
 
-def test_an_unresolvable_template_fails_the_render(bare_project: Path) -> None:
+def test_an_unresolvable_kit_fails_the_render(bare_project: Path) -> None:
     _declare(bare_project, "missing")
     with pytest.raises(LoadoutError, match="No global source is configured"):
         render_project(bare_project)
@@ -436,7 +434,7 @@ def test_a_claude_md_linked_to_agents_md_receives_the_same_content(project: Path
     assert "Declared first while sorting second" in rendered[project / "CLAUDE.md"]
 
 
-def test_instruction_blocks_appear_in_declared_order_above_the_template(project: Path) -> None:
+def test_instruction_blocks_appear_in_declared_order_above_the_kit(project: Path) -> None:
     """All three positions are asserted, not just the winner: an assertion that
     only pins the first block passes against a render that dropped the rest, and
     `testing` before `conventions` is the reverse of the sorted order, so a
@@ -444,8 +442,8 @@ def test_instruction_blocks_appear_in_declared_order_above_the_template(project:
     document = render_project(project)[project / "AGENTS.md"]
     testing = document.index("Declared first while sorting second")
     conventions = document.index("Declared second while sorting first")
-    template = document.index("Contributed by the `web` template")
-    assert testing < conventions < template
+    kit = document.index("Contributed by the `web` kit")
+    assert testing < conventions < kit
 
 
 def test_a_project_declaring_no_instructions_generates_neither_document(
@@ -464,31 +462,31 @@ def test_a_project_declaring_no_instructions_generates_neither_document(
         ".pi/extensions/pi-permission-system/config.json",
         ".pi/mcp.json",
     } | {
-        # The template is gone with `bare_project`, so only the project's own skill
-        # survives — which is also what proves the template supplied the other one.
+        # The kit is gone with `bare_project`, so only the project's own skill
+        # survives — which is also what proves the kit supplied the other one.
         f"{SKILL_DIRS[h]}/{f}"
         for h in SKILL_DIRS
         for f in ("probe/SKILL.md", "probe/reference.md")
     } | agent_outputs(*AGENT_FILES)
 
 
-def test_a_template_contributes_instructions_without_being_named(bare_project: Path) -> None:
-    """A template is a tier, not a fragment: adopting `web` brings its prose with
+def test_a_kit_contributes_instructions_without_being_named(bare_project: Path) -> None:
+    """A kit is a tier, not a fragment: adopting `web` brings its prose with
     no entry in the project's order. The project fragment is declared too, and
     still present, so this cannot pass against a render that emitted only the
-    template."""
+    kit."""
     tree = _vendor(bare_project, "web", "[shell]\nallow = []\n")
-    (tree / "instructions.md").write_text("From the template.", encoding="utf-8")
+    (tree / "instructions.md").write_text("From the kit.", encoding="utf-8")
     _declare(bare_project, "web")
     _fragment(bare_project, "own", "From the project.")
     _instruct(bare_project, "own")
 
     document = render_project(bare_project)[bare_project / "AGENTS.md"]
-    assert document.index("From the project.") < document.index("From the template.")
+    assert document.index("From the project.") < document.index("From the kit.")
 
 
-def test_template_instructions_follow_the_project_s_in_template_order(bare_project: Path) -> None:
-    """Ruling D-11: the project's own heading leads the document, and the templates keep
+def test_kit_instructions_follow_the_project_s_in_kit_order(bare_project: Path) -> None:
+    """Ruling D-11: the project's own heading leads the document, and the kits keep
     the order the project declares them in."""
     for name in ("web", "api"):
         tree = _vendor(bare_project, name, "[shell]\nallow = []\n")
@@ -538,12 +536,12 @@ def test_identical_convention_variants_share_the_agents_directory(project: Path)
         relative = path.relative_to(project)
         if (
             path.name == "SKILL.md"
-            and path.parent.name == "from-template"
+            and path.parent.name == "from-kit"
             and relative.parts[0] in {".agents", ".opencode", ".pi"}
         ):
             rendered.add(relative.as_posix())
 
-    assert rendered == {".agents/skills/from-template/SKILL.md"}
+    assert rendered == {".agents/skills/from-kit/SKILL.md"}
 
 
 def test_an_unrendered_skill_shares_opaque_document_bytes(project: Path) -> None:
@@ -565,15 +563,15 @@ def test_an_unrendered_skill_shares_opaque_document_bytes(project: Path) -> None
     assert skill.read_bytes() == b"\xffopaque\n"
 
 
-def test_a_project_skill_beats_a_template_skill_of_the_same_name(project: Path) -> None:
-    """Templates are the lowest tier here as they are for permissions. The second
-    assertion is what makes this a real test: without it, `TEMPLATE_LOSER` being
-    absent passes whether or not the template's skills were ever scanned."""
+def test_a_project_skill_beats_a_kit_skill_of_the_same_name(project: Path) -> None:
+    """Kits are the lowest tier here as they are for permissions. The second
+    assertion is what makes this a real test: without it, `KIT_LOSER` being
+    absent passes whether or not the kit's skills were ever scanned."""
     rendered = render_project(project)
     probe = rendered[project / ".claude/skills/probe/SKILL.md"]
-    assert "TEMPLATE_LOSER" not in probe
+    assert "KIT_LOSER" not in probe
     assert "Declared by the project" in probe
-    assert project / ".claude/skills/from-template/SKILL.md" in rendered
+    assert project / ".claude/skills/from-kit/SKILL.md" in rendered
 
 
 def test_a_supporting_file_is_copied_rather_than_rendered(project: Path) -> None:
@@ -596,7 +594,7 @@ def test_a_skill_policy_selects_only_its_named_agents(project: Path) -> None:
 
     assert ".claude/skills/probe/SKILL.md" in rendered
     assert ".factory/skills/probe/SKILL.md" in rendered
-    assert ".agents/skills/from-template/SKILL.md" in rendered
+    assert ".agents/skills/from-kit/SKILL.md" in rendered
     assert ".agents/skills/probe/SKILL.md" not in rendered
 
 

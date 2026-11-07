@@ -1,9 +1,9 @@
 ---
-name: from-template
+name: from-kit
 description: Reaches every harness without the project naming it.
 ---
 
-# From the template
+# From the kit
 
-Proves the template's skills were scanned at all, which is what stops the
+Proves the kit's skills were scanned at all, which is what stops the
 override test passing against a render that never read them.

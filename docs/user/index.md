@@ -1,6 +1,6 @@
 ---
 title: Home
-description: Switch agents without rebuilding your configuration. Loadout shares instructions, permissions, and tools through reusable project templates and composable sources.
+description: Switch agents without rebuilding your configuration. Loadout shares instructions, permissions, and tools through reusable project kits and composable sources.
 hide:
   - toc
 ---
@@ -14,7 +14,7 @@ hide:
 
 <div class="loadout-actions" markdown>
 [Get started](getting-started.md){ .md-button .md-button--primary }
-[Explore templates](guides/templates.md){ .md-button }
+[Explore kits](guides/kits.md){ .md-button }
 </div>
 
 <div class="loadout-benefits" markdown>
@@ -31,9 +31,9 @@ Keep shared instructions and rules together. Loadout writes each agent's native 
 
 ## Give each project the context it needs.
 
-Keep project-specific context out of your global instructions and token budget. Reuse templates for instructions, skills, and tools, and update projects from a shared source.
+Keep project-specific context out of your global instructions and token budget. Reuse kits for instructions, skills, and tools, and update projects from a shared source.
 
-[Reuse a project template →](guides/templates.md)
+[Reuse a project kit →](guides/kits.md)
 
 </div>
 <div class="loadout-benefit" markdown>
@@ -73,7 +73,7 @@ and use either agent.
 - **For your own agents:** [global setup](guides/global.md) applies configuration across projects.
 - **For a shared repository:** [project setup](guides/projects.md) keeps shared sources in git
   and your personal permission rules local.
-- **For several similar projects:** [templates](guides/templates.md) let you maintain a common
+- **For several similar projects:** [kits](guides/kits.md) let you maintain a common
   configuration without filling every session with unrelated instructions.
 
 Loadout renders configuration. Your agents still decide how to load and enforce it, and some

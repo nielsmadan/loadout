@@ -38,10 +38,10 @@ from .emit import (
     global_rules,
     project_agents,
     project_instruction_sources,
+    project_kits,
     project_rules,
     project_skill_trees,
     project_slice_document,
-    project_templates,
     refuse_unregistered_global,
     selected_target,
     skill_trees,
@@ -50,6 +50,7 @@ from .emit import (
 )
 from .errors import LoadoutError
 from .hooks import CLAUDE_EVENTS, CODEX_EVENTS, DROID_EVENTS, unrecognised_events
+from .kits import kit_divergence, unverifiable_kits
 from .manifest import Manifest, load_profile, manifest_path
 from .permissions.renderers import CATCH_ALL_RENDERERS
 from .permissions.rules import Rules, exact_command, is_exact, is_glob
@@ -64,16 +65,15 @@ from .project import (
 from .skill_policy import SkillPolicy, render_skill_for, selected_skill_agents
 from .skills import Skill, loose_skill_files, render_skill
 from .subagents import AGENTS_SUBDIR, Agent, agent_notes, discover_agents
-from .templates import template_divergence, unverifiable_templates
 
 __all__ = [
     "Notice",
     "collect_notices",
     "inexact_shell_entries",
+    "kit_notices",
     "known_events",
     "notices_for",
     "opencode_skills_race",
-    "template_notices",
     "unreached_catch_all",
     "unsupported_shell_globs",
 ]
@@ -385,31 +385,31 @@ def _loose_skill_notices(skill_roots: Iterable[Path]) -> tuple[Notice, ...]:
     )
 
 
-def template_notices(root: Path) -> tuple[Notice, ...]:
-    """Vendored templates whose copy no longer matches what was vendored, or that have
+def kit_notices(root: Path) -> tuple[Notice, ...]:
+    """Vendored kits whose copy no longer matches what was vendored, or that have
     nothing to compare against. Reported, never failed: a vendored copy is source, so
     it falls outside drift by definition (ADR 0014), but saying nothing would let a
-    project drift from its template indefinitely."""
+    project drift from its kit indefinitely."""
     return (
         *(
             Notice(
                 "project",
-                "templates",
-                f"the vendored template {name!r} was modified after it was vendored — "
-                f"`loadout template sync {name}` will refuse until those edits go upstream",
+                "kits",
+                f"the vendored kit {name!r} was modified after it was vendored — "
+                f"`loadout kit sync {name}` will refuse until those edits go upstream",
             )
-            for name in template_divergence(root)
+            for name in kit_divergence(root)
         ),
         *(
             Notice(
                 "project",
-                "templates",
-                f"the vendored template {name!r} has no recorded provenance, so nothing can "
-                f"tell your edits from its source — delete loadout/templates/{name} and run "
-                f"`loadout template add {name} --vendored` to take the source wholesale and "
+                "kits",
+                f"the vendored kit {name!r} has no recorded provenance, so nothing can "
+                f"tell your edits from its source — delete loadout/kits/{name} and run "
+                f"`loadout kit add {name} --vendored` to take the source wholesale and "
                 "record one",
             )
-            for name in unverifiable_templates(root)
+            for name in unverifiable_kits(root)
         ),
     )
 
@@ -425,7 +425,7 @@ def collect_notices(
     environ = os.environ if environ is None else environ
     found: list[Notice] = [
         *project_notices(root, environ),
-        *template_notices(root),
+        *kit_notices(root),
     ]
     if not manifest_path(root).is_file():
         return tuple(found)
@@ -504,24 +504,24 @@ def project_notices(root: Path, environ: Mapping[str, str]) -> tuple[Notice, ...
             tuple(h for h in config.harnesses if AGENTS_SUBDIR in PROJECT_PRESET[h]),
         )
     )
-    templates = project_templates(root, config, RenderContext())
-    rules = project_rules(root, templates)
+    kits = project_kits(root, config, RenderContext())
+    rules = project_rules(root, kits)
     permissions: list[Notice] = []
     documents: list[Notice] = []
     for agent, slice_name, spec in project_slices(config.harnesses):
         if slice_name == "permissions" and spec.renderer:
             permissions.extend(_renderer_notices(agent, spec.renderer, rules))
         elif slice_name in PROJECT_DOCUMENTS:
-            document, contributed = project_slice_document(root, slice_name, templates)
+            document, contributed = project_slice_document(root, slice_name, kits)
             if contributed:
                 known = _marketplaces(agent, slice_name, document, environ)
                 documents.extend(notices_for(agent, slice_name, document, known))
-    trees = project_skill_trees(root, templates)
+    trees = project_skill_trees(root, kits)
     return (
         *found,
         *permissions,
         *documents,
-        *_repeated_heading_notices(root, project_instruction_sources(root, config, templates)),
+        *_repeated_heading_notices(root, project_instruction_sources(root, config, kits)),
         *_claude_skill_race(
             trees, config.harnesses, config.skill_policies, environ, ".claude/skills"
         ),

@@ -60,12 +60,12 @@ file, such as `loadout/permissions.local.toml` or a `.local` skill, may be absen
 its working copy is never imported. A required input has to be staged in a form that can be
 shared, never as a secret file added to Git.
 
-Every selected template must be vendored and staged, including bundled `frontend` and `backend`.
+Every selected kit must be vendored and staged, including bundled `frontend` and `backend`.
 A bare name can resolve to a machine override during normal sync, so silently substituting the
-package copy would validate a different producer. Run the exact `loadout template add <name>
---vendored --root <source-root>` command reported by the check, then stage the template tree
+package copy would validate a different producer. Run the exact `loadout kit add <name>
+--vendored --root <source-root>` command reported by the check, then stage the kit tree
 and config.
-Normal template resolution is unchanged.
+Normal kit resolution is unchanged.
 
 ## Installing hooks
 

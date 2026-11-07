@@ -10,12 +10,12 @@ from typing import Any, NoReturn
 
 from . import __version__
 from .commands import (
+    cmd_kit_add,
+    cmd_kit_list,
+    cmd_kit_sync,
     cmd_skill_install,
     cmd_skill_status,
     cmd_skill_uninstall,
-    cmd_template_add,
-    cmd_template_list,
-    cmd_template_sync,
 )
 from .completions import (
     SHELLS,
@@ -60,7 +60,12 @@ class _Parser(argparse.ArgumentParser):
         raise _ArgumentError(self.format_usage(), message)
 
 
-TEMPLATE_ROOT_HELP = "project root: the folder holding loadout/ (default: cwd)"
+KIT_ROOT_HELP = "project root: the folder holding loadout/ (default: cwd)"
+
+KIT_HELP = (
+    "A kit stays linked to its source: every sync picks up its current contents unless you "
+    "vendor it."
+)
 
 STEALTH_HELP = "Your own agent config in repos you don't control, kept out of git."
 
@@ -152,47 +157,47 @@ def build_parser() -> argparse.ArgumentParser:
         )
     )
 
-    template = subparsers.add_parser("template", help="manage this project's templates")
-    template_subparsers = template.add_subparsers(dest="template_command")
-    add_template = template_subparsers.add_parser(
-        "add", help="choose a template and how this project uses it"
+    kit = subparsers.add_parser(
+        "kit",
+        help=KIT_HELP,
+        description=f"{KIT_HELP} Add, list and sync this project's kits.",
     )
-    add_template.add_argument(
-        "name", nargs="?", help="template name; choose interactively when omitted"
-    )
-    add_mode = add_template.add_mutually_exclusive_group()
+    kit_subparsers = kit.add_subparsers(dest="kit_command")
+    add_kit = kit_subparsers.add_parser("add", help="choose a kit and how this project uses it")
+    add_kit.add_argument("name", nargs="?", help="kit name; choose interactively when omitted")
+    add_mode = add_kit.add_mutually_exclusive_group()
     add_mode.add_argument(
-        "--tracked",
-        dest="template_mode",
+        "--linked",
+        dest="kit_mode",
         action="store_const",
-        const="tracked",
-        help="resolve the template from a source on every render",
+        const="linked",
+        help="resolve the kit from a source on every render",
     )
     add_mode.add_argument(
         "--vendored",
-        dest="template_mode",
+        dest="kit_mode",
         action="store_const",
         const="vendored",
-        help="copy the template into this project and record its content hash",
+        help="copy the kit into this project and record its content hash",
     )
-    add_root(add_template, help_text=TEMPLATE_ROOT_HELP)
-    add_template.add_argument(
+    add_root(add_kit, help_text=KIT_ROOT_HELP)
+    add_kit.add_argument(
         "--yes",
         action="store_true",
-        help="apply a change to shared template parts without a prompt",
+        help="apply a change to shared kit parts without a prompt",
     )
     for sub_name, sub_help in (
-        ("list", "show each declared template, its mode and how it resolves"),
+        ("list", "show each of this project's kits, its mode and how it resolves"),
         ("sync", "update the vendored copy from its source"),
     ):
-        template_sub = template_subparsers.add_parser(sub_name, help=sub_help)
-        add_root(template_sub, help_text=TEMPLATE_ROOT_HELP)
+        kit_sub = kit_subparsers.add_parser(sub_name, help=sub_help)
+        add_root(kit_sub, help_text=KIT_ROOT_HELP)
         if sub_name == "sync":
-            template_sub.add_argument("name", help="template name")
-            template_sub.add_argument(
+            kit_sub.add_argument("name", help="kit name")
+            kit_sub.add_argument(
                 "--yes",
                 action="store_true",
-                help="apply a change to shared template parts without a prompt",
+                help="apply a change to shared kit parts without a prompt",
             )
 
     integrate = subparsers.add_parser(
@@ -363,24 +368,24 @@ def _resolve_global(profile: str | None) -> tuple[Path, str]:
     return config.source, profile_for(config.source, profile, config)
 
 
-TEMPLATE_OUTSIDE_PROJECT = (
-    "template commands manage a project's templates; to author one, add a "
-    "`templates/<name>/` folder or `templates/<name>.toml` manifest to your global source. "
-    "To see the templates your sources offer, run `loadout template add` with no name in a "
+KIT_OUTSIDE_PROJECT = (
+    "kit commands manage a project's kits; to author one, add a "
+    "`kits/<name>/` folder or `kits/<name>.toml` manifest to your global source. "
+    "To see the kits your sources offer, run `loadout kit add` with no name in a "
     "project."
 )
 
 
-def _dispatch_template(args: argparse.Namespace) -> int:
+def _dispatch_kit(args: argparse.Namespace) -> int:
     root = args.root.resolve()
     if not project_config_path(root).is_file():
-        raise LoadoutError(TEMPLATE_OUTSIDE_PROJECT)
+        raise LoadoutError(KIT_OUTSIDE_PROJECT)
     refuse_unregistered_global(root)
-    if args.template_command == "list":
-        return cmd_template_list(root)
-    if args.template_command == "add":
-        return cmd_template_add(root, args.name, args.template_mode, yes=args.yes)
-    return cmd_template_sync(root, args.name, yes=args.yes)
+    if args.kit_command == "list":
+        return cmd_kit_list(root)
+    if args.kit_command == "add":
+        return cmd_kit_add(root, args.name, args.kit_mode, yes=args.yes)
+    return cmd_kit_sync(root, args.name, yes=args.yes)
 
 
 def _add_init_choices(init: argparse.ArgumentParser) -> None:
@@ -490,8 +495,8 @@ def _dispatch(args: argparse.Namespace) -> int:  # noqa: PLR0911
         )
     if args.command == "init":
         return _dispatch_init(args)
-    if args.command == "template":
-        return _dispatch_template(args)
+    if args.command == "kit":
+        return _dispatch_kit(args)
     if args.command == "stealth":
         return _dispatch_stealth(args)
     return _dispatch_outputs(args)
@@ -549,7 +554,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if (
         args.command is None
-        or (args.command == "template" and args.template_command is None)
+        or (args.command == "kit" and args.kit_command is None)
         or (args.command == "integrate" and args.integrate_command is None)
         or (
             args.command == "integrate"
@@ -604,6 +609,10 @@ def _renamed_spelling(argv: Sequence[str]) -> str | None:
     command = argv[0] if argv else None
     if command == "overlay":
         return "`overlay` is now `stealth`; use `loadout stealth add`, `list` or `remove`"
+    if command == "template":
+        return "`template` is now `kit`; use `loadout kit add`, `list` or `sync`"
+    if command == "kit" and any(arg == "--tracked" for arg in argv[1:]):
+        return "`--tracked` is now `--linked`; use `loadout kit add NAME --linked`"
     if command in {"sync", "check"} and any(
         arg == "--overlay" or arg.startswith("--overlay=") for arg in argv[1:]
     ):

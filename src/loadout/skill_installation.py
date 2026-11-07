@@ -20,13 +20,13 @@ from .bundled_skill import SKILL_NAME
 from .destinations import resolve_destination
 from .emit import declared_profiles, render_global
 from .errors import LoadoutError, unwritable, write_denied
+from .kits import copy_tree, tree_hash
 from .manifest import Manifest, load_profile
 from .output import FrozenFile, Merged
 from .skills import discover_skills
 from .sources import select_overrides
 from .state import sync_state
 from .sync import unaccepted_outputs
-from .templates import copy_tree, tree_hash
 
 OWNER_MARKER = ".loadout-bundle.toml"
 _OWNER = "loadout-bundled-skill"

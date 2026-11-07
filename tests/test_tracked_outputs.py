@@ -1,6 +1,6 @@
 """A path loadout generates that Git still tracks.
 
-`.gitignore` does not untrack a file, so a hand-copied skill that a template later renders
+`.gitignore` does not untrack a file, so a hand-copied skill that a kit later renders
 stays in the index and git reports every render as a change (dreamhack/app1's
 `rn-upgrade`). Sync never changes the index; it and `check` name each such path and the
 command that untracks it.

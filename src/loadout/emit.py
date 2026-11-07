@@ -12,6 +12,8 @@ from .destinations import resolve_destination
 from .documents import merge_documents
 from .errors import LoadoutError
 from .harnesses import DIRECTORY_SLICES, SHARED_SKILL_READERS
+from .kit_catalog import Catalog, contribution_paths, load_catalogs
+from .kits import resolve_kit, resolve_upstream_kit
 from .machine import Registration, is_registered, registration, unregistered
 from .manifest import (
     MANIFEST_NAME,
@@ -77,8 +79,6 @@ from .subagents import (
     render_agent,
 )
 from .surgery import concat_documents
-from .template_catalog import Catalog, contribution_paths, load_catalogs
-from .templates import resolve_template, resolve_upstream_template
 from .toml_paths import overlapping_keys
 from .worktrees import linked_worktree_source
 
@@ -90,11 +90,11 @@ PROJECT_DOCUMENTS = {"hooks": "hooks.json", "plugins": "plugins.json"}
 @dataclass(frozen=True)
 class RenderContext:
     """What a render reads from outside the source: where a destination lands, where a
-    template that is not vendored comes from, how a manifest's sources are found, and
+    kit that is not vendored comes from, how a manifest's sources are found, and
     which root may render global scope."""
 
     destination: Callable[[str, str], Path] = resolve_destination
-    upstream: Callable[[str], ResolvedItem] = resolve_upstream_template
+    upstream: Callable[[str], ResolvedItem] = resolve_upstream_kit
     sources: SourceParser = parse_sources
     registration: Callable[[], Registration] = registration
 
@@ -158,8 +158,8 @@ def refuse_unregistered_manifest(
 
 
 @dataclass(frozen=True)
-class ProjectTemplates:
-    """A project's declared templates, resolved once per render."""
+class ProjectKits:
+    """A project's kits, resolved once per render."""
 
     paths: tuple[Path, ...] = ()
     catalogs: Mapping[Path, Catalog] = field(default_factory=dict)
@@ -168,13 +168,9 @@ class ProjectTemplates:
         return contribution_paths(self.paths, slice_name, catalogs=self.catalogs)
 
 
-def project_templates(
-    root: Path, config: ProjectConfig, context: RenderContext
-) -> ProjectTemplates:
-    paths = tuple(
-        resolve_template(name, root, upstream=context.upstream).path for name in config.templates
-    )
-    return ProjectTemplates(paths, load_catalogs(paths))
+def project_kits(root: Path, config: ProjectConfig, context: RenderContext) -> ProjectKits:
+    paths = tuple(resolve_kit(name, root, upstream=context.upstream).path for name in config.kits)
+    return ProjectKits(paths, load_catalogs(paths))
 
 
 def permission_sources(manifest: Manifest) -> tuple[Source, ...]:
@@ -727,7 +723,7 @@ def render_global(
         groups: dict[Path, list[tuple[PermissionTarget, dict[str, Any], dict[str, Any]]]] = {}
         for target in selected_permissions:
             # A source offering no mcp.toml contributes no tier, the same as a
-            # template offering no permissions.toml — nothing to write,
+            # kit offering no permissions.toml — nothing to write,
             # mirroring render_project's identical guard.
             #
             # A merged slice is the exception and must still write: it owns a key
@@ -994,10 +990,10 @@ def render_project(root: Path, context: RenderContext | None = None) -> dict[Pat
         if spec.preserve_foreign and spec.output is not None
     ]
     refuse_escaping(root, shared)
-    templates = project_templates(root, config, context or RenderContext())
+    kits = project_kits(root, config, context or RenderContext())
     outputs = {
         path: SharedText(output) if path in shared and isinstance(output, str) else output
-        for path, output in _render_project_slices(root, config, templates).items()
+        for path, output in _render_project_slices(root, config, kits).items()
     }
     # Before anything compares or shows these: a diff of a file outside the project
     # would print it.
@@ -1005,20 +1001,20 @@ def render_project(root: Path, context: RenderContext | None = None) -> dict[Pat
     return outputs
 
 
-def project_rules(root: Path, templates: ProjectTemplates) -> Rules:
+def project_rules(root: Path, kits: ProjectKits) -> Rules:
     """The permission tiers project scope merges, lowest first.
 
-    Templates are the lowest tier, in declared order: a template describes a kind
-    of work, and anything the project itself says outranks it. A template offering
+    Kits are the lowest tier, in listed order: a kit describes a kind
+    of work, and anything the project itself says outranks it. A kit offering
     no permissions contributes no tier rather than failing — its `use` already says
-    which slices it offers, and one slice is a legitimate template.
+    which slices it offers, and one slice is a legitimate kit.
 
     Shared with `project_notices` so the verdict a notice names is the one that
     actually rendered, the way `permission_sources` guarantees it at global scope.
     """
     project_dir = root / PROJECT_DIR
     tiers: list[Rules] = [
-        parse_rules(contributed) for contributed in templates.contributions("permissions")
+        parse_rules(contributed) for contributed in kits.contributions("permissions")
     ]
     for path in (project_dir / PERMISSIONS_SOURCE, project_dir / PROJECT_LOCAL_SOURCE):
         if path.is_file():
@@ -1068,15 +1064,15 @@ def project_owned_keys(harnesses: tuple[str, ...], output: str) -> frozenset[str
 
 
 def _render_project_slices(
-    root: Path, config: ProjectConfig, templates: ProjectTemplates
+    root: Path, config: ProjectConfig, kits: ProjectKits
 ) -> dict[Path, Output]:
-    rules = project_rules(root, templates)
+    rules = project_rules(root, kits)
 
-    instructions = project_instructions(root, config, templates)
-    trees = project_skill_trees(root, templates)
-    servers = project_servers(root, templates)
+    instructions = project_instructions(root, config, kits)
+    trees = project_skill_trees(root, kits)
+    servers = project_servers(root, kits)
     project_documents = {
-        name: project_slice_document(root, name, templates) for name in PROJECT_DOCUMENTS
+        name: project_slice_document(root, name, kits) for name in PROJECT_DOCUMENTS
     }
 
     def _contributes(slice_name: str) -> bool:
@@ -1127,7 +1123,7 @@ def _render_project_slices(
             continue
         if not _contributes(slice_name):
             # A source offering no mcp.toml contributes no tier, the same as a
-            # template offering no permissions.toml — nothing to write. The keys
+            # kit offering no permissions.toml — nothing to write. The keys
             # it owns were retired above rather than left in the co-owner's base.
             continue
         if _rule_less(spec.renderer or "", rules):
@@ -1183,45 +1179,45 @@ def _project_residual(root: Path, agent: str, path: Path) -> dict[str, Any]:
 
 
 def project_slice_document(
-    root: Path, slice_name: str, templates: ProjectTemplates
+    root: Path, slice_name: str, kits: ProjectKits
 ) -> tuple[dict[str, Any], bool]:
-    paths = list(templates.contributions(slice_name))
+    paths = list(kits.contributions(slice_name))
     local = root / PROJECT_DIR / PROJECT_DOCUMENTS[slice_name]
     if local.is_file():
         paths.append(local)
     return merge_documents(*(_load_base(path) for path in paths)), bool(paths)
 
 
-def template_skills(templates: ProjectTemplates) -> dict[str, Skill]:
-    """Each template's skill trees by name, in template order, a later template's winning."""
+def kit_skills(kits: ProjectKits) -> dict[str, Skill]:
+    """Each kit's skill trees by name, in kit order, a later kit's winning."""
     return {
         skill.name: skill
-        for template in templates.paths
+        for kit in kits.paths
         for skill in (
-            templates.catalogs[template].skills()
-            if template in templates.catalogs
-            else discover_skills(template / SKILLS_SUBDIR)
+            kits.catalogs[kit].skills()
+            if kit in kits.catalogs
+            else discover_skills(kit / SKILLS_SUBDIR)
         )
     }
 
 
-def project_skill_trees(root: Path, templates: ProjectTemplates) -> tuple[Skill, ...]:
-    """Collect skill trees in template order, then replace matching names from the project."""
-    collected = template_skills(templates)
+def project_skill_trees(root: Path, kits: ProjectKits) -> tuple[Skill, ...]:
+    """Collect skill trees in kit order, then replace matching names from the project."""
+    collected = kit_skills(kits)
     for skill in discover_skills(root / PROJECT_DIR / SKILLS_SUBDIR):
         collected[skill.name] = skill
     return tuple(sorted(collected.values(), key=lambda s: s.name))
 
 
-def project_servers(root: Path, templates: ProjectTemplates) -> dict[str, Server]:
-    """Every server this project defines, templates first and the project last.
+def project_servers(root: Path, kits: ProjectKits) -> dict[str, Server]:
+    """Every server this project defines, kits first and the project last.
 
-    Same tier rule as permissions, instructions and skills: a template is
-    declared to sit beneath the project, so a project server of the same name
-    replaces the template's rather than merging with it.
+    Same tier rule as permissions, instructions and skills: a kit
+    sits beneath the project, so a project server of the same name
+    replaces the kit's rather than merging with it.
     """
     collected: dict[str, Server] = {}
-    for contributed in templates.contributions("mcp"):
+    for contributed in kits.contributions("mcp"):
         for server_name, server in parse_servers(contributed).items():
             collected[server_name] = server
     for server_name, server in parse_servers(root / PROJECT_DIR / SERVERS_SOURCE).items():
@@ -1288,26 +1284,24 @@ def _imports_agents(root: Path, config: ProjectConfig) -> bool:
 
 
 def project_instruction_sources(
-    root: Path, config: ProjectConfig, templates: ProjectTemplates
+    root: Path, config: ProjectConfig, kits: ProjectKits
 ) -> tuple[Path, ...]:
     """The fragments of the project's instruction document, in order.
 
-    The project's own fragments come first and the templates' parts after, in
-    template order, so the document opens with what is specific to this project
-    (ruling D-11). Selecting a template includes its instruction parts automatically.
+    The project's own fragments come first and the kits' parts after, in
+    kit order, so the document opens with what is specific to this project
+    (ruling D-11). Selecting a kit includes its instruction parts automatically.
     """
     source = Source(name=PROJECT_DIR, path=root / PROJECT_DIR, use=frozenset({INSTRUCTIONS.use}))
     return (
         *(resolve_item((source,), name, INSTRUCTIONS).path for name in config.instructions),
-        *templates.contributions("instructions"),
+        *kits.contributions("instructions"),
     )
 
 
-def project_instructions(
-    root: Path, config: ProjectConfig, templates: ProjectTemplates
-) -> str | None:
+def project_instructions(root: Path, config: ProjectConfig, kits: ProjectKits) -> str | None:
     """The project's instruction document, or None when it declares none."""
-    blocks = [load_fragment(path) for path in project_instruction_sources(root, config, templates)]
+    blocks = [load_fragment(path) for path in project_instruction_sources(root, config, kits)]
     if not blocks:
         return None
     return "\n\n".join([HEADER, *blocks]) + "\n"

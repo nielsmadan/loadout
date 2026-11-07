@@ -4,12 +4,12 @@
 
 One source of truth for AI coding-agent configuration, rendered out to every harness.
 
-**Switch agents. Keep your setup.** Reuse project templates and compose shared and personal
+**Switch agents. Keep your setup.** Reuse project kits and compose shared and personal
 configuration from one source. Loadout renders for Claude Code, Codex, Factory Droid, OpenCode
 and Pi.
 
 [Documentation](https://loadoutai.dev/) · [Getting started](https://loadoutai.dev/getting-started/)
-· [Templates](https://loadoutai.dev/guides/templates/)
+· [Kits](https://loadoutai.dev/guides/kits/)
 
 To preview, build, or publish the site, see [Publishing the documentation](docs/publishing.md).
 For versioned packages and Homebrew distribution, see [Releasing Loadout](docs/releasing.md).
@@ -58,9 +58,9 @@ Install the bundled `/loadout` skill, so your agents can make those edits for yo
     loadout check [--root PATH | --global | --stealth NAME] [--profile NAME] [--json | --staged]
     loadout init global [DIR] [--harness NAME]... [--registration keep|replace] [--dry-run] [--json] [--yes]
     loadout init project [--root PATH] [--harness NAME]... [--dry-run] [--json] [--yes]
-    loadout template add [NAME] [--tracked | --vendored] [--root PATH] [--yes]
-    loadout template sync NAME [--root PATH] [--yes]
-    loadout template list [--root PATH]
+    loadout kit add [NAME] [--linked | --vendored] [--root PATH] [--yes]
+    loadout kit sync NAME [--root PATH] [--yes]
+    loadout kit list [--root PATH]
     loadout stealth add [DIRECTORY] [--name NAME]
     loadout stealth list
     loadout stealth remove NAME [--force] [--yes]
@@ -101,7 +101,7 @@ its own source in `loadout/`, with `loadout/config.toml`:
 ```toml
 harnesses = ["claude", "codex"]
 instructions = ["conventions", "testing"]
-templates = ["frontend"]
+kits = ["frontend"]
 ```
 
 The full schema, from the machine config to permission rules and both source layouts, is in the
@@ -122,7 +122,7 @@ The full schema, from the machine config to permission rules and both source lay
 
 - [Getting started](docs/user/getting-started.md)
 - Guides: [global setup](docs/user/guides/global.md), [project setup](docs/user/guides/projects.md),
-  [templates](docs/user/guides/templates.md), [composition](docs/user/guides/composition.md),
+  [kits](docs/user/guides/kits.md), [composition](docs/user/guides/composition.md),
   [configuring your agents](docs/user/guides/configuration.md), [stealth sources](docs/user/guides/stealth.md)
 - Reference: [CLI](docs/user/reference/cli.md),
   [configuration files](docs/user/reference/configuration.md),

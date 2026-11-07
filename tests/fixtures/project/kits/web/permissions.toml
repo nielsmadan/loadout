@@ -1,15 +1,15 @@
-# A vendored template's contribution to the project fixture. Vendored rather than
-# declared on purpose: resolution then reads no machine config, so the expected
+# A vendored kit's contribution to the project fixture. Vendored rather than
+# linked on purpose: resolution then reads no machine config, so the expected
 # tree stays machine-independent and reproducible in CI.
 #
 # Synthetic, and shaped to provoke rather than to be realistic — see
 # tests/test_fixture_shapes.py, which fails if this reach is lost. Every entry
-# here is absent from both project tiers, so a template that stopped merging
+# here is absent from both project tiers, so a kit that stopped merging
 # would change the expected output rather than passing quietly.
 
 [shell]
 # The lowest tier states the loosest catch-all; the project tier below states a
-# stricter one and must win. The template's own entries still appear in the
+# stricter one and must win. The kit's own entries still appear in the
 # output, which is what proves this tier was merged rather than skipped.
 default = "allow"
 allow = ["omicron build"]

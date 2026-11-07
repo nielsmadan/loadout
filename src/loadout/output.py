@@ -26,7 +26,7 @@ CATEGORIES = frozenset(
         "skills",
         "module-config",
         "support",
-        "templates",
+        "kits",
     }
 )
 

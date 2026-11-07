@@ -356,10 +356,10 @@ def test_hooks_are_not_installed_for_an_unregistered_global_setup(tmp_path: Path
     )
 
 
-def test_template_commands_refuse_an_unregistered_dual_scope_root(tmp_path: Path, capsys) -> None:
+def test_kit_commands_refuse_an_unregistered_dual_scope_root(tmp_path: Path, capsys) -> None:
     project = _project_with_a_pr_manifest(tmp_path / "p")
 
-    assert loadout.main(["template", "list", "--root", str(project)]) == 3
+    assert loadout.main(["kit", "list", "--root", str(project)]) == 3
 
     assert capsys.readouterr().err == _no_source(project)
 

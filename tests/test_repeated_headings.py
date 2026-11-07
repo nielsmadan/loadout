@@ -1,6 +1,6 @@
 """A heading two instruction fragments both bring into one document.
 
-dreamhack/app1 rendered two `## React Native project tooling` sections, one from the template
+dreamhack/app1 rendered two `## React Native project tooling` sections, one from the kit
 and one hand-copied into the project's own instructions. `check` and `sync` name the heading
 and the fragments it came from, as a note, never a failure, in project and global documents.
 """
@@ -37,10 +37,10 @@ def test_a_heading_repeated_inside_one_fragment_is_its_own_structure() -> None:
 
 def _project(root: Path) -> Path:
     files = {
-        "loadout/config.toml": 'harnesses = ["codex"]\ninstructions = ["main"]\ntemplates = ["rn"]\n',
+        "loadout/config.toml": 'harnesses = ["codex"]\ninstructions = ["main"]\nkits = ["rn"]\n',
         "loadout/instructions/main.md": f"# App\n\n{TOOLING}\n\n- Mine.\n",
-        "loadout/templates/rn/instructions.md": f"{TOOLING}\n\n- Theirs.\n",
-        "loadout/templates/rn/permissions.toml": "[shell]\nallow = []\n",
+        "loadout/kits/rn/instructions.md": f"{TOOLING}\n\n- Theirs.\n",
+        "loadout/kits/rn/permissions.toml": "[shell]\nallow = []\n",
     }
     for relative, content in files.items():
         (root / relative).parent.mkdir(parents=True, exist_ok=True)
@@ -64,7 +64,7 @@ def test_check_and_sync_note_the_repeated_heading_and_its_fragments(tmp_path: Pa
     assert notes == [
         (
             f'project.instructions: the instruction document repeats the heading "{TOOLING}", '
-            "from loadout/instructions/main.md and loadout/templates/rn/instructions.md; keep "
+            "from loadout/instructions/main.md and loadout/kits/rn/instructions.md; keep "
             "one section, with /loadout"
         )
     ]

@@ -73,9 +73,9 @@ for args in [
     ["sync", "--help"],
     ["check", "--help"],
     ["init", "--help"],
-    ["template", "add", "--help"],
-    ["template", "list", "--help"],
-    ["template", "sync", "--help"],
+    ["kit", "add", "--help"],
+    ["kit", "list", "--help"],
+    ["kit", "sync", "--help"],
     ["integrate", "skill", "install", "--help"],
     ["integrate", "skill", "status", "--help"],
     ["integrate", "skill", "uninstall", "--help"],
@@ -172,33 +172,33 @@ config.write_bytes(original)
 repeat = json.loads(run("repeat init", [*init, "--yes", "--json"], project).stdout)
 assert repeat["already_initialized"]
 
-run("track bundled template", ["template", "add", "frontend", "--tracked"], project)
-run("vendor bundled template", ["template", "add", "frontend", "--vendored"], project)
-run("render template", ["sync"], project)
-run("check template", ["check"], project)
-listed = run("list template", ["template", "list"], project).stdout
+run("link bundled kit", ["kit", "add", "frontend", "--linked"], project)
+run("vendor bundled kit", ["kit", "add", "frontend", "--vendored"], project)
+run("render kit", ["sync"], project)
+run("check kit", ["check"], project)
+listed = run("list kit", ["kit", "list"], project).stdout
 assert "frontend" in listed
-vendored = configuration / "templates/frontend/instructions.md"
-template_body = vendored.read_text()
-assert template_body.strip() in (project / "AGENTS.md").read_text()
+vendored = configuration / "kits/frontend/instructions.md"
+kit_body = vendored.read_text()
+assert kit_body.strip() in (project / "AGENTS.md").read_text()
 assert "@AGENTS.md" in (project / "CLAUDE.md").read_text()
-run("update unchanged template", ["template", "sync", "frontend"], project)
-vendored.write_text(template_body + "\nLocal change.\n")
-run("protect edited template", ["template", "sync", "frontend"], project, 1)
-assert vendored.read_text() == template_body + "\nLocal change.\n"
-vendored.write_text(template_body)
-run("check restored template", ["check"], project)
+run("update unchanged kit", ["kit", "sync", "frontend"], project)
+vendored.write_text(kit_body + "\nLocal change.\n")
+run("protect edited kit", ["kit", "sync", "frontend"], project, 1)
+assert vendored.read_text() == kit_body + "\nLocal change.\n"
+vendored.write_text(kit_body)
+run("check restored kit", ["check"], project)
 
-templated = work / "backend template"
-templated.mkdir()
-result = json.loads(run("backend template init", [*init, "--yes", "--json"], templated).stdout)
+kitted = work / "backend kit"
+kitted.mkdir()
+result = json.loads(run("backend kit init", [*init, "--yes", "--json"], kitted).stdout)
 assert result["status"] == "complete"
-run("backend template add", ["template", "add", "backend", "--vendored"], templated)
-run("backend template sync", ["sync"], templated)
-backend = (templated / "loadout/templates/backend/instructions.md").read_text().strip()
-assert backend in (templated / "AGENTS.md").read_text()
-assert "@AGENTS.md" in (templated / "CLAUDE.md").read_text()
-run("backend template check", ["check"], templated)
+run("backend kit add", ["kit", "add", "backend", "--vendored"], kitted)
+run("backend kit sync", ["sync"], kitted)
+backend = (kitted / "loadout/kits/backend/instructions.md").read_text().strip()
+assert backend in (kitted / "AGENTS.md").read_text()
+assert "@AGENTS.md" in (kitted / "CLAUDE.md").read_text()
+run("backend kit check", ["check"], kitted)
 
 global_source = work / "global source"
 global_source.mkdir()

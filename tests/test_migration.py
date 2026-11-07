@@ -447,7 +447,7 @@ def test_a_project_root_linked_outside_the_repository_names_both_remedies(
     assert (
         f"external-symlink: {claude} links to {external.resolve()}, outside the repository, so "
         "adopting it would copy that content into committed project source. Share it as a "
-        "loadout template instead, or replace the link with a real copy "
+        "loadout kit instead, or replace the link with a real copy "
         f"(cp -RL {claude} <copy>, then move the copy into its place) and run init again."
     ) in err
     assert claude.readlink() == external

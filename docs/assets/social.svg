@@ -27,7 +27,7 @@
     <text x="75" y="108" font-size="28" font-weight="bold" fill="#EE8A3A">loadout</text>
     <text x="70" y="252" font-size="66" font-weight="bold" fill="#FFF7EF">Switch agents.</text>
     <text x="70" y="335" font-size="66" font-weight="bold" fill="#FFF7EF">Keep your setup.</text>
-    <text x="75" y="412" font-size="25" fill="#CFBFB1">One source. Reusable templates.</text>
+    <text x="75" y="412" font-size="25" fill="#CFBFB1">One source. Reusable kits.</text>
     <text x="75" y="451" font-size="25" fill="#CFBFB1">Configuration that travels with you.</text>
     <text x="75" y="554" font-size="22" fill="#EE8A3A">loadoutai.dev</text>
   </g>

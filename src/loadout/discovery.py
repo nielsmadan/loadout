@@ -338,7 +338,7 @@ def _category(relative: Path, agent: str) -> str | None:
         "skills": "skills",
         "hooks": "hooks",
         "plugins": "plugins",
-        "templates": "templates",
+        "templates": "kits",
         "plugin": "plugins",
         "scripts": "support",
     }
@@ -690,7 +690,7 @@ class _InventoryBuilder:
         if not any(canonical.is_relative_to(root) for root in self.allowed):
             return "external-symlink", (
                 f"{path} links to {canonical}, outside the repository, so adopting it would copy "
-                "that content into committed project source. Share it as a loadout template "
+                "that content into committed project source. Share it as a loadout kit "
                 f"instead, or replace the link with a real copy (cp -RL {path} <copy>, then move "
                 "the copy into its place) and run init again."
             )

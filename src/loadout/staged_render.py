@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, assert_never
 
-from . import emit, templates
+from . import emit, kits
 from .destinations import resolve_destination
 from .errors import LoadoutError
 from .machine import registered_at
@@ -103,7 +103,7 @@ class Snapshot:
         command = shlex.join(
             [
                 "loadout",
-                "template",
+                "kit",
                 "add",
                 name,
                 "--vendored",
@@ -112,8 +112,8 @@ class Snapshot:
             ]
         )
         raise LoadoutError(
-            f"template {name!r} is not staged; run {command} and stage "
-            f"loadout/templates/{name} with loadout/config.toml"
+            f"kit {name!r} is not staged; run {command} and stage "
+            f"loadout/kits/{name} with loadout/config.toml"
         )
 
     def project_ownership(self, *, render: bool) -> set[Path]:
@@ -124,8 +124,8 @@ class Snapshot:
             return set()
         config = load_project_config(project_config_path(self.root))
         if render:
-            for name in config.templates:
-                path = templates.vendored_path(self.root, name)
+            for name in config.kits:
+                path = kits.vendored_path(self.root, name)
                 self.dependency(path)
                 if not path.exists():
                     self.upstream(name)

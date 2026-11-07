@@ -17,13 +17,13 @@ CATEGORIES = {"instructions": ".md", "permissions": ".toml", "mcp": ".toml", "sk
 _NAME = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9_.-]*")
 
 
-def template_name(name: str) -> None:
+def kit_name(name: str) -> None:
     parts = name.split("/")
     if name.count("/") > 1 or any(not _NAME.fullmatch(part) for part in parts):
-        raise LoadoutError(f"invalid template name: {name!r}; use a name or source/name")
+        raise LoadoutError(f"invalid kit name: {name!r}; use a name or source/name")
     if any(part in EXCLUDED_DIRECTORIES for part in parts):
         raise LoadoutError(
-            f"invalid template name: {name!r} names a folder loadout never reads; rename it"
+            f"invalid kit name: {name!r} names a folder loadout never reads; rename it"
         )
 
 
@@ -101,9 +101,9 @@ def _load_catalog(path: Path, validated: dict[tuple[str, Path], tuple[Path, ...]
     try:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
     except (ValueError, UnicodeError) as error:
-        raise LoadoutError(f"{path}: invalid template manifest: {error}") from error
+        raise LoadoutError(f"{path}: invalid kit manifest: {error}") from error
     if unknown := set(data) - CATEGORIES.keys():
-        raise LoadoutError(f"{path}: unknown template categories: {', '.join(sorted(unknown))}")
+        raise LoadoutError(f"{path}: unknown kit categories: {', '.join(sorted(unknown))}")
     parts: list[tuple[str, Path]] = []
     content = {path}
     for category, names in data.items():
@@ -124,9 +124,9 @@ def _load_catalog(path: Path, validated: dict[tuple[str, Path], tuple[Path, ...]
 
 
 def contribution_paths(
-    templates: tuple[Path, ...], category: str, *, catalogs: Mapping[Path, Catalog] | None = None
+    kits: tuple[Path, ...], category: str, *, catalogs: Mapping[Path, Catalog] | None = None
 ) -> tuple[Path, ...]:
-    loaded = load_catalogs(templates) if catalogs is None else catalogs
+    loaded = load_catalogs(kits) if catalogs is None else catalogs
     paths: list[Path] = []
     legacy = {
         "instructions": "instructions.md",
@@ -136,15 +136,11 @@ def contribution_paths(
         "plugins": "plugins.json",
         "skills": "skills",
     }
-    for template in templates:
-        contributed = (
-            loaded[template].paths(category)
-            if template in loaded
-            else (template / legacy[category],)
-        )
+    for kit in kits:
+        contributed = loaded[kit].paths(category) if kit in loaded else (kit / legacy[category],)
         for path in contributed:
-            if template not in loaded:
-                _no_symlinks(path, template)
+            if kit not in loaded:
+                _no_symlinks(path, kit)
             if path.exists():
                 paths.append(path)
     return tuple(dict.fromkeys(paths)) if category == "instructions" else tuple(paths)

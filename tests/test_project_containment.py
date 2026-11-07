@@ -12,7 +12,7 @@ import pytest
 import loadout
 from loadout.containment import refuse_external_links
 from loadout.errors import LoadoutError
-from loadout.templates import remove_vendored
+from loadout.kits import remove_vendored
 from registration import register
 
 pytestmark = pytest.mark.integration
@@ -127,12 +127,12 @@ def test_a_settings_source_linking_out_of_the_project_is_refused(
     assert not (root / ".claude/settings.json").exists()
 
 
-def test_removing_a_vendored_template_never_follows_a_link_out(tmp_path: Path) -> None:
+def test_removing_a_vendored_kit_never_follows_a_link_out(tmp_path: Path) -> None:
     root = _plain_project(tmp_path / "p")
     elsewhere = tmp_path / "elsewhere"
     (elsewhere / "frontend").mkdir(parents=True)
     (elsewhere / "frontend/instructions.md").write_text("keep\n")
-    (root / "loadout/templates").symlink_to(elsewhere, target_is_directory=True)
+    (root / "loadout/kits").symlink_to(elsewhere, target_is_directory=True)
 
     with pytest.raises(LoadoutError, match="symlink"):
         remove_vendored(root, "frontend")
@@ -421,36 +421,32 @@ def test_a_skill_link_named_like_an_excluded_folder_is_refused(
     assert not (root / ".claude/skills/node_modules").exists()
 
 
-def test_a_template_link_named_like_an_excluded_folder_is_refused(
+def test_a_kit_link_named_like_an_excluded_folder_is_refused(
     tmp_path: Path, fake_home: Path, capsys
 ) -> None:
     root = _plain_project(tmp_path / "p")
-    (root / "loadout/config.toml").write_text(
-        'harnesses = ["claude"]\ntemplates = ["node_modules"]\n'
-    )
+    (root / "loadout/config.toml").write_text('harnesses = ["claude"]\nkits = ["node_modules"]\n')
     outside = fake_home / "outside"
     outside.mkdir()
     (outside / "instructions.md").write_text("OUTSIDE TEXT\n")
-    (root / "loadout/templates").mkdir()
-    (root / "loadout/templates/node_modules").symlink_to(outside, target_is_directory=True)
+    (root / "loadout/kits").mkdir()
+    (root / "loadout/kits/node_modules").symlink_to(outside, target_is_directory=True)
 
     assert loadout.main(["sync", "--root", str(root)]) == 3
 
-    assert f"{root / 'loadout/templates/node_modules'} -> {outside.resolve()}" in (
+    assert f"{root / 'loadout/kits/node_modules'} -> {outside.resolve()}" in (
         capsys.readouterr().err
     )
     assert not (root / "CLAUDE.md").exists()
 
 
-@pytest.mark.parametrize(("kind", "name"), [("skills", ".venv"), ("templates", "node_modules")])
-def test_a_skill_or_template_named_like_an_excluded_folder_is_refused(
+@pytest.mark.parametrize(("kind", "name"), [("skills", ".venv"), ("kits", "node_modules")])
+def test_a_skill_or_kit_named_like_an_excluded_folder_is_refused(
     tmp_path: Path, capsys, kind: str, name: str
 ) -> None:
     root = _plain_project(tmp_path / "p")
-    if kind == "templates":
-        (root / "loadout/config.toml").write_text(
-            f'harnesses = ["claude"]\ntemplates = ["{name}"]\n'
-        )
+    if kind == "kits":
+        (root / "loadout/config.toml").write_text(f'harnesses = ["claude"]\nkits = ["{name}"]\n')
     (root / f"loadout/{kind}/{name}").mkdir(parents=True)
     (root / f"loadout/{kind}/{name}/SKILL.md").write_text(SKILL)
     (root / f"loadout/{kind}/{name}/instructions.md").write_text("x\n")
@@ -465,61 +461,59 @@ def test_a_skill_or_template_named_like_an_excluded_folder_is_refused(
     [("../../vendor/backend", "out of loadout/"), ("../shared/backend", "path is a symlink")],
     ids=["elsewhere in the project", "inside loadout"],
 )
-def test_template_sync_refuses_a_vendored_copy_linked_inside_the_project(
+def test_kit_sync_refuses_a_vendored_copy_linked_inside_the_project(
     tmp_path: Path, capsys, target: str, refusal: str
 ) -> None:
     """Review 3, batch 5.14: inputs come from `loadout/` alone, and a vendored copy is
     replaced wholesale, so a link to one is refused wherever it points."""
     root = _plain_project(tmp_path / "p")
-    (root / "loadout/config.toml").write_text('harnesses = ["claude"]\ntemplates = ["backend"]\n')
-    (root / "loadout/templates").mkdir()
-    copy = (root / "loadout/templates" / target).resolve()
+    (root / "loadout/config.toml").write_text('harnesses = ["claude"]\nkits = ["backend"]\n')
+    (root / "loadout/kits").mkdir()
+    copy = (root / "loadout/kits" / target).resolve()
     copy.mkdir(parents=True)
     (copy / "instructions.md").write_text("Backend.\n")
-    link = root / "loadout/templates/backend"
+    link = root / "loadout/kits/backend"
     link.symlink_to(target, target_is_directory=True)
 
-    assert loadout.main(["template", "sync", "backend", "--root", str(root)]) == 3
+    assert loadout.main(["kit", "sync", "backend", "--root", str(root)]) == 3
 
     assert refusal in capsys.readouterr().err
     assert link.is_symlink()
 
 
-def test_template_sync_refuses_a_vendored_copy_linked_out(
+def test_kit_sync_refuses_a_vendored_copy_linked_out(
     tmp_path: Path, fake_home: Path, capsys
 ) -> None:
     """Review 2, 1.3: the diff of the local copy read through the link printed a key."""
     root = _plain_project(tmp_path / "p")
-    (root / "loadout/config.toml").write_text('harnesses = ["claude"]\ntemplates = ["backend"]\n')
+    (root / "loadout/config.toml").write_text('harnesses = ["claude"]\nkits = ["backend"]\n')
     ssh = fake_home / ".ssh"
     ssh.mkdir()
     (ssh / "instructions.md").write_text("PRIVATE KEY BYTES\n")
-    (root / "loadout/templates").mkdir()
-    (root / "loadout/templates/backend").symlink_to(ssh, target_is_directory=True)
+    (root / "loadout/kits").mkdir()
+    (root / "loadout/kits/backend").symlink_to(ssh, target_is_directory=True)
 
-    assert loadout.main(["template", "sync", "backend", "--root", str(root)]) == 3
+    assert loadout.main(["kit", "sync", "backend", "--root", str(root)]) == 3
 
     captured = capsys.readouterr()
-    assert f"{root / 'loadout/templates/backend'} -> {ssh.resolve()}" in captured.err
+    assert f"{root / 'loadout/kits/backend'} -> {ssh.resolve()}" in captured.err
     assert "PRIVATE KEY BYTES" not in captured.out + captured.err
 
 
-def test_template_add_refuses_a_templates_folder_linked_out(
-    tmp_path: Path, fake_home: Path, capsys
-) -> None:
+def test_kit_add_refuses_a_kits_folder_linked_out(tmp_path: Path, fake_home: Path, capsys) -> None:
     root = _plain_project(tmp_path / "p")
     skills = fake_home / ".claude/skills"
     skills.mkdir(parents=True)
-    (root / "loadout/templates").symlink_to(skills, target_is_directory=True)
+    (root / "loadout/kits").symlink_to(skills, target_is_directory=True)
 
-    argv = ["template", "add", "backend", "--vendored", "--root", str(root)]
+    argv = ["kit", "add", "backend", "--vendored", "--root", str(root)]
     assert loadout.main(argv) == 3
 
-    assert f"{root / 'loadout/templates'} -> {skills.resolve()}" in capsys.readouterr().err
+    assert f"{root / 'loadout/kits'} -> {skills.resolve()}" in capsys.readouterr().err
     assert list(skills.iterdir()) == []
 
 
-def test_template_add_refuses_a_config_linked_inside_the_project(tmp_path: Path, capsys) -> None:
+def test_kit_add_refuses_a_config_linked_inside_the_project(tmp_path: Path, capsys) -> None:
     """A link that stays inside the project passes the input check, so only the
     write's own link check keeps `declare` from writing through it."""
     root = _plain_project(tmp_path / "p")
@@ -527,28 +521,26 @@ def test_template_add_refuses_a_config_linked_inside_the_project(tmp_path: Path,
     (root / "loadout/config.toml").unlink()
     (root / "loadout/config.toml").symlink_to("../notes.toml")
 
-    argv = ["template", "add", "backend", "--tracked", "--root", str(root)]
+    argv = ["kit", "add", "backend", "--linked", "--root", str(root)]
     assert loadout.main(argv) == 3
 
     assert f"{root / 'loadout/config.toml'}" in capsys.readouterr().err
     assert (root / "notes.toml").read_text() == 'harnesses = ["claude"]\n'
 
 
-def test_template_list_refuses_a_vendored_copy_linked_out(
+def test_kit_list_refuses_a_vendored_copy_linked_out(
     tmp_path: Path, fake_home: Path, capsys
 ) -> None:
     root = _plain_project(tmp_path / "p")
-    (root / "loadout/config.toml").write_text('harnesses = ["claude"]\ntemplates = ["backend"]\n')
+    (root / "loadout/config.toml").write_text('harnesses = ["claude"]\nkits = ["backend"]\n')
     elsewhere = fake_home / "elsewhere"
     elsewhere.mkdir()
-    (root / "loadout/templates").mkdir()
-    (root / "loadout/templates/backend").symlink_to(elsewhere, target_is_directory=True)
+    (root / "loadout/kits").mkdir()
+    (root / "loadout/kits/backend").symlink_to(elsewhere, target_is_directory=True)
 
-    assert loadout.main(["template", "list", "--root", str(root)]) == 3
+    assert loadout.main(["kit", "list", "--root", str(root)]) == 3
 
-    assert f"{root / 'loadout/templates/backend'} -> {elsewhere.resolve()}" in (
-        capsys.readouterr().err
-    )
+    assert f"{root / 'loadout/kits/backend'} -> {elsewhere.resolve()}" in (capsys.readouterr().err)
 
 
 def _key(fake_home: Path) -> Path:
@@ -637,14 +629,14 @@ def test_a_root_with_both_scopes_syncs(tmp_path: Path, fake_home: Path, capsys) 
     assert f"retired {fake_home / 'mine.md'}" in capsys.readouterr().out
 
 
-def _template_linked_into_git(root: Path) -> Path:
+def _kit_linked_into_git(root: Path) -> Path:
     _plain_project(root)
-    (root / "loadout/config.toml").write_text('harnesses = ["codex"]\ntemplates = ["backend"]\n')
+    (root / "loadout/config.toml").write_text('harnesses = ["codex"]\nkits = ["backend"]\n')
     (root / ".git").mkdir()
     (root / ".git/config").write_text("[http]\nextraheader = TOKEN-IN-GIT-CONFIG\n")
-    template = root / "loadout/templates/backend"
-    template.mkdir(parents=True)
-    link = template / "instructions.md"
+    kit = root / "loadout/kits/backend"
+    kit.mkdir(parents=True)
+    link = kit / "instructions.md"
     link.symlink_to("../../../.git/config")
     return link
 
@@ -652,7 +644,7 @@ def _template_linked_into_git(root: Path) -> Path:
 @pytest.mark.parametrize("command", ["sync", "check"])
 def test_an_input_linked_into_the_git_dir_is_refused(tmp_path: Path, capsys, command: str) -> None:
     """Review 2, H2: inside the project is not the same as safe to read."""
-    link = _template_linked_into_git(tmp_path / "p")
+    link = _kit_linked_into_git(tmp_path / "p")
 
     assert loadout.main([command, "--root", str(tmp_path / "p")]) == 3
 
@@ -661,25 +653,25 @@ def test_an_input_linked_into_the_git_dir_is_refused(tmp_path: Path, capsys, com
     assert "TOKEN-IN-GIT-CONFIG" not in captured.out + captured.err
 
 
-def test_template_sync_refuses_a_file_linked_into_the_git_dir(tmp_path: Path, capsys) -> None:
-    link = _template_linked_into_git(tmp_path / "p")
+def test_kit_sync_refuses_a_file_linked_into_the_git_dir(tmp_path: Path, capsys) -> None:
+    link = _kit_linked_into_git(tmp_path / "p")
 
-    assert loadout.main(["template", "sync", "backend", "--root", str(tmp_path / "p")]) == 3
+    assert loadout.main(["kit", "sync", "backend", "--root", str(tmp_path / "p")]) == 3
 
     captured = capsys.readouterr()
     assert f"{link} -> " in captured.err
     assert "TOKEN-IN-GIT-CONFIG" not in captured.out + captured.err
 
 
-def test_a_template_file_linked_inside_the_project_is_refused(tmp_path: Path, capsys) -> None:
-    """A legacy template's own file is read without a link, as a catalog's already is."""
+def test_a_kit_file_linked_inside_the_project_is_refused(tmp_path: Path, capsys) -> None:
+    """A legacy kit's own file is read without a link, as a catalog's already is."""
     root = _plain_project(tmp_path / "p")
-    (root / "loadout/config.toml").write_text('harnesses = ["codex"]\ntemplates = ["backend"]\n')
+    (root / "loadout/config.toml").write_text('harnesses = ["codex"]\nkits = ["backend"]\n')
     (root / "docs").mkdir()
     (root / "docs/notes.md").write_text("Notes.\n")
-    template = root / "loadout/templates/backend"
-    template.mkdir(parents=True)
-    (template / "instructions.md").symlink_to("../../../docs/notes.md")
+    kit = root / "loadout/kits/backend"
+    kit.mkdir(parents=True)
+    (kit / "instructions.md").symlink_to("../../../docs/notes.md")
 
     assert loadout.main(["sync", "--root", str(root)]) == 3
 
@@ -746,13 +738,13 @@ def test_sync_never_writes_through_a_hard_linked_gitignore(tmp_path: Path) -> No
     assert "/.claude/settings.json" in (root / ".gitignore").read_text().splitlines()
 
 
-def test_template_add_never_writes_through_a_hard_linked_config(tmp_path: Path) -> None:
+def test_kit_add_never_writes_through_a_hard_linked_config(tmp_path: Path) -> None:
     root = _plain_project(tmp_path / "p")
     shared = tmp_path / "shared.toml"
     os.replace(root / "loadout/config.toml", shared)
     os.link(shared, root / "loadout/config.toml")
 
-    argv = ["template", "add", "backend", "--tracked", "--root", str(root)]
+    argv = ["kit", "add", "backend", "--linked", "--root", str(root)]
     assert loadout.main(argv) == 0
 
     assert shared.read_text() == 'harnesses = ["claude"]\n'

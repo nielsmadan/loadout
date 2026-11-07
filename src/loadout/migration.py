@@ -86,7 +86,7 @@ DROID_INERT_SETTINGS_HOOKS = (
     "hooks.json is beside them; they stay in the settings fragment"
 )
 NOT_ADOPTED = "No source slice adopts this category; existing files stay in place."
-# Templates carry no agents, so agents is a readiness category but not an output.CATEGORIES one.
+# Kits carry no agents, so agents is a readiness category but not an output.CATEGORIES one.
 READINESS_CATEGORIES = CATEGORIES | {"agents"}
 TREE_CATEGORIES = {
     "skills": "skills",
@@ -135,7 +135,7 @@ configuration; edit here rather than in the generated files.
     skills/            skills, one folder each holding a SKILL.md
     agents/            subagents, one Markdown file each
     module-config/     files copied verbatim into an agent's config directory
-    templates/         project templates, one <name>/ folder or <name>.toml manifest each
+    kits/              project kits, one <name>/ folder or <name>.toml manifest each
 
 Only what you use has to exist.
 
@@ -1663,7 +1663,7 @@ def _readiness(builder: _PlanBuilder) -> tuple[CategoryReadiness, ...]:
                     (agent, category) in builder.available_categories
                     or category in PROJECT_PRESET[agent]
                 )
-            ) or category in {"support", "module-config", "templates"}:
+            ) or category in {"support", "module-config", "kits"}:
                 result.append(
                     CategoryReadiness(
                         category,

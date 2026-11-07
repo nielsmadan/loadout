@@ -23,7 +23,7 @@ __all__ = [
 
 # A plugin is two things — content on disk, and a declaration that it is switched
 # on. This slice owns the second only: loadout never clones, fetches, installs or
-# registers, exactly as with the global source (ADR 0010) and templates.
+# registers, exactly as with the global source (ADR 0010) and kits.
 #
 # The document is two maps rather than plugin names at top level, so a
 # marketplace can be declared without a plugin called `marketplaces` colliding

@@ -58,7 +58,7 @@ Otherwise OpenCode and Pi get their own folders.
 
 `loadout/settings/claude.json`, `droid.json` and `opencode.json` supply the native settings keys
 of `.claude/settings.json`, `.factory/settings.json` and `opencode.json` that no slice writes.
-Project scope has no output for Codex defaults, Pi settings or module files. Project templates
+Project scope has no output for Codex defaults, Pi settings or module files. Project kits
 contribute permissions, instructions, skills, MCP definitions, and Droid's hooks and plugins.
 
 ## Stealth scope

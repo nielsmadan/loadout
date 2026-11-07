@@ -50,7 +50,7 @@ Project configuration uses fixed sources under `loadout/`: `permissions.toml`, o
 slice directories and agent blocks in `loadout.toml`. Do not invent destinations or edit generated
 outputs.
 
-Templates contribute through the same project slices. Project commands and support files
+Kits contribute through the same project slices. Project commands and support files
 outside a known slice remain harness-owned and stay in place.
 
 ## Capability matrix
@@ -68,7 +68,7 @@ outside a known slice remain harness-owned and stay in place.
 | `hooks` | unsupported | Droid via `loadout/hooks.json` | `hooks/<name>.json` fragments selected by agents offering hooks |
 | `plugins` | unsupported | Droid via `loadout/plugins.json` | `plugins/<name>.json` fragments selected by agents offering plugins |
 | `module-config` | unsupported | unsupported | supported for `claude`, `droid`, `opencode`, `pi` via `module-config/<agent>/<relative path>`; Codex unsupported |
-| `templates` | unsupported | declarations and vendored copies under `loadout/templates/` | definitions under `templates/<name>/` in declared sources |
+| `kits` | unsupported | the `kits` list and vendored copies under `loadout/kits/` | definitions under `kits/<name>/` in selected sources |
 | `harnesses` | unsupported | `harnesses` in `loadout/config.toml` | declared agent blocks |
 | `profiles` | unsupported | unsupported | `loadout.toml` plus `<profile>.toml` files |
 
@@ -132,7 +132,7 @@ Project skills reach all five harnesses. Codex reads `.agents/skills`.
 
 Permissions are TOML rules with `[shell]` and `[mcp]` categories; `[mcp]` supplies the
 `mcp-permissions` artifact. Preserve the existing order: OpenCode and Pi use last-match-wins
-semantics after rendering. Project permissions merge template, committed, then personal tiers;
+semantics after rendering. Project permissions merge kit, committed, then personal tiers;
 use `permissions.local.toml` only for personal requests. Loadout never gitignores
 `loadout/permissions.local.toml`: when you create it, ask whether to list
 `/loadout/permissions.local.toml` in the project's `.gitignore` or in `.git/info/exclude`, which
@@ -157,9 +157,9 @@ and supporting files. It replaces the shared `<name>` skill whole, document and 
 together, and is not an overlay; with no shared skill of that name it is a skill of its own. It is
 personal only while Git ignores it, so add it to `.gitignore` or `.git/info/exclude` when you
 create one.
-`[skills.<name>] agents = [...]` narrows the default set of configured consumers. Templates are
-declared by name; use `loadout template add <name> --tracked`, `--vendored`, or
-`template sync <name>` when that command exactly expresses the request.
+`[skills.<name>] agents = [...]` narrows the default set of configured consumers. Kits are
+listed by name; use `loadout kit add <name> --linked`, `--vendored`, or
+`kit sync <name>` when that command exactly expresses the request.
 
 A skill's frontmatter key `agent: <name>` hands its work to the agent of that name from
 `agents/` (or `loadout/agents/`). Claude's copy also gets `context: fork` unless the skill sets
@@ -174,15 +174,15 @@ that reaches Droid (Droid writes those droids into `.factory/droids/` itself). P
 
 ### Guidance held twice
 
-After adding a template, and whenever you edit a project's instructions while it declares one,
-compare the template's instruction parts (`loadout template list` shows where each template
+After adding a kit, and whenever you edit a project's instructions while it lists one,
+compare the kit's instruction parts (`loadout kit list` shows where each kit
 resolves) with the project's fragments. Look for a section with the same heading text and for
 bullets that restate the same rule, even in other words. Propose deleting those duplicates from
-the project fragment, never from the template, and keep every rule specific to the project: its
+the project fragment, never from the kit, and keep every rule specific to the project: its
 names, paths, versions and exceptions. Show the proposed deletions and apply them only once the
 user approves. A `project.instructions` note that the document repeats a heading points at one
-such pair. When `template add` reports that a project skill is byte for byte the one the template
-supplies, offer to delete `loadout/skills/<name>/` so the project follows the template's copy.
+such pair. When `kit add` reports that a project skill is byte for byte the one the kit
+supplies, offer to delete `loadout/skills/<name>/` so the project follows the kit's copy.
 
 The same note at global scope, `<harness>.instructions`, names two fragments of one agent's
 instruction document that bring the same heading. Compare them the same way and propose keeping
@@ -240,7 +240,7 @@ inherited TOML key path before child fields apply; remove a whole target before 
 for wholesale replacement. Missing/overlapping paths and traversal through lists are errors.
 Removing an agent field exposes applicable `[all]` defaults. Legacy instruction targets also
 accept `substitute`. Reuse shared fragments across profiles and vary only the final fragment, as
-in `settings = ["pi", "pi-autonomous"]`. Project configs and template catalogs have no
+in `settings = ["pi", "pi-autonomous"]`. Project configs and kit catalogs have no
 `extends`; catalogs compose selected parts.
 
 When a non-default profile is active and the request names no profile, ask whether the change is:

@@ -822,9 +822,9 @@ def test_sync_and_check_help_name_both_scopes(command: str, capsys) -> None:
 
 
 @pytest.mark.parametrize("command", ["add", "list", "sync"])
-def test_template_help_names_a_project_as_the_root(command: str, capsys) -> None:
+def test_kit_help_names_a_project_as_the_root(command: str, capsys) -> None:
     assert "--root ROOT project root: the folder holding loadout/ (default: cwd)" in _help(
-        capsys, "template", command
+        capsys, "kit", command
     )
 
 
@@ -834,17 +834,17 @@ def test_integrate_skill_help_names_the_copy_outside_any_source(capsys) -> None:
     assert "copy the skill into each harness's user skills folder, outside any source" in help_text
 
 
-def test_a_template_command_outside_a_project_says_where_templates_are_authored(
+def test_a_kit_command_outside_a_project_says_where_kits_are_authored(
     tmp_path: Path, capsys
 ) -> None:
-    """A global source authors a template as a `templates/<name>/` folder or a `<name>.toml`."""
+    """A global source authors a kit as a `kits/<name>/` folder or a `<name>.toml`."""
     (tmp_path / "loadout.toml").write_text('[[source]]\nname = "s"\npath = "."\n')
 
-    assert loadout.main(["template", "list", "--root", str(tmp_path)]) == 3
+    assert loadout.main(["kit", "list", "--root", str(tmp_path)]) == 3
 
     assert capsys.readouterr().err.strip() == (
-        "loadout: template commands manage a project's templates; to author one, add a "
-        "`templates/<name>/` folder or `templates/<name>.toml` manifest to your global source. "
-        "To see the templates your "
-        "sources offer, run `loadout template add` with no name in a project."
+        "loadout: kit commands manage a project's kits; to author one, add a "
+        "`kits/<name>/` folder or `kits/<name>.toml` manifest to your global source. "
+        "To see the kits your "
+        "sources offer, run `loadout kit add` with no name in a project."
     )

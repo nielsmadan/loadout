@@ -40,13 +40,13 @@ def project(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def bare_project(project: Path) -> Path:
-    """The project fixture with its vendored template stripped out.
+    """The project fixture with its vendored kit stripped out.
 
-    The shared fixture carries one so the expected output proves a template
-    reaches the generated files at all. A test about a template *arriving* has to
-    start from none, or it is asserting against a template it did not put there.
+    The shared fixture carries one so the expected output proves a kit
+    reaches the generated files at all. A test about a kit *arriving* has to
+    start from none, or it is asserting against a kit it did not put there.
     """
-    shutil.rmtree(project / "loadout" / "templates")
+    shutil.rmtree(project / "loadout" / "kits")
     quoted = ", ".join(f'"{harness}"' for harness in PROJECT_HARNESSES)
     (project / "loadout" / "config.toml").write_text(f"harnesses = [{quoted}]\n", encoding="utf-8")
     return project

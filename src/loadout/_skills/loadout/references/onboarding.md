@@ -25,11 +25,11 @@ comparison it writes them and reports an exact reproduction; when it does not, t
 the diff and approval covers overwriting. Do not tell the user to run `sync` after init; run it
 after changing the source.
 
-After project init, offer a bundled template: `loadout template add frontend --vendored` (or
-`backend`), then `loadout sync`. These packaged templates work offline and provide short
+After project init, offer a bundled kit: `loadout kit add frontend --vendored` (or
+`backend`), then `loadout sync`. These packaged kits work offline and provide short
 instruction seeds with empty categories, vendored with content-hash provenance. Global scope
-cannot activate them. Template instructions, permissions, skills and MCP servers compose through
-the project's standard slices. Once a template is added, compare its guidance with the project's
+cannot activate them. Kit instructions, permissions, skills and MCP servers compose through
+the project's standard slices. Once a kit is added, compare its guidance with the project's
 own, as “Guidance held twice” in [configuration routing](configuration.md#guidance-held-twice)
 describes, and offer to delete what the project repeats.
 
@@ -75,7 +75,7 @@ the preview:
   global `core.hooksPath`), gets nothing written. Install prints a block per hook, guarded to run
   only in this repository, for the user to add by hand.
 
-A clone needs the same command. Templates must be vendored and staged, required dependencies must
+A clone needs the same command. Kits must be vendored and staged, required dependencies must
 be in the repository, and optional private sources may be absent. A post-hook failure leaves Git's
 completed operation in place; resolve the reported output conflict and retry normal sync, without
 adding `--force`.

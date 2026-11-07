@@ -14,7 +14,7 @@ SourceKind = Literal["source", "bundled", "vendored"]
 @dataclass(frozen=True)
 class ResolvedItem:
     """A named item, the source it came from, and where it lives on disk. `kind` tells a
-    vendored or bundled template from a source's own item, which `source` only spells."""
+    vendored or bundled kit from a source's own item, which `source` only spells."""
 
     name: str
     source: str
@@ -29,7 +29,7 @@ class Slice:
     A slice is a directory, and the directory is the namespace: two slices may
     hold the same name without colliding, because nothing resolves across them.
 
-    `directory` makes the *item* a tree rather than a document — a template is a
+    `directory` makes the *item* a tree rather than a document — a kit is a
     bundle of slices, so it has no suffix and no single file to read.
     """
 

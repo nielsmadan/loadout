@@ -527,15 +527,15 @@ def test_an_exact_claude_rule_adopts_into_shell_and_renders_back_unchanged(
     assert settings["permissions"]["allow"] == ["Bash(git status)", "Bash(ls:*)"]
 
 
-def test_a_bundled_template_is_applied_after_init_with_template_add(tmp_path, capsys):
+def test_a_bundled_kit_is_applied_after_init_with_kit_add(tmp_path, capsys):
     _repo(tmp_path)
     init = ["init", "project", "--harness", "claude", "--root", str(tmp_path), "--yes"]
     assert loadout.main(init) == 0
     root = ["--root", str(tmp_path)]
-    assert loadout.main(["template", "add", "backend", "--vendored", *root]) == 0
+    assert loadout.main(["kit", "add", "backend", "--vendored", *root]) == 0
     assert loadout.main(["sync", *root]) == 0
 
-    vendored = (tmp_path / "loadout" / "templates" / "backend" / "instructions.md").read_text()
+    vendored = (tmp_path / "loadout" / "kits" / "backend" / "instructions.md").read_text()
     assert vendored.strip() in (tmp_path / "CLAUDE.md").read_text()
 
 

@@ -5,8 +5,8 @@ from pathlib import Path
 
 from loadout.emit import render_global, render_project
 from loadout.harnesses import GLOBAL_PRESET
+from loadout.kits import vendored_path
 from loadout.output import Merged
-from loadout.templates import vendored_path
 from registration import register
 
 
@@ -49,18 +49,18 @@ def test_project_scope_renders_no_codex_config(project: Path) -> None:
     assert not any(".codex" in str(p) and "config.toml" in str(p) for p in rendered)
 
 
-def test_a_template_contributes_its_servers(project: Path) -> None:
-    """Same tier rule as every other slice: a template sits beneath the project."""
-    # the shared project fixture already declares a vendored template
-    template = vendored_path(project, "web")
-    (template / "mcp.toml").write_text(
-        '[from-template]\ntransport = "stdio"\ncommand = "t"\n', encoding="utf-8"
+def test_a_kit_contributes_its_servers(project: Path) -> None:
+    """Same tier rule as every other slice: a kit sits beneath the project."""
+    # the shared project fixture already declares a vendored kit
+    kit = vendored_path(project, "web")
+    (kit / "mcp.toml").write_text(
+        '[from-kit]\ntransport = "stdio"\ncommand = "t"\n', encoding="utf-8"
     )
 
     rendered = render_project(project)
 
     document = json.loads(rendered[project / ".mcp.json"])
-    assert "from-template" in document["mcpServers"]
+    assert "from-kit" in document["mcpServers"]
 
 
 # --------------------------------------------------------------------------

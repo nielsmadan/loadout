@@ -12,7 +12,7 @@ Loadout provides several ways to reuse configuration. Each has a different purpo
 | Global and project scopes | Choose where configuration applies |
 | Sources | Combine configuration maintained in different directories or repositories |
 | Instruction fragments | Assemble an ordered document from reusable pieces |
-| Templates | Apply shared context to selected projects |
+| Kits | Apply shared context to selected projects |
 | Profiles | Switch between machine-wide variants of your setup |
 
 Organisation, team, and personal are names you give sources. They are not built-in privileged tiers.
@@ -58,7 +58,7 @@ note: claude.instructions: the instruction document repeats the heading "## Test
 ```
 
 The note covers each agent's global document, and a project's document together with its
-templates' instructions. It never changes the exit code.
+kits' instructions. It never changes the exit code.
 
 A source's optional `use` list restricts what it contributes:
 
@@ -66,7 +66,7 @@ A source's optional `use` list restricts what it contributes:
 [[source]]
 name = "company"
 path = "~/src/company-agent-config"
-use = ["instructions", "permissions", "templates"]
+use = ["instructions", "permissions", "kits"]
 ```
 
 Omitting `use` makes its available slices eligible.
@@ -97,12 +97,12 @@ replaced as a list, rather than appended automatically. Only named agents are en
 | Global MCP definitions | Later sources replace a server definition with the same name |
 | Module files | Copy bytes verbatim; duplicate destination paths are errors |
 
-Project permissions have template, committed-project, and personal tiers. Templates use the
+Project permissions have kit, committed-project, and personal tiers. Kits use the
 same merge operator as the content they contribute. A project allow therefore cannot cancel a
-template deny.
+kit deny.
 
-For project skills, a project copy replaces the template's copy under the same name. When two
-templates offer the same skill, the last declared template supplies it.
+For project skills, a project copy replaces the kit's copy under the same name. When two
+kits offer the same skill, the last listed kit supplies it.
 
 A few names belong to a harness, which writes them into a folder Loadout also writes. A global
 skill named `synced` would land on Claude Code's own `~/.claude/skills/synced`, and a global agent
@@ -162,5 +162,5 @@ Global configuration applies across projects. Project configuration is generated
 repository. Loadout does not flatten them into one combined document or impose one universal
 global-to-project precedence rule.
 
-Use [templates](templates.md) to reuse project configuration, sources to combine shared ownership,
+Use [kits](kits.md) to reuse project configuration, sources to combine shared ownership,
 and profiles to select a machine-wide variant.

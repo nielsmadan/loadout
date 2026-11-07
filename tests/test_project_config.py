@@ -87,14 +87,14 @@ def test_invalid_toml_raises(tmp_path: Path) -> None:
         load_project_config(path)
 
 
-def test_templates_are_parsed_in_declared_order(tmp_path: Path) -> None:
-    path = write(tmp_path, 'harnesses = ["claude"]\ntemplates = ["web", "railway"]\n')
-    assert load_project_config(path).templates == ("web", "railway")
+def test_kits_are_parsed_in_listed_order(tmp_path: Path) -> None:
+    path = write(tmp_path, 'harnesses = ["claude"]\nkits = ["web", "railway"]\n')
+    assert load_project_config(path).kits == ("web", "railway")
 
 
-def test_templates_defaults_to_empty(tmp_path: Path) -> None:
+def test_kits_defaults_to_empty(tmp_path: Path) -> None:
     path = write(tmp_path, 'harnesses = ["claude"]\n')
-    assert load_project_config(path).templates == ()
+    assert load_project_config(path).kits == ()
 
 
 def test_skill_policies_select_configured_agents(tmp_path: Path) -> None:
@@ -131,47 +131,45 @@ def test_skill_policy_can_preserve_native_bytes(tmp_path: Path) -> None:
 def test_a_recorded_hash_is_read_back(tmp_path: Path) -> None:
     path = write(
         tmp_path,
-        'harnesses = ["claude"]\ntemplates = ["web"]\n\n[template.web]\nvendored = "sha256:abc"\n',
+        'harnesses = ["claude"]\nkits = ["web"]\n\n[kit.web]\nvendored = "sha256:abc"\n',
     )
     assert load_project_config(path).vendored_hash("web") == "sha256:abc"
 
 
 def test_no_recorded_hash_reads_back_as_none(tmp_path: Path) -> None:
-    path = write(tmp_path, 'harnesses = ["claude"]\ntemplates = ["web"]\n')
+    path = write(tmp_path, 'harnesses = ["claude"]\nkits = ["web"]\n')
     assert load_project_config(path).vendored_hash("web") is None
 
 
-def test_a_duplicate_template_is_refused(tmp_path: Path) -> None:
-    path = write(tmp_path, 'harnesses = ["claude"]\ntemplates = ["web", "web"]\n')
-    with pytest.raises(LoadoutError, match="duplicate template"):
+def test_a_duplicate_kit_is_refused(tmp_path: Path) -> None:
+    path = write(tmp_path, 'harnesses = ["claude"]\nkits = ["web", "web"]\n')
+    with pytest.raises(LoadoutError, match="duplicate kit"):
         load_project_config(path)
 
 
-def test_provenance_for_an_undeclared_template_is_refused(tmp_path: Path) -> None:
-    """A [template.*] block for a name no longer in `templates` is dead state that
+def test_provenance_for_an_unlisted_kit_is_refused(tmp_path: Path) -> None:
+    """A [kit.*] block for a name no longer in `kits` is dead state that
     would otherwise silently outlive the thing it describes."""
     path = write(
         tmp_path,
-        'harnesses = ["claude"]\ntemplates = ["web"]\n\n'
-        '[template.railway]\nvendored = "sha256:abc"\n',
+        'harnesses = ["claude"]\nkits = ["web"]\n\n[kit.railway]\nvendored = "sha256:abc"\n',
     )
     with pytest.raises(LoadoutError, match="railway"):
         load_project_config(path)
 
 
-def test_a_template_block_may_not_carry_a_path(tmp_path: Path) -> None:
+def test_a_kit_block_may_not_carry_a_path(tmp_path: Path) -> None:
     """Names only: a local path in a committed file is wrong for everyone who is
     not its author."""
     path = write(
         tmp_path,
-        'harnesses = ["claude"]\ntemplates = ["web"]\n\n'
-        '[template.web]\npath = "/home/me/ac/templates/web"\n',
+        'harnesses = ["claude"]\nkits = ["web"]\n\n[kit.web]\npath = "/home/me/ac/kits/web"\n',
     )
     with pytest.raises(LoadoutError, match="path"):
         load_project_config(path)
 
 
-def test_a_template_name_must_be_a_non_empty_string(tmp_path: Path) -> None:
-    path = write(tmp_path, 'harnesses = ["claude"]\ntemplates = [""]\n')
+def test_a_kit_name_must_be_a_non_empty_string(tmp_path: Path) -> None:
+    path = write(tmp_path, 'harnesses = ["claude"]\nkits = [""]\n')
     with pytest.raises(LoadoutError, match="non-empty"):
         load_project_config(path)

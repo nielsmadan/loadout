@@ -8,7 +8,7 @@ from .errors import LoadoutError
 from .harnesses import DIRECTORY_SLICES, KNOWN_HARNESSES
 
 # The seven kinds of agent configuration — see docs/reference/config.md — plus
-# templates, which is a bundle of them rather than an eighth kind.
+# kits, a bundle of them rather than an eighth kind.
 ARTIFACT_TYPES = frozenset(
     {
         "instructions",
@@ -21,7 +21,7 @@ ARTIFACT_TYPES = frozenset(
         "skills",
         "agents",
         "module-config",
-        "templates",
+        "kits",
     }
 )
 
@@ -127,6 +127,11 @@ def parse_sources(entries: list[dict[str, object]], base: Path) -> tuple[Source,
         resolved = (path if path.is_absolute() else base / path).resolve()
         if not resolved.is_dir():
             raise LoadoutError(f"source {name!r} directory not found: {resolved}")
+        if (resolved / "templates").is_dir():
+            raise LoadoutError(
+                f"source {name!r}: {resolved / 'templates'}: `templates/` is now `kits/`; "
+                "rename the folder"
+            )
 
         raw_use = entry.get("use")
         if raw_use is None:
@@ -135,6 +140,10 @@ def parse_sources(entries: list[dict[str, object]], base: Path) -> tuple[Source,
             if not isinstance(raw_use, list) or not raw_use:
                 raise LoadoutError(
                     f"source {name!r}: use must be a non-empty list, got {raw_use!r}"
+                )
+            if "templates" in raw_use:
+                raise LoadoutError(
+                    f"source {name!r}: `templates` is now `kits`; rename it in `use`"
                 )
             unknown = [u for u in raw_use if u not in ARTIFACT_TYPES]
             if unknown:

@@ -13,15 +13,31 @@ from .bundled_skill import bundled_skill_path
 from .diffs import diff_lines, report_diff, withheld
 from .emit import (
     SKILLS_SUBDIR,
-    ProjectTemplates,
+    ProjectKits,
     RenderContext,
+    kit_skills,
     refuse_unregistered_global,
     render_all,
-    template_skills,
 )
 from .errors import LoadoutError, UsageError
 from .files import DriftKind, pi_settings_as_read, refuse_unparsable
 from .git_privacy import still_tracked
+from .kit_catalog import load_catalogs
+from .kit_discover import available_kits
+from .kit_vendor import vendor_catalog
+from .kits import (
+    contained,
+    copy_tree,
+    declare,
+    kit_files,
+    record_hash,
+    remove_vendored,
+    resolve_kit,
+    resolve_upstream_kit,
+    tree_hash,
+    unrecord_hash,
+    vendored_path,
+)
 from .machine import fixed, registration, state_dir
 from .notices import collect_notices
 from .output import FrozenFile, Output, digests, output_record_paths
@@ -51,28 +67,12 @@ from .sync import (
     retire_orphans,
     unaccepted_outputs,
 )
-from .template_catalog import load_catalogs
-from .template_discover import available_templates
-from .template_vendor import vendor_catalog
-from .templates import (
-    contained,
-    copy_tree,
-    declare,
-    record_hash,
-    remove_vendored,
-    resolve_template,
-    resolve_upstream_template,
-    template_files,
-    tree_hash,
-    unrecord_hash,
-    vendored_path,
-)
 from .unmanaged import unmanaged_entries
 from .written import (
     prune_vanished,
 )
 
-TemplateMode = Literal["tracked", "vendored"]
+KitMode = Literal["linked", "vendored"]
 
 
 def _print_skill_location(
@@ -326,7 +326,7 @@ def _sync_summary(outputs: Mapping[Path, Output], written: list[Path], retired: 
 
 
 def _report_notices(root: Path, profile: str, context: RenderContext) -> None:
-    """Advisory findings, on the same terms as a diverged vendored template.
+    """Advisory findings, on the same terms as a diverged vendored kit.
 
     A notice describes a source that rendered successfully while doing less than
     it says — a plugin left switched off, a hook that cannot fire. The output is
@@ -431,18 +431,18 @@ def _vendored_state(root: Path, name: str, recorded: str | None) -> str:
     return "modified"
 
 
-def cmd_template_list(root: Path) -> int:
+def cmd_kit_list(root: Path) -> int:
     contained(root)
     config = load_project_config(project_config_path(root))
-    if not config.templates:
+    if not config.kits:
         print(
-            f"no templates declared — add one with `loadout template add <name> --tracked` "
+            f"no kits in this project — add one with `loadout kit add <name> --linked` "
             f"(or `--vendored`), or list it in {PROJECT_DIR}/{PROJECT_CONFIG_NAME}"
         )
         return 0
-    for name in config.templates:
+    for name in config.kits:
         try:
-            found = resolve_template(name, root)
+            found = resolve_kit(name, root)
         except LoadoutError as error:
             # Reported rather than raised: `list` is the command you reach for
             # *because* something is wrong, so one broken name must not hide the rest.
@@ -452,34 +452,32 @@ def cmd_template_list(root: Path) -> int:
         if found.kind == "vendored":
             print(f"{name}: vendored, {_vendored_state(root, name, config.vendored_hash(name))}")
         else:
-            print(f"{name}: tracked, from source {found.source}")
+            print(f"{name}: linked, from source {found.source}")
         print(f"    {_display(found.path, root)}")
     return 0
 
 
-def cmd_template_add(
-    root: Path, name: str | None, mode: TemplateMode | None, *, yes: bool = False
-) -> int:
-    chosen, code = _add_template(root, name, mode, yes=yes)
+def cmd_kit_add(root: Path, name: str | None, mode: KitMode | None, *, yes: bool = False) -> int:
+    chosen, code = _add_kit(root, name, mode, yes=yes)
     if code == 0:
         for skill in _identical_skills(root, chosen):
             print(identical_skill_note(chosen, skill))
     return code
 
 
-def identical_skill_note(template: str, skill: str) -> str:
+def identical_skill_note(kit: str, skill: str) -> str:
     copy = f"{PROJECT_DIR}/{SKILLS_SUBDIR}/{skill}"
     return (
-        f"{copy} is byte for byte the skill {template} already supplies; while it is there it "
-        f"replaces the template's and stops following it, so delete it to take the "
-        f"template's: rm -r {copy}"
+        f"{copy} is byte for byte the skill {kit} already supplies; while it is there it "
+        f"replaces the kit's and stops following it, so delete it to take the "
+        f"kit's: rm -r {copy}"
     )
 
 
 def _identical_skills(root: Path, name: str) -> tuple[str, ...]:
     """The project skills `name` supplies with the same files and bytes."""
-    path = resolve_template(name, root).path
-    offered = template_skills(ProjectTemplates((path,), load_catalogs((path,))))
+    path = resolve_kit(name, root).path
+    offered = kit_skills(ProjectKits((path,), load_catalogs((path,))))
     return tuple(
         skill.name
         for skill in discover_skills(root / PROJECT_DIR / SKILLS_SUBDIR)
@@ -497,30 +495,30 @@ def _skill_bytes(skill: Skill) -> dict[Path, bytes]:
     }
 
 
-def _add_template(
-    root: Path, name: str | None, mode: TemplateMode | None, *, yes: bool = False
+def _add_kit(
+    root: Path, name: str | None, mode: KitMode | None, *, yes: bool = False
 ) -> tuple[str, int]:
-    """Choose a template and how this project uses it, and the name chosen.
+    """Choose a kit and how this project uses it, and the name chosen.
 
-    Bare `add` enumerates every resolvable template and prompts for a name and a
-    mode; with a name, `--tracked` or `--vendored` pins the mode for scripts.
-    Adding an already-declared template changes its mode — the one path a config
+    Bare `add` enumerates every resolvable kit and prompts for a name and a
+    mode; with a name, `--linked` or `--vendored` pins the mode for scripts.
+    Adding a kit the project already lists changes its mode — the one path a config
     file edit cannot express, because vendoring copies a tree and records a hash.
     """
     if not sys.stdin.isatty():
         if name is None:
             raise UsageError(
-                "`template add` needs a name when not attached to a terminal: "
-                "`loadout template add <name> --tracked` or `--vendored`"
+                "`kit add` needs a name when not attached to a terminal: "
+                "`loadout kit add <name> --linked` or `--vendored`"
             )
         if mode is None:
             raise UsageError(
-                "`template add` needs a mode when not attached to a terminal: "
-                f"`loadout template add {name} --tracked` or `--vendored`"
+                "`kit add` needs a mode when not attached to a terminal: "
+                f"`loadout kit add {name} --linked` or `--vendored`"
             )
     contained(root)
     if name is None:
-        name = _choose_template(root)
+        name = _choose_kit(root)
     contained(root, name)
     if mode is None:
         mode = _choose_mode(name)
@@ -528,34 +526,34 @@ def _add_template(
     config = load_project_config(project_config_path(root))
     local = vendored_path(root, name)
     is_vendored = local.exists()
-    declared = name in config.templates
+    listed = name in config.kits
 
-    if mode == "tracked":
-        if declared and is_vendored:
-            return name, _make_tracked(root, name)
+    if mode == "linked":
+        if listed and is_vendored:
+            return name, _make_linked(root, name)
         if is_vendored:
             raise LoadoutError(
                 f"{name} has a vendored copy at {_display(local, root)} but is not "
-                f"declared; use `--vendored` to adopt it, or delete the copy first"
+                f"listed in `kits`; use `--vendored` to adopt it, or delete the copy first"
             )
-        if declared:
-            found = resolve_template(name, root)
-            print(f"{name} is already tracked; resolves from source {found.source}")
+        if listed:
+            found = resolve_kit(name, root)
+            print(f"{name} is already linked; resolves from source {found.source}")
             print(f"    {_display(found.path, root)}")
             return name, 0
-        found = resolve_template(name, root)
+        found = resolve_kit(name, root)
         declare(root, name)
-        print(f"declared {name} in {PROJECT_DIR}/{PROJECT_CONFIG_NAME}")
+        print(f"linked {name} in {PROJECT_DIR}/{PROJECT_CONFIG_NAME}")
         print(f"resolves from source {found.source}: {_display(found.path, root)}")
         return name, 0
 
     if is_vendored:
-        if declared:
+        if listed:
             raise LoadoutError(
                 f"{name} is already vendored at {_display(local, root)}; run "
-                f"`loadout template sync {name}` to update it"
+                f"`loadout kit sync {name}` to update it"
             )
-        found = resolve_template(name, root)
+        found = resolve_kit(name, root)
         declare(root, name)
         if config.vendored_hash(name) is None:
             record_hash(root, name, tree_hash(local))
@@ -564,44 +562,44 @@ def _add_template(
     return name, _make_vendored(root, name, yes=yes)
 
 
-def _choose_template(root: Path) -> str:
-    # Never empty: the bundled starters are always on offer.
-    options = available_templates(root)
-    print("Available templates:")
+def _choose_kit(root: Path) -> str:
+    # Never empty: the bundled kits are always on offer.
+    options = available_kits(root)
+    print("Available kits:")
     for index, option in enumerate(options, 1):
         # `(bundled)` and `(vendored)` come parenthesised; a source's name does not.
         label = option.source if option.kind != "source" else f"({option.source})"
         print(f"  {index}. {option.name}  {label}")
     span = f"1-{len(options)}"
     try:
-        choice = input(f"Template [{span}]: ").strip()
+        choice = input(f"Kit [{span}]: ").strip()
     except (EOFError, OSError):
         choice = ""
     # An explicit answer only: Enter or the end of input never picks one for the user.
     if not choice:
-        raise UsageError(f"choose a template by number ({span})")
+        raise UsageError(f"choose a kit by number ({span})")
     try:
         index = int(choice)
     except ValueError:
-        raise UsageError(f"choose a template by number ({span}), not {choice!r}") from None
+        raise UsageError(f"choose a kit by number ({span}), not {choice!r}") from None
     if not 1 <= index <= len(options):
-        raise UsageError(f"no template {index}; choose {span}")
+        raise UsageError(f"no kit {index}; choose {span}")
     return options[index - 1].name
 
 
-def _choose_mode(name: str) -> TemplateMode:
+def _choose_mode(name: str) -> KitMode:
     try:
-        choice = input(f"Use {name} as tracked or vendored? [tracked/vendored] ").strip().lower()
+        choice = input(f"Use {name} as linked or vendored? [linked/vendored] ").strip().lower()
     except (EOFError, OSError):
         choice = ""
-    modes: dict[str, TemplateMode] = {"tracked": "tracked", "vendored": "vendored"}
+    modes: dict[str, KitMode] = {"linked": "linked", "vendored": "vendored"}
     if choice not in modes:
-        raise UsageError(f"choose tracked or vendored for {name}, not {choice!r}")
+        raise UsageError(f"choose linked or vendored for {name}, not {choice!r}")
     return modes[choice]
 
 
 def _make_vendored(root: Path, name: str, *, yes: bool = False) -> int:
-    found = resolve_template(name, root)
+    found = resolve_kit(name, root)
     local = vendored_path(root, name)
     if found.path.is_file():
         return vendor_catalog(root, name, found, yes=yes)
@@ -609,18 +607,18 @@ def _make_vendored(root: Path, name: str, *, yes: bool = False) -> int:
     declare(root, name)
     record_hash(root, name, tree_hash(local))
     print(f"vendored {name} from source {found.source} into {_display(local, root)}")
-    for relative in template_files(local):
+    for relative in kit_files(local):
         print(f"    {relative}")
     return 0
 
 
-def _make_tracked(root: Path, name: str) -> int:
-    """A vendored copy becomes tracked: drop the copy and its recorded hash once
+def _make_linked(root: Path, name: str) -> int:
+    """A vendored copy becomes linked: drop the copy and its recorded hash once
     the source can still resolve the name, so the switch never strands the project."""
-    found = resolve_upstream_template(name)
+    found = resolve_upstream_kit(name)
     remove_vendored(root, name)
     unrecord_hash(root, name)
-    print(f"changed {name} to tracked; resolves from source {found.source}")
+    print(f"changed {name} to linked; resolves from source {found.source}")
     print(f"    {_display(found.path, root)}")
     return 0
 
@@ -633,13 +631,13 @@ def _tree_diff(local: Path, upstream: Path, label: str) -> list[str]:
 def _file_diffs(local: Path, upstream: Path, label: str) -> list[list[str]]:
     """Each changed file's diff lines, so a file whose diff is withheld still counts."""
     diffs: list[list[str]] = []
-    for relative in sorted({*template_files(local), *template_files(upstream)}):
+    for relative in sorted({*kit_files(local), *kit_files(upstream)}):
         here, there = local / relative, upstream / relative
         try:
             actual = here.read_text(encoding="utf-8") if here.is_file() else ""
             expected = there.read_text(encoding="utf-8") if there.is_file() else ""
         except UnicodeDecodeError:
-            # A template carries whatever a skill carries, binaries included, and
+            # A kit carries whatever a skill carries, binaries included, and
             # a byte diff of one is noise rather than a review.
             if not (here.is_file() and there.is_file()) or here.read_bytes() != there.read_bytes():
                 diffs.append([f"{label}/{relative}: differs (binary)\n"])
@@ -649,7 +647,7 @@ def _file_diffs(local: Path, upstream: Path, label: str) -> list[list[str]]:
     return diffs
 
 
-def cmd_template_sync(root: Path, name: str, *, yes: bool = False) -> int:
+def cmd_kit_sync(root: Path, name: str, *, yes: bool = False) -> int:
     """Update a vendored copy from its source, refusing rather than merging.
 
     Refuse-and-diff is never wrong and never silently mangles anything. The
@@ -661,25 +659,25 @@ def cmd_template_sync(root: Path, name: str, *, yes: bool = False) -> int:
     config = load_project_config(project_config_path(root))
     local = vendored_path(root, name)
     if local.is_file():
-        return vendor_catalog(root, name, resolve_upstream_template(name), update=True, yes=yes)
-    if not local.is_dir() and name not in config.templates:
+        return vendor_catalog(root, name, resolve_upstream_kit(name), update=True, yes=yes)
+    if not local.is_dir() and name not in config.kits:
         raise LoadoutError(
-            f"{name} is not declared in loadout/config.toml, so there is nothing to sync; "
-            f"run `loadout template add {name}` to add it"
+            f"{name} is not listed in loadout/config.toml, so there is nothing to sync; "
+            f"run `loadout kit add {name}` to add it"
         )
     if not local.is_dir():
         raise LoadoutError(
             f"{name} is not vendored, so there is nothing to sync — it resolves from a "
-            f"source on every render. Run `loadout template add {name} --vendored` to copy it in."
+            f"source on every render. Run `loadout kit add {name} --vendored` to copy it in."
         )
 
     recorded = config.vendored_hash(name)
     # A vendored copy resolves ahead of every source, so the upstream has to be
     # reached past it deliberately.
-    found = resolve_upstream_template(name)
+    found = resolve_upstream_kit(name)
     upstream = found.path
     if upstream.is_file():
-        raise LoadoutError("template sync cannot change between a directory and a catalog manifest")
+        raise LoadoutError("kit sync cannot change between a directory and a catalog manifest")
     current = tree_hash(local)
 
     # Refuse unless the copy can be *proved* unmodified, rather than refusing only
@@ -698,7 +696,7 @@ def cmd_template_sync(root: Path, name: str, *, yes: bool = False) -> int:
             f"\nSync refused — with no recorded hash, nothing can tell your edits from "
             f"the source's, so the '-' lines above may be either. Commit your copy first "
             f"if you want to keep them, or delete {_display(local, root)} and run "
-            f"`loadout template add {name} --vendored` to take the source wholesale.",
+            f"`loadout kit add {name} --vendored` to take the source wholesale.",
             file=sys.stderr,
         )
         return 1
@@ -712,7 +710,7 @@ def cmd_template_sync(root: Path, name: str, *, yes: bool = False) -> int:
         print(
             f"\nSync refused — the '-' lines above exist only in your copy and would be "
             f"lost. Move them upstream, or delete {_display(local, root)} and run "
-            f"`loadout template add {name} --vendored` to take the upstream wholesale.",
+            f"`loadout kit add {name} --vendored` to take the upstream wholesale.",
             file=sys.stderr,
         )
         return 1

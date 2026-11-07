@@ -20,7 +20,7 @@ PROJECT_CONFIG_NAME = "config.toml"
 @dataclass(frozen=True)
 class ProjectConfig:
     """Which harnesses this project generates configuration for, and which
-    templates it opts into.
+    kits it opts into.
 
     Validation lives here, not in load_project_config, so it cannot be bypassed
     by constructing a ProjectConfig directly (as init_project used to) — see the
@@ -37,7 +37,7 @@ class ProjectConfig:
     """
 
     harnesses: tuple[str, ...]
-    templates: tuple[str, ...] = ()
+    kits: tuple[str, ...] = ()
     vendored: tuple[tuple[str, str], ...] = ()
     instructions: tuple[str, ...] = ()
     skill_policies: tuple[SkillPolicy, ...] = ()
@@ -51,16 +51,16 @@ class ProjectConfig:
         if bad:
             known = ", ".join(sorted(KNOWN_HARNESSES))
             raise LoadoutError(f"unknown harness(es) {', '.join(bad)} (known: {known})")
-        if len(set(self.templates)) != len(self.templates):
-            raise LoadoutError("duplicate template in the list")
+        if len(set(self.kits)) != len(self.kits):
+            raise LoadoutError("duplicate kit in the list")
         if len(set(self.instructions)) != len(self.instructions):
             raise LoadoutError("duplicate instruction fragment in the list")
         _validate_skill_policies(self.skill_policies, self.harnesses)
-        orphan = sorted({name for name, _ in self.vendored} - set(self.templates))
+        orphan = sorted({name for name, _ in self.vendored} - set(self.kits))
         if orphan:
             raise LoadoutError(
-                f"[template.{orphan[0]}] records provenance for a template this project "
-                f"does not declare; add it to `templates` or delete the block"
+                f"[kit.{orphan[0]}] records provenance for a kit this project "
+                f"does not list; add it to `kits` or delete the block"
             )
 
     def vendored_hash(self, name: str) -> str | None:
@@ -83,6 +83,18 @@ def project_config_path(root: Path) -> Path:
     return root / PROJECT_DIR / PROJECT_CONFIG_NAME
 
 
+def renamed_kit_spelling(data: dict[str, object], path: Path) -> LoadoutError | None:
+    if "templates" in data:
+        return LoadoutError(f"{path}: `templates` is now `kits`; rename the key")
+    if "template" in data:
+        return LoadoutError(f"{path}: `[template.<name>]` is now `[kit.<name>]`; rename the table")
+    if (path.parent / "templates").is_dir():
+        return LoadoutError(
+            f"{path.parent / 'templates'}: `templates/` is now `kits/`; rename the folder"
+        )
+    return None
+
+
 def load_project_config(path: Path) -> ProjectConfig:
     if not path.is_file():
         raise LoadoutError(f"project config not found: {path}")
@@ -93,13 +105,15 @@ def load_project_config(path: Path) -> ProjectConfig:
         raise LoadoutError(f"{path}: not UTF-8: {error.reason}; re-encode it as UTF-8") from error
     except tomllib.TOMLDecodeError as error:
         raise LoadoutError(f"{path}: invalid TOML: {error}") from error
+    if (renamed := renamed_kit_spelling(data, path)) is not None:
+        raise renamed
 
     unknown = sorted(
         set(data)
         - {
             "harnesses",
-            "templates",
-            "template",
+            "kits",
+            "kit",
             "instructions",
             "skills",
         }
@@ -107,7 +121,7 @@ def load_project_config(path: Path) -> ProjectConfig:
     if unknown:
         raise LoadoutError(
             f"{path}: unrecognised key(s) {', '.join(unknown)}; 'harnesses', "
-            f"'templates', 'instructions', 'skills' and [template.<name>] are the keys this "
+            f"'kits', 'instructions', 'skills' and [kit.<name>] are the keys this "
             f"file accepts"
         )
 
@@ -115,11 +129,9 @@ def load_project_config(path: Path) -> ProjectConfig:
     if not isinstance(raw, list) or not all(isinstance(h, str) for h in raw):
         raise LoadoutError(f"{path}: harnesses must be a list of strings")
 
-    raw_templates = data.get("templates", [])
-    if not isinstance(raw_templates, list) or not all(
-        isinstance(t, str) and t for t in raw_templates
-    ):
-        raise LoadoutError(f"{path}: templates must be a list of non-empty strings")
+    raw_kits = data.get("kits", [])
+    if not isinstance(raw_kits, list) or not all(isinstance(t, str) and t for t in raw_kits):
+        raise LoadoutError(f"{path}: kits must be a list of non-empty strings")
 
     raw_instructions = data.get("instructions", [])
     if not isinstance(raw_instructions, list) or not all(
@@ -130,8 +142,8 @@ def load_project_config(path: Path) -> ProjectConfig:
     try:
         return ProjectConfig(
             harnesses=tuple(raw),
-            templates=tuple(raw_templates),
-            vendored=_parse_provenance(data.get("template", {}), path),
+            kits=tuple(raw_kits),
+            vendored=_parse_provenance(data.get("kit", {}), path),
             instructions=tuple(raw_instructions),
             skill_policies=parse_skill_policies(data.get("skills")),
         )
@@ -140,28 +152,28 @@ def load_project_config(path: Path) -> ProjectConfig:
 
 
 def _parse_provenance(raw: object, path: Path) -> tuple[tuple[str, str], ...]:
-    """`[template.<name>] vendored = "<hash>"` — the content hash of a vendored copy.
+    """`[kit.<name>] vendored = "<hash>"` — the content hash of a vendored copy.
 
     Source rather than generated output, so ADR 0008's prohibition on stamping a
     hash does not reach it: that rule keeps *generated* content a pure function of
     the source, and a hash recorded in the source is the source.
     """
     if not isinstance(raw, dict):
-        raise LoadoutError(f"{path}: [template.<name>] must be a table per template")
+        raise LoadoutError(f"{path}: [kit.<name>] must be a table per kit")
     provenance: list[tuple[str, str]] = []
     for name, block in raw.items():
         if not isinstance(block, dict):
-            raise LoadoutError(f"{path}: [template.{name}] must be a table")
+            raise LoadoutError(f"{path}: [kit.{name}] must be a table")
         stray = sorted(set(block) - {"vendored"})
         if stray:
             raise LoadoutError(
-                f"{path}: [template.{name}] has unrecognised key(s) {', '.join(stray)}; "
-                f"'vendored' is the only key it accepts — a template is referenced by "
+                f"{path}: [kit.{name}] has unrecognised key(s) {', '.join(stray)}; "
+                f"'vendored' is the only key it accepts — a kit is referenced by "
                 f"name, never by path"
             )
         digest = block.get("vendored")
         if not isinstance(digest, str) or not digest:
-            raise LoadoutError(f"{path}: [template.{name}] vendored must be a non-empty string")
+            raise LoadoutError(f"{path}: [kit.{name}] vendored must be a non-empty string")
         provenance.append((name, digest))
     return tuple(provenance)
 
@@ -170,7 +182,7 @@ def _parse_provenance(raw: object, path: Path) -> tuple[tuple[str, str], ...]:
 # because a destination here is a path inside the repo, and project scope must
 # never name a machine path — a path in a committed file is wrong for everyone
 # who is not its author, which is the same reason project scope carries no
-# [[source]] list (see templates.py:declared_sources). So every entry sets
+# [[source]] list (see kits.py:kit_sources). So every entry sets
 # `output` and none sets `destination`; `test_project_preset` pins that.
 #
 # Three renderers are project-specific and must stay that way: they differ from
@@ -303,14 +315,14 @@ def project_outputs(
 
     The instruction documents count only when something could produce them, so a
     hand-written `CLAUDE.md` in a project with no instructions stays the user's. A
-    declared template counts without being resolved, since resolution needs the
+    listed kit counts without being resolved, since resolution needs the
     machine config and can fail for reasons neither caller should care about.
 
     Deduplicated because four harnesses share one `AGENTS.md`, and
     order-preserving for the reason `dedupe()` is: never a set().
     """
     selected = tuple(config.harnesses if harnesses is None else harnesses)
-    writes_instructions = bool(config.instructions or config.templates)
+    writes_instructions = bool(config.instructions or config.kits)
     paths = [
         spec.output
         for _, name, spec in project_slices(selected)

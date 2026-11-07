@@ -1,6 +1,6 @@
 ---
 title: CLI reference
-description: Loadout commands, scope flags, profile selection, stealth sources, init, template operations, integrations, and exit codes.
+description: Loadout commands, scope flags, profile selection, stealth sources, init, kit operations, integrations, and exit codes.
 ---
 
 # CLI reference
@@ -98,7 +98,7 @@ source may also hold a project configuration, and then renders both scopes. Any 
 a `loadout.toml` is refused with exit 3 before anything is read or written, its project
 configuration included. The refusal names its cause: this machine has no registered source (run
 `loadout init global <that folder>`), or another one is registered (add `--registration replace`).
-A machine config that does not load is reported as its own error instead. `integrate git-hooks install` and the `template` commands refuse such a root too, rather than installing hooks that would refuse every commit; `check --staged` refuses one in the index the same way, under any case spelling
+A machine config that does not load is reported as its own error instead. `integrate git-hooks install` and the `kit` commands refuse such a root too, rather than installing hooks that would refuse every commit; `check --staged` refuses one in the index the same way, under any case spelling
 of its name, since a case-insensitive disk reads `Loadout.toml` as the manifest; a commit that
 removes one is not refused for HEAD still holding it. Registering is the
 trust decision: `loadout init global <path>` registers a folder, and there is no other way to
@@ -111,7 +111,7 @@ cannot run git it exits 3 and says so. Its inputs, refusals and timing are in
 JSON output (`init --json`, `check --json`) is not covered by a stability promise in 1.0.
 
 Use `--force` only after reviewing the reported output edits and deciding to discard them.
-It does not resolve invalid sources or merge a modified vendored template.
+It does not resolve invalid sources or merge a modified vendored kit.
 
 ## Stealth sources
 
@@ -438,37 +438,44 @@ harness's outputs and extends `.gitignore` to cover every generated path. Removi
 the list retires its outputs on the next sync and drops their `.gitignore` entries. What each
 harness generates is in [project setup](../guides/projects.md#what-sync-generates).
 
-## Templates
+## Kits
+
+A kit stays linked to its source: every sync picks up its current contents unless you vendor it.
 
 ```sh
-loadout template add python --tracked
-loadout template add python --vendored
-loadout template sync python
-loadout template list
+loadout kit add python --linked
+loadout kit add python --vendored
+loadout kit sync python
+loadout kit list
 ```
 
-All three accept `--root PATH` and work on a project. Outside one they exit 3: templates are
-applied to projects and authored in your global source, as `templates/<name>.toml` manifests or
-`templates/<name>/` directories.
-Bare `template add` in a project lists the templates your sources offer.
+All three accept `--root PATH` and work on a project. Outside one they exit 3: kits are
+applied to projects and authored in your global source, as `kits/<name>.toml` manifests or
+`kits/<name>/` directories.
+Bare `kit add` in a project lists the kits your sources offer.
 
 | Command | Result |
 | --- | --- |
-| `add NAME --tracked` | Declare the template; it resolves from a source on every render |
+| `add NAME --linked` | Add the kit to the project; it resolves from a source on every render |
 | `add NAME --vendored` | Copy the source into the project and record its content hash |
-| `add` (bare) | List every resolvable template and prompt for a name and a mode; without a terminal, a missing name or mode is a usage error (exit 2) |
+| `add` (bare) | List every resolvable kit and prompt for a name and a mode; without a terminal, a missing name or mode is a usage error (exit 2) |
 | `sync NAME` | Update an unchanged vendored copy from the available upstream source |
-| `list` | Show declared templates, each one's mode, and where it resolves |
+| `list` | Show the project's kits, each one's mode, and where it resolves |
 
-Adding a template that is already declared changes its mode in either direction.
+Adding a kit the project already lists changes its mode in either direction.
 
-When vendoring or syncing a catalog template would change parts it shares with other declared
-templates, the command lists the affected templates and asks before writing. `--yes` (on `add`
+When vendoring or syncing a catalog kit would change parts it shares with the project's other
+kits, the command lists the affected kits and asks before writing. `--yes` (on `add`
 and `sync`) applies the change without asking; without a terminal and without `--yes` it exits 2
 and changes nothing. Declining exits 0 with "declined; no changes made".
 
 Run the ordinary `loadout sync` to render the resulting project configuration.
-See [templates](../guides/templates.md) for the complete lifecycle.
+See [kits](../guides/kits.md) for the complete lifecycle.
+
+0.10.0 called a kit a template. The old spellings are refused with a message naming the new one:
+`loadout template` and `--tracked` with exit 2; `templates = [...]`, a `[template.NAME]` block, a
+`loadout/templates/` folder, `use = ["templates"]` and a source's `templates/` folder with exit 3.
+See [upgrading from 0.10.0](../guides/kits.md#upgrading-from-0100).
 
 ## Integrations
 
@@ -599,6 +606,6 @@ without it is refused.
 | `4` | Unexpected internal error, with a traceback |
 | `130` | Stopped with Ctrl-C, without a traceback. `init` puts back every path it changed, or tries to; stopped before it applies anything, it has changed nothing. A Ctrl-C after the conversion finished lets init complete and exit `0`, saying so |
 
-A modified vendored template is a source change. `check` can report it without failing solely
-for that reason. `template sync` on a directory template you edited prints the diff, changes
+A modified vendored kit is a source change. `check` can report it without failing solely
+for that reason. `kit sync` on a directory kit you edited prints the diff, changes
 nothing and exits `1`.

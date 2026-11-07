@@ -60,7 +60,7 @@ Edit the declared source for each configured consumer. Generated harness files a
   secret is never diffed: loadout names it and counts the lines that differ. Read the file on disk
   and the source directly to see the change, or move the secret to an environment variable.
 - A `project.instructions` or `<harness>.instructions` note that the document repeats a heading,
-  or a `template add` line naming a project skill the template already supplies, marks guidance
+  or a `kit add` line naming a project skill the kit already supplies, marks guidance
   held twice. Resolve it by “Guidance held twice” in
   [configuration routing](references/configuration.md).
 - An init that lists `unadopted` items left copies that disagree across harnesses in place. Merge

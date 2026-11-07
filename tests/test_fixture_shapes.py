@@ -117,12 +117,12 @@ def test_a_destination_is_env_templated() -> None:
     templated destination here, the whole-document comparison would keep passing
     while covering none of it."""
     manifest = load_manifest(FIXTURE.parent / MANIFEST_NAME)
-    templates = [str(d) for target in manifest.targets for d in target.destinations]
-    assert [t for t in templates if "${" in t], "no destination exercises ${...} expansion"
+    kits = [str(d) for target in manifest.targets for d in target.destinations]
+    assert [t for t in kits if "${" in t], "no destination exercises ${...} expansion"
 
 
 PROJECT_FIXTURES = Path(__file__).parent / "fixtures" / "project"
-TEMPLATE_RULES = parse_rules(PROJECT_FIXTURES / "templates" / "web" / "permissions.toml")
+KIT_RULES = parse_rules(PROJECT_FIXTURES / "kits" / "web" / "permissions.toml")
 
 
 def test_the_project_fixture_has_a_server_with_a_literal_header_and_an_auth_variable() -> None:
@@ -135,29 +135,29 @@ def test_the_project_fixture_has_a_server_with_a_literal_header_and_an_auth_vari
 def test_the_project_tiers_disagree_about_the_catch_all_default() -> None:
     """Project scope must exercise strictest-wins over real tiers, not just units.
 
-    The template states the loosest verdict, the project tier a stricter one, and
+    The kit states the loosest verdict, the project tier a stricter one, and
     the personal tier none at all — so the expected output pins all three rules at
     once: the strict one wins, the loose one loses, and silence does not vote.
     """
-    template = parse_rules(PROJECT_FIXTURES / "templates" / "web" / "permissions.toml")
+    kit = parse_rules(PROJECT_FIXTURES / "kits" / "web" / "permissions.toml")
     project = parse_rules(PROJECT_FIXTURES / "permissions.toml")
     personal = parse_rules(PROJECT_FIXTURES / "permissions.local.toml")
-    assert template.default is not None
+    assert kit.default is not None
     assert project.default is not None
-    assert template.default != project.default, "the tiers must disagree or nothing is resolved"
+    assert kit.default != project.default, "the tiers must disagree or nothing is resolved"
     assert personal.default is None, "a silent tier is what proves silence casts no vote"
 
 
-def test_the_project_fixture_carries_a_vendored_template() -> None:
-    """Without it, the expected project output never proves a template reaches it."""
-    assert TEMPLATE_RULES.allow, "the fixture template contributes no allow rule"
-    assert TEMPLATE_RULES.deny, "the fixture template contributes no deny rule"
-    assert TEMPLATE_RULES.mcp_allow, "the fixture template contributes no MCP entry"
+def test_the_project_fixture_carries_a_vendored_kit() -> None:
+    """Without it, the expected project output never proves a kit reaches it."""
+    assert KIT_RULES.allow, "the fixture kit contributes no allow rule"
+    assert KIT_RULES.deny, "the fixture kit contributes no deny rule"
+    assert KIT_RULES.mcp_allow, "the fixture kit contributes no MCP entry"
 
 
-def test_every_template_rule_is_absent_from_the_other_project_tiers() -> None:
+def test_every_kit_rule_is_absent_from_the_other_project_tiers() -> None:
     """A rule a project tier already carries would render identically whether or not
-    the template merged, so the comparison would pass with templates switched off."""
+    the kit merged, so the comparison would pass with kits switched off."""
     committed = parse_rules(PROJECT_FIXTURES / "permissions.toml")
     local = parse_rules(PROJECT_FIXTURES / "permissions.local.toml")
     others = set(
@@ -170,22 +170,22 @@ def test_every_template_rule_is_absent_from_the_other_project_tiers() -> None:
         + committed.mcp_allow
         + local.mcp_allow
     )
-    template = set(TEMPLATE_RULES.allow + TEMPLATE_RULES.deny + TEMPLATE_RULES.mcp_allow)
-    assert not (template & others), f"already in another tier: {sorted(template & others)}"
+    kit = set(KIT_RULES.allow + KIT_RULES.deny + KIT_RULES.mcp_allow)
+    assert not (kit & others), f"already in another tier: {sorted(kit & others)}"
 
 
 def test_the_project_fixture_declares_instructions_out_of_sorted_order() -> None:
-    """`test_instruction_blocks_appear_in_declared_order_below_the_template` proves
+    """`test_instruction_blocks_appear_in_declared_order_below_the_kit` proves
     nothing if the declared order happens to match the directory listing — a render
     that sorted its fragments would pass. Reversing the pair is what gives that test
     something to catch, so it is a property of the fixture, not of the assertion."""
     assert list(PROJECT_INSTRUCTIONS) != sorted(PROJECT_INSTRUCTIONS)
 
 
-def test_the_project_fixture_template_contributes_instructions() -> None:
-    """Without it the expected documents never prove a template's prose arrives, and
-    the tier ordering between template and project is untested."""
-    assert (PROJECT_FIXTURES / "templates" / "web" / "instructions.md").is_file()
+def test_the_project_fixture_kit_contributes_instructions() -> None:
+    """Without it the expected documents never prove a kit's prose arrives, and
+    the tier ordering between kit and project is untested."""
+    assert (PROJECT_FIXTURES / "kits" / "web" / "instructions.md").is_file()
 
 
 def test_every_declared_instruction_fragment_exists() -> None:

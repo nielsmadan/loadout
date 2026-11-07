@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-description: Resolve drift, protected edits, missing sources, template update conflicts, and agent setup notices.
+description: Resolve drift, protected edits, missing sources, kit update conflicts, and agent setup notices.
 ---
 
 # Troubleshooting
@@ -286,25 +286,25 @@ name and lists the candidates it found. Qualify it with the source name, such as
 `migrated/workflow` for the source `init global` wrote, to choose. A command for
 inspecting resolution directly is not available in 1.0.
 
-## A template cannot be found
+## A kit cannot be found
 
-Loadout first checks the project's vendored copy in `loadout/templates/`, then the `templates/`
-folder of each source declared by the machine's global manifest, where a template is either a
-`<name>/` directory or a `<name>.toml` catalog manifest, then the bundled starters (`frontend` and
+Loadout first checks the project's vendored copy in `loadout/kits/`, then the `kits/`
+folder of each source declared by the machine's global manifest, where a kit is either a
+`<name>/` directory or a `<name>.toml` catalog manifest, then the bundled kits (`frontend` and
 `backend`), which ship with loadout and also resolve on a machine with no global configuration.
 
-Run `loadout template list` and inspect those sources. Clone or update an external source using
+Run `loadout kit list` and inspect those sources. Clone or update an external source using
 your normal git workflow. Loadout does not fetch it automatically.
 
 If two sources offer the same name, use a qualified name such as `company/python`.
 
-## A vendored template will not update
+## A vendored kit will not update
 
-`loadout template sync NAME` refuses to overwrite a copy that has changed since it was
+`loadout kit sync NAME` refuses to overwrite a copy that has changed since it was
 vendored, or whose original hash cannot be verified. It prints a diff for you to reconcile.
 
-Keep project-specific changes in project fragments rather than editing the shared template
-copy where possible. See [template updates](guides/templates.md#update-a-vendored-template).
+Keep project-specific changes in project fragments rather than editing the shared kit
+copy where possible. See [kit updates](guides/kits.md#update-a-vendored-kit).
 
 A modified vendored source is not itself generated-file drift. `check` reports it without
 failing solely for that reason.

@@ -247,6 +247,6 @@ def _landing(target: Path, boundary: Path) -> str:
 
 
 def _in_a_skill(parts: tuple[str, ...]) -> bool:
-    """Below `skills/<name>/`, a project's own or a template's: the skill's name itself
+    """Below `skills/<name>/`, a project's own or a kit's: the skill's name itself
     is not inside its tree, so a skill named like an excluded folder is still read."""
     return any(part == "skills" and len(parts) > index + 2 for index, part in enumerate(parts))

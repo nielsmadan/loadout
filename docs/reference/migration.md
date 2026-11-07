@@ -127,7 +127,7 @@ stops at the first file it refuses.
 | `harnesses-required` | no harness was given and none has configuration at a known path |
 | `scope-required` | no scope was selected; `init project` and `init global` each select one, so the CLI never reports it |
 | `symlink-target`, `symlink-cycle` | a link at a read path is missing its target or loops |
-| `external-symlink` | in project scope, a harness root links outside the repository; its content would become committed source. There is no override: share it as a loadout template, or replace the link with a real copy (`cp -RL`) and run init again ([0026](../decisions/0026-a-project-root-linked-outside-the-repository-has-no-override.md)) |
+| `external-symlink` | in project scope, a harness root links outside the repository; its content would become committed source. There is no override: share it as a loadout kit, or replace the link with a real copy (`cp -RL`) and run init again ([0026](../decisions/0026-a-project-root-linked-outside-the-repository-has-no-override.md)) |
 | `git-link` | in project scope, a link points into the repository's `.git`, which holds credentials such as a token in `.git/config` and runs hooks; init reports it and never reads through it |
 | `linked-folder`, `linked-file` | in project scope, a harness folder that is itself a link inside the repository, such as `.claude -> config/claude`, or a link inside one, such as `.claude/skills/x/scripts -> ../../../tools`; project sync never writes through one, so init reports it instead of walking it. Replace it with a real copy (`cp -RL`) and run init again. A harness skills folder linked to a real folder in the repository, and a skill linked to the same skill in another skills folder, are the exceptions (below) |
 | `opencode-both-formats` | `opencode.json` and `opencode.jsonc` side by side: OpenCode reads both and merges them, the `.jsonc`'s keys winning; combine them into one file |
@@ -197,7 +197,7 @@ globally, `config/paths.ts` in a project), so init refuses when both exist rathe
 Project init writes `loadout/config.toml` plus the canonical project slice sources it found.
 Global init writes `loadout/loadout.toml`, canonical global slice sources, and registers that
 directory in the machine config. Its one source, `migrated`, has no `use` list, so a slice added
-to it later, such as instructions or a template, is read like any other.
+to it later, such as instructions or a kit, is read like any other.
 
 Existing generated destinations are reconstructed in isolation before approval.
 
@@ -377,7 +377,7 @@ target and differs from what loadout last wrote is still refused as modified out
 
 Still refused: a symlink cycle, and in project scope a harness root linked outside the repository,
 whose content would otherwise become committed project source. That refusal has no override; it
-names the link's target and the two remedies, a loadout template or a real copy made with `cp -RL`.
+names the link's target and the two remedies, a loadout kit or a real copy made with `cp -RL`.
 In project scope init also refuses each link project sync would refuse: any link into `.git`, a
 harness folder that is a link, and any link inside one.
 

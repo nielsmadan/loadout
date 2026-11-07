@@ -24,8 +24,8 @@ private, and how it puts everything back when a conversion fails.
 [composition.md](composition.md) maps profile inheritance, fragment composition, native input
 layers and named-item overrides to their operators, ownership and scope boundaries.
 
-[templates.md](templates.md) covers project templates: catalog and directory forms, declared
-versus vendored, name resolution and the content hash `template sync` compares against.
+[kits.md](kits.md) covers project kits: catalog and directory forms, linked
+versus vendored, name resolution and the content hash `kit sync` compares against.
 [module-config.md](module-config.md) is the slice that copies a module's own configuration to the
 path it reads, and [hooks-adapters.md](hooks-adapters.md) the code adapters that carry hooks to
 OpenCode and Pi. [servers.md](servers.md) is the `mcp` slice, server definitions.

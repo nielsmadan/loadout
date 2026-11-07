@@ -33,7 +33,7 @@ the [CLI reference](../reference/cli.md#initialise).
 
 | Source | Purpose | Commit it? |
 | --- | --- | --- |
-| `loadout/config.toml` | Agents, instruction order, skill policy, templates | Yes |
+| `loadout/config.toml` | Agents, instruction order, skill policy, kits | Yes |
 | `loadout/permissions.toml` | Shared permission rules | Yes |
 | `loadout/permissions.local.toml` | Your permission rules for this repository | No: add it to `.gitignore` or `.git/info/exclude` yourself |
 | `loadout/instructions/` | Shared instruction fragments | Yes |
@@ -42,7 +42,7 @@ the [CLI reference](../reference/cli.md#initialise).
 | `loadout/agents/` | Project subagents, one Markdown file each | Yes |
 | `loadout/mcp.toml` | Project MCP server definitions | Yes |
 | `loadout/settings/<harness>.json` | The rest of a shared settings file | Yes |
-| `loadout/templates/` | Vendored template sources | Yes |
+| `loadout/kits/` | Vendored kit sources | Yes |
 | Generated agent files | Combined output for this checkout | No |
 
 Personal project configuration covers permissions and private skill replacements. Loadout never
@@ -62,7 +62,7 @@ instructions = ["project", "testing"]
 ```
 
 Create the matching files under `loadout/instructions/`. They are composed in the listed order.
-Templates contribute their instructions after the project's fragments, so the document opens with
+Kits contribute their instructions after the project's fragments, so the document opens with
 the project's own prose. A heading two fragments both bring is named in a `check` and `sync` note.
 
 After adding an instruction order to a project that previously generated only permissions, run
@@ -77,7 +77,7 @@ With Claude and any other harness, the content goes to `AGENTS.md` and `CLAUDE.m
 banner and `@AGENTS.md`: Claude reads `AGENTS.md` only when no `CLAUDE.md` is on the path, and its
 docs promise the import never makes it read `AGENTS.md` twice. A Claude-only project writes the
 content to `CLAUDE.md`; a project without Claude writes only `AGENTS.md`. A `CLAUDE.md` that is a
-symlink to `AGENTS.md` stays one, and is the same document. With no instructions or template prose,
+symlink to `AGENTS.md` stays one, and is the same document. With no instructions or kit prose,
 neither document is generated.
 
 ## Add personal permissions
@@ -89,7 +89,7 @@ allow = ["just local-test"]
 
 Add the file to `.gitignore`, or to `.git/info/exclude` for this clone alone; loadout does neither.
 Then run `loadout sync`. For the same permission entry, deny beats ask, and ask beats allow
-across the template, shared, and personal tiers. A personal allow cannot cancel a shared deny.
+across the kit, shared, and personal tiers. A personal allow cannot cancel a shared deny.
 
 For overlapping patterns, the harness's matcher still matters. See
 [permission portability](../reference/harnesses.md#permission-portability).
@@ -155,7 +155,7 @@ code. When Codex and OpenCode need different variants of the same skill, also se
 
 `loadout/mcp.toml` reaches Claude (`.mcp.json`), Droid (`.factory/mcp.json`), OpenCode
 (`opencode.json`'s `mcp` key) and Pi (`.pi/mcp.json`, read once the project is trusted). Codex gets
-none at project scope; a [stealth source](stealth.md) writes Codex servers. A template contributes its
+none at project scope; a [stealth source](stealth.md) writes Codex servers. A kit contributes its
 own `mcp.toml` beneath the project.
 
 ### Shared settings files
@@ -184,10 +184,10 @@ refuses before writing anything and names each link and where it resolves.
 The same holds for what it reads: inputs come from `loadout/` alone, and `loadout/` must be a real
 folder. A link in it that leads anywhere else is refused rather than copied into the repository's
 outputs: a skill's supporting file pointing at a key in `~/.ssh`, into `.git`, which holds
-credentials such as a token in `.git/config`, or at a gitignored `.env` beside it. A template's own
+credentials such as a token in `.git/config`, or at a gitignored `.env` beside it. A kit's own
 files are read only as real files, never through a link. Links that stay inside `loadout/` are
 followed; folders never read, such as a skill's `.venv` or `node_modules`, are skipped, so a skill
-or template may not itself be named like one. A link the file system cannot resolve, such as a pair
+or kit may not itself be named like one. A link the file system cannot resolve, such as a pair
 that lengthens the path at every hop, is refused by name. Both checks run before sync or check
 compares anything, a file sync wrote and no longer renders included, so no diff of an outside file
 is shown.
@@ -205,4 +205,4 @@ The agents load global and project files according to their own rules. Loadout w
 scopes separately; it does not turn them into one universal inheritance chain.
 
 Use [global setup](global.md) for the defaults you want everywhere. Use
-[templates](templates.md) for shared context that only some projects need.
+[kits](kits.md) for shared context that only some projects need.

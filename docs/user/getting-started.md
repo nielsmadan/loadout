@@ -147,5 +147,5 @@ The [troubleshooting guide](troubleshooting.md#files-modified-outside-loadout) c
 ## Where to go next
 
 - [Global setup](guides/global.md): reuse configuration across all your projects.
-- [Templates](guides/templates.md): share the context needed by a particular kind of project.
+- [Kits](guides/kits.md): share the context needed by a particular kind of project.
 - [Composition and inheritance](guides/composition.md): assemble sources and switch profiles.

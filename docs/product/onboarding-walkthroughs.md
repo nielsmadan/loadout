@@ -213,7 +213,7 @@ are real enough to be worth stating rather than inheriting.
 | machine registration | yes | none — nothing machine-wide to point at |
 | generated outputs | nobody shares a home directory | **must be gitignored** — teammates regenerate them |
 | the payoff | a second machine | the rest of the team |
-| templates | supplies them | consumes them |
+| kits | supplies them | consumes them |
 
 ## The flow
 
@@ -240,11 +240,11 @@ local agent configuration without any global setup is rare enough not to design 
 
 ### 4. Offer harnesses, preselecting the global set
 
-### 5. Offer templates, if any resolve
+### 5. Offer kits, if any resolve
 
-Project scope is where templates apply and the global source is where they come from, so this is
-the moment to offer them — and with `template add` now enumerating what is available (S-06), the
-same enumeration serves here. Choosing one also means choosing **tracked** or **vendored**.
+Project scope is where kits apply and the global source is where they come from, so this is
+the moment to offer them — and with `kit add` now enumerating what is available (S-06), the
+same enumeration serves here. Choosing one also means choosing **linked** or **vendored**.
 
 Skip silently when nothing resolves.
 
