@@ -127,6 +127,26 @@ OpenCode v2 renames most configuration keys, including
 inversion**. A config that appears to migrate cleanly will have every server's
 enabled state flipped.
 
+## v2 reads loadout's v1 keys
+
+loadout writes OpenCode's v1 keys, `permission` and `mcp`. Read from the v2.2.0 source
+(`anomalyco/opencode` at `v2.2.0`, 2026-11-01), v2 migrates both when it loads the file
+(`packages/core/src/config/normalize.ts`):
+
+- **`mcp`.** The four fields loadout writes, `type`, `command`, `url` and `headers`, are kept
+  (`packages/core/src/v1/config/migrate.ts:81-108`). `{env:VAR}` is expanded on the raw file text
+  before migration (`packages/core/src/config/variable.ts:25-31`).
+- **`permission`.** `allow`, `ask` and `deny` map one to one, and `bash` becomes `shell`. Order is
+  kept, and evaluation is still last-match-wins.
+- **Unknown fields vanish.** A field that is not in the v1 schema is dropped with no diagnostic
+  (`onExcessProperty: "ignore"`, `normalize.ts:44`). Every field loadout writes today is in it; a
+  renderer change that adds one must confirm v2 keeps it.
+- **Enabled-only entries.** A legacy MCP entry that holds only `enabled` is dropped with a
+  diagnostic (`normalize.ts:271-273`). loadout never writes one.
+- **Diagnostics are log lines.** Every migration diagnostic goes only to a log warning
+  (`packages/core/src/config.ts:145-153`). A native `permissions` key outranks v1 `permission`, a
+  bad rule is dropped on its own, and a file that fails validation is ignored whole.
+
 ## Gotcha: compound bash commands take the least-permitted verdict
 
 OpenCode evaluates each part of a `;` / `&&` / `|` chain separately and takes the

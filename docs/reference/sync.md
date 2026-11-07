@@ -53,6 +53,11 @@ newly managed key. When a slice stops rendering into a shared file, each of its 
 judged the same way before sync strips it, so a server added by hand stops the retirement as
 `owned-key` instead of going with it.
 
+A tool that rewrites loadout's output in its own spelling reads as an edit too, since loadout
+accepts no alternate spelling of a value. hooklinesinker rewrites the hook entries loadout renders,
+writing an absolute path where loadout writes `~/`, so each rewrite is drift. The fix belongs to
+the tool that rewrites the file.
+
 There is a third comparison beside those two renders: what `sync` recorded writing there last,
 kept per root under `$XDG_CONFIG_HOME/loadout/written/`. Without it, editing a source twice before
 committing would leave an output rendered from a state that is neither baseline, and `sync` would
