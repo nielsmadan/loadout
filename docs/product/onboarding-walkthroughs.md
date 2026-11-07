@@ -4,7 +4,7 @@ What `loadout init global` and `loadout init project` **should** do. This is a d
 behaviour. Written 2026-09-19 during the 1.0 surface review; implementation follows, and once it
 lands this document describes what is.
 
-Commands use the ruled syntax `loadout init global` / `loadout init project` (S-03).
+Commands use the ruled syntax `loadout init global` / `loadout init project` (S-07).
 
 ## Who is onboarding
 
@@ -24,6 +24,37 @@ for — is simply not seen. It is never mapped, never reported as a problem, nev
 
 This is an allowlist, and it is what makes onboarding possible against a real configuration
 directory, which is full of things that are not configuration.
+
+**Its limit:** it covers only what loadout does *not* manage. It is never a reason to leave a
+harness-local copy of something loadout *does* manage, such as permissions, MCP servers, hooks,
+plugins, settings, instructions, skills or agents. That is the next principle.
+
+## Loadout is the only source of truth; a change made elsewhere is flagged and ported
+
+People change their configuration through the `/loadout` skill. Editing a generated harness file directly is an
+**edge case**: a button in a harness's terminal UI that writes config (Codex's "always allow", `claude mcp add`), or
+someone forgetting loadout is there. It does not get elaborate reconciling machinery.
+
+`loadout sync` **flags** such a change and stops, naming the file and showing the diff, and the `/loadout` skill
+**ports it into the source**: it decides which source and layer, says which harnesses it now reaches, and syncs, after
+which the harness copy is rewritten from the source. Loadout absorbs a change automatically only when it can do so
+**trivially and generically**, with nothing per-harness, because the set of harnesses keeps growing.
+
+What it never does is leave a harness-local copy of something it manages beside its own source. Keeping the same
+configuration in loadout and in some local place defeats the purpose. That holds even for a file the harness keeps
+writing to (Codex's `~/.codex/rules/default.rules`): it is adopted, then deleted, and if Codex writes it again, it is
+flagged and ported like any other out-of-band change.
+
+## Judgement work is the loadout skill's job
+
+People use loadout through an agent running the bundled `loadout` skill, not only by typing commands.
+Work that needs judgement belongs to the skill, under loadout's management: merging a skill that has
+drifted between harnesses, or deciding whether an absorbed prose edit applies to one harness or to all.
+The CLI's part is to detect it, report it in structured form, give the skill a supported way to land
+the result, and verify the outcome.
+
+So such a case is never designed as manual work for the user, and never as a mechanical merge inside
+the CLI.
 
 ## One case, not two
 
@@ -142,7 +173,7 @@ between two commands that each report success is how defects hide.
 
 - **Commit** the source. Offer it; do not do it silently.
 - **A second machine.** Version-controlling global configuration pays off when it is cloned
-  elsewhere. End by showing how: clone, then `loadout init global --source <clone>` on that
+  elsewhere. End by showing how: clone, then `loadout init global <clone>` on that
   machine. Without this the user has done the work and not collected the reward.
 
 ---
@@ -161,8 +192,10 @@ between two commands that each report success is how defects hide.
 
 ## Open
 
-- **Conflicts at step 6.** What "conflict" means concretely, and whether resolution is interactive
-  or deferred to editing the source afterwards. Project scope hits this harder — see below.
+- **Conflicts at step 6: decided (D-05).** Two harnesses disagreeing about content loadout would share, such as a
+  skill that drifted, is resolved by the loadout skill. `init` reports the conflict in structured form, the skill merges
+  it (unified, or with per-harness sections), and the step-8 diff verifies the result. It is not manual work, and not a
+  mechanical merge. Still open: how the resolved content lands during `init`.
 
 ---
 
@@ -260,9 +293,8 @@ a flow that inherits global's reporting will skate past it.
 
 ## Open
 
-- **What "resolve" means here.** Interactive merge, or write both into the source and let the user
-  edit before the first render? The second is simpler and defers nothing important, since step 9
-  diffs before writing.
+- **What "resolve" means here: decided (D-05).** As for global conflicts, the loadout skill resolves a
+  `CLAUDE.md`/`AGENTS.md` disagreement, landing it in the shared `AGENTS.md` (S-27), and step 9 diffs before writing.
 
 ---
 
@@ -270,5 +302,7 @@ a flow that inherits global's reporting will skate past it.
 
 Claude Code exports `CLAUDE_CONFIG_DIR`, and loadout honours it per ADR 0011. Redirecting `HOME`
 alone does **not** isolate a test run — it will read the developer's real `~/.claude`. Unset
-`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_CODING_AGENT_DIR` and `FACTORY_HOME_OVERRIDE` as well. This
+`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_CODING_AGENT_DIR` and `FACTORY_HOME_OVERRIDE` as well, and point
+`XDG_CONFIG_HOME` at a scratch directory, or loadout writes its machine records into the real
+`~/.config/loadout/` — 51 stale records piled up that way before S-22. This
 invalidated several probes during the review before it was caught.
