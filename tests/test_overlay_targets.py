@@ -259,7 +259,7 @@ def test_a_git_file_naming_a_missing_folder_is_a_git_failure(tmp_path: Path) -> 
 
     assert isinstance(result, SkippedTarget)
     assert (result.kind, result.failure) == ("git-failed", True)
-    assert "not a git repository" in result.reason
+    assert "git cannot read its repository" in result.reason
 
 
 @skip_as_root

@@ -13,6 +13,8 @@ from . import git_runner
 from .errors import LoadoutError
 
 _NOT_A_REPOSITORY = b"not a git repository"
+# Newer git (2.56) words a .git file naming a missing folder this way.
+_BROKEN_GIT_FILE = b"gitfile does not point to a valid repository"
 _NO_WORK_TREE = b"must be run in a work tree"
 _UNSET = 1
 _NOTHING_IGNORED = 1
@@ -85,7 +87,9 @@ def identity(folder: Path) -> GitIdentity | None:
     result = _run(folder, *arguments)
     if result.returncode == git_runner.NOT_RUN:
         raise _failure(folder, arguments, result)
-    if result.returncode and _NOT_A_REPOSITORY in result.stderr:
+    if result.returncode and (
+        _NOT_A_REPOSITORY in result.stderr or _BROKEN_GIT_FILE in result.stderr
+    ):
         if not has_git_entry(folder):
             return None
         raise GitFailure(f"{folder}: git cannot read its repository: {_detail(result)}")
