@@ -9,8 +9,8 @@ description = "One source of truth for AI coding-agent configuration, rendered t
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "shtab>=1.12",
-    "tomlkit>=0.15.1",
+    "shtab>=1.13.0",
+    "tomlkit>=0.15.2",
 ]
 license = "MIT"
 authors = [{ name = "Niels Madan" }]
@@ -19,9 +19,9 @@ authors = [{ name = "Niels Madan" }]
 loadout = "loadout:main"
 
 [dependency-groups]
-dev = ["pytest>=9.1.1", "pytest-cov>=5", "ruff>=0.16.0", "mypy>=2.3.0"]
+dev = ["pytest>=9.2.0", "pytest-cov>=5", "ruff>=0.17.3", "mypy>=2.4.1"]
 docs = [
-    "zensical==0.0.59",
+    "zensical==0.0.74",
 ]
 
 [tool.ruff]
