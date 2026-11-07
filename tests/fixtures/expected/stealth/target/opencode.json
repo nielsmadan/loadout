@@ -30,6 +30,6 @@
     }
   },
   "instructions": [
-    "$TMP/overlay/.loadout/opencode-instructions.md"
+    "$TMP/stealth/.loadout/opencode-instructions.md"
   ]
 }
