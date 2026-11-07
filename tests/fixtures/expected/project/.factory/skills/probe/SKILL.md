@@ -14,4 +14,4 @@ Droid-only paragraph.
 
 
 
-Declared by the project, so it must beat the template's skill of the same name.
+Declared by the project, so it must beat the kit's skill of the same name.
