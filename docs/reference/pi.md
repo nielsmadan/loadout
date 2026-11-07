@@ -46,7 +46,7 @@ whole file, `defaultModel` included, once `plugins` was removed.
 Pi 1.4.0 saves `settings.json` under proper-lockfile 4.1.2 (`lockfile.lockSync(path, { realpath: false })`
 in `dist/core/settings-manager.js`), so loadout's write and retirement of that file take the same
 lock: the directory `<agent dir>/settings.json.lock`, made with `mkdir` beside an unresolved link,
-never broken, its mtime refreshed every five seconds while held (`overlay_lock.harness_lock`). A
+never broken, its mtime refreshed every five seconds while held (`stealth_lock.harness_lock`). A
 held lock is waited on for 15 seconds, then sync exits 3 naming the directory and writes nothing to
 the file. Inside the lock sync reads the file again and, if Pi saved it since sync read it before
 rendering, writes nothing and exits 3 ([sync.md](sync.md#files-a-harness-locks)).
@@ -225,17 +225,17 @@ differ only in `-` and `_`, since Pi rejects the second.
 this project" adds an override entry to `.pi/mcp.json`. Both files are written whole, so either
 change is drift.
 
-## Overlay destinations
+## Stealth destinations
 
-An [overlay](../user/guides/overlays.md) writes `.pi/APPEND_SYSTEM.md`, `.pi/mcp.json`,
+A [stealth source](../user/guides/stealth.md) writes `.pi/APPEND_SYSTEM.md`, `.pi/mcp.json`,
 `.pi/extensions/pi-permission-system/config.json` and `.pi/skills/<name>/` (or the shared
 `.agents/skills/<name>/`), all whole files and none tracked. The permission file is written only
-when the overlay has a rule or states a `[shell] default`.
+when the stealth source has a rule or states a `[shell] default`.
 
 Pi 1.4.0's `docs/configuration.md`: "`.pi/APPEND_SYSTEM.md` | Adds project-specific instructions
 to the system prompt", and "For `SYSTEM.md` and `APPEND_SYSTEM.md`, the trusted project file takes
 precedence over the corresponding agent-directory file. Files with the same name are not
-combined." So the overlay's file displaces a personal `<agent dir>/APPEND_SYSTEM.md`.
+combined." So the stealth source's file displaces a personal `<agent dir>/APPEND_SYSTEM.md`.
 
 **Project trust.** Pi loads `.pi/` and a project's `.agents/skills` only in a trusted project.
 `check` reads the trust store to say whether this folder is. Source, installed Pi 1.4.0:
@@ -256,6 +256,6 @@ An unreadable file is treated as holding no decision, and the note then says Pi 
 note does not read Pi's `settings.json`).
 
 **`/mcp`.** "Disable in this project" adds an override entry to `.pi/mcp.json` (see
-[Server definitions](#server-definitions)). The overlay owns that file whole, so the edit is
-`hand-edited` drift; `check` says to make the change in the overlay source
+[Server definitions](#server-definitions)). The stealth source owns that file whole, so the edit is
+`hand-edited` drift; `check` says to make the change in the stealth source
 ([sync.md](sync.md#known-limitations)).

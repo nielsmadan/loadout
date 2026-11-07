@@ -20,8 +20,8 @@ from .files import (
     shown_document,
 )
 from .output import Output
-from .overlay_lock import harness_lock
 from .skills import SKILL_DOCUMENT
+from .stealth_lock import harness_lock
 from .surgery import EMPTY, apply
 from .written import WrittenEntry, owned_values
 

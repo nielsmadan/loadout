@@ -167,9 +167,9 @@ folder or inside a skill, is the user's (`HARNESS_RUNTIME_ENTRIES` in `runtime_p
 A source skill named `synced` that would render into Claude's skills folder is refused with exit 3
 by `sync`, `check` and `init`, since it would land on the account's skills; rename the skill.
 
-## Overlays
+## Stealth sources
 
-An [overlay](../user/guides/overlays.md) writes `CLAUDE.local.md`, `.claude/settings.local.json`
+A [stealth source](../user/guides/stealth.md) writes `CLAUDE.local.md`, `.claude/settings.local.json`
 (keys and rules it owns, beside whatever Claude saved there), `.claude/skills/<name>/` and, for MCP
 servers, leaves of `~/.claude.json` at `projects.<repository>.mcpServers.<name>`
 ([0048](../decisions/0048-nested-json-ownership-claude-json-leaves-and-owned-keys-in-shared-documents.md)).
@@ -189,9 +189,9 @@ installed 2.1.317 binary: the strings contain ``lockfilePath:`${y}.lock` `` and 
 lock is a directory named `<config path>.lock`, made with `mkdir`, and taken over once ten seconds
 old. The config path is the config directory joined with `.claude.json` and is never resolved, so a
 symlinked `~/.claude.json` is locked at the link's path. Loadout joins that lock
-(`overlay_lock.claude_json_locks`) and never breaks it; the global scope's `~/.claude.json` write
+(`stealth_lock.claude_json_locks`) and never breaks it; the global scope's `~/.claude.json` write
 takes the same lock around its read, merge and replace, and around retiring loadout's keys, as the
-overlay does. A held lock is waited on for 15 seconds, then sync exits 3 naming the directory and
+stealth source does. A held lock is waited on for 15 seconds, then sync exits 3 naming the directory and
 writes nothing to the file; loadout refreshes its own directory's mtime every five seconds so
 Claude never takes it over ([sync.md](sync.md#files-a-harness-locks)).
 
@@ -205,5 +205,5 @@ makes the config `.claude-custom-oauth.json`. Loadout refuses to write MCP serve
 naming the file Claude reads, rather than write a file Claude ignores. A relative
 `CLAUDE_CONFIG_DIR` is refused too.
 
-Claude's `settings.local.json` also receives approvals Claude saves ("don't ask again"); an
-overlay carries those after its own rules.
+Claude's `settings.local.json` also receives approvals Claude saves ("don't ask again"); a
+stealth source carries those after its own rules.

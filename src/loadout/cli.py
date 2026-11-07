@@ -4,6 +4,7 @@ import argparse
 import json
 import sys
 import traceback
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -32,18 +33,18 @@ from .harnesses import KNOWN_HARNESSES
 from .init_options import InitOptions
 from .init_workflow import INTERRUPTED, run_init
 from .machine import load_machine_config, machine_config_path, profile_for, resolve_profile
-from .overlay_commands import (
+from .project import project_config_path
+from .skill_copy import cmd_skill_copy
+from .staged import check_staged
+from .stealth_commands import (
     cmd_check_selection,
-    cmd_overlay_add,
-    cmd_overlay_list,
-    cmd_overlay_remove,
+    cmd_stealth_add,
+    cmd_stealth_list,
+    cmd_stealth_remove,
     cmd_sync_selection,
     refuse_targeted_init,
     resolve_selection,
 )
-from .project import project_config_path
-from .skill_copy import cmd_skill_copy
-from .staged import check_staged
 
 
 class _ArgumentError(Exception):
@@ -61,6 +62,8 @@ class _Parser(argparse.ArgumentParser):
 
 TEMPLATE_ROOT_HELP = "project root: the folder holding loadout/ (default: cwd)"
 
+STEALTH_HELP = "Your own agent config in repos you don't control, kept out of git."
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = _Parser(
@@ -76,7 +79,7 @@ def build_parser() -> argparse.ArgumentParser:
         *,
         allow_global: bool = False,
         help_text: str = "source root: the folder holding loadout.toml, a project root holding "
-        "loadout/, an overlay folder, or a repository an overlay targets (default: cwd)",
+        "loadout/, a stealth folder, or a repository a stealth source targets (default: cwd)",
     ) -> None:
         target = sub.add_mutually_exclusive_group() if allow_global else sub
         target.add_argument("--root", type=Path, default=Path.cwd(), help=help_text)
@@ -86,13 +89,13 @@ def build_parser() -> argparse.ArgumentParser:
                 dest="use_global",
                 action="store_true",
                 help="use this machine's configured global source instead of --root, "
-                "then every registered overlay",
+                "then every registered stealth source",
             )
             target.add_argument(
-                "--overlay",
+                "--stealth",
                 default=None,
                 metavar="NAME",
-                help="the registered overlay NAME, for every target it matches",
+                help="the registered stealth source NAME, for every target it matches",
             )
 
     for name, help_text in (
@@ -100,7 +103,7 @@ def build_parser() -> argparse.ArgumentParser:
             "sync",
             (
                 "regenerate a project's generated files, or this machine's with --global and "
-                "then every overlay's, or one overlay's with --overlay; preview with "
+                "then every stealth source's, or one stealth source's with --stealth; preview with "
                 "`loadout check`"
             ),
         ),
@@ -108,7 +111,7 @@ def build_parser() -> argparse.ArgumentParser:
             "check",
             (
                 "exit 1 if a project's generated files, or this machine's with --global and "
-                "then every overlay's, or one overlay's with --overlay, have drifted"
+                "then every stealth source's, or one stealth source's with --stealth, have drifted"
             ),
         ),
     ):
@@ -221,29 +224,36 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="active profile to render (default: resolved when the hook runs, as for sync)",
     )
-    _add_overlay(subparsers)
+    _add_stealth(subparsers)
     subparsers.metavar = "{" + ",".join(n for n in subparsers.choices if n != "hook-event") + "}"
 
     return parser
 
 
-def _add_overlay(subparsers: Any) -> None:
-    overlay = subparsers.add_parser("overlay", help="manage registered overlays")
-    commands = overlay.add_subparsers(dest="overlay_command", required=True)
-    add = commands.add_parser("add", help="register an overlay folder")
+def _add_stealth(subparsers: Any) -> None:
+    stealth = subparsers.add_parser(
+        "stealth",
+        help=STEALTH_HELP,
+        description=f"{STEALTH_HELP} Register, list and remove stealth sources; sync and check "
+        "them with --stealth NAME.",
+    )
+    commands = stealth.add_subparsers(dest="stealth_command", required=True)
+    add = commands.add_parser("add", help="register a stealth source folder")
     add.add_argument(
         "directory",
         nargs="?",
         type=Path,
         default=None,
-        help="overlay folder holding a loadout.toml with an [overlay] table (default: cwd)",
+        help="folder holding a loadout.toml with a [stealth] table (default: cwd)",
     )
-    add.add_argument("--name", default=None, help="overlay name (default: the folder's name)")
-    commands.add_parser("list", help="list registered overlays")
+    add.add_argument(
+        "--name", default=None, help="stealth source name (default: the folder's name)"
+    )
+    commands.add_parser("list", help="list registered stealth sources")
     remove = commands.add_parser(
-        "remove", help="retire every output an overlay wrote, then unregister it"
+        "remove", help="retire every output a stealth source wrote, then unregister it"
     )
-    remove.add_argument("name", help="overlay name, or the name of an unregistered record")
+    remove.add_argument("name", help="stealth source name, or the name of an unregistered record")
     remove.add_argument(
         "--force",
         action="store_true",
@@ -482,17 +492,17 @@ def _dispatch(args: argparse.Namespace) -> int:  # noqa: PLR0911
         return _dispatch_init(args)
     if args.command == "template":
         return _dispatch_template(args)
-    if args.command == "overlay":
-        return _dispatch_overlay(args)
+    if args.command == "stealth":
+        return _dispatch_stealth(args)
     return _dispatch_outputs(args)
 
 
-def _dispatch_overlay(args: argparse.Namespace) -> int:
-    if args.overlay_command == "add":
-        return cmd_overlay_add(args.directory, args.name)
-    if args.overlay_command == "remove":
-        return cmd_overlay_remove(args.name, force=args.force, yes=args.yes)
-    return cmd_overlay_list()
+def _dispatch_stealth(args: argparse.Namespace) -> int:
+    if args.stealth_command == "add":
+        return cmd_stealth_add(args.directory, args.name)
+    if args.stealth_command == "remove":
+        return cmd_stealth_remove(args.name, force=args.force, yes=args.yes)
+    return cmd_stealth_list()
 
 
 def _dispatch_git_hooks(args: argparse.Namespace) -> int:
@@ -509,7 +519,7 @@ def _dispatch_outputs(args: argparse.Namespace) -> int:
     selection = resolve_selection(
         args.root,
         use_global=args.use_global,
-        overlay=args.overlay,
+        stealth=args.stealth,
         profile=args.profile,
         force=getattr(args, "force", False),
         staged=staged,
@@ -526,13 +536,16 @@ def _dispatch_outputs(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
+    given = sys.argv[1:] if argv is None else argv
     try:
         args = parser.parse_args(argv)
     except _ArgumentError as error:
-        if _json_requested(sys.argv[1:] if argv is None else argv):
-            _print_error_json(2, error)
-        sys.stderr.write(error.usage)
-        print(f"loadout: error: {error}", file=sys.stderr)
+        renamed = _renamed_spelling(given)
+        refusal = error if renamed is None else _ArgumentError(error.usage, renamed)
+        if _json_requested(given):
+            _print_error_json(2, refusal)
+        sys.stderr.write(refusal.usage)
+        print(f"loadout: error: {refusal}", file=sys.stderr)
         return 2
     if (
         args.command is None
@@ -585,6 +598,17 @@ def _refused(args: argparse.Namespace, code: int, error: LoadoutError) -> int:
     _error_json(args, code, error)
     print(f"loadout: {error}", file=sys.stderr)
     return code
+
+
+def _renamed_spelling(argv: Sequence[str]) -> str | None:
+    command = argv[0] if argv else None
+    if command == "overlay":
+        return "`overlay` is now `stealth`; use `loadout stealth add`, `list` or `remove`"
+    if command in {"sync", "check"} and any(
+        arg == "--overlay" or arg.startswith("--overlay=") for arg in argv[1:]
+    ):
+        return f"`--overlay` is now `--stealth`; use `loadout {command} --stealth NAME`"
+    return None
 
 
 def _json_requested(argv: list[str]) -> bool:

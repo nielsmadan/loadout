@@ -85,10 +85,10 @@ for args in [
     ["integrate", "completions", "install", "--help"],
     ["integrate", "completions", "status", "--help"],
     ["integrate", "completions", "uninstall", "--help"],
-    ["overlay", "--help"],
-    ["overlay", "add", "--help"],
-    ["overlay", "list", "--help"],
-    ["overlay", "remove", "--help"],
+    ["stealth", "--help"],
+    ["stealth", "add", "--help"],
+    ["stealth", "list", "--help"],
+    ["stealth", "remove", "--help"],
 ]:
     run("help " + " ".join(args[:-1]), args, work)
 run("invalid command", ["not-a-command"], work, 2)

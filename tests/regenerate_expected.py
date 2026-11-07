@@ -29,7 +29,7 @@ from fixture_root import (
     FIXTURES,
     build_project_root,
     build_root,
-    render_overlay_expected,
+    render_stealth_expected,
 )
 from loadout.emit import RenderContext, declared_profiles, render_global, render_project
 from loadout.machine import registered_at
@@ -67,7 +67,7 @@ def render_everything() -> dict[str, str]:
             )
 
     with tempfile.TemporaryDirectory() as directory:
-        files.update(render_overlay_expected(Path(directory)))
+        files.update(render_stealth_expected(Path(directory)))
     return files
 
 

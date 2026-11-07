@@ -15,7 +15,7 @@ from loadout.json_paths import (
     with_path,
     without_path,
 )
-from loadout.overlay_documents import DocumentRecord, judge_strip
+from loadout.stealth_documents import DocumentRecord, judge_strip
 
 
 def test_with_path_sets_a_segment_holding_slashes_and_dots_without_touching_the_input() -> None:

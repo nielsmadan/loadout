@@ -76,7 +76,7 @@ Five harnesses, two scopes:
 | harness | global | project |
 |---|---|---|
 | Claude | `${CLAUDE_CONFIG_DIR:-~}/.claude.json` → `mcpServers` | `.mcp.json` |
-| Codex | `~/.codex/config.toml` → `[mcp_servers.*]` | **none for a project source** — an [overlay](#codex-project-config-applies-in-a-trusted-project) writes `.codex/config.toml` |
+| Codex | `~/.codex/config.toml` → `[mcp_servers.*]` | **none for a project source** — a [stealth source](#codex-project-config-applies-in-a-trusted-project) writes `.codex/config.toml` |
 | Droid | `${FACTORY_HOME_OVERRIDE:-~}/.factory/mcp.json` | `.factory/mcp.json` |
 | OpenCode | `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` → `mcp` | `opencode.json` → `mcp` |
 | Pi | `${PI_CODING_AGENT_DIR:-~/.pi/agent}/mcp.json` | `.pi/mcp.json` |
@@ -121,10 +121,10 @@ earlier note left open:
 - **Project scope still writes none.** `PROJECT_PRESET["codex"]` has no `mcp` entry, and
   `test_project_scope_renders_no_codex_config` in `tests/test_servers_wiring.py` pins that. The
   probe settled that the file applies; adding it to the project preset is a separate decision.
-- **An overlay writes one**, because it can refuse the collision: it reads `~/.codex/config.toml`
+- **A stealth source writes one**, because it can refuse the collision: it reads `~/.codex/config.toml`
   and refuses a server name the user already defined, and `check` notes an untrusted project and a
   user-level `developer_instructions` it would displace. See
-  [codex.md](codex.md#overlay-destinations).
+  [codex.md](codex.md#stealth-destinations).
 
 Codex's *global* destination is unaffected by this question — loadout writes `[mcp_servers.*]`
 into `~/.codex/config.toml` itself, owning that one key and passing the rest of the file

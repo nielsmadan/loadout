@@ -8,7 +8,7 @@ Read scope selection, then choose the narrowest canonical slice source from the 
 - [Configured agents](#configured-agents)
 - [Source rules](#source-rules)
 - [Global profiles](#global-profiles)
-- [Overlays](#overlays)
+- [Stealth sources](#stealth-sources)
 - [Sync and failures](#sync-and-failures)
 - [Porting a change made outside loadout](#porting-a-change-made-outside-loadout)
 
@@ -19,7 +19,7 @@ Read scope selection, then choose the narrowest canonical slice source from the 
 | personal, or none named | uncommitted configuration for this repository and user | `loadout/config.toml` must exist | `loadout sync --root <repo>` |
 | project | committed configuration shared by this repository | `loadout/config.toml` must exist | `loadout sync --root <repo>` |
 | global | this machine across repositories | machine config must exist | `loadout sync --global` |
-| overlay-targeted repository: the user wants personal configuration in a repository that has no `loadout/config.toml` and that an overlay targets (see Overlays below) | the overlay folder (or the `[[source]]` it names), never the repository | none: never run `init project` there, it exits 3 once the overlay has written there | `loadout sync --overlay <name>` |
+| stealth-targeted repository: the user wants personal configuration in a repository that has no `loadout/config.toml` and that a stealth source targets (see Stealth sources below) | the stealth folder (or the `[[source]]` it names), never the repository | none: never run `init project` there, it exits 3 once the stealth source has written there | `loadout sync --stealth <name>` |
 
 The request scope is what the user's request names, in words or as `--personal`, `--project` or
 `--global` after the skill's name. It selects a row; it is not an argument to loadout. The sync
@@ -122,7 +122,7 @@ source. Init writes the settings source gitignored when the file it adopted was 
 ignored, so check whether Git ignores it before calling a change there shared.
 
 Project MCP server definitions reach Claude, Droid, OpenCode and Pi (`.pi/mcp.json`). Codex project
-scope writes no server config; an overlay writes Codex servers. Global MCP server definitions render
+scope writes no server config; a stealth source writes Codex servers. Global MCP server definitions render
 for all five configured harnesses. Claude's output owns only `mcpServers` in `.claude.json`; Droid
 writes `.factory/mcp.json`.
 
@@ -252,55 +252,57 @@ Write only when the user explicitly selects active-profile-only or inherited-def
 original request or a reply. No question is needed when the active profile is `default` or the
 request names its intended profile.
 
-## Overlays
+## Stealth sources
 
-An overlay is personal, uncommitted configuration for repositories that have not adopted loadout,
+A stealth source is personal, uncommitted configuration for repositories that have not adopted loadout,
 which the user cannot add a `loadout/` folder to. It is a registered folder outside those
-repositories whose `loadout.toml` has an `[overlay]` table with `targets` patterns. Use it when
+repositories whose `loadout.toml` has a `[stealth]` table with `targets` patterns. Use it when
 the user wants their own instructions, MCP servers, permissions or skills in such a repository.
 Use a personal project source instead when the repository has `loadout/config.toml`, and the
-global source when the change belongs to the whole machine.
+global source when the change belongs to the whole machine. loadout 0.10.0 called it an overlay;
+`loadout overlay`, `--overlay` and an `[overlay]` table are refused with an error naming the new
+spelling, so use `loadout stealth`, `--stealth` and `[stealth]`.
 
-1. Find it: `loadout overlay list` prints each overlay's name, folder and `targets`. A repository
+1. Find it: `loadout stealth list` prints each stealth source's name, folder and `targets`. A repository
    is covered when a pattern matches its top folder. If none does, ask before creating or
-   registering one: `loadout overlay add <folder>` lets that folder write into every repository
+   registering one: `loadout stealth add <folder>` lets that folder write into every repository
    its patterns match.
-2. Edit the overlay folder, never the files it renders. Its source layout is a global source's:
+2. Edit the stealth folder, never the files it renders. Its source layout is a global source's:
    `instructions/<name>.md`, `permissions.toml`, `mcp.toml`, `skills/` and `settings/<name>.json`
    (Claude and Droid), named in its `loadout.toml`. The rendered files are
    `CLAUDE.local.md`, `.claude/settings.local.json`, `.claude/skills/`, `.codex/config.toml`,
-   `.codex/rules/<overlay>.rules`, `.agents/skills/`, `.factory/AGENTS.md`, `.factory/mcp.json`,
+   `.codex/rules/<name>.rules`, `.agents/skills/`, `.factory/AGENTS.md`, `.factory/mcp.json`,
    `.factory/settings.local.json`, `.factory/skills/`, `opencode.json`, `.opencode/skills/`,
    `.pi/` and the servers under `projects.<repository>.mcpServers` in `~/.claude.json`. An edit
    made there is refused or overwritten.
-3. An overlay renders only instructions, `mcp` server definitions, permissions (with `settings`
+3. A stealth source renders only instructions, `mcp` server definitions, permissions (with `settings`
    for Claude and Droid) and skills. Hooks, plugins, agents, module config and Codex defaults are
    refused with a reason; report that rather than looking for another route. `mcp = [...]` with
-   names is refused, since the overlay's sources supply its servers. `preserve` is refused too: an
-   overlay owns only the keys it writes. `follow_worktrees` and `git_hook` are reserved and
+   names is refused, since the stealth source's `[[source]]` entries supply its servers. `preserve` is refused too: a
+   stealth source owns only the keys it writes. `follow_worktrees` and `git_hook` are reserved and
    refused when `true`; never set them.
-4. Preview and apply with `loadout check --overlay <name>` and `loadout sync --overlay <name>`, or
+4. Preview and apply with `loadout check --stealth <name>` and `loadout sync --stealth <name>`, or
    plain `loadout sync` from inside a target repository. `loadout sync --global` also syncs every
-   overlay, but `--force` then reaches only the global source.
-5. A key in an overlay's settings fragment that the harness rewrites (Claude's `/model`, say) is
-   an owned key edited outside loadout. Port the harness's value into the overlay's
-   `settings/<name>.json` and sync. `preserve` is refused in an overlay, so the key cannot be
+   stealth source, but `--force` then reaches only the global source.
+5. A key in a stealth source's settings fragment that the harness rewrites (Claude's `/model`, say) is
+   an owned key edited outside loadout. Port the harness's value into the stealth source's
+   `settings/<name>.json` and sync. `preserve` is refused in a stealth source, so the key cannot be
    handed to the harness: removing it from the fragment makes the next sync delete it from the
    file, the harness's value with it. Do that only when the user asks, and say so first.
-6. A repository that has adopted loadout (it has `loadout/config.toml`) is not an overlay target.
-   Its overlays retire their files there on the next sync, before the project syncs. When `check`
-   there prints `adopted loadout; the overlay retired its files here`, or `skipped: adopted
-   loadout`, run `loadout sync` before porting anything: the overlay's files in it are the user's
+6. A repository that has adopted loadout (it has `loadout/config.toml`) is not a stealth target.
+   Its stealth sources retire their files there on the next sync, before the project syncs. When `check`
+   there prints `adopted loadout; the stealth source retired its files here`, or `skipped: adopted
+   loadout`, run `loadout sync` before porting anything: the stealth source's files in it are the user's
    personal configuration, never the project's, and must not be ported into `loadout/`.
-7. Overlay refusals have their own meaning. A path the team tracks, a path another owner records,
+7. Stealth refusals have their own meaning. A path the team tracks, a path another owner records,
    a key or server the user defined and a path git would not ignore (exit 3) cannot be forced:
    report them. An output or key edited outside loadout (exit 1) follows “Porting a change made
-   outside loadout”, with `--overlay <name>` in place of `--root`. A note `saved by the harness, not in
-   the overlay source: <rule>` is an approval Claude or Droid saved: ask whether to add it to the overlay's
+   outside loadout”, with `--stealth <name>` in place of `--root`. A note `saved by the harness, not in
+   the stealth source: <rule>` is an approval Claude or Droid saved: ask whether to add it to the stealth source's
    `permissions.toml` or delete it; it never blocks sync. When the note says the rule is not shown, the saved rule
    holds a credential; tell the user to read the file, and never copy the rule into `permissions.toml`.
-8. `loadout overlay remove <name>` retires everything the overlay wrote. Run it only when the user
-   asks. Never edit `overlays.toml`, a repository's `.git/info/exclude` or `~/.claude.json` by
+8. `loadout stealth remove <name>` retires everything the stealth source wrote. Run it only when the user
+   asks. Never edit `stealth.toml`, a repository's `.git/info/exclude` or `~/.claude.json` by
    hand to get past a refusal.
 
 ## Sync and failures
@@ -329,7 +331,7 @@ as a Codex approval, `claude mcp add` or an installer adding a hook, is ported i
 the harness copy then replaced or deleted. Never leave it in the harness beside the source. Loadout
 flags these changes; it does not merge them.
 
-1. Run `loadout check --json` with the scope's `--root <repo>`, `--global` or `--overlay <name>`, and read each
+1. Run `loadout check --json` with the scope's `--root <repo>`, `--global` or `--stealth <name>`, and read each
    drifted path's `kind`. `hand-edited` and `unknown` are outputs that differ from what loadout
    would write. `owned-key` is a key loadout writes in a file it shares with the harness, such as
    `mcpServers` in `~/.claude.json`, edited there; only those keys are compared.
@@ -355,8 +357,8 @@ flags these changes; it does not merge them.
    source” in [onboarding](onboarding.md) describes, and never print the value back to the user.
 3. Port each change into the source that owns it:
    - a global harness file goes to the global source, a project file to the project source, and a
-     project `*.local*` file to the personal tier. For an overlay output or key (the scope is
-     `--overlay <name>`), none of these applies: the owning source is the overlay folder, or the
+     project `*.local*` file to the personal tier. For a stealth output or key (the scope is
+     `--stealth <name>`), none of these applies: the owning source is the stealth folder, or the
      `[[source]]` its `loadout.toml` names, even though the file sits in the target repository.
      Never write `loadout/` into the target repository and never run `init project` there;
    - a new entry goes to the `default` profile, and an entry a profile defines goes back to that
@@ -416,7 +418,7 @@ Ask the user which answer they want:
 1. Port the value into the source that owns the key and sync: the settings, `defaults` or
    `plugins` fragment, or `[mcp]` policy in `permissions.toml` for a Codex tool approval. Every
    machine gets it.
-2. Hand the key to the harness (not for an overlay, which refuses `preserve`; see Overlays):
+2. Hand the key to the harness (not for a stealth source, which refuses `preserve`; see Stealth sources):
    remove it from the fragment, if it is there, and add it to that agent block's `preserve`, such as `preserve = ["model", "modelSettings"]` under `[claude]`, then
    sync. Sync copies a preserved key from the file on disk, so a fresh machine starts without it.
    `preserve` takes top-level keys only (preserving `modelSettings` hands over every model's entry)

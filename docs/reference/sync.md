@@ -140,7 +140,7 @@ proper-lockfile: Claude Code's `~/.claude.json` ([claude-code.md](claude-code.md
 path the harness derives, without resolving links, so a symlinked file is locked beside the link.
 
 The global sync takes that lock around writing such a file and around retiring it, after a
-`flock` of its own on the file's resolved path (`overlay_lock.harness_lock`). What the lock covers
+`flock` of its own on the file's resolved path (`stealth_lock.harness_lock`). What the lock covers
 differs between the two files:
 
 - `~/.claude.json` is merged, so inside the lock sync reads it again, merges loadout's keys into
@@ -163,23 +163,23 @@ it last set. What is still written without the lock, or judged before it, is lis
 Droid also locks its global `settings.json`, with a protocol of its own that loadout does not join
 yet; see [architecture.md](architecture.md#known-gaps).
 
-## Overlays
+## Stealth sources
 
-An [overlay](../user/guides/overlays.md) renders into repositories that have not adopted loadout
+A [stealth source](../user/guides/stealth.md) renders into repositories that have not adopted loadout
 ([0045](../decisions/0045-an-overlay-source-renders-into-repositories-that-have-not-adopted-loadout.md)).
 It shares the guard, the drift kinds and the diffs with everything above, and keeps its own
-record, claims and ignore lines. Code: `overlay_*.py`, `claude_json.py`, `exclude.py`,
+record, claims and ignore lines. Code: `stealth_*.py`, `claude_json.py`, `exclude.py`,
 `json_paths.py`.
 
-### The overlay record
+### The stealth record
 
-One record per overlay folder, at `$XDG_CONFIG_HOME/loadout/overlay-written/<key>.json`, where
+One record per stealth folder, at `$XDG_CONFIG_HOME/loadout/stealth-written/<key>.json`, where
 `<key>` is the first 16 hex digits of the SHA-256 of the folder's resolved path. It is not stored
 in `written/`, so `prune_vanished` never sees it and a deleted target does not take its record
 with it. It holds, as JSON (`version` 2):
 
 - the `HOME` the targets were matched under;
-- the overlay-folder files it wrote (OpenCode's instructions file);
+- the stealth-folder files it wrote (OpenCode's instructions file);
 - per target: the git common directory, the device (`st_dev`) of the root, the name of its
   `info/exclude` block, each whole file it wrote with its digest, each shared document with
   the digests of its owned keys and the entries of its owned rules, with the keys and rules still
@@ -189,45 +189,45 @@ with it. It holds, as JSON (`version` 2):
 The decoder rejects an unknown key, so a new field means a `version` bump. A record with a newer
 `version` is `newer`: every command that needs it refuses (exit 3, `was written by a newer
 loadout; upgrade loadout`), `--force` included. An unreadable record is refused with exit 3 until
-`--force` treats it as empty. Another overlay's unreadable or newer record blocks `sync` and
-`overlay add` for the others, because their claims cannot be checked; the message names the file
-and offers `loadout overlay remove NAME --force`. `overlay remove` of a different overlay still
+`--force` treats it as empty. Another stealth source's unreadable or newer record blocks `sync` and
+`stealth add` for the others, because their claims cannot be checked; the message names the file
+and offers `loadout stealth remove NAME --force`. `stealth remove` of a different stealth source still
 works. A record is decoded again before it replaces the file, written with `fsync`, and not
 replaced if it would not read back as written. A record whose stored folder no longer hashes to
 its file name (the folder was moved or renamed) is still found, by the stored folder or by the file
 name, and is written under the new name by the next write. The answer to the global-ignore offer
-is not in `overlay-written/`, where every `*.json` is read as a record: it is
-`$XDG_CONFIG_HOME/loadout/overlay-global-ignore.json`. Nothing in a generated file names the record
+is not in `stealth-written/`, where every `*.json` is read as a record: it is
+`$XDG_CONFIG_HOME/loadout/stealth-global-ignore.json`. Nothing in a generated file names the record
 ([0008](../decisions/0008-generated-files-carry-no-machine-state.md)).
 
 Two exceptions to 0008 are bounded: `CLAUDE.local.md` may start with `@AGENTS.md`, and OpenCode's
-`opencode.json` names a file in the overlay folder by absolute path
+`opencode.json` names a file in the stealth folder by absolute path
 ([0049](../decisions/0049-the-conditional-agents-md-line-and-opencode-instructions-by-absolute-path.md)).
 
 ### The guard and claims
 
 A whole file is judged as above: against the record, and against the render. A file with no
-record at an overlay destination is `unknown`, refused until `--force`. A shared document is judged
+record at a stealth destination is `unknown`, refused until `--force`. A shared document is judged
 key by key and rule by rule ([configuration](../user/reference/configuration.md#owned-documents)):
 `owned-key` and `owned-key-removed` are guard findings (exit 1, `--force` overwrites); a key the
-overlay would write that holds a different value it did not write is `user-defined`, refused with
+stealth source would write that holds a different value it did not write is `user-defined`, refused with
 exit 3 and not overridden by `--force`. Diffs go through `diffs.diff_lines`, so a file holding
 a secret is withheld ([0032](../decisions/0032-a-file-holding-a-secret-is-never-diffed.md)). A
 guard finding on any output holds back the whole target: nothing is written to it, `check` still
 reports its drift and unmanaged files, and the `~/.claude.json` servers are not compared.
 
-Each path has one owner. A path that another overlay's record, or a project or the global source
-in `written/`, holds is refused as `claimed`; a skill folder is claimed whole, so an overlay
+Each path has one owner. A path that another stealth source's record, or a project or the global source
+in `written/`, holds is refused as `claimed`; a skill folder is claimed whole, so a stealth source
 never writes a file into a folder another owner records anything in. A path the team tracks is
 refused as `tracked`: a unit is a file, or a skill folder, and a unit is tracked when git lists
 it or anything below it. The check runs again for each target just before it writes and deletes,
-and **no flag overrides it**, `--force` and `overlay remove --force` included. The git facts are
-asked for the same units the plan collapses paths to (`overlay_plan.plan_units`), and a path also
+and **no flag overrides it**, `--force` and `stealth remove --force` included. The git facts are
+asked for the same units the plan collapses paths to (`stealth_plan.plan_units`), and a path also
 counts as tracked when its own path below the root is listed, so a different spelling of a unit
 cannot skip the check. Tracked names are compared case-insensitively, as a case-insensitive disk
 reads them. A recorded output
-that the team starts tracking is never retired: whenever the overlay would retire it (under
-`overlay remove`, for a target no longer matched, or for an output the source stopped rendering),
+that the team starts tracking is never retired: whenever the stealth source would retire it (under
+`stealth remove`, for a target no longer matched, or for an output the source stopped rendering),
 it is left in place, dropped from the record and noted with exit 0, so the record lets the
 repository go. A unit that a committed `.gitignore` re-includes (`!/CLAUDE.local.md`) is refused
 as `unignored` while planning, so `check` reports what `sync` refuses.
@@ -235,7 +235,7 @@ as `unignored` while planning, so `check` reports what `sync` refuses.
 ### Scoped retirement
 
 A run retires only what its scope covers. Syncing from inside a target handles that target alone.
-A full run (`--overlay`, the overlay folder, `--global`) also retires the recorded targets its
+A full run (`--stealth`, the stealth folder, `--global`) also retires the recorded targets its
 patterns no longer match. A recorded target that is errored, refused, skipped or unreachable is
 left wholly untouched: its files, documents, `~/.claude.json` leaves, record entry and exclude
 lines. Only a target that is positively gone, or healthy and no longer matched, is retired. A
@@ -258,13 +258,13 @@ recorded target that no longer matches and cannot be examined is reported as ski
   `CLAUDE_CONFIG_DIR` change the old file's leaves are retired too, but only under the record's
   `HOME`: a run under another `HOME` keeps them. A recorded path that resolves, or is the same
   file, as the current one is the current one, and its leaves are re-recorded under that spelling.
-- **`overlay remove` retires everything** from the record alone, and the overlay-folder file only
+- **`stealth remove` retires everything** from the record alone, and the stealth-folder file only
   after every recorded target was retired or dropped.
 - **A target that has adopted loadout is retired.** A recorded target that now holds
   `loadout/config.toml` is retired like one the patterns stopped matching, in a scoped run too,
-  with the note `adopted loadout; the overlay retired its files here`; an unrecorded one is
-  skipped. In a run that also renders the project, the overlay part runs first, so the project
-  never adopts the overlay's keys as foreign ones
+  with the note `adopted loadout; the stealth source retired its files here`; an unrecorded one is
+  skipped. In a run that also renders the project, the stealth source part runs first, so the project
+  never adopts the stealth source's keys as foreign ones
   ([0052](../decisions/0052-a-target-that-adopts-loadout-is-retired-by-the-overlay.md)).
 
 ### Order and crashes
@@ -274,9 +274,9 @@ For each target, in this order:
 1. The record is saved with the entries about to be written, so a crash leaves a record that
    claims too much, never too little. A whole file keeps its old entry until the final record.
    A shared document keeps its old keys and rules, and the keys and rules about to be written
-   are pending, as are the leaves, with digests. The overlay-folder file is recorded as soon as
+   are pending, as are the leaves, with digests. The stealth-folder file is recorded as soon as
    it is written, before any target.
-2. The overlay's block in `info/exclude` is written with every path it is about to write.
+2. The stealth source's block in `info/exclude` is written with every path it is about to write.
 3. Sync asks git (`check-ignore --no-index`) about each unit it will write. A unit that would
    still show is dropped with a refusal (exit 3).
 4. Files are written, then deleted; shared documents are replaced only if their bytes are those
@@ -293,16 +293,16 @@ retired is left as it is, even with `--force`, and dropped from the record. Leav
 shared-document keys are judged by one set of rules (`json_paths.wanted_verdict` and
 `dropped_verdict`).
 
-The global ignore block is recomputed from every overlay record after each run, and left as it
+The global ignore block is recomputed from every stealth record after each run, and left as it
 is while any record cannot be read or is newer, since that record's paths would otherwise drop
 out of it.
 
 ### Locks
 
-- One `flock` per overlay folder for the whole run, in
-  `$XDG_STATE_HOME/loadout/overlay-locks/overlay-<key>.lock`.
+- One `flock` per stealth folder for the whole run, in
+  `$XDG_STATE_HOME/loadout/stealth-locks/stealth-<key>.lock`.
 - One `flock` per file edited in a read-modify-write: each `info/exclude`, the global ignore file,
-  `overlays.toml` and `~/.claude.json`, keyed by the file's resolved path, with the PID written in.
+  `stealth.toml` and `~/.claude.json`, keyed by the file's resolved path, with the PID written in.
   Git reads `info/exclude` and takes no lock on it (it writes the file only when a repository is
   created from its template), so there is no git lock to follow
   ([0047](../decisions/0047-writing-info-exclude-inside-git-despite-containment-protected.md)).
@@ -312,7 +312,7 @@ out of it.
   the same lock the global sync takes ([Files a harness locks](#files-a-harness-locks)).
   The bytes are compared again just before the rename, inside both locks.
 
-Nesting runs one way: the overlay-folder lock, then a file's lock, then Claude's directory.
+Nesting runs one way: the stealth-folder lock, then a file's lock, then Claude's directory.
 `flock` is not reentrant across descriptors, so a function that takes a file's lock itself is
 called without an outer one: `exclude.write_global_block` takes the global ignore file's lock and
 computes the personal units inside it from a callback that is given the file's current user lines,
@@ -329,10 +329,10 @@ Neither lock is ever broken, and no message tells the user to delete one.
   as strings, so an edited string cannot be told from an approval Claude or Droid saved. `sync
   --force` writes the original back and carries the edited text; delete that line by hand. The
   fix would need ownership by position, which a list does not give.
-- **Pi's `/mcp` "Disable in this project" writes into the overlay's `.pi/mcp.json`**
-  ([pi.md](pi.md#server-definitions)), which the overlay owns whole, so it shows as `hand-edited`.
-  `check` says so; make the change in the overlay source.
-- **The Droid user-level merge is not established.** The overlay's `.factory/mcp.json` is written
+- **Pi's `/mcp` "Disable in this project" writes into the stealth source's `.pi/mcp.json`**
+  ([pi.md](pi.md#server-definitions)), which the stealth source owns whole, so it shows as `hand-edited`.
+  `check` says so; make the change in the stealth source.
+- **The Droid user-level merge is not established.** The stealth source's `.factory/mcp.json` is written
   whole, and a server name that `~/.factory/mcp.json` already defines is refused. Not
   established: no probe of how Droid merges a project `mcp.json` with the user's was run, and the
   earlier probe round (Droid 0.251.0) covered `settings.json` and `settings.local.json` only.
@@ -340,11 +340,11 @@ Neither lock is ever broken, and no message tells the user to delete one.
   loads each folder's `mcp.json` through `loadMcp` and merges two layers' `mcpServers` by server
   name, the later layer winning. Which layer a project's `.factory/mcp.json` is, and whether the
   user's file is another, was not read, and nothing was run.
-- **The crash edge of one digest per whole file.** A whole file, and the overlay-folder file, keep
+- **The crash edge of one digest per whole file.** A whole file, and the stealth-folder file, keep
   one digest. A crash after such a file is written and before its record is saved, followed by an
   edit of the source before the next run, reads as an edit outside loadout (exit 1; `--force`
   clears it). Shared documents and leaves carry pending digests, so they recover.
-- **Floats in `~/.claude.json`.** Parts of the file the overlay does not own are rewritten with
+- **Floats in `~/.claude.json`.** Parts of the file the stealth source does not own are rewritten with
   Python's number spelling, so Node's `0.0000123` can come back as `1.23e-05`. The value is the
   same. The global scope has the same limit.
 - **A key restored with `--force` moves to the end of its object.** When an owned key such as
@@ -354,11 +354,11 @@ Neither lock is ever broken, and no message tells the user to delete one.
 - **Adding and then removing the `info/exclude` block restores the file byte for byte only when
   the file ends with exactly one newline.** More trailing blank lines lose one, and a file with
   no final newline gains one.
-- **Retirement leaves empty folders behind.** Removing an overlay, or retiring its outputs,
+- **Retirement leaves empty folders behind.** Removing a stealth source, or retiring its outputs,
   deletes the files it wrote but not a folder such as `.codex/`, `.factory/` or `.pi/` that the
   first write created. The record does not say which folders loadout created, and an empty folder
   shows nothing in `git status`.
-- **A branch switch can replace an overlay file.** If a local branch tracks one of its paths,
-  checking it out replaces the overlay's copy and drops edits made to it; `check` names the
+- **A branch switch can replace a stealth file.** If a local branch tracks one of its paths,
+  checking it out replaces the stealth source's copy and drops edits made to it; `check` names the
   branch. The next `sync` writes the copy again, unless the team now tracks the path, which it
   refuses.

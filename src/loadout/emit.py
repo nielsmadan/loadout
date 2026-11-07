@@ -27,7 +27,6 @@ from .manifest import (
 )
 from .module_config import MODULE_CONFIG_SUBDIR, discover_module_config
 from .output import Copied, Merged, Output, SharedText, output_record_paths
-from .overlay_registry import find_by_folder, load_registry, overlays_path
 from .permissions.merge import merge_rules
 from .permissions.renderers import (
     MCP_NAMESPACE_HARNESS,
@@ -68,6 +67,7 @@ from .skills import (
     render_skill,
 )
 from .sources import Source, SourceParser, parse_sources, select_overrides
+from .stealth_registry import find_by_folder, load_registry, stealth_path
 from .subagents import (
     AGENTS_SUBDIR,
     Agent,
@@ -106,17 +106,24 @@ def refuse_unregistered_global(root: Path, context: RenderContext | None = None)
     refuse_unregistered_manifest(root, held=manifest_path(root).is_file(), context=context)
 
 
-def _overlay_refusal(root: Path) -> LoadoutError | None:
-    from .overlay_manifest import holds_overlay  # noqa: PLC0415 - overlay_manifest imports emit
+def _stealth_refusal(root: Path) -> LoadoutError | None:
+    from .stealth_manifest import (  # noqa: PLC0415 - stealth_manifest imports emit
+        holds_stealth,
+        renamed_table,
+    )
 
-    if not holds_overlay(root):
+    if (renamed := renamed_table(root)) is not None:
+        return renamed
+    if not holds_stealth(root):
         return None
-    if (found := find_by_folder(load_registry(overlays_path()), root.resolve())) is not None:
+    if (found := find_by_folder(load_registry(stealth_path()), root.resolve())) is not None:
         return LoadoutError(
-            f"{root} is the registered overlay {found.name}; sync and check it with "
-            f"`loadout sync --overlay {found.name}`; other commands do not apply to an overlay folder"
+            f"{root} is the registered stealth source {found.name}; sync and check it with "
+            f"`loadout sync --stealth {found.name}`; other commands do not apply to a stealth folder"
         )
-    return LoadoutError(f"{root} holds an overlay; register it with `loadout overlay add {root}`")
+    return LoadoutError(
+        f"{root} holds a stealth source; register it with `loadout stealth add {root}`"
+    )
 
 
 def refuse_unregistered_manifest(
@@ -135,7 +142,7 @@ def refuse_unregistered_manifest(
     found = (context or RenderContext()).registration()
     if is_registered(root, found.source):
         return
-    if (refusal := _overlay_refusal(root)) is not None:
+    if (refusal := _stealth_refusal(root)) is not None:
         raise refusal
     if (source := linked_worktree_source(root, found)) is not None:
         raise LoadoutError(

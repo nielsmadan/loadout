@@ -61,9 +61,9 @@ of `.claude/settings.json`, `.factory/settings.json` and `opencode.json` that no
 Project scope has no output for Codex defaults, Pi settings or module files. Project templates
 contribute permissions, instructions, skills, MCP definitions, and Droid's hooks and plugins.
 
-## Overlay scope
+## Stealth scope
 
-An [overlay](../guides/overlays.md) renders instructions, MCP servers, permissions and skills for
+A [stealth source](../guides/stealth.md) renders instructions, MCP servers, permissions and skills for
 all five agents into repositories that have not adopted loadout, and nothing else. Codex gets MCP
 servers there, which project scope does not render. The files are in the
 [destination table](configuration.md#destinations).

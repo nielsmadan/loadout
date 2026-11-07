@@ -155,7 +155,7 @@ code. When Codex and OpenCode need different variants of the same skill, also se
 
 `loadout/mcp.toml` reaches Claude (`.mcp.json`), Droid (`.factory/mcp.json`), OpenCode
 (`opencode.json`'s `mcp` key) and Pi (`.pi/mcp.json`, read once the project is trusted). Codex gets
-none at project scope; an [overlay](overlays.md) writes Codex servers. A template contributes its
+none at project scope; a [stealth source](stealth.md) writes Codex servers. A template contributes its
 own `mcp.toml` beneath the project.
 
 ### Shared settings files

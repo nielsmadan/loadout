@@ -54,16 +54,16 @@ Install the bundled `/loadout` skill, so your agents can make those edits for yo
 
 ## Commands
 
-    loadout sync [--root PATH | --global | --overlay NAME] [--profile NAME] [--force]
-    loadout check [--root PATH | --global | --overlay NAME] [--profile NAME] [--json | --staged]
+    loadout sync [--root PATH | --global | --stealth NAME] [--profile NAME] [--force]
+    loadout check [--root PATH | --global | --stealth NAME] [--profile NAME] [--json | --staged]
     loadout init global [DIR] [--harness NAME]... [--registration keep|replace] [--dry-run] [--json] [--yes]
     loadout init project [--root PATH] [--harness NAME]... [--dry-run] [--json] [--yes]
     loadout template add [NAME] [--tracked | --vendored] [--root PATH] [--yes]
     loadout template sync NAME [--root PATH] [--yes]
     loadout template list [--root PATH]
-    loadout overlay add [DIRECTORY] [--name NAME]
-    loadout overlay list
-    loadout overlay remove NAME [--force] [--yes]
+    loadout stealth add [DIRECTORY] [--name NAME]
+    loadout stealth list
+    loadout stealth remove NAME [--force] [--yes]
     loadout integrate skill install|status|uninstall|copy
     loadout integrate git-hooks install|status|uninstall [--root PATH]
     loadout integrate completions install|status|uninstall [--shell SHELL]
@@ -71,7 +71,7 @@ Install the bundled `/loadout` skill, so your agents can make those edits for yo
 
 `check` is the preview of `sync`. `check --staged` validates what the Git index would commit, and
 is what the pre-commit hook runs. Every option is in the
-[CLI reference](docs/user/reference/cli.md). An [overlay](docs/user/guides/overlays.md) renders your
+[CLI reference](docs/user/reference/cli.md). A [stealth source](docs/user/guides/stealth.md) renders your
 own configuration into repositories that have not adopted loadout.
 
 ## Configuration
@@ -123,7 +123,7 @@ The full schema, from the machine config to permission rules and both source lay
 - [Getting started](docs/user/getting-started.md)
 - Guides: [global setup](docs/user/guides/global.md), [project setup](docs/user/guides/projects.md),
   [templates](docs/user/guides/templates.md), [composition](docs/user/guides/composition.md),
-  [configuring your agents](docs/user/guides/configuration.md), [overlays](docs/user/guides/overlays.md)
+  [configuring your agents](docs/user/guides/configuration.md), [stealth sources](docs/user/guides/stealth.md)
 - Reference: [CLI](docs/user/reference/cli.md),
   [configuration files](docs/user/reference/configuration.md),
   [harness support](docs/user/reference/harnesses.md)

@@ -22,7 +22,7 @@ from .json_paths import (
     with_path,
     without_path,
 )
-from .overlay_lock import claude_json_locks
+from .stealth_lock import claude_json_locks
 
 LeafKind = OwnershipKind
 
@@ -84,7 +84,7 @@ def claude_json_path(environ: Mapping[str, str] | None = None) -> Path:
     if env.get("CLAUDE_CODE_CUSTOM_OAUTH_URL"):
         raise LoadoutError(
             f"Claude Code reads {parent / '.claude-custom-oauth.json'} while "
-            f"CLAUDE_CODE_CUSTOM_OAUTH_URL is set, not {path}; unset it to sync overlay servers"
+            f"CLAUDE_CODE_CUSTOM_OAUTH_URL is set, not {path}; unset it to sync stealth servers"
         )
     return path
 

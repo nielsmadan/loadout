@@ -195,13 +195,13 @@ def unmanaged_entries(
 ) -> list[Path]:
     """Each file, or whole folder, in a managed folder that no output and no root's
     record of what it wrote accounts for. This root's record is the one `state` read."""
-    from .overlay_record import every_overlay_recorded_path  # noqa: PLC0415
+    from .stealth_record import every_stealth_recorded_path  # noqa: PLC0415
 
     folders, links = managed_folders(state.root, profile, project=state.project)
     accounted = (
         frozenset(outputs)
         | every_recorded_path(folders, known_root=state.root, known=state.written)
-        | every_overlay_recorded_path(folders)
+        | every_stealth_recorded_path(folders)
         | frozenset(harness_owned(resolve_destination))
     )
     return [*links, *_scan(folders, accounted, follow_links=not state.project)]

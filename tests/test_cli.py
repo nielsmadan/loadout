@@ -295,7 +295,7 @@ def test_unexpected_exception_returns_4_with_traceback(root: Path, monkeypatch, 
     def boom(_root: Path, *, profile: str, force: bool) -> int:
         raise ValueError("kaboom")
 
-    monkeypatch.setattr(loadout.overlay_commands, "cmd_sync", boom)
+    monkeypatch.setattr(loadout.stealth_commands, "cmd_sync", boom)
     assert loadout.main(["sync", "--root", str(root)]) == 4
     err = capsys.readouterr().err
     assert "Traceback (most recent call last)" in err
@@ -306,7 +306,7 @@ def test_loadout_error_still_returns_3(root: Path, monkeypatch, capsys) -> None:
     def fail(_root: Path, *, profile: str, force: bool) -> int:
         raise LoadoutError("deliberate failure")
 
-    monkeypatch.setattr(loadout.overlay_commands, "cmd_sync", fail)
+    monkeypatch.setattr(loadout.stealth_commands, "cmd_sync", fail)
     assert loadout.main(["sync", "--root", str(root)]) == 3
     assert "deliberate failure" in capsys.readouterr().err
 

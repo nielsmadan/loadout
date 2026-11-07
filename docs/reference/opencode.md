@@ -215,10 +215,10 @@ A `return` there would make it first-wins, which — with a fixed discovery orde
 would be a precedence rule. Without one it is whichever concurrent read lands
 last. "Warn on duplicate" reads like a guard and is not one.
 
-## Overlay destinations
+## Stealth destinations
 
-An [overlay](../user/guides/overlays.md) writes a root `opencode.json` and `.opencode/skills/`,
-refused when the team tracks either. The file is shared: the overlay owns its `permission`, `mcp`
+A [stealth source](../user/guides/stealth.md) writes a root `opencode.json` and `.opencode/skills/`,
+refused when the team tracks either. The file is shared: the stealth source owns its `permission`, `mcp`
 and `instructions` keys.
 
 Run on OpenCode 2.2.5 (2026-11-02, scratch home, stub MCP servers and scripted `shell` calls) and
@@ -228,19 +228,19 @@ read from the 2.2.0 source and docs:
   match wins, so a project rule beats a user rule for the same pattern and the user's unrelated
   denies survive. A repeated pattern moves to the end; it is not a key merge. The v1 `permission`
   object still takes effect in 2.2.5. The v2 `permissions` key takes only the v2 array: a v1-shaped
-  object there is dropped with a log-only warning, so the overlay keeps writing `permission`.
+  object there is dropped with a log-only warning, so the stealth source keeps writing `permission`.
 - **`mcp`.** Merged per server name. A project server of a user server's name replaces it whole
-  (no `environment` is carried over), unlike Codex, which is why the overlay refuses the name.
+  (no `environment` is carried over), unlike Codex, which is why the stealth source refuses the name.
 - **`instructions`.** A union across documents, user first, duplicates removed. An absolute path
-  outside the repository loads, so the overlay names its own rendered file by absolute path
+  outside the repository loads, so the stealth source names its own rendered file by absolute path
   ([0049](../decisions/0049-the-conditional-agents-md-line-and-opencode-instructions-by-absolute-path.md)).
 - **A tracked `.opencode/opencode.json` outranks the root file.** Its same-name server and later
-  rule win; the overlay's other entries still apply. `check` names each.
+  rule win; the stealth source's other entries still apply. `check` names each.
 - **Skills.** Untracked and tracked skills in `.opencode/skills/` are both offered, also when
   `info/exclude` ignores them. OpenCode also reads `.claude/skills/` unless
   `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1`, so a skill rendered for both reaches it twice; `check`
   says so.
 - **Trust.** `opencode run` showed no trust gate or prompt on a fresh home. Not checked: the TUI.
-- **No catch-all.** The overlay writes no `"*"` entry under `permission.bash` unless the overlay's
+- **No catch-all.** The stealth source writes no `"*"` entry under `permission.bash` unless the stealth source's
   permissions state `[shell] default`, so it never changes the verdict for a command no rule
   names.

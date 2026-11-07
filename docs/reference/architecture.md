@@ -87,32 +87,32 @@ through the slice's own operator and adds no merge rule.
 `emit.py:render_project` renders it; `render_all` unions it with `render_global`'s global-scope
 output, so `sync`/`check` regenerate whichever scopes are present.
 
-Overlays ([sync.md](sync.md#overlays)) are a third kind of source beside project and global. They
+Stealth sources ([sync.md](sync.md#stealth-sources)) are a third kind of source beside project and global. They
 share `emit.py`'s rule and server parsing, the guard's comparison
 (`sync.unaccepted_against_record`), and the pipeline's file helpers (`files.write_outputs`,
 `files.check_all`, `retirement.retire`, `retirement.orphan_drift` and `written`'s entries); the
-record is `overlay-written/`, not `written/`. `overlay_plan.plan_target` decides a target's
+record is `stealth-written/`, not `written/`. `stealth_plan.plan_target` decides a target's
 writes, refusals and drift from git facts, disk facts and the render, but it is not pure: the
-guard and the drift check read the target's files, and sources are hashed. `overlay_sync.py`
+guard and the drift check read the target's files, and sources are hashed. `stealth_sync.py`
 gathers the facts and applies the plan, re-checking git's ignore and tracking answers and a shared
 document's bytes just before it writes; a whole file is written without that re-check.
-Every git call an overlay makes goes through `overlay_git._run`, which passes `-c
+Every git call a stealth source makes goes through `stealth_git._run`, which passes `-c
 core.fsmonitor=false -c protocol.allow=never`: both run a command named in the repository's own
 config (a monitor hook, or `core.sshCommand` on a lazy fetch), and a target is a repository the
-overlay did not make. Branch lookups use `ls-tree` rather than `cat-file --batch-check`, since
+stealth source did not make. Branch lookups use `ls-tree` rather than `cat-file --batch-check`, since
 the latter reads object headers and fetches from the network in a blobless partial clone. A new
-overlay git call goes through `_run`.
-`check` is meant to be the plan, formatted: `overlay_check.check_overlay` calls the same
-`overlay_sync.prepare` as `sync` and prints its drift, refusals and exit code, so a refusal `sync`
+stealth source git call goes through `_run`.
+`check` is meant to be the plan, formatted: `stealth_check.check_stealth` calls the same
+`stealth_sync.prepare` as `sync` and prints its drift, refusals and exit code, so a refusal `sync`
 would make cannot be missing from it. That holds for the write plan. It does not yet hold for the
-`~/.claude.json` leaves (`overlay_check.leaf_drift` judges them with `claude_json.judge_leaves`
+`~/.claude.json` leaves (`stealth_check.leaf_drift` judges them with `claude_json.judge_leaves`
 instead of the plan), the unmanaged scan and the per-harness notes, which `check` computes on its
 own; a change to one rule needs both places. A check that disagrees with `sync` is a bug in
 whichever of them was not changed.
-`overlay_*.py` imports another module's private names only through `overlay_seams.py`. Below
-`cli.py`, a 1.0 module imports only `overlay_registry` and `overlay_lock` at its top; any other
-overlay import in it is function-local, so an overlay module may import the seams hub without
-`commands` or `unmanaged` meeting themselves half-initialised (`tests/test_overlay_seams.py`
+`stealth_*.py` imports another module's private names only through `stealth_seams.py`. Below
+`cli.py`, a 1.0 module imports only `stealth_registry` and `stealth_lock` at its top; any other
+stealth source import in it is function-local, so a stealth source module may import the seams hub without
+`commands` or `unmanaged` meeting themselves half-initialised (`tests/test_stealth_seams.py`
 pins this).
 
 ## Module map
@@ -125,7 +125,7 @@ pins this).
 | sync | `containment.py` (where loadout may read and write: `within`, `protected`, `first_link` and the project rules built on them), `sync.py` (guard, deploy, retirement, drift), `state.py` (`SyncState`, one root as a command finds it), `files.py` (writers, `check_all`), `atomic.py` (`replace_atomically`, the one way a file is replaced, `atomic_install` and `read_file`), `retirement.py`, `written.py` (the write record), `record.py` (owned key names), `surgery.py` and `toml_paths.py` (writing into shared documents), `notices.py`, `unmanaged.py`, `gitignore.py` |
 | init | `init_workflow.py` (preview, apply, putting back on failure, the skill fallback), `init_options.py` (what was asked for), `discovery.py` (inventory), `runtime_paths.py` (what a harness writes for itself, shared with `unmanaged.py`), `migration.py` (plan), `migration_models.py`, `migration_paths.py`, `migration_transaction.py` (apply), `migration_validation.py` (isolated reconstruction), `migration_images.py` (what a path holds, captured and installed), `migration_backup.py` (the before-image of one run, and putting it back), `migration_git.py`, `git_privacy.py`, `native_documents.py`, `extract.py` (reading native documents back), `skill_copy.py` (the plain copy of the bundled skill init offers) |
 | git | `git_runner.py` (every git loadout starts, without a hook's repository variables), `git_tree.py` (a tree or the index as entries, what a render reads of it, and that written out: the link rules are the pure `select_inputs`), `staged.py` and `staged_render.py` (`check --staged`), `git_hooks.py` and `git_hook_commands.py`, `worktrees.py` (a linked worktree of the registered source) |
-| overlay | `overlay_manifest.py` (the `[overlay]` table and the allowed slices), `overlay_registry.py` (`overlays.toml`), `overlay_commands.py` (`overlay add\|list\|remove` and selection for `sync` and `check`), `overlay_targets.py` and `overlay_git.py` (expanding patterns, probing a folder, every git question), `overlay_render.py` and `overlay_renderers.py` (`OVERLAY_PRESET`, what each harness gets), `overlay_documents.py` and `json_paths.py` (owned keys and rules in shared documents), `claude_json.py` (leaves in `~/.claude.json`), `overlay_record.py` (the record), `overlay_plan.py` (the pure per-target decision), `overlay_sync.py` (applying it), `overlay_check.py`, `exclude.py` (the `info/exclude` and global ignore blocks), `overlay_lock.py`, `overlay_seams.py` (the private names it imports, pinned by `tests/test_overlay_seams.py`) |
+| stealth source | `stealth_manifest.py` (the `[stealth]` table and the allowed slices), `stealth_registry.py` (`stealth.toml`), `stealth_commands.py` (`stealth add\|list\|remove` and selection for `sync` and `check`), `stealth_targets.py` and `stealth_git.py` (expanding patterns, probing a folder, every git question), `stealth_render.py` and `stealth_renderers.py` (`STEALTH_PRESET`, what each harness gets), `stealth_documents.py` and `json_paths.py` (owned keys and rules in shared documents), `claude_json.py` (leaves in `~/.claude.json`), `stealth_record.py` (the record), `stealth_plan.py` (the pure per-target decision), `stealth_sync.py` (applying it), `stealth_check.py`, `exclude.py` (the `info/exclude` and global ignore blocks), `stealth_lock.py`, `stealth_seams.py` (the private names it imports, pinned by `tests/test_stealth_seams.py`) |
 | templates | `templates.py` (resolution, vendored copies), `template_catalog.py`, `template_discover.py`, `template_vendor.py`, `bundled_templates.py` |
 | bundled skill | `skill_installation.py`, `bundled_skill.py` |
 
@@ -141,20 +141,20 @@ others keep one, and which read a whole folder. A new restatement needs its own 
 
 Left as they are on purpose; each says what it costs.
 
-- **`overlay_sync.py` decides things that belong in `overlay_plan.py`.** The plan is meant to hold
+- **`stealth_sync.py` decides things that belong in `stealth_plan.py`.** The plan is meant to hold
   every decision and the sync only to apply it; the sync module still carries planning logic, so
   a rule has to be found in two modules before it is changed.
-- **`retire_all` is a boolean that stands for a mode** (`overlay remove`), threaded through the
+- **`retire_all` is a boolean that stands for a mode** (`stealth remove`), threaded through the
   planner and the apply step. Each new behaviour under removal is another `if`, and the two modes'
   differences are not named anywhere.
 - **Logic is copied from the 1.0 pipeline rather than shared** (the guard's verdicts, withholding
   of secrets in diffs, the retirement of a tracked orphan). A fix to one copy does not reach the
   other; the two ladders of verdicts have already been made to agree once.
-- **`sync --global` can undo an `overlay remove`.** A global sync that started first has already
-  loaded the registry, so it can write an overlay that a concurrent `overlay remove` has just
-  removed. Closing it means `sync_overlay` reading the registry again under its own lock, which
-  changes the contract for every caller. The next `overlay remove` cleans up.
-- **A hand-edited `overlays.toml` may list one folder under two case spellings.** Only `overlay
+- **`sync --global` can undo a `stealth remove`.** A global sync that started first has already
+  loaded the registry, so it can write a stealth source that a concurrent `stealth remove` has just
+  removed. Closing it means `sync_stealth` reading the registry again under its own lock, which
+  changes the contract for every caller. The next `stealth remove` cleans up.
+- **A hand-edited `stealth.toml` may list one folder under two case spellings.** Only `stealth
   add` refuses it; the file still loads with both entries.
 - **Droid's global `settings.json` is rewritten without Droid's lock.** Droid (binary of
   2026-10-31) locks it with its own protocol, not proper-lockfile: a directory

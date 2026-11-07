@@ -14,7 +14,7 @@ from .atomic import replace_atomically
 from .credentials import credential_material
 from .errors import LoadoutError, unwritable, write_denied
 from .output import Copied, FrozenFile, Merged, Output, SharedText, file_sha256, sha256
-from .overlay_lock import harness_lock, locking_harness, pi_settings
+from .stealth_lock import harness_lock, locking_harness, pi_settings
 from .surgery import DocumentFormat, apply
 from .written import owned_values
 

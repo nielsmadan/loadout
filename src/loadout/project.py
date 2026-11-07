@@ -200,7 +200,7 @@ PROJECT_PRESET: dict[str, dict[str, SliceOutput]] = {
         "instructions": SliceOutput(output="AGENTS.md"),
         "skills": SliceOutput(output=".agents/skills"),
         "agents": SliceOutput(output=".codex/agents"),
-        # No mcp entry: only an overlay writes [mcp_servers.*]; see docs/reference/servers.md.
+        # No mcp entry: only a stealth source writes [mcp_servers.*]; see docs/reference/servers.md.
     },
     "droid": {
         "permissions": SliceOutput(

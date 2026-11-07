@@ -13,15 +13,15 @@ from .atomic import TEMPORARY_PREFIX, replace_atomically
 from .containment import no_symlinks
 from .errors import LoadoutError
 from .gitignore import escape
-from .overlay_git import covered_by, identity
-from .overlay_lock import file_lock
+from .stealth_git import covered_by, identity
+from .stealth_lock import file_lock
 
 BLOCK_BEGIN = (
-    "# >>> loadout overlay {name}: managed by loadout; lines inside this block are replaced"
+    "# >>> loadout stealth {name}: managed by loadout; lines inside this block are replaced"
 )
-BLOCK_END = "# <<< loadout overlay {name}"
-GLOBAL_BEGIN = "# >>> loadout overlays: personal files, managed by loadout"
-GLOBAL_END = "# <<< loadout overlays"
+BLOCK_END = "# <<< loadout stealth {name}"
+GLOBAL_BEGIN = "# >>> loadout stealth: personal files, managed by loadout"
+GLOBAL_END = "# <<< loadout stealth"
 PERSONAL_UNITS: tuple[str, ...] = (
     "CLAUDE.local.md",
     ".claude/settings.local.json",
@@ -160,7 +160,7 @@ class GlobalIgnoreState:
 
 
 def global_state_path() -> Path:
-    return machine.config_dir() / "overlay-global-ignore.json"
+    return machine.config_dir() / "stealth-global-ignore.json"
 
 
 def read_global_state() -> GlobalIgnoreState:
@@ -200,7 +200,7 @@ def user_covered(scratch: Path, file: Path, units: Iterable[str]) -> frozenset[s
     own = _transformed(
         file, lambda current: with_block(current, GLOBAL_BEGIN, GLOBAL_END, ()), text
     )
-    with tempfile.TemporaryDirectory(prefix="loadout-overlay-") as folder:
+    with tempfile.TemporaryDirectory(prefix="loadout-stealth-") as folder:
         copy = Path(folder) / "ignore"
         copy.write_bytes(own.encode(_ENCODING, _ERRORS))
         return covered_by(scratch, copy, units, frozenset())
@@ -232,5 +232,5 @@ def offer_text(units: Sequence[str], file: Path) -> str:
     )
     return (
         f"Ignore {', '.join(units)} in every repository? loadout would add a marked block to "
-        f"{resolved}{inside}. Other overlay paths stay ignored per repository."
+        f"{resolved}{inside}. Other stealth paths stay ignored per repository."
     )

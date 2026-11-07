@@ -15,9 +15,9 @@ from pathlib import Path
 
 from fixture_root import PROJECT_INSTRUCTIONS
 from loadout.manifest import MANIFEST_NAME, load_manifest
-from loadout.overlay_manifest import load_overlay_manifest
 from loadout.permissions.rules import UNSTATED_DEFAULT, is_exact, is_glob, mcp_parts, parse_rules
 from loadout.servers import parse_servers
+from loadout.stealth_manifest import load_stealth_manifest
 
 FIXTURE = Path(__file__).parent / "fixtures" / "permissions.toml"
 RULES = parse_rules(FIXTURE)
@@ -248,30 +248,30 @@ def test_the_global_fixture_routes_its_servers_through_each_global_renderer() ->
     assert {target.renderer for target in manifest.permissions} >= GLOBAL_SERVER_RENDERERS
 
 
-OVERLAY_FIXTURE = Path(__file__).parent / "fixtures" / "overlay"
+STEALTH_FIXTURE = Path(__file__).parent / "fixtures" / "stealth"
 
 
-def test_the_overlay_fixture_declares_all_five_harnesses_and_one_differing_fragment_order() -> None:
-    manifest = load_overlay_manifest(OVERLAY_FIXTURE)
+def test_the_stealth_fixture_declares_all_five_harnesses_and_one_differing_fragment_order() -> None:
+    manifest = load_stealth_manifest(STEALTH_FIXTURE)
     assert manifest.harnesses == ("claude", "codex", "droid", "opencode", "pi")
     orders = {t.name: t.fragments for t in manifest.manifest.targets}
     assert len(set(orders.values())) == 2
 
 
-def test_the_overlay_fixture_has_every_permission_category_and_no_stated_default() -> None:
-    rules = parse_rules(OVERLAY_FIXTURE / "permissions.toml")
+def test_the_stealth_fixture_has_every_permission_category_and_no_stated_default() -> None:
+    rules = parse_rules(STEALTH_FIXTURE / "permissions.toml")
     assert all(rules.shell(category) for category in ("allow", "ask", "deny"))
     assert len(rules.mcp_allow + rules.mcp_ask + rules.mcp_deny) == 1
     assert rules.default is None
 
 
-def test_the_overlay_fixture_has_an_http_and_a_stdio_server_and_a_settings_fragment() -> None:
-    servers = parse_servers(OVERLAY_FIXTURE / "mcp.toml").values()
+def test_the_stealth_fixture_has_an_http_and_a_stdio_server_and_a_settings_fragment() -> None:
+    servers = parse_servers(STEALTH_FIXTURE / "mcp.toml").values()
     assert {s.transport for s in servers} == {"http", "stdio"}
-    settings = json.loads((OVERLAY_FIXTURE / "settings/local.json").read_text(encoding="utf-8"))
+    settings = json.loads((STEALTH_FIXTURE / "settings/local.json").read_text(encoding="utf-8"))
     assert settings["model"] and settings["permissions"]["defaultMode"]
 
 
-def test_the_overlay_fixture_skill_has_a_supporting_file() -> None:
-    assert (OVERLAY_FIXTURE / "skills/probe/SKILL.md").is_file()
-    assert (OVERLAY_FIXTURE / "skills/probe/reference.md").is_file()
+def test_the_stealth_fixture_skill_has_a_supporting_file() -> None:
+    assert (STEALTH_FIXTURE / "skills/probe/SKILL.md").is_file()
+    assert (STEALTH_FIXTURE / "skills/probe/reference.md").is_file()

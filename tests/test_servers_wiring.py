@@ -39,7 +39,7 @@ def test_pi_gets_pi_mcp_json(project: Path) -> None:
 
 def test_project_scope_renders_no_codex_config(project: Path) -> None:
     """Codex applies [mcp_servers.*] from a trusted project's .codex/config.toml,
-    but project scope writes none; only an overlay does."""
+    but project scope writes none; only a stealth source does."""
     (project / "loadout" / "mcp.toml").write_text(
         '[jina]\ntransport = "http"\nurl = "https://x"\n', encoding="utf-8"
     )

@@ -323,6 +323,12 @@ def _read_toml(path: Path) -> dict[str, object]:
     return data
 
 
+def renamed_overlay_table(data: dict[str, object], path: Path) -> LoadoutError | None:
+    if "overlay" not in data:
+        return None
+    return LoadoutError(f"{path}: `[overlay]` is now `[stealth]`; rename the table")
+
+
 def _remove_inherited(merged: dict[str, object], data: dict[str, object]) -> None:
     if "remove" not in data:
         return
@@ -655,6 +661,8 @@ def _build_manifest(
     config_paths: tuple[Path, ...] = (),
     sources: SourceParser = parse_sources,
 ) -> Manifest:
+    if (renamed := renamed_overlay_table(data, path)) is not None:
+        raise renamed
     raw_sources = data.get("source")
     if not isinstance(raw_sources, list) or not raw_sources:
         raise LoadoutError(f"{path}: at least one [[source]] entry is required")

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from loadout import exclude, overlay_record
+from loadout import exclude, stealth_record
 from loadout.errors import LoadoutError
 from loadout.exclude import (
     BLOCK_BEGIN,
@@ -28,7 +28,7 @@ from loadout.exclude import (
     write_global_state,
     write_repo_block,
 )
-from loadout.overlay_git import scratch_repo
+from loadout.stealth_git import scratch_repo
 
 APP_BEGIN = BLOCK_BEGIN.format(name="app")
 APP_END = BLOCK_END.format(name="app")
@@ -80,7 +80,7 @@ def test_removing_an_absent_block_changes_nothing() -> None:
     assert _app("mine\n") == "mine\n"
 
 
-def test_updating_one_overlay_leaves_a_prefixed_name_intact() -> None:
+def test_updating_one_stealth_source_leaves_a_prefixed_name_intact() -> None:
     both = with_block(_app("", "/a"), DOCS_BEGIN, DOCS_END, ["/docs"])
     updated = _app(both, "/b")
     assert block_lines(updated, APP_BEGIN, APP_END) == ("/b",)
@@ -99,7 +99,7 @@ def test_a_duplicate_block_raises() -> None:
         with_block(block + block, APP_BEGIN, APP_END, ["/b"])
 
 
-def test_a_begin_with_an_end_that_is_a_prefix_of_another_overlays_end_raises() -> None:
+def test_a_begin_with_an_end_that_is_a_prefix_of_another_stealth_sources_end_raises() -> None:
     text = f"{APP_BEGIN}\n/a\n{DOCS_BEGIN}\n/d\n{DOCS_END}\n"
     with pytest.raises(LoadoutError, match="closing line"):
         _app(text, "/b")
@@ -161,19 +161,19 @@ def test_global_state_round_trips(tmp_path: Path) -> None:
     assert read_global_state() == state
 
 
-def test_global_state_beside_a_real_overlay_record_leaves_the_records_readable(
+def test_global_state_beside_a_real_stealth_record_leaves_the_records_readable(
     tmp_path: Path, fake_home: Path
 ) -> None:
     folder = tmp_path / "app"
     folder.mkdir()
-    overlay_record.write_overlay_record(overlay_record.empty_record(folder, "app", fake_home))
+    stealth_record.write_stealth_record(stealth_record.empty_record(folder, "app", fake_home))
     write_global_state(GlobalIgnoreState("declined", None))
-    scan = overlay_record.scan_overlay_records()
+    scan = stealth_record.scan_stealth_records()
     assert [found.name for found in scan.records] == ["app"]
     assert scan.problems == ()
 
 
-def test_global_state_beside_overlay_records_is_unreadable_when_malformed() -> None:
+def test_global_state_beside_stealth_source_records_is_unreadable_when_malformed() -> None:
     exclude.global_state_path().parent.mkdir(parents=True, exist_ok=True)
     exclude.global_state_path().write_text('{"answer": "maybe", "file": null}')
     with pytest.raises(LoadoutError, match="unexpected contents"):
@@ -303,7 +303,7 @@ WRITER = (
 
 
 @pytest.mark.integration
-def test_concurrent_writers_of_different_overlays_keep_both_blocks(
+def test_concurrent_writers_of_different_stealth_sources_keep_both_blocks(
     tmp_path: Path, git_home: Path
 ) -> None:
     repo = _repo(tmp_path / "repo")
@@ -374,7 +374,7 @@ def test_offer_text_names_the_repository_holding_the_file(tmp_path: Path, git_ho
     assert f"{file}" in text
     assert f"it is in the git repository at {repo}; the block will show there as a change" in text
     assert "CLAUDE.local.md, .claude/settings.local.json" in text
-    assert "Other overlay paths stay ignored per repository." in text
+    assert "Other stealth paths stay ignored per repository." in text
 
 
 @pytest.mark.integration

@@ -1,6 +1,6 @@
 ---
 title: CLI reference
-description: Loadout commands, scope flags, profile selection, overlays, init, template operations, integrations, and exit codes.
+description: Loadout commands, scope flags, profile selection, stealth sources, init, template operations, integrations, and exit codes.
 ---
 
 # CLI reference
@@ -25,15 +25,15 @@ loadout check --staged
 
 | Option | Commands | Meaning |
 | --- | --- | --- |
-| `--root PATH` | `sync`, `check` | Directory containing the source/project configuration, an overlay folder, or a repository an overlay targets; a `loadout.toml` there renders only when the directory is this machine's registered global source |
-| `--global` | `sync`, `check` | Resolve the source and default profile from this machine's configuration, then render every registered [overlay](#overlays) |
-| `--overlay NAME` | `sync`, `check` | Render only the registered overlay `NAME`, for every target it matches |
+| `--root PATH` | `sync`, `check` | Directory containing the source/project configuration, a stealth folder, or a repository a stealth source targets; a `loadout.toml` there renders only when the directory is this machine's registered global source |
+| `--global` | `sync`, `check` | Resolve the source and default profile from this machine's configuration, then render every registered [stealth source](#stealth-sources) |
+| `--stealth NAME` | `sync`, `check` | Render only the registered stealth source `NAME`, for every target it matches |
 | `--profile NAME` | `sync`, `check` | Select a global manifest profile; without it, the registered global source uses the machine's profile and any other root uses `default` |
-| `--force` | `sync` | Overwrite generated files protected as modified outside Loadout; for overlays, see [`--force`](#overlays) |
+| `--force` | `sync` | Overwrite generated files protected as modified outside Loadout; for stealth sources, see [`--force`](#stealth-sources) |
 | `--json` | `check` | Emit `status`, `exit_code`, each out-of-sync `path` and any notes as JSON; not with `--staged` |
-| `--staged` | `check` | Validate what the Git index would commit, rendered in a temporary tree; this is what the pre-commit hook runs. Overlays are never part of it |
+| `--staged` | `check` | Validate what the Git index would commit, rendered in a temporary tree; this is what the pre-commit hook runs. Stealth sources are never part of it |
 
-`--root`, `--global` and `--overlay` are mutually exclusive. `--global` without a machine config exits 3 with
+`--root`, `--global` and `--stealth` are mutually exclusive. `--global` without a machine config exits 3 with
 ``no machine config at <path>; run `loadout init global` first``.
 
 An interrupted sync is completed by the next sync. Ctrl-C stops it with exit 130 and
@@ -84,7 +84,7 @@ with the same kind per path, and `notes`, and exits with the same code as `check
 | --- | --- | --- |
 | `clean` | 0 | every generated file matches the source |
 | `drift` | 1 | at least one file is listed in `drift` |
-| `error` | 2, 3, 4 or 130 | a usage, source or unexpected error, or Ctrl-C; `error` holds the message. When an overlay takes part, `errors` lists each one instead (see [overlays](#overlays)) |
+| `error` | 2, 3, 4 or 130 | a usage, source or unexpected error, or Ctrl-C; `error` holds the message. When a stealth source takes part, `errors` lists each one instead (see [stealth sources](#stealth-sources)) |
 
 How `sync`
 tells its own output from an edit, what it retires, and what it leaves alone is described in
@@ -113,111 +113,116 @@ JSON output (`init --json`, `check --json`) is not covered by a stability promis
 Use `--force` only after reviewing the reported output edits and deciding to discard them.
 It does not resolve invalid sources or merge a modified vendored template.
 
-## Overlays
+## Stealth sources
 
-An overlay renders your own configuration into repositories that have not adopted loadout; see
-the [overlays guide](../guides/overlays.md). Its folder holds a `loadout.toml` with an
-`[overlay]` table ([schema](configuration.md#overlay-sources)), and it renders only once
+Your own agent config in repos you don't control, kept out of git. A stealth source renders your
+own configuration into repositories that have not adopted loadout; see the
+[stealth sources guide](../guides/stealth.md). Its folder holds a `loadout.toml` with a
+`[stealth]` table ([schema](configuration.md#stealth-sources)), and it renders only once
 registered.
 
+0.10.0 called a stealth source an overlay. The old spellings are refused with a message naming
+the new one: `loadout overlay` and `--overlay` with exit 2, an `[overlay]` table with exit 3. The
+old state is not read; see [upgrading from 0.10.0](../guides/stealth.md#upgrading-from-0100).
+
 ```sh
-loadout overlay add ~/agent-config/work
-loadout overlay add --name work-api
-loadout overlay list
-loadout check --overlay work
-loadout sync --overlay work
-loadout overlay remove work --yes
+loadout stealth add ~/agent-config/work
+loadout stealth add --name work-api
+loadout stealth list
+loadout check --stealth work
+loadout sync --stealth work
+loadout stealth remove work --yes
 ```
 
 | Command | Result |
 | --- | --- |
-| `overlay add [DIRECTORY] [--name NAME]` | Register the overlay in `DIRECTORY` (default the current directory) under `NAME` (default the folder's name in lowercase; lowercase letters, digits and hyphens, at most 63 characters; any other name is a usage error, exit 2). It loads the manifest first, so a manifest error stops it. It refuses this machine's registered global source, a name or a folder already registered (under any spelling of its path, such as another case on macOS), and a folder whose earlier record is held under another name |
-| `overlay list` | One line per overlay: its name, folder and `targets` patterns. A record that no registration names is listed with the command that removes it |
-| `overlay remove NAME [--force] [--yes]` | Retire everything the overlay wrote, then delete its record and registration; see below |
+| `stealth add [DIRECTORY] [--name NAME]` | Register the stealth source in `DIRECTORY` (default the current directory) under `NAME` (default the folder's name in lowercase; lowercase letters, digits and hyphens, at most 63 characters; any other name is a usage error, exit 2). It loads the manifest first, so a manifest error stops it. It refuses this machine's registered global source, a name or a folder already registered (under any spelling of its path, such as another case on macOS), and a folder whose earlier record is held under another name |
+| `stealth list` | One line per stealth source: its name, folder and `targets` patterns. A record that no registration names is listed with the command that removes it |
+| `stealth remove NAME [--force] [--yes]` | Retire everything the stealth source wrote, then delete its record and registration; see below |
 
-`overlay remove` asks `remove overlay NAME and retire its N recorded outputs? [y/N]`; declining
+`stealth remove` asks `remove stealth source NAME and retire its N recorded outputs? [y/N]`; declining
 exits 0 with `declined; no changes made`. Without a terminal it needs `--yes` and otherwise
-exits 2. It works from the record, so it still works when the overlay folder or a target is
+exits 2. It works from the record, so it still works when the stealth folder or a target is
 gone, and it takes the name of a record whose registration was lost. A file edited since it was
 written is refused (exit 1) and `--force` retires it anyway; `--force` also forgets a target
 that cannot be reached and strips its `~/.claude.json` servers. While a removal is unfinished the
-overlay is marked `removing`: `sync` and `check` refuse it and `overlay list` says to run
-`overlay remove NAME` again. An overlay record written by a newer loadout, or one that cannot be
-read (without `--force`), stops `overlay remove` with exit 3 before it asks or marks anything.
+stealth source is marked `removing`: `sync` and `check` refuse it and `stealth list` says to run
+`stealth remove NAME` again. A stealth record written by a newer loadout, or one that cannot be
+read (without `--force`), stops `stealth remove` with exit 3 before it asks or marks anything.
 
-**Selection.** `sync` and `check` choose overlays like this:
+**Selection.** `sync` and `check` choose stealth sources like this:
 
-- `--overlay NAME`: that overlay, every target, from anywhere. An unknown name exits 3 and lists
+- `--stealth NAME`: that stealth source, every target, from anywhere. An unknown name exits 3 and lists
   the registered ones.
-- In a registered overlay folder itself (its top, not a subfolder), by the working directory or
-  `--root`: that overlay, every target. A folder holding an `[overlay]` table that is not registered is refused, naming
-  `overlay add`.
+- In a registered stealth folder itself (its top, not a subfolder), by the working directory or
+  `--root`: that stealth source, every target. A folder holding a `[stealth]` table that is not registered is refused, naming
+  `stealth add`.
 - Inside a target repository, by the working directory or `--root`: that repository, for every
-  overlay whose `targets` match it, found from the repository's top level so a subfolder works.
-  When it has no manifest and no overlay targets it, the error is the usual `no manifest found`.
+  stealth source whose `targets` match it, found from the repository's top level so a subfolder works.
+  When it has no manifest and no stealth source targets it, the error is the usual `no manifest found`.
 - A target repository that has adopted loadout (it holds `loadout/config.toml`) is not rendered
-  into. An overlay that wrote there retires its files, with the note `adopted loadout; the
-  overlay retired its files here`, and an overlay that never did reports it as skipped. Inside
-  such a repository its overlays run first and the project follows, so the project never finds
-  the overlay's files.
-- `--global`: the global source, then every registered overlay in name order. A missing machine
+  into. A stealth source that wrote there retires its files, with the note `adopted loadout; the
+  stealth source retired its files here`, and a stealth source that never did reports it as skipped. Inside
+  such a repository its stealth sources run first and the project follows, so the project never finds
+  the stealth source's files.
+- `--global`: the global source, then every registered stealth source in name order. A missing machine
   config, or a global source that fails, such as on a fragment it cannot read, is reported with
-  exit 3 and the overlays still run.
-- An `overlays.toml` that does not parse or is invalid is an error everywhere:
+  exit 3 and the stealth sources still run.
+- A `stealth.toml` that does not parse or is invalid is an error everywhere:
   `loadout: <file>: <problem>`, exit 3, an `errors` entry under `--json`, and the global source
   or the project still runs. One that cannot be read at all, such as in a config folder without
   permission, is only a warning in a project, which never depends on machine state.
-- With no overlay registered, every directory behaves as it did before.
+- With no stealth source registered, every directory behaves as it did before.
 
-An overlay renders the `default` profile only: `--profile` with `--overlay`, with an overlay
-folder or with a repository that only overlays reach is a usage error (exit 2). A failure is
+A stealth source renders the `default` profile only: `--profile` with `--stealth`, with a stealth source
+folder or with a repository that only stealth sources reach is a usage error (exit 2). A failure is
 reported per target and makes the exit code nonzero without stopping the other targets. A
 combined run exits with the largest code of its parts.
 
-**`--force`** reaches an overlay only when the selection names it: `--overlay`, its folder, or a
+**`--force`** reaches a stealth source only when the selection names it: `--stealth`, its folder, or a
 repository the working directory is in. Under `--global` it applies to the global source alone,
-and an overlay's refusal says to run `loadout sync --overlay NAME --force`. `--force` replaces
+and a stealth source's refusal says to run `loadout sync --stealth NAME --force`. `--force` replaces
 an owned output edited outside loadout and a pre-existing file at a whole-file destination, and
 restores an owned key or rule removed outside loadout. It does not take a path the team tracks,
 a server the user defined, a path another owner records, a record written by a newer loadout, or
 a unit git would not ignore.
 
-**`--staged`** covers the project only. `--overlay` with `--staged` is a usage error (exit 2).
+**`--staged`** covers the project only. `--stealth` with `--staged` is a usage error (exit 2).
 
-**Output.** Overlay lines start `overlay NAME: ` and show a target as its root with the home
+**Output.** Stealth lines start `stealth NAME: ` and show a target as its root with the home
 folder shortened to `~`, and paths inside it relative to the root. Notes go to stdout as
-`note: overlay NAME: ~/target: text`; errors, refusals and skips go to stderr.
+`note: stealth NAME: ~/target: text`; errors, refusals and skips go to stderr.
 
 ```text
-overlay work: ~/agent-config/work: wrote .loadout/opencode-instructions.md
-overlay work: ~/work/app1: wrote CLAUDE.local.md
-overlay work: ~/work/app1: retired .claude/skills/old/SKILL.md
-overlay work: ~/work/app1: 2 written, 3 unchanged, 1 retired
-overlay work: ~/work/app1: Up to date.
-overlay work: ~/.claude.json: 2 servers written, 1 retired
-overlay work: ~/work/app4: retired: the folder is gone
-overlay work: ~/work/app5: skipped: not a git checkout
-note: overlay work: ~/work/app6: the team tracks .codex/config.toml; it is left in place and no longer recorded
-overlay work: ~/work/app3: refused: the team tracks opencode.json; the overlay does not write it
-overlay work: ~/work/app3: ERROR: <message>
-overlay work: ERROR: <message about the overlay as a whole>
+stealth work: ~/agent-config/work: wrote .loadout/opencode-instructions.md
+stealth work: ~/work/app1: wrote CLAUDE.local.md
+stealth work: ~/work/app1: retired .claude/skills/old/SKILL.md
+stealth work: ~/work/app1: 2 written, 3 unchanged, 1 retired
+stealth work: ~/work/app1: Up to date.
+stealth work: ~/.claude.json: 2 servers written, 1 retired
+stealth work: ~/work/app4: retired: the folder is gone
+stealth work: ~/work/app5: skipped: not a git checkout
+note: stealth work: ~/work/app6: the team tracks .codex/config.toml; it is left in place and no longer recorded
+stealth work: ~/work/app3: refused: the team tracks opencode.json; the stealth source does not write it
+stealth work: ~/work/app3: ERROR: <message>
+stealth work: ERROR: <message about the stealth source as a whole>
 ```
 
 `Up to date.` means nothing was written, retired or refused; a target with a refusal prints
 its counts instead.
 
-`check` prints `overlay NAME: ERROR: ~/target: message` for each refusal and error (a refusal
+`check` prints `stealth NAME: ERROR: ~/target: message` for each refusal and error (a refusal
 reads `ERROR: ~/target: refused: …`), the same ones `sync` would make, including a path a
-committed `.gitignore` re-includes; then `overlay NAME: DRIFT (KIND): ~/target/path` with the
+committed `.gitignore` re-includes; then `stealth NAME: DRIFT (KIND): ~/target/path` with the
 usual diff, and
-`overlay NAME: up to date` when there is neither. It uses the drift kinds above: an owned output
+`stealth NAME: up to date` when there is neither. It uses the drift kinds above: an owned output
 that differs from the source is `source-changed`, one that differs from what was written is
 `hand-edited`, a server or key edited in `~/.claude.json` or in a shared document is `owned-key`,
-and a file in a skills folder or `.codex/rules` that the overlay did not write and the team does
-not track is `unmanaged`. The file the overlay writes into its own folder
+and a file in a skills folder or `.codex/rules` that the stealth source did not write and the team does
+not track is `unmanaged`. The file the stealth source writes into its own folder
 (`.loadout/opencode-instructions.md`) is judged the same way. A guarded target still gets its
 drift and unmanaged report. Under
-`--json`, when an overlay takes part, the object also carries `errors`, a list of `{"overlay", "target", "error"}` where
+`--json`, when a stealth source takes part, the object also carries `errors`, a list of `{"stealth", "target", "error"}` where
 `target` is an absolute path or `null`, and `status` is `error` when the exit code is 3 or more.
 A `~/.claude.json` server is reported at `<file>#projects["<repository>"].mcpServers.<name>`;
 a key that is not made only of letters, digits, `_` and `-` is written as a quoted `["…"]`.
@@ -225,33 +230,33 @@ a key that is not made only of letters, digits, `_` and `-` is written as a quot
 `check` adds these notes (exit code unchanged):
 
 - Codex ignores the project's `.codex/` until the project is trusted, and a user-level
-  `developer_instructions` is replaced by the overlay's.
+  `developer_instructions` is replaced by the stealth source's.
 - Pi loads `.pi/` and `.agents/skills` only once the project is trusted, and Pi's "Disable in
-  this project" in `/mcp` writes the overlay's `.pi/mcp.json`.
-- A tracked `.opencode/opencode.json` outranks the overlay's `opencode.json` and names the servers
+  this project" in `/mcp` writes the stealth source's `.pi/mcp.json`.
+- A tracked `.opencode/opencode.json` outranks the stealth source's `opencode.json` and names the servers
   and rules it overrides.
 - A skill reaches OpenCode twice, through `.claude/skills` or `.agents/skills`.
-- A local branch tracks an overlay path: checking it out replaces the overlay's copy.
-- A permission Claude saved that the overlay did not write, to add to `permissions.toml` or
+- A local branch tracks a stealth path: checking it out replaces the stealth source's copy.
+- A permission Claude saved that the stealth source did not write, to add to `permissions.toml` or
   delete; it never causes drift or blocks `sync`. A saved rule that holds a secret is shown as
   `a rule not shown because it holds a secret (<reason>)`.
 - The global ignore offer has not been answered and a personal path is only ignored per
   repository, a pattern whose parent folder cannot be listed, and the usual shell-rule notices
-  for the overlay's permissions.
+  for the stealth source's permissions.
 
-**Exit codes for overlays.** `1`: an output or a key edited or removed outside loadout (the
+**Exit codes for stealth sources.** `1`: an output or a key edited or removed outside loadout (the
 guard), drift, or a shared document whose value loadout cannot merge into, such as
 `"permissions": "oops"` (`check` reports it as `unparsable` drift; fix the value by hand, since
 `--force` never overwrites it). `3`: a manifest or registry error, a record that cannot be read or comes from a
 newer loadout, a team-tracked output, a user-defined key or server, a server name the user already
 defined, a unit git would not ignore, a git failure, an unsafe target, or a write error. An
-unreadable or newer record of any overlay stops every other overlay's `sync` and `overlay add`
+unreadable or newer record of any stealth source stops every other stealth source's `sync` and `stealth add`
 with `3`, and the global ignore block is left as it is until the record is fixed; fix the file,
-or run `loadout overlay remove NAME --force`, or delete a file that names no overlay. A path that is not a git checkout, a submodule, a
+or run `loadout stealth remove NAME --force`, or delete a file that names no stealth source. A path that is not a git checkout, a submodule, a
 linked worktree, a repository that has adopted loadout, and a recorded target that no longer
 matches but cannot be examined (its outputs are kept) are skipped with exit 0. An output the
-overlay recorded that the team starts tracking is left in place, dropped from the record and
-noted, with exit 0, whenever the overlay would retire it.
+stealth source recorded that the team starts tracking is left in place, dropped from the record and
+noted, with exit 0, whenever the stealth source would retire it.
 
 ## Initialise
 
@@ -278,16 +283,16 @@ configuration. Init needs git on PATH for `init global`, which keeps the source 
 and for a project inside a Git repository; without it, init exits 3 saying so before it plans
 anything. `sync` and `check` do not need git.
 
-`init project` refuses, exit 3, in a repository that an overlay has written into, one its record
-lists ("an overlay writes personal files here; adopting would sweep them into the team's
-source"), because adopting would move the overlay's personal files into the team's source. A
-repository the patterns match but the overlay has not yet synced is not refused. To adopt it, narrow the overlay's
-`targets` so they no longer match the repository, then run `loadout sync --overlay NAME` so the
-overlay retires what it wrote there, or run `overlay remove NAME`. A plain `loadout sync` inside
-the repository does not reach an overlay that no longer matches it. It also refuses while any
-overlay record is unreadable or newer, in any repository, until that record is fixed or removed.
+`init project` refuses, exit 3, in a repository that a stealth source has written into, one its record
+lists ("a stealth source writes personal files here; adopting would sweep them into the team's
+source"), because adopting would move the stealth source's personal files into the team's source. A
+repository the patterns match but the stealth source has not yet synced is not refused. To adopt it, narrow the stealth source's
+`targets` so they no longer match the repository, then run `loadout sync --stealth NAME` so the
+stealth source retires what it wrote there, or run `stealth remove NAME`. A plain `loadout sync` inside
+the repository does not reach a stealth source that no longer matches it. It also refuses while any
+stealth record is unreadable or newer, in any repository, until that record is fixed or removed.
 A repository that adopts loadout without `init`, by pulling a committed `loadout/`, is released
-by its next `sync`, as [overlay selection](#overlays) describes.
+by its next `sync`, as [stealth selection](#stealth-sources) describes.
 
 **Approval.** Init first shows a read-only preview of the source and output writes, private
 exclusions and removals. At a terminal it then asks `Apply this migration? [y/N]`; declining
@@ -589,8 +594,8 @@ without it is refused.
 | --- | --- |
 | `0` | Success: nothing to do, or a check that found no differences |
 | `1` | Drift, a refused safe update, or an init that failed, whether or not it could put everything back |
-| `2` | Invalid command-line usage (`--staged` or `--profile` with an overlay selection included), unresolved init choices, missing noninteractive approval (`overlay remove` included), or an interrupted init found by the next one |
-| `3` | Source, configuration, or resolution error: missing or invalid input, such as a source file that is not UTF-8, which the message names; an unsafe destination, or a folder loadout cannot write into, which the message names; or an ownership collision, including an overlay output the team tracks |
+| `2` | Invalid command-line usage (`--staged` or `--profile` with a stealth selection included), unresolved init choices, missing noninteractive approval (`stealth remove` included), or an interrupted init found by the next one |
+| `3` | Source, configuration, or resolution error: missing or invalid input, such as a source file that is not UTF-8, which the message names; an unsafe destination, or a folder loadout cannot write into, which the message names; or an ownership collision, including a stealth output the team tracks |
 | `4` | Unexpected internal error, with a traceback |
 | `130` | Stopped with Ctrl-C, without a traceback. `init` puts back every path it changed, or tries to; stopped before it applies anything, it has changed nothing. A Ctrl-C after the conversion finished lets init complete and exit `0`, saying so |
 

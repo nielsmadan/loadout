@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 import loadout
-from loadout import overlay_lock
+from loadout import stealth_lock
 from registration import register
 
 pytestmark = pytest.mark.integration
@@ -36,7 +36,7 @@ def test_a_global_sync_waits_for_claudes_lock_then_fails_without_writing(
     _add_server(root)
     lock_dir = Path(f"{document}.lock")
     lock_dir.mkdir()
-    monkeypatch.setattr(overlay_lock, "HARNESS_LOCK_WAIT_SECONDS", 0.3)
+    monkeypatch.setattr(stealth_lock, "HARNESS_LOCK_WAIT_SECONDS", 0.3)
     capsys.readouterr()
 
     started = time.monotonic()
@@ -79,7 +79,7 @@ def test_a_symlinked_claude_json_is_locked_beside_the_link_not_its_target(
     _add_server(root)
     lock_dir = Path(f"{link}.lock")
     lock_dir.mkdir()
-    monkeypatch.setattr(overlay_lock, "HARNESS_LOCK_WAIT_SECONDS", 0.3)
+    monkeypatch.setattr(stealth_lock, "HARNESS_LOCK_WAIT_SECONDS", 0.3)
     capsys.readouterr()
 
     assert loadout.main(["sync", "--root", str(root)]) == 3
@@ -102,7 +102,7 @@ def test_a_sync_that_retires_the_global_claude_json_output_waits_for_claudes_loc
     )
     lock_dir = Path(f"{document}.lock")
     lock_dir.mkdir()
-    monkeypatch.setattr(overlay_lock, "HARNESS_LOCK_WAIT_SECONDS", 0.3)
+    monkeypatch.setattr(stealth_lock, "HARNESS_LOCK_WAIT_SECONDS", 0.3)
     capsys.readouterr()
 
     assert loadout.main(["sync", "--root", str(root)]) == 3

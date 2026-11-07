@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from loadout import discovery, migration, overlay_check, overlay_sync
+from loadout import discovery, migration, stealth_check, stealth_sync
 from loadout.destinations import resolve_destination
 from loadout.discovery import AGENTS_MD_READERS, discover
 from loadout.harnesses import GLOBAL_PRESET, KNOWN_HARNESSES, SHARED_SKILL_READERS
@@ -18,7 +18,6 @@ from loadout.hooks import HARNESS_PREFIXES
 from loadout.migration_models import Candidate
 from loadout.notices import _ADAPTED as ADAPTED_EVENTS
 from loadout.notices import CATCH_ALL_ELSEWHERE, known_events
-from loadout.overlay_render import OVERLAY_PRESET
 from loadout.permissions.renderers import CATCH_ALL_RENDERERS, RENDERERS, JsonSpec, TextSpec
 from loadout.permissions.rules import Rules
 from loadout.plugins import ADDRESSED_BY
@@ -30,6 +29,7 @@ from loadout.servers import (
     render_opencode_servers,
     render_pi_servers,
 )
+from loadout.stealth_render import STEALTH_PRESET
 from loadout.subagents import EFFORT_KEY, EFFORT_LEVELS
 from loadout.unmanaged import WHOLE_FOLDER_RENDERERS
 
@@ -204,8 +204,8 @@ def test_whole_folder_renderers_are_those_writing_into_a_rules_folder() -> None:
     assert in_rules == WHOLE_FOLDER_RENDERERS
 
 
-OVERLAY_DOC = Path(__file__).parents[1] / "docs" / "user" / "reference" / "configuration.md"
-OVERLAY_COLUMNS = {
+STEALTH_DOC = Path(__file__).parents[1] / "docs" / "user" / "reference" / "configuration.md"
+STEALTH_COLUMNS = {
     "Instructions": "instructions",
     "MCP servers": "mcp",
     "Permissions and settings": "permissions",
@@ -221,8 +221,8 @@ HARNESS_NAMES = {
 CLAUDE_JSON = "~/.claude.json"
 
 
-def _documented_overlay_destinations() -> dict[str, dict[str, set[str]]]:
-    text = OVERLAY_DOC.read_text(encoding="utf-8")
+def _documented_stealth_destinations() -> dict[str, dict[str, set[str]]]:
+    text = STEALTH_DOC.read_text(encoding="utf-8")
     header = "| Agent | Instructions | MCP servers | Permissions and settings | Skills |"
     rows = text.split(header, 1)[1].split("\n\n", 1)[0].splitlines()[2:]
     table: dict[str, dict[str, set[str]]] = {}
@@ -230,15 +230,15 @@ def _documented_overlay_destinations() -> dict[str, dict[str, set[str]]]:
         cells = [cell.strip() for cell in row.strip().strip("|").split("|")]
         table[HARNESS_NAMES[cells[0]]] = {
             slice_name: set(re.findall(r"`([^`]+)`", cell))
-            for slice_name, cell in zip(OVERLAY_COLUMNS.values(), cells[1:], strict=True)
+            for slice_name, cell in zip(STEALTH_COLUMNS.values(), cells[1:], strict=True)
         }
     return table
 
 
-def test_the_documented_overlay_destinations_are_the_overlay_preset() -> None:
-    documented = _documented_overlay_destinations()
-    assert set(documented) == set(OVERLAY_PRESET)
-    for harness, slices in OVERLAY_PRESET.items():
+def test_the_documented_stealth_destinations_are_the_stealth_preset() -> None:
+    documented = _documented_stealth_destinations()
+    assert set(documented) == set(STEALTH_PRESET)
+    for harness, slices in STEALTH_PRESET.items():
         for slice_name, spec in slices.items():
             output = str(spec.output)
             assert any(
@@ -247,48 +247,50 @@ def test_the_documented_overlay_destinations_are_the_overlay_preset() -> None:
             ), (harness, slice_name, output, documented[harness][slice_name])
 
 
-def test_the_only_documented_overlay_destination_the_preset_lacks_is_claudes_servers() -> None:
-    documented = _documented_overlay_destinations()
+def test_the_only_documented_stealth_destination_the_preset_lacks_is_claudes_servers() -> None:
+    documented = _documented_stealth_destinations()
     unpreset = {
         (harness, slice_name)
         for harness, slices in documented.items()
         for slice_name, paths in slices.items()
-        if slice_name not in OVERLAY_PRESET[harness] and paths
+        if slice_name not in STEALTH_PRESET[harness] and paths
     }
     assert unpreset == {("claude", "mcp")}
     assert CLAUDE_JSON in documented["claude"]["mcp"]
 
 
-def _overlay_output(harness: str, slice_name: str) -> str:
-    return str(OVERLAY_PRESET[harness][slice_name].output)
+def _stealth_output(harness: str, slice_name: str) -> str:
+    return str(STEALTH_PRESET[harness][slice_name].output)
 
 
-def test_check_s_overlay_paths_are_the_overlay_preset_s() -> None:
-    codex = {_overlay_output("codex", name) for name in ("instructions", "mcp")}
+def test_check_s_stealth_paths_are_the_stealth_preset_s() -> None:
+    codex = {_stealth_output("codex", name) for name in ("instructions", "mcp")}
     opencode = {
-        _overlay_output("opencode", name) for name in ("instructions", "mcp", "permissions")
+        _stealth_output("opencode", name) for name in ("instructions", "mcp", "permissions")
     }
-    assert codex == {overlay_check.CODEX_CONFIG}
-    assert _overlay_output("codex", "permissions").startswith(overlay_check.CODEX_DIR)
-    assert opencode == {overlay_check.OPENCODE_CONFIG}
-    assert _overlay_output("pi", "mcp") == overlay_check.PI_MCP
-    assert {_overlay_output("pi", "instructions"), overlay_check.PI_MCP} <= set(
-        overlay_check.PI_FILES
+    assert codex == {stealth_check.CODEX_CONFIG}
+    assert _stealth_output("codex", "permissions").startswith(stealth_check.CODEX_DIR)
+    assert opencode == {stealth_check.OPENCODE_CONFIG}
+    assert _stealth_output("pi", "mcp") == stealth_check.PI_MCP
+    assert {_stealth_output("pi", "instructions"), stealth_check.PI_MCP} <= set(
+        stealth_check.PI_FILES
     )
-    assert _overlay_output("pi", "permissions").startswith(overlay_check.PI_PREFIXES)
+    assert _stealth_output("pi", "permissions").startswith(stealth_check.PI_PREFIXES)
     assert {
-        f"{_overlay_output('pi', 'skills')}/",
-        f"{overlay_check.SHARED_SKILLS}/",
-    } <= set(overlay_check.PI_PREFIXES)
+        f"{_stealth_output('pi', 'skills')}/",
+        f"{stealth_check.SHARED_SKILLS}/",
+    } <= set(stealth_check.PI_PREFIXES)
     assert {
-        harness: _overlay_output(harness, "skills") for harness in overlay_check.SKILL_FOLDERS
-    } == overlay_check.SKILL_FOLDERS
-    assert _overlay_output("codex", "skills") == overlay_check.SHARED_SKILLS
+        harness: _stealth_output(harness, "skills") for harness in stealth_check.SKILL_FOLDERS
+    } == stealth_check.SKILL_FOLDERS
+    assert _stealth_output("codex", "skills") == stealth_check.SHARED_SKILLS
     assert {"pi", "opencode"} <= set(SHARED_SKILL_READERS)
 
 
-def test_the_user_server_files_an_overlay_reads_are_the_global_preset_s_mcp_destinations() -> None:
-    destinations = {(harness, template) for harness, template, _ in overlay_sync._USER_SERVERS}
+def test_the_user_server_files_a_stealth_source_reads_are_the_global_preset_s_mcp_destinations() -> (
+    None
+):
+    destinations = {(harness, template) for harness, template, _ in stealth_sync._USER_SERVERS}
     preset = {
         (harness, str(GLOBAL_PRESET[harness]["mcp"].destination))
         for harness in KNOWN_HARNESSES
@@ -298,7 +300,9 @@ def test_the_user_server_files_an_overlay_reads_are_the_global_preset_s_mcp_dest
     assert destinations == {*preset, jsonc}
 
 
-def test_the_user_server_tables_an_overlay_reads_are_the_keys_the_global_render_writes() -> None:
+def test_the_user_server_tables_a_stealth_source_reads_are_the_keys_the_global_render_writes() -> (
+    None
+):
     servers = {"docs": Server(name="docs", transport="stdio", command="docs")}
     rendered = {
         "codex": tomllib.loads(render_codex_servers(servers)),
@@ -306,5 +310,5 @@ def test_the_user_server_tables_an_overlay_reads_are_the_keys_the_global_render_
         "opencode": {GLOBAL_PRESET["opencode"]["mcp"].owned_key: render_opencode_servers(servers)},
         "pi": render_pi_servers(servers),
     }
-    for harness, _, key in overlay_sync._USER_SERVERS:
+    for harness, _, key in stealth_sync._USER_SERVERS:
         assert "docs" in rendered[harness][key], (harness, key)
