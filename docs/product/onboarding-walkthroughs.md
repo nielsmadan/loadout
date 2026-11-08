@@ -8,7 +8,7 @@ Commands use the ruled syntax `loadout init global` / `loadout init project` (S-
 
 ## Who is onboarding
 
-People who already have agent configuration and feel the pain of keeping it consistent across
+People who already have harness configuration and feel the pain of keeping it consistent across
 harnesses. **Nobody arrives empty-handed.** A flow designed around an empty `HOME` is designed
 around a case that does not occur.
 
@@ -236,7 +236,7 @@ If a global source is registered, its harness list is the natural default here â
 Claude and Codex globally almost certainly wants both in this project.
 
 Fall back to detecting what this project already contains. Detection-only is the uncommon case:
-local agent configuration without any global setup is rare enough not to design around.
+local harness configuration without any global setup is rare enough not to design around.
 
 ### 4. Offer harnesses, preselecting the global set
 

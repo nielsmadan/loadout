@@ -31,6 +31,7 @@ from .errors import LoadoutError
 from .exclude import (
     PERSONAL_UNITS,
     GlobalIgnoreState,
+    exclude_path,
     global_pattern,
     offer_text,
     read_global_state,
@@ -42,6 +43,7 @@ from .exclude import (
 from .files import Drift, process_umask, text_mode, write_outputs
 from .json_paths import JsonPath, leaf_digest
 from .native_documents import jsonc_to_json
+from .overlay_leftovers import check_exclude
 from .project import project_config_path
 from .retirement import retire
 from .stealth_documents import OwnedJson
@@ -354,6 +356,7 @@ def _plan_isolated(
     context: _Context, target: Target, recorded: TargetRecord | None, *, rendering: bool
 ) -> _Planned:
     try:
+        check_exclude(exclude_path(target.common_dir))
         render = _render(context, target) if rendering else None
         return _planned(context, target, render, recorded)
     except UnreadableRecords:

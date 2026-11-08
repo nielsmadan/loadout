@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from loadout.errors import LoadoutError
-from loadout.sources import ARTIFACT_TYPES, parse_sources
+from loadout.sources import ARTIFACT_TYPES, parse_sources, parse_stealth_sources
 
 
 def test_relative_path_resolves_against_base(tmp_path: Path) -> None:
@@ -94,3 +94,36 @@ def test_sources_differing_by_name_do_not_collapse(tmp_path: Path) -> None:
     first = parse_sources([{"name": "a", "path": "a"}], tmp_path)[0]
     second = parse_sources([{"name": "b", "path": "a"}], tmp_path)[0]
     assert len({first, second}) == 2
+
+
+def _with_templates_folder(tmp_path: Path) -> Path:
+    (tmp_path / "a" / "templates").mkdir(parents=True)
+    return tmp_path / "a" / "templates"
+
+
+def test_a_templates_folder_is_ignored_by_a_source_that_does_not_use_kits(
+    tmp_path: Path,
+) -> None:
+    _with_templates_folder(tmp_path)
+    (source,) = parse_sources([{"name": "a", "path": "a", "use": ["skills"]}], tmp_path)
+    assert source.use == frozenset({"skills"})
+
+
+@pytest.mark.parametrize("entry_use", [{"use": ["kits"]}, {"use": ["skills", "kits"]}, {}])
+def test_a_templates_folder_is_refused_when_the_source_uses_kits(
+    tmp_path: Path, entry_use: dict[str, object]
+) -> None:
+    folder = _with_templates_folder(tmp_path)
+    with pytest.raises(LoadoutError) as excinfo:
+        parse_sources([{"name": "a", "path": "a", **entry_use}], tmp_path)
+    assert str(excinfo.value) == (
+        f"source 'a': {folder.resolve()}: `templates/` is now `kits/`; rename the folder"
+    )
+
+
+def test_a_stealth_source_never_reads_kits_so_a_templates_folder_is_fine(
+    tmp_path: Path,
+) -> None:
+    _with_templates_folder(tmp_path)
+    (source,) = parse_stealth_sources([{"name": "a", "path": "a"}], tmp_path)
+    assert source.use == ARTIFACT_TYPES

@@ -35,8 +35,8 @@ object form of a `packages` entry filters *which resources load* (`docs/packages
 
 ## What loadout does
 
-`<source>/module-config/<agent>/<relative path>` is copied to
-`<agent config dir>/<relative path>`. Nothing is parsed, merged or serialised.
+`<source>/module-config/<harness>/<relative path>` is copied to
+`<harness config dir>/<relative path>`. Nothing is parsed, merged or serialised.
 
 The destination in `GLOBAL_PRESET` is a **folder** rather than a file, as the skills and
 agents destinations are, and here it is the harness's whole config directory.

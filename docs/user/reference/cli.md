@@ -121,9 +121,14 @@ own configuration into repositories that have not adopted loadout; see the
 `[stealth]` table ([schema](configuration.md#stealth-sources)), and it renders only once
 registered.
 
-0.10.0 called a stealth source an overlay. The old spellings are refused with a message naming
-the new one: `loadout overlay` and `--overlay` with exit 2, an `[overlay]` table with exit 3. The
-old state is not read; see [upgrading from 0.10.0](../guides/stealth.md#upgrading-from-0100).
+0.10.0 called a stealth source an overlay. The old spellings are refused with a message that
+gives the 0.10.0 `overlay remove` command to run first, then names the new spelling: `loadout
+overlay` and `--overlay` with exit 2, an `[overlay]` table with exit 3. The old state is not
+migrated: while 0.10.0's `overlays.toml` lists an overlay, `stealth add`, `stealth remove` and
+stealth `sync` and `check` exit 3, and so do `sync`, `check` and `init project` for a target still
+holding an overlay's exclude block. `stealth list` exits 0 and, after the list, prints the same
+message on stderr as a warning; see
+[upgrading from 0.10.0](../guides/stealth.md#upgrading-from-0100).
 
 ```sh
 loadout stealth add ~/agent-config/work
@@ -462,7 +467,13 @@ Bare `kit add` in a project lists the kits your sources offer.
 | `sync NAME` | Update an unchanged vendored copy from the available upstream source |
 | `list` | Show the project's kits, each one's mode, and where it resolves |
 
-Adding a kit the project already lists changes its mode in either direction.
+Adding a kit the project already lists changes its mode in either direction. `--linked` deletes
+a vendored copy, so it refuses a copy `kit sync` would refuse as modified, with the same diff and
+exit code, and `--yes` does not override it; delete the files the refusal names and run
+`--linked` again to discard the edits. For a catalog kit, linking deletes the manifest and each
+part no other manifest in `loadout/kits/` uses; a part another vendored kit still uses stays, as it
+does when `kit sync` drops a reference, so nothing shared changes and no `--yes` is needed. The
+refusal names the manifest and those parts, edited ones included.
 
 When vendoring or syncing a catalog kit would change parts it shares with the project's other
 kits, the command lists the affected kits and asks before writing. `--yes` (on `add`
@@ -608,4 +619,4 @@ without it is refused.
 
 A modified vendored kit is a source change. `check` can report it without failing solely
 for that reason. `kit sync` on a directory kit you edited prints the diff, changes
-nothing and exits `1`.
+nothing and exits `1`; so does `kit add NAME --linked`, which would delete the copy.

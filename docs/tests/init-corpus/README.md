@@ -28,7 +28,7 @@ runner clears the Claude, Codex, Pi, Droid and OpenCode relocation variables and
 `GIT_*` variable, disables system Git config, points `GIT_CONFIG_GLOBAL` at an empty file, sets
 identity only in the disposable repository, and gives every command `/dev/null` as stdin, so init
 never stops to ask. Preserve the checkout's interpreter path: do not run
-`uv` from a sampled repository. No actual home, agent destination or installed hook is touched.
+`uv` from a sampled repository. No actual home, harness destination or installed hook is touched.
 
 ## Run the corpus
 

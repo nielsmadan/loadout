@@ -178,7 +178,7 @@ an unset variable leaves the server unauthenticated or the setting empty.
 
 The same skill handles later configuration using the configuration reference.
 `loadout integrate skill install` vendors this bundled skill into the global source's
-`skills/loadout/` and syncs it to every configured agent. It asks before source changes; `--yes`
+`skills/loadout/` and syncs it to every configured harness. It asks before source changes; `--yes`
 approves them. Status identifies the source and its harnesses. Reinstall updates unchanged copies; uninstall removes only owned, unchanged content.
 
 When this skill was started from a plain copy that `loadout integrate skill copy` made, offer

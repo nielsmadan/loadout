@@ -10,7 +10,7 @@ Your own agent config in repos you don't control, kept out of git.
 A project source is for a repository whose team has adopted loadout. A **stealth source** is for
 the other case: you work in clones of team repositories that have not adopted it, and you want
 your own instructions, MCP servers, permissions and skills in each of them, for any of the five
-agents, without committing anything. This is loadout's stealth mode.
+harnesses, without committing anything. This is loadout's stealth mode.
 
 A stealth source is a folder outside those repositories. Its `loadout.toml` has a `[stealth]` table
 that lists the repositories it renders into. You register the folder once, and `sync` writes the
@@ -64,14 +64,14 @@ a match that is the home folder, holds a harness home or the stealth folder, sit
 stealth folder, or has its own `.git` without being its checkout's top is refused.
 
 The rest of the manifest is a [global manifest](../reference/configuration.md#global-manifest):
-`[[source]]` entries, `[all]`, and one table per agent. A stealth source renders four things:
+`[[source]]` entries, `[all]`, and one table per harness. A stealth source renders four things:
 instructions, MCP servers, permissions with the settings fragment, and skills. Naming anything
 else, such as `hooks`, `plugins` or `agents`, is a configuration error that says why. The
 [configuration reference](../reference/configuration.md#stealth-sources) lists them, with the
 file each one writes.
 
 The stealth source's own `[[source]]` entries supply exactly the MCP servers it renders, so `mcp = ["name"]` is
-refused; `mcp = false` turns the slice off for an agent.
+refused; `mcp = false` turns the slice off for a harness.
 
 ## Register, preview, sync
 
@@ -84,7 +84,7 @@ loadout sync --stealth work
 `stealth add` checks the manifest and records the folder in `~/.config/loadout/stealth.toml`.
 Registering is what allows the folder to write: a stealth folder that is not registered is
 refused. `check` lists what `sync` would write as `missing`, and the notes it adds, such as a
-project the agent does not trust yet. `sync` writes the files and prints one line per change.
+project the harness does not trust yet. `sync` writes the files and prints one line per change.
 With `instructions/work.md` and a `settings/local.json` that sets `model`, the first sync of
 `~/work/app1` prints:
 
@@ -181,7 +181,7 @@ From then on the stealth source skips the repository; use the project's
 
 ## Limits
 
-- The agent must trust the project before it reads what a stealth source wrote. `check` says so for
+- The harness must trust the project before it reads what a stealth source wrote. `check` says so for
   Codex and Pi when their trust files show it is missing.
 - Switching a repository to a branch that tracks one of the stealth source's paths replaces the stealth source's
   copy with the team's. `check` names the branch.
@@ -196,8 +196,8 @@ How the record, the locks and retirement work is described in
 ## Upgrading from 0.10.0
 
 In loadout 0.10.0 a stealth source was called an overlay: `loadout overlay`, `--overlay` and an
-`[overlay]` table. This version neither reads nor migrates what 0.10.0 recorded for an overlay,
-so remove each one with 0.10.0 before you upgrade:
+`[overlay]` table. This version does not migrate what 0.10.0 recorded for an overlay, so remove
+each one with 0.10.0 before you upgrade:
 
 ```sh
 loadout overlay list
@@ -206,6 +206,22 @@ loadout overlay remove NAME --yes
 
 That retires everything the overlay wrote, including its exclude lines and its `~/.claude.json`
 servers. After upgrading, rename `[overlay]` to `[stealth]` in the folder's `loadout.toml`,
-register it with `loadout stealth add`, and sync it with `loadout sync --stealth NAME`. The old
-spellings are refused with an error that names the new one. The first sync offers the global git
-ignore block again, since 0.10.0's answer is not read either.
+register it with `loadout stealth add`, and sync it with `loadout sync --stealth NAME`. The first
+sync offers the global git ignore block again, since 0.10.0's answer is not read.
+
+If you already upgraded, this version refuses until the overlay is gone. While
+`~/.config/loadout/overlays.toml` lists an overlay, `stealth add`, `stealth remove` and every
+stealth part of `sync` and `check` exit 3; in a target whose `.git/info/exclude` still has a
+`# >>> loadout overlay NAME` block, `sync`, `check` and `init project` exit 3 for that target.
+`loadout stealth list` still prints its list and exits 0, then warns with the same message. Each
+message gives the command to run, which uses 0.10.0 without installing it:
+
+```sh
+uvx --python 3.13 --from git+https://github.com/nielsmadan/loadout.git@v0.10.0 loadout overlay remove NAME --yes
+```
+
+To clean up by hand instead, delete `~/.config/loadout/overlays.toml` and, in each target, the
+`# >>> loadout overlay NAME` block in `.git/info/exclude`; those two are what this version checks.
+Also delete the files that block lists, the `# >>> loadout overlays` block in your global git
+ignore file, the overlay's servers in `~/.claude.json`, and `~/.config/loadout/overlay-written/`,
+`~/.config/loadout/overlay-global-ignore.json` and `~/.local/state/loadout/overlay-locks/`.

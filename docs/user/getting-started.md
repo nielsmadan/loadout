@@ -3,10 +3,10 @@ title: Getting started
 description: Install Loadout and use one set of project instructions and permissions with Claude Code and Codex.
 ---
 
-# One setup, two agents
+# One setup, two harnesses
 
 This walkthrough creates a small project configuration for Claude Code and Codex. You will
-write the instructions once, render both agents' files, and make a change that reaches both.
+write the instructions once, render both harnesses' files, and make a change that reaches both.
 
 ## Install
 
@@ -79,7 +79,7 @@ no shared rules. The next sync writes `.claude/settings.json` with empty lists, 
 Codex rules file it wrote earlier rather than writing it empty. The personal
 `loadout/permissions.local.toml` can stay absent too.
 
-## Render both agents' files
+## Render both harnesses' files
 
 `init` already rendered the setup it found. Now that the source has changed, render again:
 
@@ -99,7 +99,7 @@ The resulting files include:
 
 `AGENTS.md` holds the fragment. `CLAUDE.md` holds only Loadout's banner and an `@AGENTS.md`
 line, which makes Claude Code read the same document. Permission syntax differs because the
-agents read different formats. Open either agent in this directory to use its generated setup.
+harnesses read different formats. Open either harness in this directory to use its generated setup.
 
 `loadout check` exits successfully when the generated files match their sources.
 
@@ -115,7 +115,7 @@ loadout check
 `AGENTS.md` now contains the new sentence, and Claude Code reads it through `CLAUDE.md`. Keep
 editing the source fragments, rather than the generated `CLAUDE.md` or `AGENTS.md`.
 
-## Add another agent
+## Add another harness
 
 Enable OpenCode in the same project by adding it to `harnesses` in `loadout/config.toml`:
 

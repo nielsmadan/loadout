@@ -79,7 +79,7 @@ your home directory
 ([0031](https://github.com/nielsmadan/loadout/blob/main/docs/decisions/0031-global-scope-renders-only-from-the-registered-source.md)).
 A top-level key the manifest does not read, whether a table or a value, is refused by name.
 
-A manifest needs at least one `[[source]]` and at least one target: an agent block such as
+A manifest needs at least one `[[source]]` and at least one target: a harness block such as
 `[codex]`, an `[instructions.<name>]` target or a `[permissions.<name>]` target. With none, it is
 refused with `no [<harness>], [instructions.<harness>] or [permissions.<name>] targets declared`.
 
@@ -136,9 +136,9 @@ module-config = ["pi/extensions/status/config.json"]
 See [composition](../guides/composition.md) and the
 [composition rules](https://github.com/nielsmadan/loadout/blob/main/docs/reference/composition.md).
 
-### Agent blocks
+### Harness blocks
 
-An agent block names a harness and the slices it takes. Destinations come from a built-in preset,
+A harness block names a harness and the slices it takes. Destinations come from a built-in preset,
 so a manifest never spells out a machine path.
 
 | Key | Value |
@@ -147,16 +147,16 @@ so a manifest never spells out a machine path.
 | `settings` | JSON settings fragment name or ordered list; an error under `[codex]`, whose settings are `defaults` |
 | `defaults` | Codex defaults fragment name or ordered list |
 | `hooks` | Hook fragment name or ordered list |
-| `plugins` | Plugin fragment name or ordered list, for supporting agents |
+| `plugins` | Plugin fragment name or ordered list, for supporting harnesses |
 | `substitute` | Map from selected instruction name to replacement name |
 | `preserve` | Foreign top-level keys to carry forward where the target supports them; an error under `[codex]`, where loadout already leaves the keys it does not own alone |
 | `permissions`, `mcp-permissions`, `mcp`, `skills`, `agents`, `module-config` | Automatic; `true` is the same as leaving the key out, `false` opts out, and `permissions = []` selects no rules |
 
-`[codex]` and `[pi]` with no keys are complete declarations. An unknown agent name, or a slice an
-agent does not offer, is an error listing what is available.
+`[codex]` and `[pi]` with no keys are complete declarations. An unknown harness name, or a slice a
+harness does not offer, is an error listing what is available.
 
 **Automatic slices.** `permissions`, `mcp-permissions`, `mcp`, `skills`, `agents` and
-`module-config` render without being asked for, for agents that offer them, because none has an
+`module-config` render without being asked for, for harnesses that offer them, because none has an
 authoring decision to make. For the last three the directory is the declaration, so dropping a
 tree in renders it. Any of them takes `= false` to opt out; an absent key, or `= true`, means automatic:
 
@@ -177,7 +177,7 @@ be named because which hooks run and which plugins are on are authoring decision
 means loadout does not manage them, not none. `defaults` must be named for the reason given under
 [Codex defaults](#codex-defaults).
 
-`[all]` supplies defaults to the agents you declared, so shared configuration is written once:
+`[all]` supplies defaults to the harnesses you declared, so shared configuration is written once:
 
 ```toml
 [all]
@@ -187,9 +187,9 @@ instructions = ["intro-shared", "web-fetching.shared"]
 [pi]
 ```
 
-It does not declare agents: an agent still has to be named, or adding `[all]` would enable every
-harness. Each agent's own key replaces the `[all]` default. A default an agent has no slice for is
-ignored; a key an agent block names itself is still checked.
+It does not declare harnesses: a harness still has to be named, or adding `[all]` would enable
+every harness. Each harness's own key replaces the `[all]` default. A default a harness has no
+slice for is ignored; a key a harness block names itself is still checked.
 
 `substitute` swaps one fragment for another without restating a list, and works in
 `[instructions.<name>]` targets too:
@@ -287,7 +287,7 @@ key both given a value and listed in `$remove` is an error. Entries use TOML key
 `"skills.max_context_tokens"` removes only that field. Parent/child ownership conflicts, including
 conflicts with another slice, are refused.
 
-### Where agent blocks write
+### Where harness blocks write
 
 Each destination in the preset carries that harness's config-directory variable:
 `${CLAUDE_CONFIG_DIR:-~/.claude}`, `${CODEX_HOME:-~/.codex}`,
@@ -333,7 +333,7 @@ order = ["intro-claude", "web-fetching", "git-policy.autonomous"]
 
 `extends` names a sibling profile to start from, and the file states only what differs. Profile
 names cannot contain paths; profile symlinks must resolve within the same source directory, and
-internal aliases use their canonical paths for cycle detection and source protection. Agent
+internal aliases use their canonical paths for cycle detection and source protection. Harness
 blocks, `[all]`, and each `[instructions.<name>]` and `[permissions.<name>]` target merge per
 field. Omitted fields inherit, including `output`, `destinations` and the renderer. A supplied
 field replaces its complete value: lists do not append, and maps such as `substitute` replace as a
@@ -351,7 +351,7 @@ destinations = ["~/.claude/CLAUDE.md"]
 
 Paths use TOML key syntax, including quoted names. Missing paths, overlapping removals and paths
 through lists are errors. `remove` requires `extends`. To replace a target wholesale, remove
-`instructions.claude` and then declare its complete replacement. Removing an agent field exposes
+`instructions.claude` and then declare its complete replacement. Removing a harness field exposes
 any applicable `[all]` default; existing slice `false` values still disable automatic slices.
 
 `[instructions.<name>]` and `[permissions.<name>]` targets also accept a `profile` key, which
@@ -370,7 +370,7 @@ selects the targets that render for the active profile:
 
 ### Explicit output targets
 
-Agent blocks use built-in destinations. A target can also be declared with its paths spelled out,
+Harness blocks use built-in destinations. A target can also be declared with its paths spelled out,
 and the two forms can be mixed:
 
 ```toml
@@ -406,7 +406,7 @@ shares its destination with no other needs none.
 | `output` | both | Where the generated file is written, relative to the manifest root; not absolute, empty, or escaping the root with `..` |
 | `destinations` | both | Where else the document is written: machine paths, with `~` expanded. `sync` and `check` write and diff each one like `output` |
 | `order` | instructions | The fragment names composed into the document, in order |
-| `substitute` | instructions | As in an agent block |
+| `substitute` | instructions | As in a harness block |
 | `profile` | both | The profile this target renders under; see [profiles](#profiles) |
 | `render` | permissions | The renderer: `claude`, `claude-mcp-permissions`, `codex`, `codex-mcp-permissions`, `droid`, `opencode` or `pi` |
 | `base` | permissions | Optional JSON file, relative to the manifest root, that the renderer starts from |
@@ -430,7 +430,7 @@ shares its destination with no other needs none.
   rendered on its own, so a target writing several files carries each one's foreign keys back into
   that same file.
 - A target always renders the source's rules. To render one holding none, with its settings still
-  around it, declare the harness in an agent block with `permissions = []`; a `rules` key is an
+  around it, declare the harness in a harness block with `permissions = []`; a `rules` key is an
   error.
 - No two targets, of either kind, may share an `output`, and among the targets selected for the
   active profile no two may share a destination; that is an error naming both.
@@ -577,7 +577,7 @@ settings = "local"
 [opencode]
 ```
 
-It is a global-style manifest (`[[source]]`, `[all]`, one table per agent, the same validation) plus
+It is a global-style manifest (`[[source]]`, `[all]`, one table per harness, the same validation) plus
 a `[stealth]` table. A `loadout.toml` that holds a `[stealth]` table renders only when registered;
 see [`stealth.toml`](#stealthtoml).
 
@@ -601,10 +601,10 @@ compared by file identity, so spelling and case do not matter.
 
 ### Allowed slices
 
-A stealth source renders four slices, for every agent: `instructions`, `mcp` (server definitions),
+A stealth source renders four slices, for every harness: `instructions`, `mcp` (server definitions),
 `permissions` and `skills`. Claude and Droid also accept `settings`, which names a fragment of
-the rest of their settings file, and every agent accepts `substitute`. A key in `[all]` applies to
-each declared agent that allows it, and is refused only when none does.
+the rest of their settings file, and every harness accepts `substitute`. A key in `[all]` applies to
+each declared harness that allows it, and is refused only when none does.
 
 | Named in the manifest | Result |
 | --- | --- |
@@ -613,7 +613,7 @@ each declared agent that allows it, and is refused only when none does.
 | Claude `mcp-permissions` | Refused: Claude's MCP approvals are in `permissions` |
 | `preserve` | Refused: a stealth source owns only the keys it writes |
 | `profile`, `extends`, `remove` | Refused: a stealth source has one profile, its `loadout.toml` |
-| `[instructions.*]`, `[permissions.*]` | Refused: a stealth source writes only to its fixed destinations; declare agent tables instead |
+| `[instructions.*]`, `[permissions.*]` | Refused: a stealth source writes only to its fixed destinations; declare harness tables instead |
 | any other key | Refused: a stealth source does not render it |
 
 A source folder that holds `agents/` or `module-config/` is not an error: the stealth source renders
@@ -626,7 +626,7 @@ Each destination is relative to the target's root. The files a stealth source ow
 (whole); in the three shared documents the stealth source owns only the keys and rules it renders
 (see [owned documents](#owned-documents)).
 
-| Agent | Instructions | MCP servers | Permissions and settings | Skills |
+| Harness | Instructions | MCP servers | Permissions and settings | Skills |
 | --- | --- | --- | --- | --- |
 | Claude | `CLAUDE.local.md` (whole) | `~/.claude.json`, one server at a time under `projects.<root>.mcpServers` | `.claude/settings.local.json` (shared) | `.claude/skills/<name>/` |
 | Codex | `developer_instructions` in `.codex/config.toml` (whole) | `mcp_servers` in `.codex/config.toml` | `.codex/rules/<name>.rules` (whole) | `.agents/skills/<name>/` |

@@ -14,7 +14,7 @@ from .manifest import (
     PermissionTarget,
     renamed_overlay_table,
 )
-from .sources import SourceParser, parse_sources
+from .sources import SourceParser, parse_stealth_sources
 
 STEALTH_TABLE = "stealth"
 
@@ -203,7 +203,7 @@ def _restricted(manifest: Manifest) -> Manifest:
 
 
 def load_stealth_manifest(
-    folder: Path, *, sources: SourceParser = parse_sources
+    folder: Path, *, sources: SourceParser = parse_stealth_sources
 ) -> StealthManifest:
     path = folder / MANIFEST_NAME
     data = stealth_seams.read_toml(path)

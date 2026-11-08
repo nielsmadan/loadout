@@ -107,7 +107,13 @@ def select_overrides(
 SourceParser = Callable[[list[dict[str, object]], Path], tuple["Source", ...]]
 
 
-def parse_sources(entries: list[dict[str, object]], base: Path) -> tuple[Source, ...]:
+def parse_stealth_sources(entries: list[dict[str, object]], base: Path) -> tuple[Source, ...]:
+    return parse_sources(entries, base, reads_kits=False)
+
+
+def parse_sources(
+    entries: list[dict[str, object]], base: Path, *, reads_kits: bool = True
+) -> tuple[Source, ...]:
     sources: list[Source] = []
     seen: set[str] = set()
     for entry in entries:
@@ -127,11 +133,6 @@ def parse_sources(entries: list[dict[str, object]], base: Path) -> tuple[Source,
         resolved = (path if path.is_absolute() else base / path).resolve()
         if not resolved.is_dir():
             raise LoadoutError(f"source {name!r} directory not found: {resolved}")
-        if (resolved / "templates").is_dir():
-            raise LoadoutError(
-                f"source {name!r}: {resolved / 'templates'}: `templates/` is now `kits/`; "
-                "rename the folder"
-            )
 
         raw_use = entry.get("use")
         if raw_use is None:
@@ -152,6 +153,12 @@ def parse_sources(entries: list[dict[str, object]], base: Path) -> tuple[Source,
                     f"source {name!r}: unknown use value(s) {unknown!r}; expected any of {known}"
                 )
             use = frozenset(str(u) for u in raw_use)
+
+        if reads_kits and "kits" in use and (resolved / "templates").is_dir():
+            raise LoadoutError(
+                f"source {name!r}: {resolved / 'templates'}: `templates/` is now `kits/`; "
+                "rename the folder"
+            )
 
         sources.append(
             Source(

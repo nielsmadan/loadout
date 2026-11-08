@@ -6,7 +6,7 @@ description: What this version of Loadout renders for Claude Code, Codex, Factor
 # Harness support
 
 Loadout targets Claude Code, Codex, Factory Droid, OpenCode, and Pi. These tables describe **what Loadout
-renders**, not the complete capability of each agent.
+renders**, not the complete capability of each harness.
 
 They are checked against this project's
 [global preset](https://github.com/nielsmadan/loadout/blob/main/src/loadout/harnesses.py) and
@@ -53,7 +53,7 @@ Unrelated state in those co-owned files is preserved.
 | Plugin declarations | Not rendered | Not rendered | `.factory/settings.json` | Not rendered | Not rendered |
 
 A project skill is written once to `.agents/skills/`, which Codex, OpenCode and Pi all read, when
-Codex is selected and every one of those agents selected for the skill gets the same bytes.
+Codex is selected and every one of those harnesses selected for the skill gets the same bytes.
 Otherwise OpenCode and Pi get their own folders.
 
 `loadout/settings/claude.json`, `droid.json` and `opencode.json` supply the native settings keys
@@ -64,7 +64,7 @@ contribute permissions, instructions, skills, MCP definitions, and Droid's hooks
 ## Stealth scope
 
 A [stealth source](../guides/stealth.md) renders instructions, MCP servers, permissions and skills for
-all five agents into repositories that have not adopted loadout, and nothing else. Codex gets MCP
+all five harnesses into repositories that have not adopted loadout, and nothing else. Codex gets MCP
 servers there, which project scope does not render. The files are in the
 [destination table](configuration.md#destinations).
 

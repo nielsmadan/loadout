@@ -60,7 +60,7 @@ kits/python/
 ```
 
 Every file is optional. The kit directory name is the name projects use. `hooks.json` and
-`plugins.json` reach Factory Droid only, the one agent with project hooks and plugins.
+`plugins.json` reach Factory Droid only, the one harness with project hooks and plugins.
 
 ### Share parts between kits
 
@@ -116,7 +116,7 @@ Linked kits work well across your own projects or a team that shares the same so
 Edit the kit once, then sync the projects that consume it.
 
 Vendored kits travel with the repository. Contributors still need Loadout to render the
-agent files, but they do not need the original kit source just to use the vendored copy.
+harness files, but they do not need the original kit source just to use the vendored copy.
 
 ## Vendor a copy
 
@@ -127,7 +127,12 @@ loadout sync
 
 The mode belongs to the project's entry for the kit. Running `add` with `--vendored` on a kit the
 project already lists changes it from linked to vendored; `--linked` on a vendored one switches
-back once the source can still resolve the name. Bare `loadout kit add` lists every
+back once the source can still resolve the name. Linking deletes the copy, so a copy you modified
+is refused the way `kit sync` refuses it: Loadout prints the diff, changes nothing and exits 1.
+Keep the edits by leaving the kit vendored, or discard them by deleting the files the refusal
+names and running `--linked` again. For a catalog kit those are its manifest and every part no
+other vendored kit uses; linking an unmodified one deletes the same files and leaves the shared
+parts in place. Bare `loadout kit add` lists every
 kit this machine can resolve and prompts for a name and a mode; without a terminal it
 requires both.
 

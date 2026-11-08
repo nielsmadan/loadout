@@ -1,6 +1,6 @@
 # Where each harness keeps each kind of configuration
 
-Agent configuration divides into eight kinds — **settings, instructions, permissions, hooks,
+Harness configuration divides into eight kinds — **settings, instructions, permissions, hooks,
 mcp, plugins, skills, agents**. Each harness stores them in a different place, and the boundaries
 between them differ too: what is one file on one harness is three on another.
 

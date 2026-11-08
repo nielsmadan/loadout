@@ -115,6 +115,18 @@ stands alone. This is what an open-source project whose contributors do not inst
 The mode belongs to the project's entry for the kit. `kit add <name> --vendored` on a kit the
 project already lists changes it to vendored, copying the tree and recording its hash;
 `--linked` on a vendored one switches back once the source can still resolve the name.
+Switching back deletes the copy, so it applies `kit sync`'s gate (`kits.py:has_local_edits`): a
+copy that cannot be proved unmodified is refused with sync's diff and exit 1 for a directory, exit
+3 for a catalog manifest, and nothing overrides it, `--yes` included. Deleting the copy and
+running `--linked` again discards the edits and drops the stale `[kit.<name>]` hash. A catalog
+copy is the manifest plus each part no sibling manifest in its folder uses
+(`kits.py:vendored_files`, which also counts the upstream manifest's parts, so a copy whose
+manifest was edited still names them); a part a sibling uses stays, as in `kit sync`, so no other
+kit is affected and no `--yes` applies. The refusal names exactly those files. Deleting the
+manifest alone left those parts behind, and the next `--vendored` read them and refused them as
+conflicting shared parts once the source had changed one. Dropping the hash also drops the blank
+line `record_hash` put before it, so a vendor and link round trip leaves `config.toml` byte for
+byte as it was.
 After either, `kit add` names each project skill the kit supplies with the same files
 and bytes, `loadout/skills/<name> is byte for byte the skill <kit> already supplies`, with the
 `rm -r` that takes the kit's copy instead. It never deletes the copy itself: the project's

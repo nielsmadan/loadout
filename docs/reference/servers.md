@@ -45,8 +45,8 @@ unauthenticated with nothing saying so. `plugins.py` rejects stray keys for the 
 
 A source offering no `mcp.toml` contributes no servers, the same way one offering no
 `permissions.toml` contributes no tier. `mcp` is **automatic**, like `permissions` — defining a
-server needs no per-agent authoring decision, so it renders without being named in a manifest's
-agent block (`AUTOMATIC_SLICES` in `manifest.py`).
+server needs no per-harness authoring decision, so it renders without being named in a manifest's
+harness block (`AUTOMATIC_SLICES` in `manifest.py`).
 
 At project scope, a kit contributes its own `mcp.toml` the same way it contributes
 `permissions.toml`, `instructions.md` and `skills/` — a tier beneath the project, so a project

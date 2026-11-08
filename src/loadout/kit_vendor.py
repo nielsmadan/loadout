@@ -8,7 +8,7 @@ from pathlib import Path
 from .atomic import atomic_install, read_file
 from .errors import LoadoutError, UsageError
 from .kit_catalog import load_catalog
-from .kits import declare, record_hash, tree_hash, vendored_path
+from .kits import declare, has_local_edits, record_hash, tree_hash, vendored_path
 from .output import FrozenFile
 from .project import ProjectConfig, load_project_config, project_config_path
 from .resolve import ResolvedItem
@@ -93,10 +93,8 @@ def _clean(
         manifest = selected.get(other)
         if manifest is None:
             continue
-        digest = tree_hash(manifest)
-        recorded = config.vendored_hash(other)
-        if digest != recorded and not (
-            other == name and recorded is None and digest == tree_hash(upstream)
+        if has_local_edits(
+            manifest, config.vendored_hash(other), upstream if other == name else None
         ):
             raise LoadoutError(
                 f"{other}: vendored copy is modified or has no recorded provenance; sync refused"

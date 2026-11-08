@@ -145,19 +145,19 @@ def test_capability_matrix_pins_every_scope_mapping() -> None:
         "hooks": (
             "unsupported",
             "Droid via `loadout/hooks.json`",
-            "`hooks/<name>.json` fragments selected by agents offering hooks",
+            "`hooks/<name>.json` fragments selected by harnesses offering hooks",
         ),
         "plugins": (
             "unsupported",
             "Droid via `loadout/plugins.json`",
-            "`plugins/<name>.json` fragments selected by agents offering plugins",
+            "`plugins/<name>.json` fragments selected by harnesses offering plugins",
         ),
         "module-config": (
             "unsupported",
             "unsupported",
             (
                 "supported for `claude`, `droid`, `opencode`, `pi` via "
-                "`module-config/<agent>/<relative path>`; Codex unsupported"
+                "`module-config/<harness>/<relative path>`; Codex unsupported"
             ),
         ),
         "kits": (
@@ -168,7 +168,7 @@ def test_capability_matrix_pins_every_scope_mapping() -> None:
         "harnesses": (
             "unsupported",
             "`harnesses` in `loadout/config.toml`",
-            "declared agent blocks",
+            "declared harness blocks",
         ),
         "profiles": (
             "unsupported",

@@ -7,6 +7,7 @@ from pathlib import Path, PurePosixPath
 
 from .errors import LoadoutError
 from .harnesses import DIRECTORY_SLICES, GLOBAL_PRESET, KNOWN_HARNESSES, SliceOutput
+from .overlay_leftovers import FIRST_REMOVE
 from .skill_policy import SkillPolicy, parse_skill_policies
 from .sources import Source, SourceParser, parse_sources
 from .toml_paths import contains, key_path
@@ -288,7 +289,7 @@ def _parse_permissions(
         if "rules" in block:
             raise LoadoutError(
                 f"{label}: unknown key 'rules'. To render a target with no permission rules, "
-                "declare its harness in an agent block with `permissions = []`"
+                "declare its harness in a harness block with `permissions = []`"
             )
 
         profile = block.get("profile")
@@ -326,7 +327,9 @@ def _read_toml(path: Path) -> dict[str, object]:
 def renamed_overlay_table(data: dict[str, object], path: Path) -> LoadoutError | None:
     if "overlay" not in data:
         return None
-    return LoadoutError(f"{path}: `[overlay]` is now `[stealth]`; rename the table")
+    return LoadoutError(
+        f"{path}: `[overlay]` is now `[stealth]`; {FIRST_REMOVE}, then rename the table"
+    )
 
 
 def _remove_inherited(merged: dict[str, object], data: dict[str, object]) -> None:

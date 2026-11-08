@@ -1,6 +1,6 @@
 # Harness reference
 
-How each supported agent harness handles permissions, and what `loadout` emits for it.
+How each supported harness handles permissions, and what `loadout` emits for it.
 
 [config.md](config.md) is the other axis: where each harness keeps each of the eight kinds of
 configuration — settings, instructions, permissions, hooks, mcp, plugins, skills, agents — at global

@@ -87,7 +87,7 @@ turning the cursor into versioned source.
 **OpenCode is out of the slice**, and that is a finding rather than an omission: a plugin is on
 there because a `.ts` file exists in `~/.config/opencode/plugins/`, and its dependencies live in
 an npm manifest `npm`/`bun` owns. There is no enablement list to render, so `plugins` under
-`[opencode]` is an error listing what that agent does offer. Placing those files is *content*,
+`[opencode]` is an error listing what that harness does offer. Placing those files is *content*,
 not enablement — so the file goes through
 [module-config](module-config.md#other-harnesses) instead.
 

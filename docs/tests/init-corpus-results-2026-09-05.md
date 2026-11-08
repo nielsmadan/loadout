@@ -60,7 +60,7 @@ existing repository because no current content is moved into source.
 ### Existing setup observations
 
 - Existing root `CLAUDE.md` and `AGENTS.md` files produced warnings. The warning surface did not
-  inventory nested instructions or other agent artifacts.
+  inventory nested instructions or other harness artifacts.
 - Harness selection was entirely the caller's `--harness` choice. Existing directories and
   files did not enable a harness automatically.
 - `cpisciotta/xcbeautify` used `CLAUDE.md -> AGENTS.md`; `CodelyTV/agent-harness` used harness

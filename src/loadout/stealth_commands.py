@@ -11,10 +11,19 @@ from typing import Any
 from . import machine
 from .commands import check_result, cmd_check, cmd_sync
 from .errors import LoadoutError, UsageError
+from .exclude import exclude_path
 from .git_runner import toplevel
 from .manifest import manifest_path
+from .overlay_leftovers import (
+    OverlayLeftover,
+    UnreadableOverlayRegistry,
+    check_exclude,
+    check_registry,
+    registry_notice,
+)
 from .project import project_config_path
 from .stealth_check import StealthCheck, check_stealth, report_check
+from .stealth_git import GitFailure, identity
 from .stealth_lock import same_path
 from .stealth_manifest import holds_stealth, load_stealth_manifest
 from .stealth_record import (
@@ -58,6 +67,10 @@ class Selection:
     registry_error: str | None = None
 
 
+def _refuse_overlay_registry() -> None:
+    check_registry(machine.config_dir())
+
+
 def _record_holder(folder: Path, registered: set[str]) -> str | None:
     scan = scan_stealth_records()
     if scan.problems:
@@ -73,6 +86,7 @@ def _record_holder(folder: Path, registered: set[str]) -> str | None:
 
 
 def cmd_stealth_add(directory: Path | None, name: str | None) -> int:
+    _refuse_overlay_registry()
     folder = (directory or Path.cwd()).resolve()
     load_stealth_manifest(folder)
     chosen = name if name is not None else folder.name.lower()
@@ -123,7 +137,6 @@ def cmd_stealth_list() -> int:
     orphans = _unregistered(registered, every_stealth_record())
     if not registered and not orphans:
         print("no stealth sources registered; add one with `loadout stealth add <folder>`")
-        return 0
     for stealth in registered:
         print(f"{stealth.name}  {stealth.folder}  {_targets(stealth)}")
     for record in orphans:
@@ -131,6 +144,9 @@ def cmd_stealth_list() -> int:
             f"{record.name}  {record.folder}  (unregistered record; remove it with "
             f"`loadout stealth remove {record.name}`)"
         )
+    notice = registry_notice(machine.config_dir())
+    if notice is not None:
+        print(f"WARNING: {notice}", file=sys.stderr)
     return 0
 
 
@@ -214,11 +230,16 @@ def _local(
 ) -> Selection:
     manifest_here = _has_manifest(root)
     try:
+        _refuse_overlay_registry()
         registry = load_registry(stealth_path())
     except (LoadoutError, OSError) as error:
+        if isinstance(error, OverlayLeftover) and not manifest_here and not holds_stealth(root):
+            raise
         if holds_stealth(root):
             return Selection(None, None, None, (), False, str(error))
-        if manifest_here and isinstance(error, OSError | UnreadableRegistry):
+        if manifest_here and isinstance(
+            error, OSError | UnreadableRegistry | UnreadableOverlayRegistry
+        ):
             return Selection(*resolve(), None, _warned(error), force)
         return Selection(*resolve(), None, (), force, str(error))
     found = find_by_folder(registry, root)
@@ -257,9 +278,11 @@ def resolve_selection(  # noqa: PLR0913
     if stealth is not None:
         if profile is not None:
             raise UsageError(PROFILE_REFUSAL)
+        _refuse_overlay_registry()
         return Selection(None, None, None, ((_registered(stealth), None),), force)
     if use_global:
         try:
+            _refuse_overlay_registry()
             stealth_sources = tuple((found, None) for found in load_registry(stealth_path()))
             registry_error = None
         except (LoadoutError, OSError) as error:
@@ -424,8 +447,18 @@ def cmd_check_selection(selection: Selection, *, as_json: bool) -> int:
     return max(codes)
 
 
+def _refuse_overlay_block(root: Path) -> None:
+    try:
+        found = identity(root)
+    except GitFailure:
+        return
+    if found is not None:
+        check_exclude(exclude_path(found.common_dir))
+
+
 def refuse_targeted_init(root: Path) -> None:
     resolved = root.resolve()
+    _refuse_overlay_block(resolved)
     scan = scan_stealth_records()
     if scan.problems:
         raise LoadoutError(
@@ -540,6 +573,7 @@ def _failed_removal(stealth: RegisteredStealth, registered: bool) -> str:
 
 
 def cmd_stealth_remove(name: str, *, force: bool, yes: bool) -> int:
+    _refuse_overlay_registry()
     stealth, registered = _removal_target(name)
     record, status = read_stealth_record(stealth.folder, name, harness_homes().home)
     path = stealth_record_path(stealth.folder)

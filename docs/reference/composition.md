@@ -6,7 +6,7 @@ rules describe different operations.
 
 | mechanism | omission | explicit list/map value | removal or collision |
 |---|---|---|---|
-| profile `extends`, agent fields, legacy targets and `[all]` defaults | inherit | replace the complete field; `[]` is empty | profile `remove` deletes inherited TOML key paths before child fields apply |
+| profile `extends`, harness fields, legacy targets and `[all]` defaults | inherit | replace the complete field; `[]` is empty | profile `remove` deletes inherited TOML key paths before child fields apply |
 | instruction fragment order | select no unnamed content | concatenate selected prose in order | `substitute` replaces a fragment by name |
 | settings/hooks/plugins/defaults fragments | keep previous value | maps merge recursively; arrays append, including duplicates | JSON `null` deletes; later scalar/type wins |
 | portable permission sources | no vote | union in tier order | identical rules use deny > ask > allow; catch-all uses strictest stated value |
@@ -27,11 +27,11 @@ prose; loadout does not interpret contradictory sentences.
 sibling file: empty names, dot names and path separators are rejected. Profile symlinks must
 resolve within that directory; internal aliases use canonical identities for cycle detection
 and dependency protection. Legacy targets
-inherit individual fields, just like agent blocks. A `substitute` map is a field value, so a child
+inherit individual fields, just like harness blocks. A `substitute` map is a field value, so a child
 map replaces it; remove one inherited map member through a TOML key path when needed. Removing a
 whole target before redeclaring it expresses whole-target replacement.
 
-After profiles are resolved, `[all]` supplies defaults to declared agents. Removing an agent's
+After profiles are resolved, `[all]` supplies defaults to declared harnesses. Removing a harness's
 own field exposes that shared default. Existing `false` slice values disable automatic slices.
 There is no kit or project `extends`: verified in `kit_catalog.py:_load_catalog` and
 `project.py:load_project_config`, whose accepted key sets reject it. Catalogs reuse selected parts.

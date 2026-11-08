@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+import shutil
 from pathlib import Path
 
 import pytest
@@ -342,3 +344,166 @@ def test_a_link_inside_a_catalog_is_still_refused(tmp_path: Path, catalog: Path)
 
     with pytest.raises(LoadoutError, match=r"path is a symlink: .*review-typescript/notes\.md"):
         load_catalog(catalog / "nextjs.toml")
+
+
+def test_linking_an_edited_vendored_catalog_is_refused_and_keeps_the_edits(
+    bare_project: Path, catalog: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert _kit(bare_project, "vendored", "nextjs") == 0
+    local = bare_project / "loadout/kits/nextjs.toml"
+    local.write_text('instructions = ["typescript"]\n')
+    capsys.readouterr()
+
+    assert _kit(bare_project, "linked", "nextjs") == 3
+
+    assert capsys.readouterr().err == (
+        "loadout: nextjs: vendored copy is modified or has no recorded provenance; switch to "
+        "linked refused. Keep it vendored, or delete loadout/kits/nextjs.toml, "
+        "loadout/kits/instructions/nextjs.md, loadout/kits/instructions/typescript.md, "
+        "loadout/kits/mcp/github.toml, loadout/kits/permissions/node.toml, "
+        "loadout/kits/skills/review-typescript and run `loadout kit add nextjs --linked` to "
+        "discard the edits\n"
+    )
+    assert local.read_text() == 'instructions = ["typescript"]\n'
+    assert resolve_kit("nextjs", bare_project).kind == "vendored"
+
+
+def test_linking_an_unedited_vendored_catalog_removes_the_manifest(
+    bare_project: Path, catalog: Path
+) -> None:
+    assert _kit(bare_project, "vendored", "nextjs") == 0
+
+    assert _kit(bare_project, "linked", "nextjs") == 0
+
+    assert resolve_kit("nextjs", bare_project).path == catalog / "nextjs.toml"
+    assert load_project_config(project_config_path(bare_project)).kits == ("nextjs",)
+
+
+def _loadout_tree(root: Path) -> dict[str, bytes]:
+    folder = root / "loadout"
+    return {
+        path.relative_to(folder).as_posix(): path.read_bytes()
+        for path in sorted(folder.rglob("*"))
+        if path.is_file()
+    }
+
+
+def _follow_refusal(root: Path, refusal: str) -> int:
+    match = re.search(r"or delete (.+) and run `loadout (kit add \S+ --linked)`", refusal)
+    assert match is not None, refusal
+    for shown in match[1].split(", "):
+        path = root / shown
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+    return main([*match[2].split(), "--root", str(root)])
+
+
+def _clean_switch(root: Path) -> dict[str, bytes]:
+    assert _kit(root, "vendored", "nextjs") == 0
+    assert _kit(root, "linked", "nextjs") == 0
+    return _loadout_tree(root)
+
+
+def test_linking_a_vendored_catalog_returns_the_project_to_its_linked_state(
+    bare_project: Path, catalog: Path
+) -> None:
+    assert _kit(bare_project, "linked", "nextjs") == 0
+    linked = _loadout_tree(bare_project)
+
+    assert _clean_switch(bare_project) == linked
+    assert _clean_switch(bare_project) == linked
+    assert linked["config.toml"].endswith(b'kits = ["nextjs"]\n')
+
+
+@pytest.mark.parametrize(
+    ("edited", "text"),
+    [
+        ("nextjs.toml", 'instructions = ["typescript"]\n'),
+        ("instructions/nextjs.md", "Local Next.js advice\n"),
+    ],
+)
+def test_following_the_link_refusal_reaches_the_clean_switch_state(
+    bare_project: Path, catalog: Path, edited: str, text: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    clean = _clean_switch(bare_project)
+    assert _kit(bare_project, "vendored", "nextjs") == 0
+    (bare_project / "loadout/kits" / edited).write_text(text)
+    capsys.readouterr()
+    assert _kit(bare_project, "linked", "nextjs") == 3
+    refusal = capsys.readouterr().err
+
+    assert _follow_refusal(bare_project, refusal) == 0
+
+    assert _loadout_tree(bare_project) == clean
+    assert resolve_kit("nextjs", bare_project).path == catalog / "nextjs.toml"
+
+
+def test_the_link_refusal_names_an_edited_part(
+    bare_project: Path, catalog: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert _kit(bare_project, "vendored", "nextjs") == 0
+    assert _kit(bare_project, "vendored", "react-native") == 0
+    (bare_project / "loadout/kits/instructions/nextjs.md").write_text("Local Next.js advice\n")
+    capsys.readouterr()
+
+    assert _kit(bare_project, "linked", "nextjs") == 3
+
+    assert capsys.readouterr().err == (
+        "loadout: nextjs: vendored copy is modified or has no recorded provenance; switch to "
+        "linked refused. Keep it vendored, or delete loadout/kits/nextjs.toml, "
+        "loadout/kits/instructions/nextjs.md, loadout/kits/permissions/node.toml and run "
+        "`loadout kit add nextjs --linked` to discard the edits\n"
+    )
+    assert (bare_project / "loadout/kits/instructions/nextjs.md").read_text() == (
+        "Local Next.js advice\n"
+    )
+
+
+@pytest.mark.parametrize("extra", [[], ["--yes"]])
+def test_linking_a_vendored_catalog_removes_the_parts_only_it_uses(
+    bare_project: Path, catalog: Path, extra: list[str]
+) -> None:
+    for name in ("nextjs", "react-native"):
+        assert _kit(bare_project, "vendored", name) == 0
+    shared = {
+        path: content
+        for path, content in _loadout_tree(bare_project).items()
+        if path.startswith("kits/")
+        and path
+        not in {
+            "kits/nextjs.toml",
+            "kits/instructions/nextjs.md",
+            "kits/permissions/node.toml",
+        }
+    }
+
+    assert main(["kit", "add", "nextjs", "--linked", "--root", str(bare_project), *extra]) == 0
+
+    after = _loadout_tree(bare_project)
+    assert {path: content for path, content in after.items() if path.startswith("kits/")} == shared
+    assert sorted(shared) == [
+        "kits/instructions/typescript.md",
+        "kits/mcp/github.toml",
+        "kits/react-native.toml",
+        "kits/skills/review-typescript/SKILL.md",
+    ]
+    config = load_project_config(project_config_path(bare_project))
+    assert config.vendored_hash("react-native") == tree_hash(
+        vendored_path(bare_project, "react-native")
+    )
+    assert resolve_kit("react-native", bare_project).kind == "vendored"
+
+
+def test_vendoring_again_after_linking_takes_a_part_the_source_changed(
+    bare_project: Path, catalog: Path
+) -> None:
+    _clean_switch(bare_project)
+    (catalog / "instructions/typescript.md").write_text("Updated shared advice\n")
+
+    assert _kit(bare_project, "vendored", "nextjs") == 0
+
+    assert (
+        bare_project / "loadout/kits/instructions/typescript.md"
+    ).read_text() == "Updated shared advice\n"

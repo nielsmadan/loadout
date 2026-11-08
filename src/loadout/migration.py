@@ -102,7 +102,7 @@ TREE_CATEGORIES = {
 
 PROJECT_INSTRUCTION = "instructions/main.md"
 SERVERS_EXAMPLE = b"""\
-# MCP server definitions, rendered for every agent that reads MCP config.
+# MCP server definitions, rendered for every harness that reads MCP config.
 # Uncomment a block, edit it, then run `loadout sync --global`.
 #
 # [context7]
@@ -119,14 +119,14 @@ SERVERS_EXAMPLE = b"""\
 SOURCE_README = b"""\
 # Agent configuration
 
-A loadout global source. `loadout sync --global` renders it into each agent's own
+A loadout global source. `loadout sync --global` renders it into each harness's own
 configuration; edit here rather than in the generated files.
 
 ## Layout
 
-    loadout.toml       the agents, and the slices each one takes
-    permissions.toml   shell and MCP tool rules for every agent
-    mcp.toml           MCP server definitions for every agent that reads them
+    loadout.toml       the harnesses, and the slices each one takes
+    permissions.toml   shell and MCP tool rules for every harness
+    mcp.toml           MCP server definitions for every harness that reads them
     instructions/      instruction fragments, named in reading order
     settings/          settings fragments, one JSON document per name
     defaults/          Codex config.toml fragments, one JSON document per name
@@ -134,7 +134,7 @@ configuration; edit here rather than in the generated files.
     plugins/           plugin fragments, one JSON document per name
     skills/            skills, one folder each holding a SKILL.md
     agents/            subagents, one Markdown file each
-    module-config/     files copied verbatim into an agent's config directory
+    module-config/     files copied verbatim into a harness's config directory
     kits/              project kits, one <name>/ folder or <name>.toml manifest each
 
 Only what you use has to exist.
@@ -142,12 +142,12 @@ Only what you use has to exist.
 ## Add hooks, plugins or settings
 
 1. Write the fragment, for example `hooks/claude.json`.
-2. Name the fragment in the agent's block, for example `hooks = ["claude"]`.
+2. Name the fragment in the harness's block, for example `hooks = ["claude"]`.
 3. Run `loadout sync --global`.
 
-Hooks, plugins, settings and instructions must be named: an agent block that leaves
+Hooks, plugins, settings and instructions must be named: a harness block that leaves
 one out means loadout does not manage it. Permissions, MCP servers, skills, agents and
-module-config apply to every declared agent without being named.
+module-config apply to every declared harness without being named.
 """
 
 

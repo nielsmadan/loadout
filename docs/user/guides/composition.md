@@ -57,7 +57,7 @@ instruction document would carry a Markdown heading from more than one fragment,
 note: claude.instructions: the instruction document repeats the heading "## Testing", from instructions/workflow.md and instructions/claude.md; keep one section, with /loadout
 ```
 
-The note covers each agent's global document, and a project's document together with its
+The note covers each harness's global document, and a project's document together with its
 kits' instructions. It never changes the exit code.
 
 A source's optional `use` list restricts what it contributes:
@@ -71,7 +71,7 @@ use = ["instructions", "permissions", "kits"]
 
 Omitting `use` makes its available slices eligible.
 
-## Share defaults across agents
+## Share defaults across harnesses
 
 ```toml
 [all]
@@ -83,8 +83,8 @@ instructions = ["workflow", "testing"]
 instructions = ["workflow", "testing", "codex"]
 ```
 
-An agent's explicit value replaces the corresponding `[all]` default. An instruction list is
-replaced as a list, rather than appended automatically. Only named agents are enabled.
+A harness's explicit value replaces the corresponding `[all]` default. An instruction list is
+replaced as a list, rather than appended automatically. Only named harnesses are enabled.
 
 ## How content combines
 
@@ -115,7 +115,7 @@ loadout: Claude Code writes /home/you/.claude/skills/synced itself; rename the s
 
 Rename the skill or agent in the source.
 
-These rules describe Loadout's composition. Each agent still applies its native matching and
+These rules describe Loadout's composition. Each harness still applies its native matching and
 scope precedence to the generated files.
 
 ## Profiles

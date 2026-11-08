@@ -32,8 +32,8 @@ references `nextjs` instructions and `node` permissions. Vendoring both produces
 layout in the project: one shared skill tree, not a copy nested under each kit.
 `loadout/config.toml` records both names and each manifest's content hash.
 
-The native-project tests build their source from `plan_migration`, both with all four agents
-configured and each agent alone. Normal `write_all` produces instruction files, native MCP and permission
+The native-project tests build their source from `plan_migration`, both with all four harnesses
+configured and each harness alone. Normal `write_all` produces instruction files, native MCP and permission
 documents, and skills through the project slices. The shared non-Claude skill
 collection is `.agents/skills`; Claude uses `.claude/skills`.
 
@@ -58,9 +58,8 @@ collection is `.agents/skills`; Claude uses `.claude/skills`.
   retirement until the generated file is restored to its last-written bytes.
 - Reject escaped paths, symlinks, ambiguous formats and conflicting existing shared parts.
 - Vendor qualified names and update commented TOML lists without invalidating the config.
-- Reject unsupported native permissions; opt auxiliary routes out with
-  `template_parts = false`.
-- Check each agent's exact shell allow/ask/deny and MCP tool-policy output, plus MCP definitions,
+- Reject unsupported native permissions.
+- Check each harness's exact shell allow/ask/deny and MCP tool-policy output, plus MCP definitions,
   instructions and skill/support content. A second sync writes nothing and check reports no drift.
 - Check Codex policy without definitions, quoted server names, native policy restrictions and
   unrelated server/tool settings, then remove the kit and recover native policy.

@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-description: Resolve drift, protected edits, missing sources, kit update conflicts, and agent setup notices.
+description: Resolve drift, protected edits, missing sources, kit update conflicts, and harness setup notices.
 ---
 
 # Troubleshooting
@@ -83,7 +83,7 @@ There are two answers:
    `loadout sync`. Every machine gets the value, and the next change made in the harness is drift
    again.
 2. **Hand the key to the harness.** Remove it from the source, if it is there, and name it in the
-   agent block's `preserve`. Sync then copies the key from the file on disk into the file it
+   harness block's `preserve`. Sync then copies the key from the file on disk into the file it
    writes, and `check` no longer reports changes to it:
 
    ```toml
@@ -172,19 +172,28 @@ target's outputs, and the other targets, to proceed unless noted. See the
 
 ## `overlay` is now `stealth`
 
-loadout 0.10.0 called a stealth source an overlay. This version refuses the old spellings and
-names the new one:
+loadout 0.10.0 called a stealth source an overlay. This version refuses the old spellings, and
+each refusal first tells you to remove the old overlay with 0.10.0 (`R` below is
+`` `uvx --python 3.13 --from git+https://github.com/nielsmadan/loadout.git@v0.10.0 loadout overlay remove NAME --yes` ``):
 
 | Message | Fix |
 | --- | --- |
-| `` `overlay` is now `stealth`; use `loadout stealth add`, `list` or `remove` `` (exit 2) | Use `loadout stealth` |
-| `` `--overlay` is now `--stealth`; use `loadout sync --stealth NAME` `` (exit 2) | Use `--stealth NAME` with `sync` and `check` |
-| `` F: `[overlay]` is now `[stealth]`; rename the table `` (exit 3) | Rename the table in that `loadout.toml` |
+| `` `overlay` is now `stealth`; first remove any overlay 0.10.0 registered with R, then use `loadout stealth add`, `list` or `remove` `` (exit 2) | Run R for each overlay, then use `loadout stealth` |
+| `` `--overlay` is now `--stealth`; first remove any overlay 0.10.0 registered with R, then use `loadout sync --stealth NAME` `` (exit 2) | Run R for each overlay, then use `--stealth NAME` with `sync` and `check` |
+| `` F: `[overlay]` is now `[stealth]`; first remove any overlay 0.10.0 registered with R, then rename the table `` (exit 3) | Run R for each overlay, then rename the table in that `loadout.toml` |
+| `` F still registers the 0.10.0 overlay NAME; remove it first with R `` (exit 3) | `~/.config/loadout/overlays.toml` lists an overlay. Run R for each name |
+| `` F is 0.10.0's overlay registry and cannot be read (…) `` (exit 3) | Fix `overlays.toml` and run R, or delete it if no overlay is left |
+| `` WARNING: F still registers the 0.10.0 overlay NAME; remove it first with R `` (from `stealth list`, exit 0) | As above; `stealth list` prints its list and then this warning, or the cannot-be-read message, instead of refusing |
+| `` F still holds the 0.10.0 overlay block NAME; remove it first with R `` (exit 3) | That repository's `.git/info/exclude` has a `# >>> loadout overlay NAME` block. Run R |
 
-This version neither reads nor migrates what 0.10.0 recorded for an overlay: its registration,
-its records and its exclude blocks. Before upgrading, run `loadout overlay remove NAME --yes`
-with 0.10.0 for each overlay `loadout overlay list` prints, then register the folder again with
-`loadout stealth add`; see [upgrading from 0.10.0](guides/stealth.md#upgrading-from-0100).
+This version does not migrate what 0.10.0 recorded for an overlay; it only looks for it so that
+it can refuse. While `overlays.toml` lists an overlay, `stealth add`, `stealth remove` and the
+stealth part of `sync` and `check` refuse (a project or the global source still syncs, with exit
+3); `stealth list` still lists, then warns. A target whose `.git/info/exclude` still has an
+overlay block is refused on its own, while the other targets sync; `init project` refuses there too, so the overlay's personal files are not
+adopted into the team's source. Run R for each overlay `loadout overlay list` printed, ideally
+before upgrading; see [upgrading from 0.10.0](guides/stealth.md#upgrading-from-0100), which also
+says what to delete by hand.
 
 ## Sync or check refuses a global setup
 
@@ -237,7 +246,7 @@ note: claude.instructions: the instruction document repeats the heading "## Test
 ```
 
 Two fragments selected into one instruction document each bring the same Markdown heading, so
-the agent reads that section twice. Merge the two sections into one fragment, or ask the
+the harness reads that section twice. Merge the two sections into one fragment, or ask the
 `/loadout` skill to. The note is advisory: sync still writes, and `check`'s exit code is
 unaffected. See [composition](guides/composition.md#combine-sources).
 
@@ -267,9 +276,9 @@ If a machine configuration already exists, inspect its `source` path first.
 
 ## No targets declared
 
-A manifest must declare at least one `[<agent>]` block. `init global` writes one for each harness
+A manifest must declare at least one `[<harness>]` block. `init global` writes one for each harness
 it adopted; if they were removed, add one back as in the
-[agent-block example](guides/global.md#choose-your-agents).
+[harness-block example](guides/global.md#choose-your-harnesses).
 
 ## A fragment cannot be found
 
@@ -321,14 +330,14 @@ port it into the source and delete it.
 The bundled `loadout integrate skill uninstall` command has its own ownership-aware cleanup for
 the skill it installed.
 
-## An agent misses part of the configuration
+## A harness misses part of the configuration
 
 Check the [support table](reference/harnesses.md). Some slices are global-only, and some depend
 on a harness extension or adapter.
 
 For OpenCode skills, check
 [`OPENCODE_DISABLE_CLAUDE_CODE_SKILLS`](reference/harnesses.md#opencode-skills).
-After installing new skills or changing agent startup configuration, restart the agent session.
+After installing new skills or changing harness startup configuration, restart the agent session.
 
 ## Init could not convert a setup
 

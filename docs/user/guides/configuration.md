@@ -1,15 +1,15 @@
 ---
-title: Configuring your agents
+title: Configuring your harnesses
 description: Learn where instructions, permissions, skills, tools, settings, hooks, plugins, and module files belong.
 ---
 
 # Put each kind of configuration in its source
 
-A **slice** is one kind of agent configuration. Instructions, permissions, skills, MCP servers,
+A **slice** is one kind of harness configuration. Instructions, permissions, skills, MCP servers,
 and settings each have their own source shape.
 
 Start with [global setup](global.md) or [project setup](projects.md), then add the slices you need.
-The [support table](../reference/harnesses.md) shows which agents and scopes receive each one.
+The [support table](../reference/harnesses.md) shows which harnesses and scopes receive each one.
 
 ## Instructions
 
@@ -67,7 +67,7 @@ skills/review/
 ```
 
 For a project, use `loadout/skills/review/`. The directory itself declares the skill.
-Global agent blocks can opt out with `skills = false`. A file directly in `skills/` is not a
+Global harness blocks can opt out with `skills = false`. A file directly in `skills/` is not a
 skill: `sync` and `check` name it and skip it, except `README.md` and dotfiles, which they skip
 without a word.
 
@@ -112,10 +112,10 @@ is `inherit` or a map per harness; a harness it leaves out inherits. `effort` ru
 `max` and is translated to each harness's own scale; a harness without that level gets the
 nearest lower one, or none, and `sync` prints a note saying so.
 
-Every configured agent receives it: Claude in `agents/`, Codex as a TOML file in `agents/`,
+Every configured harness receives it: Claude in `agents/`, Codex as a TOML file in `agents/`,
 Droid in `droids/`, OpenCode in `agents/`, and Pi in `agents/` for the `pi-subagents` package,
 which Pi needs installed. The [support table](../reference/harnesses.md) lists the paths at
-both scopes. In a global manifest the slice is automatic; opt an agent block out with
+both scopes. In a global manifest the slice is automatic; opt a harness block out with
 `agents = false`. Removing or renaming the file retires the old agent everywhere.
 
 ## MCP server definitions
@@ -213,7 +213,7 @@ A fragment uses event names and hook definitions:
 
 Claude, Codex, and Droid receive native hook configuration. OpenCode and Pi receive generated adapters
 for supported command hooks. Event mapping and payload differences matter, so test hooks in
-each agent you enable. Hook scripts can travel through module configuration.
+each harness you enable. Hook scripts can travel through module configuration.
 
 ## Plugins
 
@@ -250,7 +250,7 @@ OpenCode plugin files go through module configuration rather than this enablemen
 
 ## Module configuration and scripts
 
-Place a file at its required relative path under `module-config/<agent>/`:
+Place a file at its required relative path under `module-config/<harness>/`:
 
 ```text
 module-config/
@@ -259,7 +259,7 @@ module-config/
 └── pi/extensions/my-extension/config.json
 ```
 
-Loadout copies it beneath the corresponding global agent directory, preserving bytes and
+Loadout copies it beneath the corresponding global harness directory, preserving bytes and
 executable permissions. The consuming module determines the filename.
 
 The slice is automatic for Claude, Droid, OpenCode, and Pi; opt out with `module-config = false`.

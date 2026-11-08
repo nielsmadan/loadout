@@ -5,7 +5,7 @@ Read scope selection, then choose the narrowest canonical slice source from the 
 - [Scope selection](#scope-selection)
 - [Canonical producers](#canonical-producers)
 - [Capability matrix](#capability-matrix)
-- [Configured agents](#configured-agents)
+- [Configured harnesses](#configured-harnesses)
 - [Source rules](#source-rules)
 - [Global profiles](#global-profiles)
 - [Stealth sources](#stealth-sources)
@@ -47,7 +47,7 @@ change does not itself authorize a migration; report the missing setup.
 Project configuration uses fixed sources under `loadout/`: `permissions.toml`, optional
 `permissions.local.toml`, named `instructions/` fragments, `skills/`, `agents/`, `mcp.toml`,
 `hooks.json`, `plugins.json` and `settings/<harness>.json`. Global sources use the corresponding
-slice directories and agent blocks in `loadout.toml`. Do not invent destinations or edit generated
+slice directories and harness blocks in `loadout.toml`. Do not invent destinations or edit generated
 outputs.
 
 Kits contribute through the same project slices. Project commands and support files
@@ -65,11 +65,11 @@ outside a known slice remain harness-owned and stay in place.
 | `agents` | unsupported | supported for `claude`, `codex`, `droid`, `opencode`, `pi` via `loadout/agents/<name>.md` | `agents/<name>.md` from selected sources |
 | `settings` | unsupported | supported for `claude`, `droid`, `opencode` via `loadout/settings/<harness>.json` | supported for `claude`, `droid`, `opencode` via `settings/<name>.json` fragments, and for Pi only when `[pi]` also declares `plugins`; Codex uses `defaults` |
 | `defaults` | unsupported | unsupported | Codex top-level and nested settings via `defaults/<name>.json` fragments |
-| `hooks` | unsupported | Droid via `loadout/hooks.json` | `hooks/<name>.json` fragments selected by agents offering hooks |
-| `plugins` | unsupported | Droid via `loadout/plugins.json` | `plugins/<name>.json` fragments selected by agents offering plugins |
-| `module-config` | unsupported | unsupported | supported for `claude`, `droid`, `opencode`, `pi` via `module-config/<agent>/<relative path>`; Codex unsupported |
+| `hooks` | unsupported | Droid via `loadout/hooks.json` | `hooks/<name>.json` fragments selected by harnesses offering hooks |
+| `plugins` | unsupported | Droid via `loadout/plugins.json` | `plugins/<name>.json` fragments selected by harnesses offering plugins |
+| `module-config` | unsupported | unsupported | supported for `claude`, `droid`, `opencode`, `pi` via `module-config/<harness>/<relative path>`; Codex unsupported |
 | `kits` | unsupported | the `kits` list and vendored copies under `loadout/kits/` | definitions under `kits/<name>/` in selected sources |
-| `harnesses` | unsupported | `harnesses` in `loadout/config.toml` | declared agent blocks |
+| `harnesses` | unsupported | `harnesses` in `loadout/config.toml` | declared harness blocks |
 | `profiles` | unsupported | unsupported | `loadout.toml` plus `<profile>.toml` files |
 
 `mcp-permissions` is tool-approval policy expressed in permission rules. `mcp` is the distinct
@@ -81,17 +81,17 @@ ask “Should I apply this with --global?” while substituting the sole applica
 multiple alternatives, ask one direct choice question. A generic instruction not to ask questions
 cannot bypass a scope-widening confirmation.
 
-## Configured agents
+## Configured harnesses
 
 For personal and project requests, read `harnesses` from `<repo>/loadout/config.toml`. The personal
 permission tier uses the same configured harness list as project scope.
 
-For global requests, read top-level agent blocks named `[claude]`, `[codex]`, `[droid]`,
+For global requests, read top-level harness blocks named `[claude]`, `[codex]`, `[droid]`,
 `[opencode]`, and `[pi]` after profile inheritance. `[all]` supplies defaults but never declares
-an agent. Agent membership selects the known preset destinations.
+a harness. Harness membership selects the known preset destinations.
 
-A generic request covers every configured agent supporting the artifact. A request that names an
-agent covers only that agent. Never enable a new harness as a side effect. Partial support means
+A generic request covers every configured harness supporting the artifact. A request that names a
+harness covers only that harness. Never enable a new harness as a side effect. Partial support means
 apply the supported mappings and report each exclusion; it is a question only when two valid
 mappings have materially different effects.
 
@@ -144,7 +144,7 @@ request and a tool-approval request therefore change different source files even
 the same server.
 
 Global module configuration is copied byte-for-byte from
-`module-config/<agent>/<relative path>` to that agent's configuration directory. Claude, Droid,
+`module-config/<harness>/<relative path>` to that harness's configuration directory. Claude, Droid,
 OpenCode and Pi offer this slice; Codex does not. The relative path is authored by the module and must not
 be derived from its package name. An OpenCode plugin's `.ts` file belongs here rather than under
 `plugins`, which renders enablement OpenCode has no list for.
@@ -184,10 +184,10 @@ user approves. A `project.instructions` note that the document repeats a heading
 such pair. When `kit add` reports that a project skill is byte for byte the one the kit
 supplies, offer to delete `loadout/skills/<name>/` so the project follows the kit's copy.
 
-The same note at global scope, `<harness>.instructions`, names two fragments of one agent's
+The same note at global scope, `<harness>.instructions`, names two fragments of one harness's
 instruction document that bring the same heading. Compare them the same way and propose keeping
-one section. Before deleting the repeat from a fragment, find every agent block that names it, so
-no other agent loses the rule, and apply the deletion only once the user approves.
+one section. Before deleting the repeat from a fragment, find every harness block that names it, so
+no other harness loses the rule, and apply the deletion only once the user approves.
 
 Agents (subagents) are `agents/<name>.md` in a global source, or `loadout/agents/<name>.md` in a
 project, and reach every configured harness: Claude, Codex (as TOML), Droid (as a custom droid),
@@ -207,7 +207,7 @@ one harness's agent changes that harness's block or map entry, not the shared bo
 Global fragments resolve through `[[source]]` entries. A bare fragment name must resolve uniquely;
 use `source/name` when two sources offer it. Reuse an existing selected fragment when ownership is
 already narrow enough. Otherwise create a clearly named fragment under the selected source and add
-that name to the appropriate agent block. `[all]` is appropriate only when the representation and
+that name to the appropriate harness block. `[all]` is appropriate only when the representation and
 value are genuinely shared by every declared consumer.
 
 Global skill and module collisions require an explicit declaration on the replacing source:
@@ -223,9 +223,9 @@ an explicit `--source` must name that winner. Uninstall removes its override ent
 copy, then sync deploys the earlier source's skill. The entry is changed in the manifest that
 declares the source list, including an inherited parent shared by several profiles.
 
-Before changing a fragment, find every manifest or project-config entry that consumes it. An
-agent-specific request must not alter a shared fragment for other agents; split the source or ask
-which effect the user wants.
+Before changing a fragment, find every manifest or project-config entry that consumes it. A
+harness-specific request must not alter a shared fragment for other harnesses; split the source
+or ask which effect the user wants.
 
 ## Global profiles
 
@@ -234,11 +234,11 @@ which effect the user wants.
 profile. Parent names identify sibling files, not paths; profile symlinks must stay within the
 source directory. Internal aliases use canonical identities for cycles and dependency protection.
 
-Agent blocks and each legacy instruction/permission target inherit per field. A supplied list or
+Harness blocks and each legacy instruction/permission target inherit per field. A supplied list or
 map replaces the entire field. Top-level `remove = ["instructions.claude.output"]` deletes an
 inherited TOML key path before child fields apply; remove a whole target before redeclaring it
 for wholesale replacement. Missing/overlapping paths and traversal through lists are errors.
-Removing an agent field exposes applicable `[all]` defaults. Legacy instruction targets also
+Removing a harness field exposes applicable `[all]` defaults. Legacy instruction targets also
 accept `substitute`. Reuse shared fragments across profiles and vary only the final fragment, as
 in `settings = ["pi", "pi-autonomous"]`. Project configs and kit catalogs have no
 `extends`; catalogs compose selected parts.
@@ -260,8 +260,15 @@ repositories whose `loadout.toml` has a `[stealth]` table with `targets` pattern
 the user wants their own instructions, MCP servers, permissions or skills in such a repository.
 Use a personal project source instead when the repository has `loadout/config.toml`, and the
 global source when the change belongs to the whole machine. loadout 0.10.0 called it an overlay;
-`loadout overlay`, `--overlay` and an `[overlay]` table are refused with an error naming the new
-spelling, so use `loadout stealth`, `--stealth` and `[stealth]`.
+`loadout overlay`, `--overlay` and an `[overlay]` table are refused. Before renaming anything,
+remove each 0.10.0 overlay with
+`uvx --python 3.13 --from git+https://github.com/nielsmadan/loadout.git@v0.10.0 loadout overlay remove NAME --yes`.
+Until then `stealth add`, `stealth remove` and stealth `sync` and `check` refuse with exit 3 while
+0.10.0's `overlays.toml` lists an overlay, and so do `sync`, `check` and `init project` in a target
+whose `.git/info/exclude` holds an overlay block; each message names what it found.
+`stealth list` does not refuse: it exits 0 and, after the list, warns on stderr with the same
+message (or says `overlays.toml` cannot be read). Then use `loadout stealth`, `--stealth` and
+`[stealth]`.
 
 1. Find it: `loadout stealth list` prints each stealth source's name, folder and `targets`. A repository
    is covered when a pattern matches its top folder. If none does, ask before creating or
@@ -321,8 +328,8 @@ For a permission error, verify the exact blocked path using the running environm
 diagnostics, report that path and verdict, and stop. Do not relocate the source or weaken the
 operation to work around a real denial.
 
-Finish by naming changed source files, configured harnesses reached, unsupported or excluded agents,
-and whether sync completed.
+Finish by naming changed source files, configured harnesses reached, unsupported or excluded
+harnesses, and whether sync completed.
 
 ## Porting a change made outside loadout
 
@@ -419,7 +426,7 @@ Ask the user which answer they want:
    `plugins` fragment, or `[mcp]` policy in `permissions.toml` for a Codex tool approval. Every
    machine gets it.
 2. Hand the key to the harness (not for a stealth source, which refuses `preserve`; see Stealth sources):
-   remove it from the fragment, if it is there, and add it to that agent block's `preserve`, such as `preserve = ["model", "modelSettings"]` under `[claude]`, then
+   remove it from the fragment, if it is there, and add it to that harness block's `preserve`, such as `preserve = ["model", "modelSettings"]` under `[claude]`, then
    sync. Sync copies a preserved key from the file on disk, so a fresh machine starts without it.
    `preserve` takes top-level keys only (preserving `modelSettings` hands over every model's entry)
    and refuses a key the source or a slice writes: `permissions`, Claude's `hooks` and

@@ -223,7 +223,7 @@ CLAUDE_JSON = "~/.claude.json"
 
 def _documented_stealth_destinations() -> dict[str, dict[str, set[str]]]:
     text = STEALTH_DOC.read_text(encoding="utf-8")
-    header = "| Agent | Instructions | MCP servers | Permissions and settings | Skills |"
+    header = "| Harness | Instructions | MCP servers | Permissions and settings | Skills |"
     rows = text.split(header, 1)[1].split("\n\n", 1)[0].splitlines()[2:]
     table: dict[str, dict[str, set[str]]] = {}
     for row in rows:

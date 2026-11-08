@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import shutil
 import sys
 from pathlib import Path
 
 import pytest
 
 from loadout.cli import main
-from loadout.kits import tree_hash, vendored_path
+from loadout.kits import resolve_kit, tree_hash, unrecord_hash, vendored_path
 from loadout.project import load_project_config, project_config_path
 
 pytestmark = pytest.mark.integration
@@ -190,6 +191,112 @@ def test_add_changes_a_vendored_kit_to_linked(
     assert main(["kit", "add", "web", "--linked", "--root", str(bare_project)]) == 0
     assert "changed web to linked" in capsys.readouterr().out
     assert not (bare_project / "loadout" / "kits" / "web").exists()
+    config = load_project_config(_config(bare_project))
+    assert config.kits == ("web",)
+    assert config.vendored_hash("web") is None
+
+
+LINKED_REFUSAL = (
+    "\nSwitch to linked refused — the '-' lines above are in your copy, not the source, and "
+    "linking deletes the copy. To keep them, leave web vendored; to discard them, delete "
+    "loadout/kits/web and run `loadout kit add web --linked`.\n"
+)
+EDITED_DIFF = (
+    "--- web/permissions.toml (on disk)\n"
+    "+++ web/permissions.toml (expected)\n"
+    "@@ -1,2 +1,2 @@\n"
+    " [shell]\n"
+    '-allow = ["vite", "mine"]\n'
+    '+allow = ["vite"]\n'
+)
+
+
+def _edited_vendored_web(project: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
+    assert main(["kit", "add", "web", "--vendored", "--root", str(project)]) == 0
+    edited = project / "loadout" / "kits" / "web" / "permissions.toml"
+    edited.write_text('[shell]\nallow = ["vite", "mine"]\n', encoding="utf-8")
+    return edited
+
+
+@pytest.mark.parametrize(
+    "invocation",
+    ((False, ()), (True, ()), (False, ("--yes",)), (True, ("--yes",))),
+    ids=("piped", "terminal", "piped-yes", "terminal-yes"),
+)
+def test_add_linked_refuses_an_edited_vendored_copy_and_keeps_the_edits(
+    bare_project: Path,
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    invocation: tuple[bool, tuple[str, ...]],
+) -> None:
+    terminal, extra = invocation
+    edited = _edited_vendored_web(bare_project, fake_home, monkeypatch)
+    recorded = load_project_config(_config(bare_project)).vendored_hash("web")
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: terminal)
+    monkeypatch.setattr("builtins.input", lambda _: "y")
+    capsys.readouterr()
+
+    argv = ["kit", "add", "web", "--linked", *extra, "--root", str(bare_project)]
+    assert main(argv) == 1
+
+    assert capsys.readouterr().err == (
+        "WARNING: the vendored copy of web was modified after it was vendored\n"
+        + EDITED_DIFF
+        + LINKED_REFUSAL
+    )
+    assert edited.read_text(encoding="utf-8") == '[shell]\nallow = ["vite", "mine"]\n'
+    config = load_project_config(_config(bare_project))
+    assert config.kits == ("web",)
+    assert config.vendored_hash("web") == recorded
+    assert resolve_kit("web", bare_project).kind == "vendored"
+
+
+def test_add_linked_refuses_an_unprovenanced_copy_that_differs_from_its_source(
+    bare_project: Path,
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    edited = _edited_vendored_web(bare_project, fake_home, monkeypatch)
+    unrecord_hash(bare_project, "web")
+    capsys.readouterr()
+
+    assert main(["kit", "add", "web", "--linked", "--root", str(bare_project)]) == 1
+
+    assert capsys.readouterr().err == (
+        "WARNING: the vendored copy of web has no recorded provenance\n"
+        + EDITED_DIFF
+        + LINKED_REFUSAL
+    )
+    assert edited.read_text(encoding="utf-8") == '[shell]\nallow = ["vite", "mine"]\n'
+    assert resolve_kit("web", bare_project).kind == "vendored"
+
+
+def test_add_linked_switches_an_unprovenanced_copy_that_matches_its_source(
+    bare_project: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _upstream(fake_home, monkeypatch, "web", '[shell]\nallow = ["vite"]\n')
+    assert main(["kit", "add", "web", "--vendored", "--root", str(bare_project)]) == 0
+    unrecord_hash(bare_project, "web")
+
+    assert main(["kit", "add", "web", "--linked", "--root", str(bare_project)]) == 0
+
+    assert resolve_kit("web", bare_project).source == "ac"
+    assert load_project_config(_config(bare_project)).kits == ("web",)
+
+
+def test_the_discard_route_the_linked_refusal_names_links_the_kit(
+    bare_project: Path, fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    edited = _edited_vendored_web(bare_project, fake_home, monkeypatch)
+    assert main(["kit", "add", "web", "--linked", "--root", str(bare_project)]) == 1
+
+    shutil.rmtree(edited.parent)
+    assert main(["kit", "add", "web", "--linked", "--root", str(bare_project)]) == 0
+
+    assert resolve_kit("web", bare_project).source == "ac"
     config = load_project_config(_config(bare_project))
     assert config.kits == ("web",)
     assert config.vendored_hash("web") is None

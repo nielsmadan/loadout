@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import subprocess
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +36,10 @@ NAME = "fixture"
 LOCAL = "CLAUDE.local.md"
 SETTINGS = ".claude/settings.local.json"
 APPROVAL = "Bash(git status:*)"
+UVX = "uvx --python 3.13 --from git+https://github.com/nielsmadan/loadout.git@v0.10.0"
+FIRST_REMOVE = (
+    f"first remove any overlay 0.10.0 registered with `{UVX} loadout overlay remove NAME --yes`"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -234,7 +239,8 @@ def test_the_overlay_command_is_refused_naming_stealth(
 ) -> None:
     assert loadout.main(argv) == 2
     assert capsys.readouterr().err.endswith(
-        "loadout: error: `overlay` is now `stealth`; use `loadout stealth add`, `list` or `remove`\n"
+        f"loadout: error: `overlay` is now `stealth`; {FIRST_REMOVE}, then use "
+        "`loadout stealth add`, `list` or `remove`\n"
     )
 
 
@@ -247,7 +253,8 @@ def test_the_overlay_option_is_refused_naming_stealth(
 ) -> None:
     assert loadout.main(argv) == 2
     assert capsys.readouterr().err.endswith(
-        f"loadout: error: `--overlay` is now `--stealth`; use `loadout {command} --stealth NAME`\n"
+        f"loadout: error: `--overlay` is now `--stealth`; {FIRST_REMOVE}, then use "
+        f"`loadout {command} --stealth NAME`\n"
     )
 
 
@@ -258,7 +265,8 @@ def test_check_json_with_the_overlay_option_answers_with_the_rename(
     assert json.loads(capsys.readouterr().out) == {
         "status": "error",
         "exit_code": 2,
-        "error": "`--overlay` is now `--stealth`; use `loadout check --stealth NAME`",
+        "error": f"`--overlay` is now `--stealth`; {FIRST_REMOVE}, then use "
+        "`loadout check --stealth NAME`",
     }
 
 
@@ -275,9 +283,39 @@ def test_an_overlay_table_is_refused_naming_the_stealth_table(
 
     assert loadout.main([*command, str(folder)]) == 3
     assert capsys.readouterr().err == (
-        f"loadout: {manifest}: `[overlay]` is now `[stealth]`; rename the table\n"
+        f"loadout: {manifest}: `[overlay]` is now `[stealth]`; {FIRST_REMOVE}, then rename the table\n"
     )
     assert load_registry(stealth_path()) == ()
+
+
+def test_an_overlay_table_in_a_global_manifest_is_refused_naming_the_stealth_table(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = _global_source(tmp_path)
+    manifest = source / "loadout.toml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8") + "\n[overlay]\ntargets = []\n", encoding="utf-8"
+    )
+
+    assert loadout.main(["check", "--global"]) == 3
+    assert capsys.readouterr().err == (
+        f"loadout: {manifest}: `[overlay]` is now `[stealth]`; {FIRST_REMOVE}, then rename the table\n"
+    )
+
+
+def test_a_stealth_folder_holding_a_templates_directory_registers_and_checks(
+    fake_home: Path,
+) -> None:
+    folder = fake_home / "stealth" / NAME
+    shutil.copytree(STEALTH_FIXTURES, folder)
+    (folder / "templates").mkdir()
+    (folder / "templates" / "note.md").write_text("x\n", encoding="utf-8")
+    _repo(fake_home, "stealth-fixture-a")
+
+    assert loadout.main(["stealth", "add", str(folder)]) == 0
+    assert loadout.main(["sync", "--stealth", NAME]) == 0
+    assert loadout.main(["check", "--stealth", NAME]) == 0
+    assert _registry_names() == {NAME: False}
 
 
 def test_a_repository_no_stealth_source_targets_and_without_a_manifest_exits_3(
@@ -1270,3 +1308,256 @@ def test_check_and_sync_both_mark_a_user_defined_claude_server_refused(
     assert f"stealth {NAME}: ~/stealth-fixture-a: {refusal}" in capsys.readouterr().err
     projects = json.loads((fake_home / ".claude.json").read_text(encoding="utf-8"))["projects"]
     assert projects[str(root)]["mcpServers"]["docs"] == mine
+
+
+OLD_HEADER = (
+    "# Overlays registered on this machine, managed by `loadout overlay add` and\n"
+    "# `loadout overlay remove`.\n"
+)
+OLD_BLOCK = (
+    "# >>> loadout overlay work: managed by loadout; lines inside this block are replaced\n"
+    "/CLAUDE.local.md\n"
+    "/.claude/settings.local.json\n"
+    "# <<< loadout overlay work\n"
+)
+STEALTH_OUTPUTS = [
+    ".agents/skills/probe/SKILL.md",
+    ".agents/skills/probe/reference.md",
+    ".claude/settings.local.json",
+    ".claude/skills/probe/SKILL.md",
+    ".claude/skills/probe/reference.md",
+    ".codex/config.toml",
+    ".codex/rules/fixture.rules",
+    ".factory/AGENTS.md",
+    ".factory/mcp.json",
+    ".factory/settings.local.json",
+    ".factory/skills/probe/SKILL.md",
+    ".factory/skills/probe/reference.md",
+    ".pi/APPEND_SYSTEM.md",
+    ".pi/extensions/pi-permission-system/config.json",
+    ".pi/mcp.json",
+    "AGENTS.md",
+    "CLAUDE.local.md",
+    "opencode.json",
+]
+
+
+def _old_registry(text: str) -> Path:
+    path = config_dir() / "overlays.toml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def _old_block(root: Path) -> Path:
+    exclude = root / ".git" / "info" / "exclude"
+    exclude.write_text(exclude.read_text(encoding="utf-8") + OLD_BLOCK, encoding="utf-8")
+    return exclude
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["stealth", "add", "FOLDER"],
+        ["sync", "--stealth", NAME],
+        ["check", "--stealth", NAME],
+        ["sync"],
+        ["stealth", "remove", NAME, "--yes"],
+    ],
+)
+def test_a_0_10_0_overlay_registry_refuses_stealth_work(
+    fake_home: Path,
+    argv: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    folder, (root,) = _stealth(fake_home, "a")
+    second = fake_home / "stealth" / "second"
+    shutil.copytree(STEALTH_FIXTURES, second)
+    registry = _old_registry(f'{OLD_HEADER}[overlay.work]\npath = "{folder}"\n')
+    monkeypatch.chdir(root)
+    capsys.readouterr()
+
+    assert loadout.main([str(second) if arg == "FOLDER" else arg for arg in argv]) == 3
+
+    assert capsys.readouterr().err == (
+        f"loadout: {registry} still registers the 0.10.0 overlay work; remove it first with "
+        f"`{UVX} loadout overlay remove work --yes`\n"
+    )
+    assert _files(root) == ["AGENTS.md"]
+    assert [found.name for found in load_registry(stealth_path())] == [NAME]
+
+
+def test_an_unparseable_0_10_0_overlay_registry_refuses_stealth_work(
+    fake_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _, (root,) = _stealth(fake_home, "a")
+    registry = _old_registry("[overlay.work\n")
+    with pytest.raises(tomllib.TOMLDecodeError) as raised:
+        tomllib.loads("[overlay.work\n")
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--stealth", NAME]) == 3
+
+    assert capsys.readouterr().err == (
+        f"loadout: {registry} is 0.10.0's overlay registry and cannot be read ({raised.value}); "
+        f"fix it and remove each overlay with `{UVX} loadout overlay remove NAME --yes`, "
+        "or delete the file if no overlay is left\n"
+    )
+    assert _files(root) == ["AGENTS.md"]
+
+
+def test_stealth_list_names_a_0_10_0_overlay_after_the_list(
+    fake_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    folder, _ = _stealth(fake_home, "a")
+    registry = _old_registry(f'{OLD_HEADER}[overlay.work]\npath = "{folder}"\n')
+    capsys.readouterr()
+
+    assert loadout.main(["stealth", "list"]) == 0
+
+    captured = capsys.readouterr()
+    assert captured.out == f"{NAME}  {folder}  ~/stealth-fixture*\n"
+    assert captured.err == (
+        f"WARNING: {registry} still registers the 0.10.0 overlay work; remove it first with "
+        f"`{UVX} loadout overlay remove work --yes`\n"
+    )
+
+
+def test_stealth_list_says_an_unreadable_0_10_0_overlay_registry_cannot_be_read(
+    fake_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    registry = _old_registry("[overlay.work\n")
+    with pytest.raises(tomllib.TOMLDecodeError) as raised:
+        tomllib.loads("[overlay.work\n")
+
+    assert loadout.main(["stealth", "list"]) == 0
+
+    captured = capsys.readouterr()
+    assert captured.out == (
+        "no stealth sources registered; add one with `loadout stealth add <folder>`\n"
+    )
+    assert captured.err == (
+        f"WARNING: {registry} is 0.10.0's overlay registry and cannot be read ({raised.value}); "
+        f"fix it and remove each overlay with `{UVX} loadout overlay remove NAME --yes`, "
+        "or delete the file if no overlay is left\n"
+    )
+
+
+def test_a_0_10_0_overlay_registry_still_lets_the_global_source_sync(
+    fake_home: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _global_source(tmp_path)
+    primary = fake_home / ".harness-a" / "PRIMARY.md"
+    primary.unlink()
+    _, (root,) = _stealth(fake_home, "a")
+    registry = _old_registry('[overlay.a]\npath = "/a"\n\n[overlay.b]\npath = "/b"\n')
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--global"]) == 3
+
+    assert primary.is_file()
+    assert _files(root) == ["AGENTS.md"]
+    assert (
+        f"loadout: {registry} still registers the 0.10.0 overlays a, b; remove each first with "
+        f"`{UVX} loadout overlay remove NAME --yes`\n"
+    ) in capsys.readouterr().err
+
+
+def test_a_0_10_0_overlay_registry_still_lets_a_project_sync(
+    fake_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = _project(fake_home)
+    registry = _old_registry('[overlay.work]\npath = "/w"\n')
+    monkeypatch.chdir(project)
+
+    assert loadout.main(["sync"]) == 3
+
+    assert (project / "CLAUDE.md").is_file()
+    assert capsys.readouterr().err == (
+        f"loadout: {registry} still registers the 0.10.0 overlay work; remove it first with "
+        f"`{UVX} loadout overlay remove work --yes`\n"
+    )
+
+
+def test_a_0_10_0_exclude_block_refuses_only_its_own_target(
+    fake_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    folder, (blocked, clean) = _stealth(fake_home, "a", "b")
+    assert loadout.main(["sync", "--stealth", NAME]) == 0
+    exclude = _old_block(blocked)
+    _edit_source(folder)
+    refusal = (
+        f"ERROR: {exclude} still holds the 0.10.0 overlay block work; remove it first with "
+        f"`{UVX} loadout overlay remove work --yes`"
+    )
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--stealth", NAME]) == 3
+    assert f"stealth {NAME}: ~/stealth-fixture-a: {refusal}\n" in capsys.readouterr().err
+    assert "Edited." in (clean / LOCAL).read_text(encoding="utf-8")
+    assert "Edited." not in (blocked / LOCAL).read_text(encoding="utf-8")
+
+    _edit_source(folder)
+    assert loadout.main(["check", "--stealth", NAME]) == 3
+    err = capsys.readouterr().err
+    assert f"stealth {NAME}: ERROR: ~/stealth-fixture-a: {refusal.removeprefix('ERROR: ')}" in err
+    assert f"~/stealth-fixture-b/{LOCAL}" in err
+
+    assert loadout.main(["stealth", "remove", NAME, "--yes"]) == 3
+    assert f"stealth {NAME}: ~/stealth-fixture-a: {refusal}\n" in capsys.readouterr().err
+    assert _files(clean) == ["AGENTS.md"]
+    assert _files(blocked) == STEALTH_OUTPUTS
+    assert list(_record(folder)["targets"]) == [str(blocked)]
+
+
+@pytest.mark.parametrize("argv", [["--dry-run"], ["--dry-run", "--json"], ["--yes"]])
+def test_init_project_is_refused_in_a_repository_with_a_0_10_0_exclude_block(
+    fake_home: Path,
+    argv: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = _repo(fake_home, "app1")
+    exclude = _old_block(root)
+    (root / LOCAL).write_text("Personal.\n", encoding="utf-8")
+    monkeypatch.chdir(root)
+    message = (
+        f"{exclude} still holds the 0.10.0 overlay block work; remove it first with "
+        f"`{UVX} loadout overlay remove work --yes`"
+    )
+
+    assert loadout.main(["init", "project", *argv]) == 3
+
+    captured = capsys.readouterr()
+    assert captured.err == f"loadout: {message}\n"
+    if "--json" in argv:
+        assert json.loads(captured.out) == {"status": "error", "exit_code": 3, "error": message}
+    assert _files(root) == ["AGENTS.md", LOCAL]
+
+
+def test_once_0_10_0_state_is_removed_stealth_writes_every_output(
+    fake_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    folder = fake_home / "stealth" / NAME
+    shutil.copytree(STEALTH_FIXTURES, folder)
+    roots = [_repo(fake_home, f"stealth-fixture-{name}") for name in ("a", "b")]
+    registry = _old_registry(f'{OLD_HEADER}[overlay.work]\npath = "{folder}"\n')
+    excludes = [_old_block(root) for root in roots]
+    assert loadout.main(["stealth", "add", str(folder)]) == 3
+    assert loadout.main(["sync", "--stealth", NAME]) == 3
+
+    registry.write_text(OLD_HEADER, encoding="utf-8")
+    for exclude in excludes:
+        exclude.write_text(
+            exclude.read_text(encoding="utf-8").replace(OLD_BLOCK, ""), encoding="utf-8"
+        )
+    capsys.readouterr()
+
+    assert loadout.main(["stealth", "add", str(folder)]) == 0
+    assert loadout.main(["sync", "--stealth", NAME]) == 0
+    assert loadout.main(["check", "--stealth", NAME]) == 0
+    assert [_files(root) for root in roots] == [STEALTH_OUTPUTS, STEALTH_OUTPUTS]
+    assert all(
+        BLOCK_BEGIN.format(name=NAME) in exclude.read_text(encoding="utf-8") for exclude in excludes
+    )

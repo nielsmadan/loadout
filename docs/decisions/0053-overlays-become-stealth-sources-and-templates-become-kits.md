@@ -56,3 +56,14 @@ persona); recipe and blueprint (copied once).
 - `.codex/rules/<name>.rules` and `.loadout/opencode-instructions.md` use the registered name, not
   the feature's, so their paths do not change. "Overlay" keeps its other meaning, a fragment
   merged over another in a profile or a plugin reference.
+
+## Amendment (2026-11-07, QA of the rename)
+
+An overlay left registered was not only invisible: `stealth add` and `sync` adopted its identical
+files, and `stealth remove` then left some of them behind, still hidden by the old exclude block,
+while `init project` planned to sweep them into the team's source. So this version now reads 0.10.0
+state in order to refuse, never to migrate or clean it. While `overlays.toml` lists an overlay (or
+cannot be parsed), `stealth add`, `stealth remove` and every stealth part of `sync` and `check`
+exit 3; a target whose `info/exclude` has a `# >>> loadout overlay ` line is refused on its own, and
+`init project` refuses there. Every refusal, the renamed spellings' included, gives the pinned
+0.10.0 `overlay remove` command to run first.

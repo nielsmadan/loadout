@@ -276,18 +276,68 @@ def record_hash(root: Path, name: str, digest: str) -> None:
     )
 
 
-def remove_vendored(root: Path, name: str) -> None:
-    """Delete a vendored copy: a directory wholesale, a catalog manifest alone.
+def _catalog_parts(manifest: Path) -> tuple[Path, ...]:
+    try:
+        return tuple(part for _, part in load_catalog(manifest).parts)
+    except LoadoutError:
+        return ()
 
-    A manifest's shared parts sit in the shared parts folder and may belong to
-    another kit, so only the manifest is removed.
-    """
+
+def owned_parts(local: Path, upstream: Path | None) -> tuple[Path, ...]:
+    """Parts of a vendored manifest or its upstream that are here and no sibling uses."""
+    others = {
+        part
+        for sibling in local.parent.glob("*.toml")
+        if sibling != local
+        for part in _catalog_parts(sibling)
+    }
+    relocated = (
+        ()
+        if upstream is None
+        else (local.parent / part.relative_to(upstream.parent) for part in _catalog_parts(upstream))
+    )
+    candidates = dict.fromkeys((*_catalog_parts(local), *relocated))
+    return tuple(part for part in candidates if part not in others and part.exists())
+
+
+def vendored_files(root: Path, name: str, upstream: Path | None) -> tuple[Path, ...]:
+    """What switching a vendored copy to linked deletes."""
     local = vendored_path(root, name)
-    _no_symlinks(local, root)
-    if local.is_dir():
-        shutil.rmtree(local)
-        return
-    local.unlink()
+    if local.is_file():
+        upstream_manifest = upstream if upstream is not None and upstream.is_file() else None
+        return (local, *sorted(owned_parts(local, upstream_manifest)))
+    return (local,)
+
+
+def remove_vendored(root: Path, name: str, upstream: Path | None = None) -> None:
+    """Delete what `vendored_files` names, and each part folder that leaves empty."""
+    files = vendored_files(root, name, upstream)
+    for path in files:
+        _no_symlinks(path, root)
+    for path in files:
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+    base = vendored_root(root)
+    for path in files[1:]:
+        folder = path.parent
+        while (
+            folder != base
+            and folder.is_relative_to(base)
+            and folder.is_dir()
+            and not any(folder.iterdir())
+        ):
+            folder.rmdir()
+            folder = folder.parent
+
+
+def _without_block(text: str, key: str) -> str:
+    updated = apply_paths(text, frozenset({key}), "")
+    # The blank line `record_hash` put before the block stays with the section above it.
+    if updated == text or text.endswith("\n\n") or not updated.strip():
+        return updated
+    return updated.rstrip("\n") + "\n"
 
 
 def unrecord_hash(root: Path, name: str) -> None:
@@ -295,7 +345,7 @@ def unrecord_hash(root: Path, name: str) -> None:
     path = project_config_path(root)
     _no_symlinks(path, root)
     key = key_name(("kit", name))
-    replace_text(path, apply_paths(path.read_text(encoding="utf-8"), frozenset({key}), ""), root)
+    replace_text(path, _without_block(path.read_text(encoding="utf-8"), key), root)
 
 
 def copy_tree(source: Path, destination: Path) -> None:
@@ -347,6 +397,14 @@ def kit_divergence(root: Path) -> list[str]:
         and (local := vendored_path(root, name)).exists()
         and tree_hash(local) != recorded
     ]
+
+
+def has_local_edits(local: Path, recorded: str | None, upstream: Path | None) -> bool:
+    """A copy whose hash differs from the recorded one, or with none recorded, from upstream's."""
+    current = tree_hash(local)
+    return current != recorded and not (
+        recorded is None and upstream is not None and current == tree_hash(upstream)
+    )
 
 
 def unverifiable_kits(root: Path) -> list[str]:

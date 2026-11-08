@@ -9,8 +9,8 @@ pinned object. That does not establish which revision the old run actually used.
 
 This is a manual compatibility test for `loadout init`. It answers two questions:
 
-1. What does project initialization do to repositories that already contain agent setup?
-2. What does global initialization do to repositories used as a person's cross-project agent
+1. What does project initialization do to repositories that already contain harness setup?
+2. What does global initialization do to repositories used as a person's cross-project harness
    configuration?
 
 The corpus is purposive, not representative. It contains awkward shapes that initialization
@@ -45,7 +45,7 @@ upstream commits is a separate corpus update and should produce a new dated resu
 
 | repository | commit | `--harness` arguments | shape exercised |
 |---|---|---|---|
-| [`semantic-release/gitlab`](https://github.com/semantic-release/gitlab) | `63f73173c7b181c13343f174ee7628e12d3551df` | `codex` | root agent instructions |
+| [`semantic-release/gitlab`](https://github.com/semantic-release/gitlab) | `63f73173c7b181c13343f174ee7628e12d3551df` | `codex` | root harness instructions |
 | [`psf/pypistats.org`](https://github.com/psf/pypistats.org) | `6ed2ed7fce0487ae6c0b58265c49edc1c2621721` | `claude` | existing Claude setup |
 | [`cpisciotta/xcbeautify`](https://github.com/cpisciotta/xcbeautify) | `513e4b12c3f6c965d1d3b66bd5cd9d635f03112d` | `claude`, `codex` | `CLAUDE.md` symlinked to `AGENTS.md` |
 | [`CodelyTV/agent-harness`](https://github.com/CodelyTV/agent-harness) | `e600f553a429592d19875b00584716d231ca8bd5` | `claude`, `codex`, `opencode` | shared `.agents/skills` reached by harness symlinks |

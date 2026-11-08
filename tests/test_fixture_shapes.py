@@ -117,8 +117,8 @@ def test_a_destination_is_env_templated() -> None:
     templated destination here, the whole-document comparison would keep passing
     while covering none of it."""
     manifest = load_manifest(FIXTURE.parent / MANIFEST_NAME)
-    kits = [str(d) for target in manifest.targets for d in target.destinations]
-    assert [t for t in kits if "${" in t], "no destination exercises ${...} expansion"
+    destinations = [str(d) for target in manifest.targets for d in target.destinations]
+    assert [t for t in destinations if "${" in t], "no destination exercises ${...} expansion"
 
 
 PROJECT_FIXTURES = Path(__file__).parent / "fixtures" / "project"
@@ -175,7 +175,7 @@ def test_every_kit_rule_is_absent_from_the_other_project_tiers() -> None:
 
 
 def test_the_project_fixture_declares_instructions_out_of_sorted_order() -> None:
-    """`test_instruction_blocks_appear_in_declared_order_below_the_kit` proves
+    """`test_instruction_blocks_appear_in_declared_order_above_the_kit` proves
     nothing if the declared order happens to match the directory listing — a render
     that sorted its fragments would pass. Reversing the pair is what gives that test
     something to catch, so it is a property of the fixture, not of the assertion."""

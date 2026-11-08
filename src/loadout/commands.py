@@ -29,6 +29,7 @@ from .kits import (
     contained,
     copy_tree,
     declare,
+    has_local_edits,
     kit_files,
     record_hash,
     remove_vendored,
@@ -36,6 +37,7 @@ from .kits import (
     resolve_upstream_kit,
     tree_hash,
     unrecord_hash,
+    vendored_files,
     vendored_path,
 )
 from .machine import fixed, registration, state_dir
@@ -537,10 +539,7 @@ def _add_kit(
                 f"listed in `kits`; use `--vendored` to adopt it, or delete the copy first"
             )
         if listed:
-            found = resolve_kit(name, root)
-            print(f"{name} is already linked; resolves from source {found.source}")
-            print(f"    {_display(found.path, root)}")
-            return name, 0
+            return name, _keep_linked(root, name, config.vendored_hash(name))
         found = resolve_kit(name, root)
         declare(root, name)
         print(f"linked {name} in {PROJECT_DIR}/{PROJECT_CONFIG_NAME}")
@@ -612,15 +611,50 @@ def _make_vendored(root: Path, name: str, *, yes: bool = False) -> int:
     return 0
 
 
+def _keep_linked(root: Path, name: str, recorded: str | None) -> int:
+    found = resolve_kit(name, root)
+    if recorded is not None:
+        unrecord_hash(root, name)
+    print(f"{name} is already linked; resolves from source {found.source}")
+    print(f"    {_display(found.path, root)}")
+    return 0
+
+
 def _make_linked(root: Path, name: str) -> int:
     """A vendored copy becomes linked: drop the copy and its recorded hash once
     the source can still resolve the name, so the switch never strands the project."""
     found = resolve_upstream_kit(name)
-    remove_vendored(root, name)
+    local = vendored_path(root, name)
+    recorded = load_project_config(project_config_path(root)).vendored_hash(name)
+    if has_local_edits(local, recorded, found.path):
+        doomed = ", ".join(_display(path, root) for path in vendored_files(root, name, found.path))
+        discard = f"delete {doomed} and run `loadout kit add {name} --linked`"
+        if local.is_file():
+            raise LoadoutError(
+                f"{name}: vendored copy is modified or has no recorded provenance; switch to "
+                f"linked refused. Keep it vendored, or {discard} to discard the edits"
+            )
+        _report_local_edits(name, local, found.path, recorded)
+        print(
+            f"\nSwitch to linked refused — the '-' lines above are in your copy, not the "
+            f"source, and linking deletes the copy. To keep them, leave {name} vendored; "
+            f"to discard them, {discard}.",
+            file=sys.stderr,
+        )
+        return 1
+    remove_vendored(root, name, found.path)
     unrecord_hash(root, name)
     print(f"changed {name} to linked; resolves from source {found.source}")
     print(f"    {_display(found.path, root)}")
     return 0
+
+
+def _report_local_edits(name: str, local: Path, upstream: Path, recorded: str | None) -> None:
+    state = (
+        "has no recorded provenance" if recorded is None else "was modified after it was vendored"
+    )
+    print(f"WARNING: the vendored copy of {name} {state}", file=sys.stderr)
+    report_diff(_tree_diff(local, upstream, name))
 
 
 def _tree_diff(local: Path, upstream: Path, label: str) -> list[str]:
@@ -686,33 +720,23 @@ def cmd_kit_sync(root: Path, name: str, *, yes: bool = False) -> int:
     # and fail-open there would let a command whose contract is refuse-rather-than-
     # merge silently overwrite local edits. Matching upstream is proof enough, so a
     # clean copy still falls through to the self-heal below and is never refused.
-    if recorded is None and tree_hash(upstream) != current:
-        print(
-            f"WARNING: the vendored copy of {name} has no recorded provenance",
-            file=sys.stderr,
-        )
-        report_diff(_tree_diff(local, upstream, name))
-        print(
-            f"\nSync refused — with no recorded hash, nothing can tell your edits from "
-            f"the source's, so the '-' lines above may be either. Commit your copy first "
-            f"if you want to keep them, or delete {_display(local, root)} and run "
-            f"`loadout kit add {name} --vendored` to take the source wholesale.",
-            file=sys.stderr,
-        )
-        return 1
-
-    if recorded is not None and current != recorded:
-        print(
-            f"WARNING: the vendored copy of {name} was modified after it was vendored",
-            file=sys.stderr,
-        )
-        report_diff(_tree_diff(local, upstream, name))
-        print(
-            f"\nSync refused — the '-' lines above exist only in your copy and would be "
-            f"lost. Move them upstream, or delete {_display(local, root)} and run "
-            f"`loadout kit add {name} --vendored` to take the upstream wholesale.",
-            file=sys.stderr,
-        )
+    if has_local_edits(local, recorded, upstream):
+        _report_local_edits(name, local, upstream, recorded)
+        if recorded is None:
+            print(
+                f"\nSync refused — with no recorded hash, nothing can tell your edits from "
+                f"the source's, so the '-' lines above may be either. Commit your copy first "
+                f"if you want to keep them, or delete {_display(local, root)} and run "
+                f"`loadout kit add {name} --vendored` to take the source wholesale.",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"\nSync refused — the '-' lines above exist only in your copy and would be "
+                f"lost. Move them upstream, or delete {_display(local, root)} and run "
+                f"`loadout kit add {name} --vendored` to take the upstream wholesale.",
+                file=sys.stderr,
+            )
         return 1
 
     # **Position is deliberate: this must stay below both refusals.** It reads

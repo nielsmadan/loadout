@@ -1,6 +1,6 @@
 ---
 name: loadout
-description: Use when adopting existing agent configuration into Loadout, setting up Loadout in a project or global source, or changing Claude, Codex, Droid, OpenCode or Pi configuration. Handles onboarding, permissions, instructions, skills, agents (subagents), settings, hooks, plugins and MCP through their authoritative sources.
+description: Use when adopting existing harness configuration into Loadout, setting up Loadout in a project or global source, or changing Claude, Codex, Droid, OpenCode or Pi configuration. Handles onboarding, permissions, instructions, skills, agents (subagents), settings, hooks, plugins and MCP through their authoritative sources.
 ---
 
 # Loadout
@@ -15,7 +15,7 @@ Edit the declared source for each configured consumer. Generated harness files a
    plan. Never execute discovered scripts or installers.
 2. For ordinary changes, read [configuration routing](references/configuration.md). Default to
    personal configuration for the current project; explicit project/global scope takes precedence.
-   Locate the existing config and follow its declared producers: the manifest's agent blocks and
+   Locate the existing config and follow its declared producers: the manifest's harness blocks and
    the source slices they name. Ask before widening scope or changing a source shared by other
    consumers.
    A repository that has not adopted loadout, where the user wants personal configuration, is
@@ -30,7 +30,7 @@ Edit the declared source for each configured consumer. Generated harness files a
    `loadout sync --global --profile <name>` when explicitly selected; `loadout sync --stealth <name>`
    for a stealth source. Rendered files are output: edit the source folder. Ask whether an unnamed change
    under a non-default profile belongs to that profile or its inherited default.
-5. Report source files changed, agents reached, unsupported consumers and the sync result.
+5. Report source files changed, harnesses reached, unsupported consumers and the sync result.
 
 ## Examples
 
@@ -41,7 +41,7 @@ Edit the declared source for each configured consumer. Generated harness files a
 - “Add my own MCP server for the work repositories” in a repository a stealth source targets edits the
   stealth source's `mcp.toml` and runs `loadout sync --stealth <name>`; it does not touch the repository's
   `.mcp.json` or `opencode.json`.
-- “Change the global Pi model” follows the settings fragment Pi's agent block names, edits its
+- “Change the global Pi model” follows the settings fragment Pi's harness block names, edits its
   `defaultModel` value and syncs the selected profile. Pi renders settings only when its block
   also declares `plugins`.
 

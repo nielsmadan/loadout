@@ -32,7 +32,7 @@ every recipe.
 
 ## Quick start
 
-Adopt the configuration your agents already have on this machine into a global source:
+Adopt the configuration your harnesses already have on this machine into a global source:
 
     mkdir -p ~/agent-config
     loadout init global ~/agent-config --dry-run   # preview
@@ -123,7 +123,7 @@ The full schema, from the machine config to permission rules and both source lay
 - [Getting started](docs/user/getting-started.md)
 - Guides: [global setup](docs/user/guides/global.md), [project setup](docs/user/guides/projects.md),
   [kits](docs/user/guides/kits.md), [composition](docs/user/guides/composition.md),
-  [configuring your agents](docs/user/guides/configuration.md), [stealth sources](docs/user/guides/stealth.md)
+  [configuring your harnesses](docs/user/guides/configuration.md), [stealth sources](docs/user/guides/stealth.md)
 - Reference: [CLI](docs/user/reference/cli.md),
   [configuration files](docs/user/reference/configuration.md),
   [harness support](docs/user/reference/harnesses.md)

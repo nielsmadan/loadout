@@ -33,6 +33,7 @@ from .harnesses import KNOWN_HARNESSES
 from .init_options import InitOptions
 from .init_workflow import INTERRUPTED, run_init
 from .machine import load_machine_config, machine_config_path, profile_for, resolve_profile
+from .overlay_leftovers import FIRST_REMOVE
 from .project import project_config_path
 from .skill_copy import cmd_skill_copy
 from .staged import check_staged
@@ -608,7 +609,10 @@ def _refused(args: argparse.Namespace, code: int, error: LoadoutError) -> int:
 def _renamed_spelling(argv: Sequence[str]) -> str | None:
     command = argv[0] if argv else None
     if command == "overlay":
-        return "`overlay` is now `stealth`; use `loadout stealth add`, `list` or `remove`"
+        return (
+            f"`overlay` is now `stealth`; {FIRST_REMOVE}, "
+            "then use `loadout stealth add`, `list` or `remove`"
+        )
     if command == "template":
         return "`template` is now `kit`; use `loadout kit add`, `list` or `sync`"
     if command == "kit" and any(arg == "--tracked" for arg in argv[1:]):
@@ -616,7 +620,10 @@ def _renamed_spelling(argv: Sequence[str]) -> str | None:
     if command in {"sync", "check"} and any(
         arg == "--overlay" or arg.startswith("--overlay=") for arg in argv[1:]
     ):
-        return f"`--overlay` is now `--stealth`; use `loadout {command} --stealth NAME`"
+        return (
+            f"`--overlay` is now `--stealth`; {FIRST_REMOVE}, "
+            f"then use `loadout {command} --stealth NAME`"
+        )
     return None
 
 

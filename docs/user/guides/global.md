@@ -1,9 +1,9 @@
 ---
 title: Global setup
-description: Keep machine-wide agent configuration in a shared source and render it for your chosen agents.
+description: Keep machine-wide harness configuration in a shared source and render it for your chosen harnesses.
 ---
 
-# Configure your agents across projects
+# Configure your harnesses across projects
 
 Global configuration holds instructions, permissions, skills, and tools you want available
 across projects. Project-specific context belongs in [project configuration](projects.md)
@@ -33,7 +33,7 @@ For a new directory, Loadout creates a nested `loadout/` directory:
 nothing. `init` writes `permissions.toml` unless Codex is the only harness and has no
 `~/.codex/rules/permissions.rules` yet. A missing `permissions.toml` means the same as an empty
 one. `README.md` shows the full layout and how to add hooks, plugins and settings. Anything
-`init` adopts from your existing agent configuration lands beside these: instructions, settings,
+`init` adopts from your existing harness configuration lands beside these: instructions, settings,
 hooks, plugins and skills, each in its own directory. Codex's own settings in `config.toml`, such
 as `model`, `approval_policy` and `[profiles.*]`, become the `defaults` fragment
 `defaults/codex.json`; only `[projects.*]` and `trust`, which Codex writes for itself, stay out.
@@ -54,7 +54,7 @@ If the directory you pass already contains `loadout.toml`, Loadout adopts it dir
 If both the direct and nested locations contain manifests, it refuses to choose between them.
 An existing machine configuration is protected from reinitialisation.
 
-## Choose your agents
+## Choose your harnesses
 
 `init global` names the source `migrated` and gives it no `use` list, so it offers every
 category: instructions, skills, agents, kits and the rest. It writes one block per harness,
@@ -92,9 +92,9 @@ ask = ["git commit"]
 deny = ["git push"]
 ```
 
-`[all]` supplies defaults to the agents you declare. Adding `[opencode]` or `[pi]`
-opts that agent in too. It does not enable an undeclared agent. An agent's own list replaces the
-`[all]` one, so when `init` wrote an adopted `instructions` list into a block, add the new
+`[all]` supplies defaults to the harnesses you declare. Adding `[opencode]` or `[pi]`
+opts that harness in too. It does not enable an undeclared harness. A harness's own list
+replaces the `[all]` one, so when `init` wrote an adopted `instructions` list into a block, add the new
 fragment to that list as well.
 
 ## Sync and check
@@ -104,7 +104,7 @@ loadout sync --global
 loadout check --global
 ```
 
-Loadout writes to each selected agent's global configuration directory. The destinations follow
+Loadout writes to each selected harness's global configuration directory. The destinations follow
 the harness environment variables listed in the [support reference](../reference/harnesses.md).
 
 If you are adopting an existing setup, first move the configuration you want to retain into the
@@ -156,7 +156,7 @@ installation, or `--source NAME` when several sources offer skills. It vendors t
 your global source and syncs the selected profile.
 
 Restart a running agent session so it discovers the installed skill. Invoke `loadout` through
-that agent's skill syntax and describe the configuration change you want.
+that harness's skill syntax and describe the configuration change you want.
 
 The skill's `--personal`, `--project`, and `--global` scope vocabulary belongs to the skill.
 The CLI expresses scope as the `init project` / `init global` subcommands; every other command

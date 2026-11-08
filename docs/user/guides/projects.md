@@ -6,9 +6,9 @@ description: Share repository configuration while keeping personal permission ru
 # Share configuration in a project
 
 A project keeps the sources that everyone shares in `loadout/`. Each person renders their own
-agent files, including their local permission choices.
+harness files, including their local permission choices.
 
-## Initialise and choose agents
+## Initialise and choose harnesses
 
 From the repository root:
 
@@ -33,7 +33,7 @@ the [CLI reference](../reference/cli.md#initialise).
 
 | Source | Purpose | Commit it? |
 | --- | --- | --- |
-| `loadout/config.toml` | Agents, instruction order, skill policy, kits | Yes |
+| `loadout/config.toml` | Harnesses, instruction order, skill policy, kits | Yes |
 | `loadout/permissions.toml` | Shared permission rules | Yes |
 | `loadout/permissions.local.toml` | Your permission rules for this repository | No: add it to `.gitignore` or `.git/info/exclude` yourself |
 | `loadout/instructions/` | Shared instruction fragments | Yes |
@@ -43,7 +43,7 @@ the [CLI reference](../reference/cli.md#initialise).
 | `loadout/mcp.toml` | Project MCP server definitions | Yes |
 | `loadout/settings/<harness>.json` | The rest of a shared settings file | Yes |
 | `loadout/kits/` | Vendored kit sources | Yes |
-| Generated agent files | Combined output for this checkout | No |
+| Generated harness files | Combined output for this checkout | No |
 
 Personal project configuration covers permissions and private skill replacements. Loadout never
 adds `permissions.local.toml` to `.gitignore`, so keeping it out of Git is up to you; check that a
@@ -72,7 +72,7 @@ After adding an instruction order to a project that previously generated only pe
 loadout sync
 ```
 
-All selected agents use one project instruction order, because four harnesses share `AGENTS.md`.
+All selected harnesses use one project instruction order, because four harnesses share `AGENTS.md`.
 With Claude and any other harness, the content goes to `AGENTS.md` and `CLAUDE.md` holds only the
 banner and `@AGENTS.md`: Claude reads `AGENTS.md` only when no `CLAUDE.md` is on the path, and its
 docs promise the import never makes it read `AGENTS.md` twice. A Claude-only project writes the
@@ -201,7 +201,7 @@ every other line alone. Re-running init does not reinterpret an existing source;
 
 ## Global and project scope
 
-The agents load global and project files according to their own rules. Loadout writes the two
+The harnesses load global and project files according to their own rules. Loadout writes the two
 scopes separately; it does not turn them into one universal inheritance chain.
 
 Use [global setup](global.md) for the defaults you want everywhere. Use

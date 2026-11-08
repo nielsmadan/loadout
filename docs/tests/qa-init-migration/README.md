@@ -3,7 +3,7 @@
 Run this after changing onboarding, what init puts back on failure, source routing or bundled
 skill installation. It exercises the current checkout through `python -m loadout`, using
 disposable repositories and the existing fake-home fixtures in
-[conftest.py](../../../tests/conftest.py). It never installs into real agent destinations.
+[conftest.py](../../../tests/conftest.py). It never installs into real harness destinations.
 
 The executable procedure is [manual_init_qa.py](../../../tests/manual_init_qa.py). Its filename
 keeps it outside routine pytest discovery; invoke it explicitly. It records command arguments,
@@ -15,7 +15,7 @@ driver fingerprint. Successful commands also require assertions about resulting 
 Prerequisites: the checkout's development environment, Python 3.13+, Git, and a POSIX PTY for
 interactive confirmation. No network or credentials are needed for these synthetic CLI cases.
 Run from the repository root. The test fixtures supply local Git identities and isolate HOME
-and harness relocation variables; do not change the invoking shell's HOME or real agent config.
+and harness relocation variables; do not change the invoking shell's HOME or real harness config.
 
 ```sh
 qa_evidence=$(mktemp -d -t loadout-init-qa)
@@ -50,7 +50,7 @@ source-only reconstruction. Routine regression checks cover additional ownership
 symlink, alternate-index and hook-event variants. Label that evidence separately from direct
 CLI exploration when completing the scenario matrix.
 
-Actual agent-host skill loading and natural-language triggering require a separate bounded
+Actual harness skill loading and natural-language triggering require a separate bounded
 host session. CLI installation and wheel-resource checks do not establish those behaviors.
 Record host/package identity, prompt, observable tool activity and result; leave unsupported or
 unsafe-to-isolate hosts untested rather than extrapolating from one host.
