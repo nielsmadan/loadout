@@ -157,6 +157,43 @@ def _mcp_entries(block: Mapping[str, Any], key: str, path: Path) -> tuple[str, .
     return entries
 
 
+_SECTIONS: dict[str, tuple[str, ...]] = {
+    "shell": ("allow", "ask", "deny", "default"),
+    "mcp": ("allow", "ask", "deny"),
+    "claude": ("extra",),
+    "claude.extra": ("allow", "deny"),
+    "opencode": ("extra",),
+}
+
+_TABLES = "[shell], [mcp], [claude.extra] and [opencode.extra]"
+
+
+def _section(data: Mapping[str, Any], name: str, path: Path) -> Mapping[str, Any]:
+    *parents, key = name.split(".")
+    for parent in parents:
+        data = data.get(parent, {})
+    value = data.get(key, {})
+    if not isinstance(value, dict):
+        raise LoadoutError(f"{path}: {name} must be a table ({_TABLES} are the tables it may hold)")
+    stray = sorted(set(value) - set(_SECTIONS[name]))
+    if stray:
+        raise LoadoutError(
+            f"{path}: [{name}] has unknown key(s) {', '.join(stray)} "
+            f"(allowed: {', '.join(_SECTIONS[name])})"
+        )
+    return value
+
+
+def _refuse_unknown(data: Mapping[str, Any], path: Path) -> None:
+    stray = sorted(key for key in data if key not in _SECTIONS)
+    if stray:
+        raise LoadoutError(
+            f"{path}: unknown key(s) or table(s) {', '.join(stray)} (allowed: {_TABLES})"
+        )
+    for name in _SECTIONS:
+        _section(data, name, path)
+
+
 def parse_rules(path: Path) -> Rules:
     if not path.is_file():
         raise LoadoutError(f"permissions source not found: {path}")
@@ -165,6 +202,7 @@ def parse_rules(path: Path) -> Rules:
     except tomllib.TOMLDecodeError as error:
         raise LoadoutError(f"{path}: invalid TOML: {error}") from error
 
+    _refuse_unknown(data, path)
     shell = data.get("shell", {})
     mcp = data.get("mcp", {})
     claude_extra = data.get("claude", {}).get("extra", {})

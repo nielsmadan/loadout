@@ -851,6 +851,8 @@ deny = ["docs/delete"]
 - Shell entries are command strings. The renderer adapts their representation to each harness.
 - MCP entries use `server/tool` or `server/*`.
 - `allow`, `ask`, and `deny` are lists; omitted lists are empty.
+- Any other table or key is refused by name, so a typo such as `[shel]` stops the sync instead of
+  dropping its rules. `[opencode.extra]` takes any key.
 - The strictest decision wins when the same entry appears in several tiers.
 - An omitted shell default casts no vote in composition. An explicitly stated default does.
 - `[shell] default` is rendered for OpenCode and Pi. Claude and Codex use native settings;

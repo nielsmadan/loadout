@@ -157,7 +157,7 @@ global configuration is present. With none of them it exits 2. It refuses with e
 writing anything, a folder that already holds a `loadout.toml` (it never overwrites one), the home
 folder, a folder that holds a harness home, invalid targets, a target that would hold or be inside
 the folder, anything `stealth add` refuses, and 0.10.0 leftovers. A target containing a control
-character is invalid. `stealth init` and `stealth add` both check each pattern's fixed parent, the
+character, or a byte that is not UTF-8, is invalid. `stealth init` and `stealth add` both check each pattern's fixed parent, the
 part before its first wildcard: a pattern that can only match inside the stealth folder, such as
 `~/agent-config/work/app*` for the folder `~/agent-config/work`, is refused. Which checkouts
 match, and whether one holds the stealth folder, is checked again on every `sync` and `check`. It then lists the checkouts the patterns match now and

@@ -194,3 +194,83 @@ def test_parse_rules_refuses_an_exact_entry_that_is_not_one_command(
     source.write_text(f'[shell]\ndeny = ["{bad}"]\n', encoding="utf-8")
     with pytest.raises(LoadoutError, match=r"shell\.deny exact entry"):
         parse_rules(source)
+
+
+@pytest.mark.parametrize(
+    ("source", "stray"),
+    [
+        ('[shel]\ndeny = ["git push"]\n', "shel"),
+        ('[[allow]]\nentry = "git status"\n', "allow"),
+        ('deny = ["git push"]\n', "deny"),
+    ],
+)
+def test_parse_rules_refuses_an_unknown_table_naming_the_allowed_ones(
+    tmp_path: Path, source: str, stray: str
+) -> None:
+    path = tmp_path / "permissions.toml"
+    path.write_text(source + '\n[shell]\nallow = ["git status"]\n', encoding="utf-8")
+
+    with pytest.raises(LoadoutError) as raised:
+        parse_rules(path)
+
+    assert str(raised.value) == (
+        f"{path}: unknown key(s) or table(s) {stray} "
+        "(allowed: [shell], [mcp], [claude.extra] and [opencode.extra])"
+    )
+
+
+@pytest.mark.parametrize(
+    ("source", "section", "stray", "allowed"),
+    [
+        ('[shell]\nalow = ["git status"]\n', "shell", "alow", "allow, ask, deny, default"),
+        ('[mcp]\ndefault = "deny"\n', "mcp", "default", "allow, ask, deny"),
+        ('[claude.extra]\nask = ["Read(//tmp/**)"]\n', "claude.extra", "ask", "allow, deny"),
+        ('[claude]\nallow = ["Read"]\n', "claude", "allow", "extra"),
+        ('[opencode]\nwebfetch = "allow"\n', "opencode", "webfetch", "extra"),
+    ],
+)
+def test_parse_rules_refuses_an_unknown_key_in_a_section(
+    tmp_path: Path, source: str, section: str, stray: str, allowed: str
+) -> None:
+    path = tmp_path / "permissions.toml"
+    path.write_text(source, encoding="utf-8")
+
+    with pytest.raises(LoadoutError) as raised:
+        parse_rules(path)
+
+    assert str(raised.value) == (
+        f"{path}: [{section}] has unknown key(s) {stray} (allowed: {allowed})"
+    )
+
+
+def test_parse_rules_refuses_a_section_that_is_not_a_table(tmp_path: Path) -> None:
+    path = tmp_path / "permissions.toml"
+    path.write_text('shell = "git status"\n', encoding="utf-8")
+
+    with pytest.raises(LoadoutError) as raised:
+        parse_rules(path)
+
+    assert str(raised.value) == (
+        f"{path}: shell must be a table ([shell], [mcp], [claude.extra] and [opencode.extra] are "
+        "the tables it may hold)"
+    )
+
+
+def test_parse_rules_accepts_every_documented_table_and_any_opencode_extra_key(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "permissions.toml"
+    path.write_text(
+        '[shell]\ndefault = "ask"\nallow = ["git status"]\nask = ["git commit"]\n'
+        'deny = ["git push"]\n\n[mcp]\nallow = ["docs/search"]\nask = ["docs/update"]\n'
+        'deny = ["docs/delete"]\n\n[claude.extra]\nallow = ["Read(//tmp/**)"]\n'
+        'deny = ["Write(//etc/**)"]\n\n[opencode.extra]\nwebfetch = "allow"\nanything = "deny"\n',
+        encoding="utf-8",
+    )
+
+    rules = parse_rules(path)
+
+    assert rules.deny == ("git push",)
+    assert rules.mcp_ask == ("docs/update",)
+    assert rules.claude_extra_deny == ("Write(//etc/**)",)
+    assert rules.opencode_extra == {"webfetch": "allow", "anything": "deny"}

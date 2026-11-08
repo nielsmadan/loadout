@@ -130,8 +130,15 @@ Project skills reach all five harnesses. Codex reads `.agents/skills`.
 
 ## Source rules
 
-Permissions are TOML rules with `[shell]` and `[mcp]` categories; `[mcp]` supplies the
-`mcp-permissions` artifact. Preserve the existing order: OpenCode and Pi use last-match-wins
+Permissions are TOML rules in four tables, and no others:
+
+- `[shell]`: shell command rules for every harness;
+- `[mcp]`: MCP tool rules, which supply the `mcp-permissions` artifact;
+- `[claude.extra]`: Claude-only permission strings;
+- `[opencode.extra]`: OpenCode-only permission keys.
+
+Any other table or key is refused by name; fix the name it reports rather than moving the rules.
+Preserve the existing order: OpenCode and Pi use last-match-wins
 semantics after rendering. Project permissions merge kit, committed, then personal tiers;
 use `permissions.local.toml` only for personal requests. Loadout never gitignores
 `loadout/permissions.local.toml`: when you create it, ask whether to list

@@ -512,3 +512,21 @@ def test_a_pattern_whose_wildcard_reaches_above_the_folder_is_accepted(fake_home
 
     assert code == 0
     assert _registered() == {"z": folder.resolve()}
+
+
+def test_a_typo_in_the_permissions_table_stops_check_after_init(
+    fake_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _repo(fake_home, "app1")
+    folder = fake_home / "cfg" / "work"
+    argv = ["--targets", "~/work/app*", "--harness", "claude", "--yes"]
+    assert loadout.main(["stealth", "init", str(folder), *argv]) == 0
+    (folder / "permissions.toml").write_text('[shel]\ndeny = ["git push"]\n', encoding="utf-8")
+    capsys.readouterr()
+
+    assert loadout.main(["check", "--stealth", "work"]) == 3
+
+    assert (
+        f"{folder.resolve()}/permissions.toml: unknown key(s) or table(s) shel (allowed: [shell], "
+        "[mcp], [claude.extra] and [opencode.extra])"
+    ) in capsys.readouterr().err
