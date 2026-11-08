@@ -4,6 +4,19 @@ All notable user-facing changes to loadout. From 1.0 it follows
 [Semantic Versioning](https://semver.org): breaking changes land only in a major release and
 are called out under **Breaking Changes**.
 
+## [0.11.0] - 2026-11-08
+
+### Features
+
+- Rename overlays to stealth sources
+- Rename templates to kits
+- Add stealth init to start a stealth source
+
+### Bug Fixes
+
+- Refuse 0.10.0 overlay leftovers and edited kits on linking
+- Refuse unknown tables in permissions.toml
+
 ## [0.10.0] - 2026-11-07
 
 ### Features
@@ -323,6 +336,7 @@ are called out under **Breaking Changes**.
 - Point release checks at the renamed docs recipe
 - Drop the GitHub CLI from the release flow
 
+[0.11.0]: https://github.com/nielsmadan/loadout/compare/v0.10.0..v0.11.0
 [0.10.0]: https://github.com/nielsmadan/loadout/compare/v0.9.3..v0.10.0
 [0.9.3]: https://github.com/nielsmadan/loadout/compare/v0.9.2..v0.9.3
 [0.9.2]: https://github.com/nielsmadan/loadout/compare/v0.9.1..v0.9.2
