@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import tomllib
 from dataclasses import dataclass, replace
+from functools import cached_property
 from pathlib import Path
 
 from . import stealth_seams
+from .emit import ProjectKits
 from .errors import LoadoutError
 from .harnesses import GLOBAL_PRESET, KNOWN_HARNESSES, SliceOutput
 from .manifest import (
@@ -14,9 +16,20 @@ from .manifest import (
     PermissionTarget,
     renamed_overlay_table,
 )
+from .permissions.rules import Rules
+from .servers import Server
+from .skills import Skill
 from .sources import SourceParser, parse_stealth_sources
+from .stealth_kits import (
+    parse_kit_names,
+    resolve_stealth_kits,
+    stealth_rules,
+    stealth_servers,
+    stealth_skill_trees,
+)
 
 STEALTH_TABLE = "stealth"
+KITS_KEY = "kits"
 
 _SLICES = frozenset({"instructions", "mcp", "permissions", "skills"})
 
@@ -35,7 +48,7 @@ STEALTH_OFFERED: dict[str, dict[str, SliceOutput]] = {
     "cursor": {**GLOBAL_PRESET["cursor"], "instructions": SliceOutput()},
 }
 
-_STEALTH_KEYS = ("targets", "follow_worktrees", "git_hook")
+_STEALTH_KEYS = ("targets", KITS_KEY, "follow_worktrees", "git_hook")
 
 _CONTROL = frozenset(map(chr, (*range(0x20), 0x7F)))
 
@@ -68,6 +81,27 @@ class StealthManifest:
     settings: StealthSettings
     manifest: Manifest
     harnesses: tuple[str, ...]
+    kit_names: tuple[str, ...] = ()
+    instructions_off: frozenset[str] = frozenset()
+
+    @cached_property
+    def kits(self) -> ProjectKits:
+        return resolve_stealth_kits(self.kit_names, self.folder / MANIFEST_NAME)
+
+    @cached_property
+    def rules(self) -> Rules:
+        return stealth_rules(self.manifest, self.kits)
+
+    @cached_property
+    def servers(self) -> dict[str, Server]:
+        return stealth_servers(self.manifest, self.kits)
+
+    @cached_property
+    def skill_trees(self) -> tuple[Skill, ...]:
+        return stealth_skill_trees(self.manifest, self.kits)
+
+    def takes_kit_instructions(self, harness: str) -> bool:
+        return harness in self.harnesses and harness not in self.instructions_off
 
 
 def _lenient_data(folder: Path) -> dict[str, object]:
@@ -101,7 +135,7 @@ def _parse_settings(raw: object, path: Path) -> StealthSettings:
     if stray:
         raise LoadoutError(
             f"{path}: [{STEALTH_TABLE}] has unknown key(s) {', '.join(stray)} "
-            f"(allowed: targets; follow_worktrees and git_hook are reserved)"
+            f"(allowed: targets, kits; follow_worktrees and git_hook are reserved)"
         )
     targets = raw.get("targets")
     if (
@@ -141,7 +175,18 @@ def _reason(harness: str | None, key: str) -> str:
     return _REFUSED_KEYS.get(key, "a stealth source does not render it")
 
 
+def misplaced_kits(path: Path) -> LoadoutError:
+    return LoadoutError(
+        f"{path}: kits belongs in the [{STEALTH_TABLE}] table, beside targets; move it there"
+    )
+
+
 def _refuse_top_level(data: dict[str, object], path: Path) -> None:
+    if "kit" in data:
+        raise LoadoutError(
+            f"{path}: [kit.*] is refused: a stealth source links its kits and keeps no "
+            "vendored copy, so there is no content hash to record"
+        )
     if "extends" in data or "remove" in data:
         raise LoadoutError(
             f"{path}: extends and remove are refused: a stealth source has one profile, its loadout.toml"
@@ -232,20 +277,45 @@ def load_stealth_manifest(
     folder: Path, *, sources: SourceParser = parse_stealth_sources
 ) -> StealthManifest:
     path = folder / MANIFEST_NAME
-    data = stealth_seams.read_toml(path)
+    return stealth_manifest_from(folder, stealth_seams.read_toml(path), sources=sources)
+
+
+def _stealth_table(data: dict[str, object], path: Path) -> dict[str, object]:
     if (renamed := renamed_overlay_table(data, path)) is not None:
         raise renamed
-    if STEALTH_TABLE not in data:
+    if KITS_KEY in data:
+        raise misplaced_kits(path)
+    table = data.get(STEALTH_TABLE)
+    if table is None:
         raise LoadoutError(f"{path}: no [{STEALTH_TABLE}] table")
-    settings = _parse_settings(data[STEALTH_TABLE], path)
+    if not isinstance(table, dict):
+        raise LoadoutError(f"{path}: [{STEALTH_TABLE}] must be a table")
+    return table
+
+
+def linked_kit_names(data: dict[str, object], path: Path) -> tuple[str, ...]:
+    table = _stealth_table(data, path)
+    return parse_kit_names(table[KITS_KEY], path) if KITS_KEY in table else ()
+
+
+def stealth_manifest_from(
+    folder: Path, data: dict[str, object], *, sources: SourceParser = parse_stealth_sources
+) -> StealthManifest:
+    path = folder / MANIFEST_NAME
+    settings = _parse_settings(_stealth_table(data, path), path)
+    kit_names = linked_kit_names(data, path)
     rest = {k: v for k, v in data.items() if k != STEALTH_TABLE}
     _refuse_top_level(rest, path)
-    built = stealth_seams.build_manifest(
-        _filtered_data(rest, path), path, sources=sources, preset=STEALTH_OFFERED
-    )
+    filtered = _filtered_data(rest, path)
+    built = stealth_seams.build_manifest(filtered, path, sources=sources, preset=STEALTH_OFFERED)
+    declared = _declared(filtered)
     return StealthManifest(
         folder=folder,
         settings=settings,
         manifest=_restricted(built),
-        harnesses=tuple(sorted(_declared(rest))),
+        harnesses=tuple(sorted(declared)),
+        kit_names=kit_names,
+        instructions_off=frozenset(
+            harness for harness, block in declared.items() if block.get("instructions") is False
+        ),
     )

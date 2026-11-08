@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import tomllib
@@ -865,20 +866,24 @@ def test_check_withholds_a_claude_json_server_value_that_holds_a_secret(
 ) -> None:
     folder, (root,) = _stealth(fake_home, "a")
     servers = folder / "mcp.toml"
-    servers.write_text(
-        servers.read_text(encoding="utf-8")
-        + f'\n[vault]\ntransport = "stdio"\ncommand = "vault-mcp"\n'
-        f'env = {{ MY_SERVICE_KEY = "{SECRET}" }}\n',
-        encoding="utf-8",
+    original = servers.read_text(encoding="utf-8")
+    vault = (
+        '\n[vault]\ntransport = "stdio"\ncommand = "vault-mcp"\nenv = {{ MY_SERVICE_KEY = "{}" }}\n'
     )
+    servers.write_text(original + vault.format("placeholder"), encoding="utf-8")
+    assert loadout.main(["sync", "--stealth", NAME]) == 0
+    servers.write_text(original + vault.format(SECRET), encoding="utf-8")
     capsys.readouterr()
 
     assert loadout.main(["check", "--stealth", NAME]) == 1
 
     err = capsys.readouterr().err
     label = f'~/.claude.json#projects["{root}"].mcpServers.vault'
-    assert f"stealth {NAME}: DRIFT (missing): {label}\n" in err
-    assert f"{label}: 8 line(s) differ; diff not shown because the file holds a secret" in err
+    assert f"stealth {NAME}: DRIFT (source-changed): {label}\n" in err
+    assert re.search(
+        r"\.mcpServers\.vault: \d+ line\(s\) differ; diff not shown because the file holds a secret",
+        err,
+    )
     assert SECRET not in err
 
 

@@ -150,7 +150,7 @@ so a manifest never spells out a machine path.
 | `plugins` | Plugin fragment name or ordered list, for supporting harnesses |
 | `substitute` | Map from selected instruction name to replacement name |
 | `preserve` | Foreign top-level keys to carry forward where the target supports them; an error under `[codex]`, where loadout already leaves the keys it does not own alone |
-| `permissions`, `mcp-permissions`, `mcp`, `skills`, `agents`, `module-config` | Automatic; `true` is the same as leaving the key out, `false` opts out, and `permissions = []` selects no rules |
+| `permissions`, `mcp-permissions`, `mcp`, `skills`, `agents`, `module-config` | Automatic; `true` is the same as leaving the key out, `false` opts out, and `permissions = []` (or `mcp-permissions = []`, `mcp = []`) selects no rules. Any other value, such as a list of names, is an error |
 
 `[codex]` and `[pi]` with no keys are complete declarations. An unknown harness name, or a slice a
 harness does not offer, is an error listing what is available.
@@ -587,6 +587,7 @@ see [`stealth.toml`](#stealthtoml).
 | Key | Meaning |
 | --- | --- |
 | `targets` | Required, non-empty list of absolute or `~/` patterns. Expanded again on every run. Each match must be the top of a git checkout |
+| `kits` | Optional list of [kit](#kits) names the stealth source links; see [linked kits](#linked-kits) |
 | `follow_worktrees` | Reserved for a later release. `false` or absent; `true` is refused |
 | `git_hook` | Reserved for a later release. `false` or absent; `true` is refused |
 
@@ -620,6 +621,32 @@ each declared harness that allows it, and is refused only when none does.
 A source folder that holds `agents/` or `module-config/` is not an error: the stealth source renders
 neither. A stealth source renders the `default` profile only, and a slice with nothing to write writes
 nothing.
+
+### Linked kits
+
+`kits = ["react-native"]` in the `[stealth]` table links [kits](#kits) into the stealth source.
+`loadout kit add <kit> --stealth <name>` writes the entry for you, and
+`loadout kit list --stealth <name>` shows where each one resolves. A name resolves as a
+project's linked kit does: the `kits/` folder of a source the machine's global manifest declares,
+then the bundled kits. Every sync picks up the kit's current contents, and a change to it shows in
+`check` as `source-changed`.
+
+A stealth source only links kits. `--vendored` is a usage error, and a `[kit.<name>]` table is
+refused, since a stealth folder keeps no vendored copy. A `kits` key at the top level of the file is
+refused with where it belongs.
+
+A linked kit contributes to every declared harness, beneath the stealth source's own content:
+
+- **Instructions:** its instruction parts follow the stealth source's own fragments in each
+  instruction document. `instructions = false` in a harness table keeps them out of that harness.
+- **Permissions:** its rules are the lowest tier, so a deny in the stealth source's
+  `permissions.toml` beats a kit's allow.
+- **MCP servers and skills:** a server or skill the stealth source defines under the same name
+  replaces the kit's.
+
+A slice switched off with `= false` takes nothing from the kit either. A kit that brings
+`hooks.json` or `plugins.json` is refused, naming the file, for the same reason those slices are.
+Removing a name from `kits` retires what it rendered on the next sync.
 
 ### Destinations
 
@@ -676,9 +703,9 @@ else in the file is judged, written or retired:
 | `opencode.json` | `permission`, `mcp` and `instructions` | none |
 
 - **Saved approvals are kept.** A rule already in a list that the stealth source did not write, such as a
-  Claude "don't ask again" approval, stays after the stealth source's own entries, and `check` lists it
-  as `saved by the harness, not in the stealth source: <rule>; add it to the stealth source's
-  permissions.toml or delete it`. The same applies to a command-list entry Droid saved. It is not
+  Claude "don't ask again" approval, stays after the stealth source's own entries, and `check` lists
+  them, one note per file and list, as `saved by the harness, not in the stealth source: <file>: <list>:
+  <rule>, <rule>; add them to the stealth source's permissions.toml or delete them`. The same applies to a command-list entry Droid saved. It is not
   drift and never blocks `sync`. A rule that holds a secret, such as a token in a `curl` header,
   is listed as `a rule not shown because it holds a secret (<reason>)`; read the file for it.
 - **A rule the stealth source no longer renders is removed.** So is an owned key the source stopped

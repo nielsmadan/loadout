@@ -100,6 +100,30 @@ file each one writes.
 The stealth source's own `[[source]]` entries supply exactly the MCP servers it renders, so `mcp = ["name"]` is
 refused; `mcp = false` turns the slice off for a harness.
 
+## Link kits
+
+A [kit](kits.md) you already keep in your global source can feed a stealth source too, so its
+instructions, skills, MCP servers and permissions don't have to be copied into the folder:
+
+```sh
+loadout kit add react-native --stealth work
+loadout sync --stealth work
+```
+
+`kit add` writes the name into the `[stealth]` table:
+
+```toml
+[stealth]
+targets = ["~/work/app*", "~/work/api"]
+kits = ["react-native"]
+```
+
+The kit stays linked: every sync picks up its current contents, and `loadout kit list --stealth work`
+shows where it resolves. Its parts sit beneath the stealth source's own. Your fragments come
+first in each instruction document, your permission rules outrank the kit's, and a skill or
+server of the same name in the stealth folder replaces the kit's. A stealth source can't vendor a
+kit. The [configuration reference](../reference/configuration.md#linked-kits) has the full rules.
+
 ## Register, preview, sync
 
 ```sh
@@ -112,7 +136,8 @@ loadout sync --stealth work
 yourself, `stealth add` checks the manifest and records the folder in
 `~/.config/loadout/stealth.toml`.
 Registering is what allows the folder to write: a stealth folder that is not registered is
-refused. `check` lists what `sync` would write as `missing`, and the notes it adds, such as a
+refused. `check` lists each file `sync` would create as `missing`, one line each, with a diff
+only for files that already exist, then a count of each kind and the notes it adds, such as a
 project the harness does not trust yet. `sync` writes the files and prints one line per change.
 With `instructions/work.md` and a `settings/local.json` that sets `model`, the first sync of
 `~/work/app1` prints:

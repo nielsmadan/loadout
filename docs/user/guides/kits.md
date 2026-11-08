@@ -105,6 +105,9 @@ to the project. Permissions merge with the project's
 shared and personal rules. The [composition rules](composition.md#how-content-combines) explain
 what happens when two sources overlap.
 
+To link a kit into a [stealth source](stealth.md#link-kits) instead, name it:
+`loadout kit add python --stealth work`. A stealth source only links kits.
+
 ## Choose an update model
 
 | Model | Where the kit lives | How updates reach a project |

@@ -204,12 +204,12 @@ def _not_found(name: str, root: Path, offered: Iterable[str], *, configured: boo
     return " ".join(sentences)
 
 
-def resolve_upstream_kit(name: str) -> ResolvedItem:
+def resolve_upstream_kit(name: str, *, offering: tuple[Source, ...] | None = None) -> ResolvedItem:
     kit_name(name)
     bundled = bundled_kit(name)
     if bundled is not None and not machine_config_path().exists():
         return _bundled_kit(name, bundled)
-    sources = kit_sources()
+    sources = kit_sources() if offering is None else offering
     bare = name
     if "/" in name:
         qualifier, bare = name.split("/")

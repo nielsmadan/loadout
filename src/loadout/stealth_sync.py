@@ -26,7 +26,6 @@ from .claude_json import (
 from .containment import no_symlinks
 from .destinations import resolve_destination
 from .diffs import report_diff
-from .emit import global_servers
 from .errors import LoadoutError
 from .exclude import (
     PERSONAL_UNITS,
@@ -221,6 +220,7 @@ class PreparedRun:
     plans: tuple[TargetPlan, ...]
     errors: tuple[str, ...]
     shared: tuple[Drift, ...]
+    manifest: StealthManifest | None = None
 
 
 @dataclass(frozen=True)
@@ -571,7 +571,7 @@ def _user_servers(path: Path, key: str) -> frozenset[str]:
 
 
 def _collisions(manifest: StealthManifest) -> tuple[str, ...]:
-    servers = global_servers(manifest.manifest)
+    servers = manifest.servers
     if not servers:
         return ()
     harnesses = frozenset(
@@ -738,6 +738,7 @@ def prepare(run: StealthRun) -> PreparedRun:
         plans=tuple(item.plan for item in prepared.planned),
         errors=(*prepared.errors, *shared_errors),
         shared=shared,
+        manifest=prepared.context.manifest if prepared.context is not None else None,
     )
 
 

@@ -60,7 +60,7 @@ def test_claude_keys_and_saved_approvals_survive_an_owned_write() -> None:
             "model": "opus",
         }
     )
-    assert applied.carried == ("permissions.allow: Bash(npm run x)",)
+    assert applied.carried == (("permissions.allow", "Bash(npm run x)"),)
     assert applied.changed is True
 
 
@@ -91,7 +91,7 @@ def test_carried_entries_before_owned_ones_need_no_write() -> None:
     }
     again = apply_owned(reordered, claude_owned(), first.record)
     assert again.changed is False
-    assert again.carried == ("permissions.allow: Bash(npm run x)",)
+    assert again.carried == (("permissions.allow", "Bash(npm run x)"),)
 
 
 def test_an_unchanged_document_needs_no_write() -> None:
@@ -255,7 +255,7 @@ def test_pending_keys_and_rules_are_created_when_absent_and_adopted_when_written
         owned_keys={("model",): leaf_digest("sonnet")},
         owned_rules={ALLOW: ("Bash(ls)", "Read"), DENY: ("Bash(rm -rf /)",)},
     )
-    assert adopted.carried == ("permissions.allow: Bash(npm test)",)
+    assert adopted.carried == (("permissions.allow", "Bash(npm test)"),)
 
 
 def test_a_pending_key_is_stripped_only_while_it_holds_the_pending_value() -> None:
@@ -279,5 +279,5 @@ def test_a_rule_that_holds_a_secret_is_carried_without_its_text() -> None:
     existing = {"permissions": {"allow": [f"Bash(curl -H 'Authorization: Bearer {token}':*)"]}}
     applied = apply_owned(existing, claude_owned(), None)
     withheld = "a rule not shown because it holds a secret (a token in a provider's format)"
-    assert applied.carried == (f"permissions.allow: {withheld}",)
+    assert applied.carried == (("permissions.allow", withheld),)
     assert applied.document["permissions"]["allow"][-1].endswith(f"{token}':*)")

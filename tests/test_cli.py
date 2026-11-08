@@ -844,8 +844,8 @@ def test_a_kit_command_outside_a_project_says_where_kits_are_authored(
     assert loadout.main(["kit", "list", "--root", str(tmp_path)]) == 3
 
     assert capsys.readouterr().err.strip() == (
-        "loadout: kit commands manage a project's kits; to author one, add a "
-        "`kits/<name>/` folder or `kits/<name>.toml` manifest to your global source. "
-        "To see the kits your "
-        "sources offer, run `loadout kit add` with no name in a project."
+        "loadout: kit commands manage a project's kits, or a stealth source's with "
+        "`--stealth NAME`; to author one, add a `kits/<name>/` folder or `kits/<name>.toml` "
+        "manifest to your global source. To see the kits your sources offer, run "
+        "`loadout kit add` with no name in a project."
     )

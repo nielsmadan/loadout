@@ -4,7 +4,7 @@ import argparse
 import json
 import sys
 import traceback
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -47,6 +47,7 @@ from .stealth_commands import (
     resolve_selection,
 )
 from .stealth_init import cmd_stealth_init
+from .stealth_kit_commands import cmd_stealth_kit_add, cmd_stealth_kit_list
 
 
 class _ArgumentError(Exception):
@@ -85,10 +86,14 @@ def build_parser() -> argparse.ArgumentParser:
         sub: argparse.ArgumentParser,
         *,
         allow_global: bool = False,
+        stealth_help: str | None = None,
         help_text: str = "source root: the folder holding loadout.toml, a project root holding "
         "loadout/, a stealth folder, or a repository a stealth source targets (default: cwd)",
     ) -> None:
-        target = sub.add_mutually_exclusive_group() if allow_global else sub
+        if allow_global:
+            stealth_help = "the registered stealth source NAME, for every target it matches"
+        exclusive = allow_global or stealth_help is not None
+        target = sub.add_mutually_exclusive_group() if exclusive else sub
         target.add_argument("--root", type=Path, default=Path.cwd(), help=help_text)
         if allow_global:
             target.add_argument(
@@ -98,12 +103,8 @@ def build_parser() -> argparse.ArgumentParser:
                 help="use this machine's configured global source instead of --root, "
                 "then every registered stealth source",
             )
-            target.add_argument(
-                "--stealth",
-                default=None,
-                metavar="NAME",
-                help="the registered stealth source NAME, for every target it matches",
-            )
+        if stealth_help is not None:
+            target.add_argument("--stealth", default=None, metavar="NAME", help=stealth_help)
 
     for name, help_text in (
         (
@@ -159,48 +160,7 @@ def build_parser() -> argparse.ArgumentParser:
         )
     )
 
-    kit = subparsers.add_parser(
-        "kit",
-        help=KIT_HELP,
-        description=f"{KIT_HELP} Add, list and sync this project's kits.",
-    )
-    kit_subparsers = kit.add_subparsers(dest="kit_command")
-    add_kit = kit_subparsers.add_parser("add", help="choose a kit and how this project uses it")
-    add_kit.add_argument("name", nargs="?", help="kit name; choose interactively when omitted")
-    add_mode = add_kit.add_mutually_exclusive_group()
-    add_mode.add_argument(
-        "--linked",
-        dest="kit_mode",
-        action="store_const",
-        const="linked",
-        help="resolve the kit from a source on every render",
-    )
-    add_mode.add_argument(
-        "--vendored",
-        dest="kit_mode",
-        action="store_const",
-        const="vendored",
-        help="copy the kit into this project and record its content hash",
-    )
-    add_root(add_kit, help_text=KIT_ROOT_HELP)
-    add_kit.add_argument(
-        "--yes",
-        action="store_true",
-        help="apply a change to shared kit parts without a prompt",
-    )
-    for sub_name, sub_help in (
-        ("list", "show each of this project's kits, its mode and how it resolves"),
-        ("sync", "update the vendored copy from its source"),
-    ):
-        kit_sub = kit_subparsers.add_parser(sub_name, help=sub_help)
-        add_root(kit_sub, help_text=KIT_ROOT_HELP)
-        if sub_name == "sync":
-            kit_sub.add_argument("name", help="kit name")
-            kit_sub.add_argument(
-                "--yes",
-                action="store_true",
-                help="apply a change to shared kit parts without a prompt",
-            )
+    _add_kit(subparsers, add_root)
 
     integrate = subparsers.add_parser(
         "integrate", help="wire loadout into another system so it runs automatically"
@@ -235,6 +195,66 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.metavar = "{" + ",".join(n for n in subparsers.choices if n != "hook-event") + "}"
 
     return parser
+
+
+def _add_kit(subparsers: Any, add_root: Callable[..., None]) -> None:
+    kit = subparsers.add_parser(
+        "kit",
+        help=KIT_HELP,
+        description=f"{KIT_HELP} Add, list and sync a project's kits; add and list a stealth "
+        "source's with --stealth NAME.",
+    )
+    kit_subparsers = kit.add_subparsers(dest="kit_command")
+    add_kit = kit_subparsers.add_parser(
+        "add", help="choose a kit and how a project uses it, or link it into a stealth source"
+    )
+    add_kit.add_argument("name", nargs="?", help="kit name; choose interactively when omitted")
+    add_mode = add_kit.add_mutually_exclusive_group()
+    add_mode.add_argument(
+        "--linked",
+        dest="kit_mode",
+        action="store_const",
+        const="linked",
+        help="resolve the kit from a source on every render",
+    )
+    add_mode.add_argument(
+        "--vendored",
+        dest="kit_mode",
+        action="store_const",
+        const="vendored",
+        help="copy the kit into this project and record its content hash",
+    )
+    add_root(
+        add_kit,
+        help_text=KIT_ROOT_HELP,
+        stealth_help="link the kit into the registered stealth source NAME instead",
+    )
+    add_kit.add_argument(
+        "--yes",
+        action="store_true",
+        help="apply a change to shared kit parts without a prompt",
+    )
+    for sub_name, sub_help in (
+        ("list", "show each of this project's kits, its mode and how it resolves"),
+        ("sync", "update the vendored copy from its source"),
+    ):
+        kit_sub = kit_subparsers.add_parser(sub_name, help=sub_help)
+        add_root(
+            kit_sub,
+            help_text=KIT_ROOT_HELP,
+            stealth_help=(
+                "list the kits the registered stealth source NAME links instead"
+                if sub_name == "list"
+                else argparse.SUPPRESS
+            ),
+        )
+        if sub_name == "sync":
+            kit_sub.add_argument("name", help="kit name")
+            kit_sub.add_argument(
+                "--yes",
+                action="store_true",
+                help="apply a change to shared kit parts without a prompt",
+            )
 
 
 def _add_stealth(subparsers: Any) -> None:
@@ -412,14 +432,29 @@ def _resolve_global(profile: str | None) -> tuple[Path, str]:
 
 
 KIT_OUTSIDE_PROJECT = (
-    "kit commands manage a project's kits; to author one, add a "
-    "`kits/<name>/` folder or `kits/<name>.toml` manifest to your global source. "
-    "To see the kits your sources offer, run `loadout kit add` with no name in a "
-    "project."
+    "kit commands manage a project's kits, or a stealth source's with `--stealth NAME`; "
+    "to author one, add a `kits/<name>/` folder or `kits/<name>.toml` manifest to your "
+    "global source. To see the kits your sources offer, run `loadout kit add` with no name "
+    "in a project."
 )
 
 
 def _dispatch_kit(args: argparse.Namespace) -> int:
+    stealth = getattr(args, "stealth", None)
+    if stealth is not None:
+        if args.kit_command == "list":
+            return cmd_stealth_kit_list(stealth)
+        if getattr(args, "yes", False) and args.kit_command == "add":
+            raise UsageError(
+                "--yes has nothing to confirm for a stealth source, which keeps no vendored "
+                "copy; drop it"
+            )
+        if args.kit_command == "sync":
+            raise UsageError(
+                "a stealth source links its kits and keeps no vendored copy, so `kit sync` has "
+                f"nothing to update; `loadout sync --stealth {stealth}` picks up their contents"
+            )
+        return cmd_stealth_kit_add(stealth, args.name, args.kit_mode)
     root = args.root.resolve()
     if not project_config_path(root).is_file():
         raise LoadoutError(KIT_OUTSIDE_PROJECT)

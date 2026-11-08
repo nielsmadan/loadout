@@ -437,3 +437,23 @@ def test_the_owned_record_names_destination_keys_not_vocabulary(tmp_path: Path) 
     assert "$remove" not in record
     assert "developer_instructions" in record
     assert "model" in record
+
+
+@pytest.mark.parametrize(
+    ("body", "where"),
+    [
+        ('\n[claude]\nskills = ["review"]\n', "claude.skills takes true or false"),
+        ('\n[codex]\npermissions = ["node"]\n', "codex.permissions takes true, false or []"),
+        ('\n[all]\nagents = ["planner"]\n\n[claude]\n', "[all] agents takes true or false"),
+        ('\n[claude]\nmcp = "on"\n', "claude.mcp takes true, false or []"),
+    ],
+)
+def test_an_automatic_slice_refuses_a_value_that_is_not_a_switch(
+    tmp_path: Path, body: str, where: str
+) -> None:
+    register(tmp_path)
+    root = build(tmp_path, body)
+    with pytest.raises(LoadoutError) as refused:
+        render_global(root)
+    assert f"{tmp_path / 'loadout.toml'}: {where}, not " in str(refused.value)
+    assert "cannot pick items by name" in str(refused.value)

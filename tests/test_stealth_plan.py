@@ -313,7 +313,9 @@ def test_a_saved_approval_is_carried_without_drift(root: Path) -> None:
         },
     )
     plan = _plan(root, _render(root), recorded, disk=_disk(root, {SETTINGS: on_disk}))
-    assert plan.carried == (".claude/settings.local.json: permissions.allow: Bash(npm run x)",)
+    assert plan.carried == (
+        (".claude/settings.local.json", "permissions.allow", "Bash(npm run x)"),
+    )
     assert sorted(d.path for d in plan.drift) == _under(root, *WHOLE, OPENCODE)
     assert sorted(plan.writes) == _under(root, *WHOLE, OPENCODE)
     assert plan.code == 0

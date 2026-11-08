@@ -58,9 +58,9 @@ Install the bundled `/loadout` skill, so your agents can make those edits for yo
     loadout check [--root PATH | --global | --stealth NAME] [--profile NAME] [--json | --staged]
     loadout init global [DIR] [--harness NAME]... [--registration keep|replace] [--dry-run] [--json] [--yes]
     loadout init project [--root PATH] [--harness NAME]... [--dry-run] [--json] [--yes]
-    loadout kit add [NAME] [--linked | --vendored] [--root PATH] [--yes]
+    loadout kit add [NAME] [--linked | --vendored] [--root PATH | --stealth NAME] [--yes]
     loadout kit sync NAME [--root PATH] [--yes]
-    loadout kit list [--root PATH]
+    loadout kit list [--root PATH | --stealth NAME]
     loadout stealth init [DIRECTORY] --targets PATTERN... [--name NAME] [--harness NAME]... [--yes]
     loadout stealth add [DIRECTORY] [--name NAME]
     loadout stealth list

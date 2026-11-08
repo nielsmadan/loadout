@@ -198,7 +198,7 @@ def _known_names(stealth_sources: Sequence[RegisteredStealth]) -> str:
     return f"registered stealth sources: {names}" if names else "no stealth sources are registered"
 
 
-def _registered(name: str) -> RegisteredStealth:
+def registered_by_name(name: str) -> RegisteredStealth:
     stealth_sources = load_registry(stealth_path())
     found = next((stealth for stealth in stealth_sources if stealth.name == name), None)
     if found is None:
@@ -293,7 +293,7 @@ def resolve_selection(  # noqa: PLR0913
         if profile is not None:
             raise UsageError(PROFILE_REFUSAL)
         refuse_overlay_registry()
-        return Selection(None, None, None, ((_registered(stealth), None),), force)
+        return Selection(None, None, None, ((registered_by_name(stealth), None),), force)
     if use_global:
         try:
             refuse_overlay_registry()

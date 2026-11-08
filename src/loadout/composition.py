@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
 
 from .errors import LoadoutError
@@ -33,5 +34,12 @@ def fragment_paths(target: InstructionTarget, manifest: Manifest) -> tuple[Path,
 
 
 def render(target: InstructionTarget, manifest: Manifest) -> str:
-    blocks = [load_fragment(path) for path in fragment_paths(target, manifest)]
-    return "\n\n".join([HEADER, *blocks]) + "\n"
+    return document(fragment_paths(target, manifest))
+
+
+def joined(paths: Iterable[Path]) -> str:
+    return "\n\n".join(load_fragment(path) for path in paths)
+
+
+def document(paths: Iterable[Path]) -> str:
+    return "\n\n".join([HEADER, *(load_fragment(path) for path in paths)]) + "\n"

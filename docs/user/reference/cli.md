@@ -27,7 +27,7 @@ loadout check --staged
 | --- | --- | --- |
 | `--root PATH` | `sync`, `check` | Directory containing the source/project configuration, a stealth folder, or a repository a stealth source targets; a `loadout.toml` there renders only when the directory is this machine's registered global source |
 | `--global` | `sync`, `check` | Resolve the source and default profile from this machine's configuration, then render every registered [stealth source](#stealth-sources) |
-| `--stealth NAME` | `sync`, `check` | Render only the registered stealth source `NAME`, for every target it matches |
+| `--stealth NAME` | `sync`, `check` | Render only the registered stealth source `NAME`, for every target it matches. `kit add` and `kit list` take it too, to work on that stealth source's kits; see [kits](#kits) |
 | `--profile NAME` | `sync`, `check` | Select a global manifest profile; without it, the registered global source uses the machine's profile and any other root uses `default` |
 | `--force` | `sync` | Overwrite generated files protected as modified outside Loadout; for stealth sources, see [`--force`](#stealth-sources) |
 | `--json` | `check` | Emit `status`, `exit_code`, each out-of-sync `path` and any notes as JSON; not with `--staged` |
@@ -64,7 +64,8 @@ their place; port the edit into the source with `/loadout`, or `sync --force` to
 server in `~/.claude.json`, was edited there; port it with `/loadout`, or `sync --force` to discard
 it), `owned-key-removed` (such a key was removed there; remove it from the source too, or
 `sync --force` to write it back), `unknown` (no record and no committed baseline to judge by;
-review the diff, then port or discard the same way), `missing`,
+review the diff, then port or discard the same way), `missing` (not written yet; listed on
+one line with no diff, since its content is the source's),
 `orphaned` (sync wrote it, the source no longer produces it, and the next `sync` retires it), or
 `unmanaged` (loadout did not write it, but it sits in a folder the harness reads whole, such as a
 skills folder or Codex's rules folder; port it with `/loadout`, then delete it — `sync` warns
@@ -239,8 +240,10 @@ its counts instead.
 `check` prints `stealth NAME: ERROR: ~/target: message` for each refusal and error (a refusal
 reads `ERROR: ~/target: refused: …`), the same ones `sync` would make, including a path a
 committed `.gitignore` re-includes; then `stealth NAME: DRIFT (KIND): ~/target/path` with the
-usual diff, and
-`stealth NAME: up to date` when there is neither. It uses the drift kinds above: an owned output
+usual diff (none for `missing`), then `stealth NAME: N generated file(s) out of sync:` with one
+line per kind, as a project's `check` ends, whose advice names `loadout sync --stealth NAME`; and
+`stealth NAME: up to date` when there is neither. Approvals the harness saved are one note per
+file and list, naming every rule. It uses the drift kinds above: an owned output
 that differs from the source is `source-changed`, one that differs from what was written is
 `hand-edited`, a server or key edited in `~/.claude.json` or in a shared document is `owned-key`,
 and a file in a skills folder or `.codex/rules` that the stealth source did not write and the team does
@@ -475,9 +478,28 @@ loadout kit list
 ```
 
 All three accept `--root PATH` and work on a project. Outside one they exit 3: kits are
-applied to projects and authored in your global source, as `kits/<name>.toml` manifests or
-`kits/<name>/` directories.
+applied to projects and stealth sources, and authored in your global source, as
+`kits/<name>.toml` manifests or `kits/<name>/` directories.
 Bare `kit add` in a project lists the kits your sources offer.
+
+`kit add` and `kit list` also take `--stealth NAME`, which cannot be combined with `--root`:
+
+```sh
+loadout kit add react-native --stealth work
+loadout kit list --stealth work
+```
+
+`kit add NAME --stealth work` adds the name to the `kits` list of the registered stealth source
+`work`'s `[stealth]` table, keeping the rest of its `loadout.toml` as written, and prints where
+the kit resolves. A stealth source only links kits: `--vendored` exits 2, a kit already listed,
+under that name or another spelling of it such as `source/name`, exits 0 and changes nothing, and a name that does not resolve, or a manifest that would not
+load with it, exits 3 and leaves the file byte for byte as it was. Without a name it lists the
+kits your sources offer and asks for one; without a terminal a missing name exits 2. `kit list
+--stealth work` shows each linked kit and where it resolves, and an unresolved one with the
+reason, or says how to add one. `--yes` with `--stealth` exits 2, since a stealth source has no
+vendored copy to confirm a change to. `kit sync
+--stealth` exits 2: a stealth source keeps no vendored copy, so there is nothing to update. See
+[linked kits](configuration.md#linked-kits).
 
 | Command | Result |
 | --- | --- |
@@ -486,6 +508,8 @@ Bare `kit add` in a project lists the kits your sources offer.
 | `add` (bare) | List every resolvable kit and prompt for a name and a mode; without a terminal, a missing name or mode is a usage error (exit 2) |
 | `sync NAME` | Update an unchanged vendored copy from the available upstream source |
 | `list` | Show the project's kits, each one's mode, and where it resolves |
+| `add NAME --stealth NAME` | Link the kit into the registered stealth source's `[stealth]` table |
+| `list --stealth NAME` | Show the stealth source's linked kits and where each resolves |
 
 Adding a kit the project already lists changes its mode in either direction. `--linked` deletes
 a vendored copy, so it refuses a copy `kit sync` would refuse as modified, with the same diff and

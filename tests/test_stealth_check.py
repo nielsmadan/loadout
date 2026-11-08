@@ -122,7 +122,7 @@ def _fabricated(
 
 @pytest.mark.parametrize(
     "kind",
-    ["missing", "hand-edited", "source-changed", "orphaned", "owned-key", "owned-key-removed"],
+    ["hand-edited", "source-changed", "orphaned", "owned-key", "owned-key-removed"],
 )
 def test_each_drift_kind_is_reported_with_its_path_and_a_diff(
     kind: DriftKind, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -140,6 +140,24 @@ def test_each_drift_kind_is_reported_with_its_path_and_a_diff(
     assert "+new" in err
 
 
+def test_a_missing_file_is_one_line_then_the_summary_names_the_stealth_sync(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "CLAUDE.local.md"
+    check = StealthCheck(
+        "app", (Drift(path=path, actual="", expected="new\n", kind="missing"),), (), (), 1
+    )
+
+    report_check(check)
+
+    assert capsys.readouterr().err.splitlines() == [
+        f"stealth app: DRIFT (missing): {path}",
+        "",
+        "stealth app: 1 generated file(s) out of sync:",
+        "  1 missing: not on disk; run `loadout sync --stealth app`.",
+    ]
+
+
 def test_a_clean_check_says_so_and_prints_its_notes(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -155,7 +173,9 @@ def test_a_carried_approval_is_one_note_and_never_moves_the_exit_code(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     root = tmp_path / "repo"
-    plan = _plan(root, carried=("permissions.allow: Bash(npm run x)",))
+    plan = _plan(
+        root, carried=((".claude/settings.local.json", "permissions.allow", "Bash(npm run x)"),)
+    )
 
     check = _fabricated(monkeypatch, tmp_path, (plan,))
 
@@ -164,7 +184,33 @@ def test_a_carried_approval_is_one_note_and_never_moves_the_exit_code(
     assert check.notes == (
         (
             f"{shown(root)}: saved by the harness, not in the stealth source: "
-            "permissions.allow: Bash(npm run x); add it to the stealth source's permissions.toml or delete it"
+            ".claude/settings.local.json: permissions.allow: Bash(npm run x); "
+            "add it to the stealth source's permissions.toml or delete it"
+        ),
+    )
+
+
+def test_carried_approvals_are_one_note_per_file_and_list(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    root = tmp_path / "repo"
+    carried = (
+        (".claude/settings.local.json", "permissions.allow", "Bash(npm run x)"),
+        (".claude/settings.local.json", "permissions.deny", "Bash(rm: -rf)"),
+        (".claude/settings.local.json", "permissions.allow", "Bash(echo a: b)"),
+    )
+
+    check = _fabricated(monkeypatch, tmp_path, (_plan(root, carried=carried),))
+
+    lead = f"{shown(root)}: saved by the harness, not in the stealth source: "
+    assert check.notes == (
+        (
+            f"{lead}.claude/settings.local.json: permissions.allow: Bash(npm run x), "
+            "Bash(echo a: b); add them to the stealth source's permissions.toml or delete them"
+        ),
+        (
+            f"{lead}.claude/settings.local.json: permissions.deny: Bash(rm: -rf); "
+            "add it to the stealth source's permissions.toml or delete it"
         ),
     )
 

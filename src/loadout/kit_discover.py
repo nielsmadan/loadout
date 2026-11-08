@@ -24,7 +24,7 @@ class AvailableKit:
     kind: SourceKind = "source"
 
 
-def available_kits(root: Path) -> tuple[AvailableKit, ...]:
+def available_kits(root: Path | None) -> tuple[AvailableKit, ...]:
     """Every kit a bare `kit add` can offer, vendored copies first.
 
     A name with a vendored copy shadows the same name in a source; a source that
@@ -32,7 +32,7 @@ def available_kits(root: Path) -> tuple[AvailableKit, ...]:
     """
     options: list[AvailableKit] = []
     seen: set[str] = set()
-    for name in vendored_names(root):
+    for name in vendored_names(root) if root is not None else ():
         options.append(AvailableKit(name, VENDORED, "vendored"))
         seen.add(name)
     try:

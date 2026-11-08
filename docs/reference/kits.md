@@ -191,6 +191,26 @@ Given `~/ac/loadout.toml` declaring `[[source]] path = "loadout"`, kits resolve 
 `~/ac/loadout/kits/<name>/` folder. Everything under a source belongs to loadout, which is what
 makes "where do I edit" answerable from the path.
 
+## Linked into a stealth source
+
+A stealth source names kits in its `[stealth]` table (`kits = ["react-native"]`), written by
+`loadout kit add KIT --stealth NAME`. Resolution is the linked half of the order above:
+the machine's global sources, then the bundled kits. There is no vendored step, because a stealth
+folder is personal and keeps no copy, so `--vendored` and `[kit.NAME]` are refused
+([0054](../decisions/0054-a-stealth-source-links-kits-by-name.md)).
+
+The names are parsed with the manifest, but the kits resolve only when a render, `check` or
+`sync` needs them (`StealthManifest.kits`, cached for the run), so a kit that stops resolving
+never drops a stealth source out of target selection or `stealth list`. They compose in
+`src/loadout/stealth_kits.py` through `emit.py`'s `layered_rules`, `layered_servers` and
+`layered_skill_trees`, the same helpers project scope uses, beneath the stealth source's own
+content:
+its instruction parts after the stealth source's own fragments, its rules as the lowest permission
+tier, and its servers and skills replaced by a same-named one in the stealth folder. Only a
+declared harness takes them, and a slice switched off takes nothing from the kit. A kit that
+contributes `hooks.json` or `plugins.json` is refused, since a stealth source cannot write either
+additively.
+
 ## Bundled kits and native projects
 
 `frontend` and `backend` ship in the package and resolve offline. `loadout kit add

@@ -17,9 +17,9 @@ from .claude_json import (
     leaf_refusal,
     read_claude_document,
 )
+from .commands import DRIFT_ADVICE, drift_summary
 from .destinations import resolve_destination
 from .diffs import diff_lines, report_diff
-from .emit import global_rules, global_servers
 from .errors import LoadoutError
 from .exclude import PERSONAL_UNITS, read_global_state, user_covered
 from .files import Drift, DriftKind
@@ -36,7 +36,7 @@ from .stealth_git import (
 )
 from .stealth_lock import same_path
 from .stealth_manifest import StealthManifest, load_stealth_manifest
-from .stealth_plan import Refusal, TargetPlan, path_units
+from .stealth_plan import Carried, Refusal, TargetPlan, path_units
 from .stealth_record import (
     StealthRecord,
     TargetRecord,
@@ -118,7 +118,7 @@ class TargetView:
     team_opencode: Mapping[str, Any]
     pi_mcp_edited: bool
     branches: Mapping[str, tuple[str, ...]]
-    carried: tuple[str, ...]
+    carried: tuple[Carried, ...]
     render_notes: tuple[str, ...]
 
 
@@ -329,13 +329,24 @@ def target_notes(view: TargetView, machine: Machine, harnesses: Sequence[str]) -
         *_branch_notes(view),
         *(PI_MCP_NOTE,) * view.pi_mcp_edited,
         *view.render_notes,
-        *(
-            f"saved by the harness, not in the stealth source: {rule}; add it to the stealth source's "
-            "permissions.toml or delete it"
-            for rule in view.carried
-        ),
+        *_carried_notes(view.carried),
     )
     return tuple(f"{shown(view.root)}: {line}" for line in lines)
+
+
+def _carried_notes(carried: Sequence[Carried]) -> tuple[str, ...]:
+    grouped: dict[str, list[str]] = {}
+    for file, key, rule in carried:
+        grouped.setdefault(f"{file}: {key}", []).append(rule)
+    return tuple(
+        f"saved by the harness, not in the stealth source: {where}: {', '.join(rules)}; "
+        + (
+            "add it to the stealth source's permissions.toml or delete it"
+            if len(rules) == 1
+            else "add them to the stealth source's permissions.toml or delete them"
+        )
+        for where, rules in grouped.items()
+    )
 
 
 def global_ignore_hint(
@@ -354,7 +365,7 @@ def global_ignore_hint(
 
 
 def _renderer_notes(manifest: StealthManifest) -> tuple[str, ...]:
-    rules = global_rules(manifest.manifest)
+    rules = manifest.rules
     found: list[notices.Notice] = []
     for target in manifest.manifest.permissions:
         if target.harness is None or target.name != target.harness or not target.select_all:
@@ -515,7 +526,7 @@ def _held_back_notes(
     if not guarded:
         return ()
     try:
-        offers = manifest is not None and bool(global_servers(manifest.manifest))
+        offers = manifest is not None and bool(manifest.servers)
         label = shown(claude_json_path())
     except (LoadoutError, OSError):
         return ()
@@ -636,10 +647,12 @@ def check_stealth(stealth: RegisteredStealth, scope: Path | None) -> StealthChec
     prepared = prepare(run)
     record, expansion, plans = prepared.record, prepared.expansion, prepared.plans
     prepared_errors, shared = prepared.errors, prepared.shared
-    try:
-        manifest: StealthManifest | None = load_stealth_manifest(stealth.folder)
-    except (LoadoutError, OSError):
-        manifest = None
+    manifest = prepared.manifest
+    if manifest is None:
+        try:
+            manifest = load_stealth_manifest(stealth.folder)
+        except (LoadoutError, OSError):
+            manifest = None
     machine = read_machine(os.environ)
     harnesses = manifest.harnesses if manifest is not None else ()
 
@@ -710,6 +723,13 @@ def check_stealth(stealth: RegisteredStealth, scope: Path | None) -> StealthChec
     )
 
 
+STEALTH_DRIFT_ADVICE: dict[DriftKind, str] = {
+    **DRIFT_ADVICE,
+    "unparsable": "a document the stealth source shares with a harness no longer parses or "
+    "cannot hold its keys, and loadout does not overwrite it; fix it by hand, then run `{sync}`",
+}
+
+
 def report_check(check: StealthCheck) -> None:
     lead = f"stealth {check.name}"
     for target, message in check.errors:
@@ -718,10 +738,19 @@ def report_check(check: StealthCheck) -> None:
     for item in check.drift:
         label = shown(item.path)
         print(f"{lead}: DRIFT ({item.kind}): {label}", file=sys.stderr)
+        if item.kind == "missing":
+            continue
         format_name = "json" if item.path in check.json_labels else None
         report_diff(
             diff_lines(label, item.actual, item.expected, context=3, format_name=format_name)
         )
+    if check.drift:
+        summary = drift_summary(
+            check.drift, f"loadout sync --stealth {check.name}", STEALTH_DRIFT_ADVICE
+        )
+        print(f"\n{lead}: {summary[0]}", file=sys.stderr)
+        for line in summary[1:]:
+            print(line, file=sys.stderr)
     for note in check.notes:
         print(f"note: {lead}: {note}")
     if not check.drift and not check.errors:

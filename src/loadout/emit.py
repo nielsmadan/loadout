@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -1020,13 +1020,18 @@ def project_rules(root: Path, kits: ProjectKits) -> Rules:
     actually rendered, the way `permission_sources` guarantees it at global scope.
     """
     project_dir = root / PROJECT_DIR
-    tiers: list[Rules] = [
-        parse_rules(contributed) for contributed in kits.contributions("permissions")
-    ]
-    for path in (project_dir / PERMISSIONS_SOURCE, project_dir / PROJECT_LOCAL_SOURCE):
-        if path.is_file():
-            tiers.append(parse_rules(path))
-    return merge_rules(*tiers)
+    own = tuple(
+        parse_rules(path)
+        for path in (project_dir / PERMISSIONS_SOURCE, project_dir / PROJECT_LOCAL_SOURCE)
+        if path.is_file()
+    )
+    return layered_rules(kits, own)
+
+
+def layered_rules(kits: ProjectKits, own: Iterable[Rules]) -> Rules:
+    return merge_rules(
+        *(parse_rules(contributed) for contributed in kits.contributions("permissions")), *own
+    )
 
 
 def _retired_keys(
@@ -1210,8 +1215,12 @@ def kit_skills(kits: ProjectKits) -> dict[str, Skill]:
 
 def project_skill_trees(root: Path, kits: ProjectKits) -> tuple[Skill, ...]:
     """Collect skill trees in kit order, then replace matching names from the project."""
+    return layered_skill_trees(kits, discover_skills(root / PROJECT_DIR / SKILLS_SUBDIR))
+
+
+def layered_skill_trees(kits: ProjectKits, own: Iterable[Skill]) -> tuple[Skill, ...]:
     collected = kit_skills(kits)
-    for skill in discover_skills(root / PROJECT_DIR / SKILLS_SUBDIR):
+    for skill in own:
         collected[skill.name] = skill
     return tuple(sorted(collected.values(), key=lambda s: s.name))
 
@@ -1223,12 +1232,14 @@ def project_servers(root: Path, kits: ProjectKits) -> dict[str, Server]:
     sits beneath the project, so a project server of the same name
     replaces the kit's rather than merging with it.
     """
+    return layered_servers(kits, parse_servers(root / PROJECT_DIR / SERVERS_SOURCE))
+
+
+def layered_servers(kits: ProjectKits, own: Mapping[str, Server]) -> dict[str, Server]:
     collected: dict[str, Server] = {}
     for contributed in kits.contributions("mcp"):
-        for server_name, server in parse_servers(contributed).items():
-            collected[server_name] = server
-    for server_name, server in parse_servers(root / PROJECT_DIR / SERVERS_SOURCE).items():
-        collected[server_name] = server
+        collected.update(parse_servers(contributed))
+    collected.update(own)
     return collected
 
 

@@ -42,6 +42,7 @@ RefusalKind = Literal[
     "error",
 ]
 RecordedAction = Literal["plan", "retire", "keep"]
+Carried = tuple[str, str, str]
 TargetFate = Literal["gone", "left"]
 
 DIFF_CONTEXT = 3
@@ -92,7 +93,7 @@ class TargetPlan:
     retiring_leaves: Mapping[Path, tuple[JsonPath, ...]]
     refusals: tuple[Refusal, ...]
     drift: tuple[Drift, ...]
-    carried: tuple[str, ...]
+    carried: tuple[Carried, ...]
     notes: tuple[str, ...]
     code: int
     fate: TargetFate | None = None
@@ -245,7 +246,7 @@ class _Document:
     guard_kinds: frozenset[DocumentKind]
     refusals: tuple[Refusal, ...]
     drift: Drift | None
-    carried: tuple[str, ...]
+    carried: tuple[Carried, ...]
 
 
 _UNTOUCHED = _Document(None, False, None, None, frozenset(), (), None, ())
@@ -347,7 +348,7 @@ def _plan_document(
         guard_kinds=kinds & _GUARDED,
         refusals=user_defined,
         drift=_drift_of(path, _document_drift_kind(existing, kinds), before, after),
-        carried=tuple(f"{rel}: {entry}" for entry in applied.carried),
+        carried=tuple((rel, key, rule) for key, rule in applied.carried),
     )
 
 

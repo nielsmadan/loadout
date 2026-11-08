@@ -46,7 +46,7 @@ class DocumentVerdict:
 @dataclass(frozen=True)
 class AppliedDocument:
     document: dict[str, Any]
-    carried: tuple[str, ...]
+    carried: tuple[tuple[str, str], ...]
     record: DocumentRecord
     changed: bool
 
@@ -66,10 +66,10 @@ def carry_saved_rules(
     return [*_ordered_unique(rendered), *carried], carried
 
 
-def _carried_entry(path: JsonPath, entry: str) -> str:
+def _carried_entry(path: JsonPath, entry: str) -> tuple[str, str]:
     reason = credential_material(entry.encode())
     shown = entry if reason is None else f"a rule not shown because it holds a secret ({reason})"
-    return f"{display_path(path)}: {shown}"
+    return display_path(path), shown
 
 
 def _recorded_keys(recorded: DocumentRecord | None) -> Mapping[JsonPath, str]:
@@ -202,7 +202,7 @@ def apply_owned(
     rendered_rules = dict(owned.rules)
     before_rules = _recorded_rules(recorded)
     pending_rules = _pending_rules(recorded)
-    carried: list[str] = []
+    carried: list[tuple[str, str]] = []
     owned_rules: dict[JsonPath, tuple[str, ...]] = {}
     for path in _rule_paths(owned, recorded):
         present, disk = _disk_list(base, path)

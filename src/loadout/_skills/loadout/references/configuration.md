@@ -306,6 +306,15 @@ message (or says `overlays.toml` cannot be read). Then use `loadout stealth`, `-
    names is refused, since the stealth source's `[[source]]` entries supply its servers. `preserve` is refused too: a
    stealth source owns only the keys it writes. `follow_worktrees` and `git_hook` are reserved and
    refused when `true`; never set them.
+   To reuse a kit from the global source, link it rather than copying its parts into the stealth
+   folder: `loadout kit add <kit> --stealth <name>` adds it to `kits` in the `[stealth]` table, and
+   `loadout kit list --stealth <name>` shows where it resolves. A stealth source only links kits;
+   never pass `--vendored` with `--stealth`. The stealth folder's own instructions come first, and
+   its own rules, servers and skills outrank the kit's, so a same-named skill or server in the
+   folder hides the kit's. When `kit add` prints a note that a skill or instruction fragment in the
+   folder is byte for byte the kit's, offer to delete that copy (and drop the fragment from the
+   `instructions` lists) as the note says, so the stealth source follows the kit. A kit that
+   brings hooks or plugins is refused; report it.
 4. Preview and apply with `loadout check --stealth <name>` and `loadout sync --stealth <name>`, or
    plain `loadout sync` from inside a target repository. `loadout sync --global` also syncs every
    stealth source, but `--force` then reaches only the global source.
@@ -323,9 +332,9 @@ message (or says `overlays.toml` cannot be read). Then use `loadout stealth`, `-
    a key or server the user defined and a path git would not ignore (exit 3) cannot be forced:
    report them. An output or key edited outside loadout (exit 1) follows “Porting a change made
    outside loadout”, with `--stealth <name>` in place of `--root`. A note `saved by the harness, not in
-   the stealth source: <rule>` is an approval Claude or Droid saved: ask whether to add it to the stealth source's
-   `permissions.toml` or delete it; it never blocks sync. When the note says the rule is not shown, the saved rule
-   holds a credential; tell the user to read the file, and never copy the rule into `permissions.toml`.
+   the stealth source: <file>: <list>: <rules>` lists approvals Claude or Droid saved: ask whether to add them to the stealth source's
+   `permissions.toml` or delete them; it never blocks sync. When the note lists `a rule not shown because it
+   holds a secret`, that saved rule holds a credential; tell the user to read the file, and never copy the rule into `permissions.toml`.
 8. `loadout stealth remove <name>` retires everything the stealth source wrote. Run it only when the user
    asks. Never edit `stealth.toml`, a repository's `.git/info/exclude` or `~/.claude.json` by
    hand to get past a refusal.

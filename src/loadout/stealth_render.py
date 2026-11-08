@@ -7,8 +7,8 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from . import stealth_seams
-from .composition import fragment_paths, load_fragment, render
-from .emit import global_rules, global_servers, settings_document, skill_trees
+from .composition import document, joined
+from .emit import settings_document
 from .harnesses import SHARED_SKILL_READERS, SliceOutput
 from .manifest import Manifest, PermissionTarget
 from .notices import cursor_permission_notices
@@ -30,6 +30,7 @@ from .servers import (
 from .skill_policy import render_skill_for, selected_skill_agents
 from .skills import SKILL_DOCUMENT, Skill, check_skill_agents, render_skill
 from .stealth_documents import OwnedJson
+from .stealth_kits import stealth_instruction_sources
 from .stealth_manifest import StealthManifest
 from .stealth_renderers import (
     claude_owned,
@@ -137,24 +138,26 @@ def _target_rules(target: PermissionTarget, rules: Rules) -> Rules:
     return rules if target.select_all else EMPTY_RULES
 
 
+def _instruction_paths(stealth: StealthManifest, harness: str) -> tuple[Path, ...]:
+    return stealth_instruction_sources(
+        stealth.manifest, stealth.kits, harness, kit_parts=stealth.takes_kit_instructions(harness)
+    )
+
+
 def _instructions(stealth: StealthManifest, harness: str, facts: TargetFacts) -> str | None:
-    manifest = stealth.manifest
-    target = next((t for t in manifest.targets if t.name == harness), None)
-    if target is None or not target.fragments:
+    paths = _instruction_paths(stealth, harness)
+    if not paths:
         return None
     if harness != "claude":
-        return render(target, manifest)
-    body = _joined_fragments(stealth, harness)
-    assert body is not None
-    return render_claude_local(body, import_agents=facts.agents_md and not facts.claude_md_on_path)
+        return document(paths)
+    return render_claude_local(
+        joined(paths), import_agents=facts.agents_md and not facts.claude_md_on_path
+    )
 
 
 def _joined_fragments(stealth: StealthManifest, harness: str) -> str | None:
-    manifest = stealth.manifest
-    target = next((t for t in manifest.targets if t.name == harness), None)
-    if target is None or not target.fragments:
-        return None
-    return "\n\n".join(load_fragment(path) for path in fragment_paths(target, manifest))
+    paths = _instruction_paths(stealth, harness)
+    return joined(paths) if paths else None
 
 
 def _settings_fragment(target: PermissionTarget, stealth: StealthManifest) -> dict[str, Any]:
@@ -169,7 +172,7 @@ def _skill_files(stealth: StealthManifest, root: Path) -> list[tuple[Path, str, 
     manifest = stealth.manifest
     if not manifest.skills:
         return []
-    trees = skill_trees(manifest)
+    trees = stealth.skill_trees
     check_skill_agents(
         tuple(s for s in trees if render_skill_for(s.name, manifest.skill_policies)),
         frozenset(),
@@ -273,15 +276,15 @@ def _opencode_outputs(
     stealth: StealthManifest, root: Path, rules: Rules, servers: dict[str, Server]
 ) -> tuple[list[tuple[Path, str, StealthOutput]], dict[Path, str]]:
     manifest = stealth.manifest
-    target = next((t for t in manifest.targets if t.name == "opencode"), None)
+    paths = _instruction_paths(stealth, "opencode")
     permissions = _permission_target(manifest, "opencode", "permissions")
     opencode_rules = _target_rules(permissions, rules) if permissions is not None else None
     defined = servers if _permission_target(manifest, "opencode", "mcp") is not None else {}
     shared: dict[Path, str] = {}
     instructions: Path | None = None
-    if target is not None and target.fragments:
+    if paths:
         instructions = stealth.folder / OPENCODE_INSTRUCTIONS
-        shared[instructions] = render(target, manifest)
+        shared[instructions] = document(paths)
     refuse_mcp_namespace_overlap(
         "opencode", EMPTY_RULES if opencode_rules is None else opencode_rules, defined
     )
@@ -299,10 +302,9 @@ def _cursor_outputs(
     manifest = stealth.manifest
     preset = STEALTH_PRESET["cursor"]
     placed: list[tuple[Path, str, StealthOutput]] = []
-    target = next((t for t in manifest.targets if t.name == "cursor"), None)
-    if target is not None and target.fragments:
+    if paths := _instruction_paths(stealth, "cursor"):
         rule = root / str(preset["instructions"].output) / f"{name}.mdc"
-        body = f"---\nalwaysApply: true\n---\n\n{render(target, manifest)}"
+        body = f"---\nalwaysApply: true\n---\n\n{document(paths)}"
         placed.append((rule, "cursor.instructions", body))
     notes: tuple[str, ...] = ()
     if (permissions := _permission_target(manifest, "cursor", "permissions")) is not None:
@@ -311,16 +313,16 @@ def _cursor_outputs(
             f"cursor: {notice.message}"
             for notice in cursor_permission_notices("cursor", "cursor-project", cursor_rules)
         )
-        document = render_cursor_project(cursor_rules, {})
-        if document != CURSOR_EMPTY_PERMISSIONS:
+        settings = render_cursor_project(cursor_rules, {})
+        if settings != CURSOR_EMPTY_PERMISSIONS:
             relative = str(preset["permissions"].output)
             placed.append(
-                (root / relative, "cursor.permissions", stealth_seams.serialize_json(document))
+                (root / relative, "cursor.permissions", stealth_seams.serialize_json(settings))
             )
     if _permission_target(manifest, "cursor", "mcp") is not None and servers:
-        document = render_cursor_servers(servers)
+        config = render_cursor_servers(servers)
         relative = str(preset["mcp"].output)
-        placed.append((root / relative, "cursor.mcp", stealth_seams.serialize_json(document)))
+        placed.append((root / relative, "cursor.mcp", stealth_seams.serialize_json(config)))
     return placed, notes
 
 
@@ -328,8 +330,8 @@ def render_stealth(
     stealth: StealthManifest, name: str, target_root: Path, facts: TargetFacts
 ) -> StealthRender:
     manifest = stealth.manifest
-    rules = global_rules(manifest)
-    servers = global_servers(manifest)
+    rules = stealth.rules
+    servers = stealth.servers
 
     placed: list[tuple[Path, str, StealthOutput]] = []
     for harness in ("claude", "droid", "pi"):

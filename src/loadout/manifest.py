@@ -474,6 +474,24 @@ def _agent_slice_names(
 
 AGENT_EXTRAS = ("settings", "preserve", "substitute")
 
+RULE_SELECTING_SLICES = frozenset({"permissions", "mcp-permissions", "mcp"})
+
+
+def _check_automatic_values(
+    path: Path, agent: str, declared: dict[str, object], block: dict[str, object]
+) -> None:
+    for key, value in block.items():
+        if key not in AUTOMATIC_SLICES or isinstance(value, bool):
+            continue
+        if value == [] and key in RULE_SELECTING_SLICES:
+            continue
+        where = f"{agent}.{key}" if key in declared else f"[{COMMON_BLOCK}] {key}"
+        choices = "true, false or []" if key in RULE_SELECTING_SLICES else "true or false"
+        raise LoadoutError(
+            f"{path}: {where} takes {choices}, not {value!r}; an automatic slice renders "
+            "everything its sources offer, so it cannot pick items by name"
+        )
+
 
 def _check_block(
     agent: str, declared: dict[str, object], offered: Mapping[str, SliceOutput]
@@ -586,6 +604,7 @@ def _parse_agents(
         offered = preset[agent]
         _check_block(agent, declared, offered)
         block = {k: v for k, v in block.items() if k in offered or k in AGENT_EXTRAS}
+        _check_automatic_values(path, agent, declared, block)
         names = _agent_slice_names(agent, block, offered)
         _require_settings_read(agent, declared, offered, names)
         for slice_name in names:

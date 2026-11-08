@@ -4,7 +4,7 @@ import contextlib
 import json
 import shlex
 import sys
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Literal
 
@@ -20,10 +20,10 @@ from .emit import (
     render_all,
 )
 from .errors import LoadoutError, UsageError
-from .files import DriftKind, pi_settings_as_read, refuse_unparsable
+from .files import Drift, DriftKind, pi_settings_as_read, refuse_unparsable
 from .git_privacy import still_tracked
 from .kit_catalog import load_catalogs
-from .kit_discover import available_kits
+from .kit_discover import AvailableKit, available_kits
 from .kit_vendor import vendor_catalog
 from .kits import (
     contained,
@@ -362,22 +362,22 @@ UNMANAGED_LINK_ADVICE = (
     "points, then delete it"
 )
 DRIFT_ADVICE: dict[DriftKind, str] = {
-    "source-changed": "the source changed since the last sync; run `loadout sync`",
-    "missing": "not on disk; run `loadout sync`",
+    "source-changed": "the source changed since the last sync; run `{sync}`",
+    "missing": "not on disk; run `{sync}`",
     "hand-edited": "edited outside loadout; port the edit into the source with /loadout, or run "
-    "`loadout sync --force` to discard it",
+    "`{sync} --force` to discard it",
     "unknown": "no record of what loadout wrote here and no committed baseline, so a source "
     "change cannot be told from a hand edit; review the diff, then port what to keep into the "
-    "source with /loadout, or run `loadout sync --force` to discard it",
+    "source with /loadout, or run `{sync} --force` to discard it",
     "owned-key": "a key loadout writes in a file it shares was edited outside loadout; port "
-    "the edit into the source with /loadout first, or run `loadout sync --force` to discard it",
+    "the edit into the source with /loadout first, or run `{sync} --force` to discard it",
     "owned-key-removed": "a key loadout writes in a file it shares was removed outside loadout; "
-    "remove it from the source with /loadout too, or run `loadout sync --force` to write it back",
-    "orphaned": "written by loadout but no longer rendered; run `loadout sync` to retire it",
+    "remove it from the source with /loadout too, or run `{sync} --force` to write it back",
+    "orphaned": "written by loadout but no longer rendered; run `{sync}` to retire it",
     "unmanaged": UNMANAGED_ADVICE,
     "unmanaged-link": UNMANAGED_LINK_ADVICE,
     "unparsable": "a file loadout shares with a harness no longer parses; fix or delete it, then "
-    "run `loadout sync`; for one the source still renders, `loadout sync --force` replaces it",
+    "run `{sync}`; for one the source still renders, `{sync} --force` replaces it",
 }
 
 
@@ -415,13 +415,26 @@ def cmd_check(root: Path, profile: str, *, as_json: bool = False) -> int:
     for item in drift:
         rel = _display(item.path, root)
         print(f"DRIFT ({item.kind}): {rel}", file=sys.stderr)
-        report_diff(list(diff_lines(rel, item.actual, item.expected, context=3)))
-    print(f"\n{len(drift)} generated file(s) out of sync:", file=sys.stderr)
-    for kind, advice in DRIFT_ADVICE.items():
+        if item.kind != "missing":
+            report_diff(list(diff_lines(rel, item.actual, item.expected, context=3)))
+    summary = drift_summary(drift)
+    print(f"\n{summary[0]}", file=sys.stderr)
+    for line in summary[1:]:
+        print(line, file=sys.stderr)
+    return 1
+
+
+def drift_summary(
+    drift: Sequence[Drift],
+    sync: str = "loadout sync",
+    advice: Mapping[DriftKind, str] = DRIFT_ADVICE,
+) -> list[str]:
+    lines = [f"{len(drift)} generated file(s) out of sync:"]
+    for kind, template in advice.items():
         count = sum(1 for item in drift if item.kind == kind)
         if count:
-            print(f"  {count} {kind}: {advice}.", file=sys.stderr)
-    return 1
+            lines.append(f"  {count} {kind}: {template.format(sync=sync)}.")
+    return lines
 
 
 def _vendored_state(root: Path, name: str, recorded: str | None) -> str:
@@ -483,11 +496,11 @@ def _identical_skills(root: Path, name: str) -> tuple[str, ...]:
     return tuple(
         skill.name
         for skill in discover_skills(root / PROJECT_DIR / SKILLS_SUBDIR)
-        if skill.name in offered and _skill_bytes(skill) == _skill_bytes(offered[skill.name])
+        if skill.name in offered and skill_bytes(skill) == skill_bytes(offered[skill.name])
     )
 
 
-def _skill_bytes(skill: Skill) -> dict[Path, bytes]:
+def skill_bytes(skill: Skill) -> dict[Path, bytes]:
     return {
         Path(SKILL_DOCUMENT): skill.document.read_bytes(),
         **{
@@ -563,7 +576,10 @@ def _add_kit(
 
 def _choose_kit(root: Path) -> str:
     # Never empty: the bundled kits are always on offer.
-    options = available_kits(root)
+    return choose_kit(available_kits(root))
+
+
+def choose_kit(options: tuple[AvailableKit, ...]) -> str:
     print("Available kits:")
     for index, option in enumerate(options, 1):
         # `(bundled)` and `(vendored)` come parenthesised; a source's name does not.

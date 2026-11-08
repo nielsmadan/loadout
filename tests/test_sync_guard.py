@@ -370,6 +370,19 @@ def test_check_records_nothing(root: Path, capsys) -> None:
     assert not written_state_path(root).is_file()
 
 
+def test_check_lists_each_missing_file_on_one_line_with_no_diff(root: Path, capsys) -> None:
+    register(root)
+    _commit_source(root)
+
+    assert loadout.main(["check", "--root", str(root)]) == 1
+
+    lines = capsys.readouterr().err.splitlines()
+    missing = [i for i, line in enumerate(lines) if line.startswith("DRIFT (missing): ")]
+    assert missing
+    assert all(lines[i + 1].startswith("DRIFT (") or lines[i + 1] == "" for i in missing)
+    assert f"  {len(missing)} missing: not on disk; run `loadout sync`." in lines
+
+
 def _has_commit(root: Path) -> bool:
     return (
         subprocess.run(
