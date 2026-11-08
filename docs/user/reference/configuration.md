@@ -24,7 +24,7 @@ When `XDG_CONFIG_HOME` is set, the location is `$XDG_CONFIG_HOME/loadout/config.
 | --- | --- |
 | `source` | Required. The directory holding the global `loadout.toml`; absolute or `~/`, and it must exist. A relative path is an error, since it would register whatever folder a command runs in |
 | `profile` | Optional. The active profile at the registered source; without it, `default` |
-| `harnesses` | Optional. The harnesses fresh project init selects when no `--harness` is given. Non-empty, no duplicates, supported names only |
+| `harnesses` | Optional. The harnesses a fresh `init project` and `stealth init` select when no `--harness` is given. Non-empty, no duplicates, supported names only |
 
 Any other key is an error, so a typo fails loudly. `loadout init global` writes this file;
 the folder it names is the one source that may render global scope. A `--harness` given to
@@ -558,6 +558,7 @@ same way.
 A **stealth source** is a folder registered on this machine whose `loadout.toml` renders
 personal, never-committed configuration into repositories that have not adopted loadout. The
 [stealth sources guide](../guides/stealth.md) walks through one; this section is the schema.
+[`loadout stealth init`](cli.md#stealth-sources) writes a minimal one and registers it.
 
 ```toml title="~/agent-config/work/loadout.toml"
 [stealth]

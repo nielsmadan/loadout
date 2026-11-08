@@ -27,6 +27,33 @@ A project source, the global source and a stealth source do different jobs:
 
 ## Write a stealth source
 
+Start one with `stealth init`, which writes the folder's `loadout.toml` and registers it:
+
+```sh
+loadout stealth init ~/agent-config/work --targets "~/work/app*" --targets "~/work/api"
+```
+
+It lists the checkouts the patterns match now, and those it would skip with the reason, then
+asks before registering, since a registered folder writes into every match (pass `--yes` where
+there is no terminal). It declares the harnesses given with `--harness`, or else the `harnesses`
+in your [machine config](../reference/configuration.md#machine-configuration), or else the harnesses it
+finds configured. It writes nothing else and does not sync.
+With Claude and Codex configured, it writes:
+
+```toml
+[stealth]
+targets = ["~/work/app*", "~/work/api"]
+
+[[source]]
+name = "work"
+path = "."
+
+[claude]
+[codex]
+```
+
+Then add what you want rendered. A full stealth source looks like this:
+
 ```toml title="~/agent-config/work/loadout.toml"
 [stealth]
 targets = ["~/work/app*", "~/work/api"]
@@ -81,7 +108,9 @@ loadout check --stealth work
 loadout sync --stealth work
 ```
 
-`stealth add` checks the manifest and records the folder in `~/.config/loadout/stealth.toml`.
+`stealth init` has already registered its folder. For a folder whose `loadout.toml` you wrote
+yourself, `stealth add` checks the manifest and records the folder in
+`~/.config/loadout/stealth.toml`.
 Registering is what allows the folder to write: a stealth folder that is not registered is
 refused. `check` lists what `sync` would write as `missing`, and the notes it adds, such as a
 project the harness does not trust yet. `sync` writes the files and prints one line per change.
@@ -210,7 +239,7 @@ register it with `loadout stealth add`, and sync it with `loadout sync --stealth
 sync offers the global git ignore block again, since 0.10.0's answer is not read.
 
 If you already upgraded, this version refuses until the overlay is gone. While
-`~/.config/loadout/overlays.toml` lists an overlay, `stealth add`, `stealth remove` and every
+`~/.config/loadout/overlays.toml` lists an overlay, `stealth init`, `stealth add`, `stealth remove` and every
 stealth part of `sync` and `check` exit 3; in a target whose `.git/info/exclude` still has a
 `# >>> loadout overlay NAME` block, `sync`, `check` and `init project` exit 3 for that target.
 `loadout stealth list` still prints its list and exits 0, then warns with the same message. Each

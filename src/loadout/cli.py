@@ -46,6 +46,7 @@ from .stealth_commands import (
     refuse_targeted_init,
     resolve_selection,
 )
+from .stealth_init import cmd_stealth_init
 
 
 class _ArgumentError(Exception):
@@ -240,11 +241,52 @@ def _add_stealth(subparsers: Any) -> None:
     stealth = subparsers.add_parser(
         "stealth",
         help=STEALTH_HELP,
-        description=f"{STEALTH_HELP} Register, list and remove stealth sources; sync and check "
-        "them with --stealth NAME.",
+        description=f"{STEALTH_HELP} Start, register, list and remove stealth sources; sync and "
+        "check them with --stealth NAME.",
     )
     commands = stealth.add_subparsers(dest="stealth_command", required=True)
-    add = commands.add_parser("add", help="register a stealth source folder")
+    init = commands.add_parser(
+        "init",
+        help="start a stealth source: write its loadout.toml and register the folder",
+        description="Start a stealth source: write a minimal loadout.toml for it, then register "
+        "the folder.",
+    )
+    init.add_argument(
+        "directory",
+        nargs="?",
+        type=Path,
+        default=None,
+        help="folder to hold the new loadout.toml, created if missing (default: cwd)",
+    )
+    init.add_argument(
+        "--targets",
+        action="append",
+        default=None,
+        metavar="PATTERN",
+        help='absolute or "~/" pattern of the checkouts to render into (repeatable; required)',
+    )
+    init.add_argument(
+        "--name", default=None, help="stealth source name (default: the folder's name)"
+    )
+    init.add_argument(
+        "--harness",
+        dest="harnesses",
+        action="append",
+        choices=sorted(KNOWN_HARNESSES),
+        default=None,
+        help="harness to declare (repeatable); otherwise use machine defaults, then detection",
+    )
+    init.add_argument(
+        "--yes",
+        action="store_true",
+        help="register without a prompt; required when input is not a terminal",
+    )
+    add = commands.add_parser(
+        "add",
+        help="register a stealth source folder",
+        description="Register a folder whose loadout.toml has a [stealth] table, so it can write "
+        "into the checkouts its targets match.",
+    )
     add.add_argument(
         "directory",
         nargs="?",
@@ -504,6 +546,14 @@ def _dispatch(args: argparse.Namespace) -> int:  # noqa: PLR0911
 
 
 def _dispatch_stealth(args: argparse.Namespace) -> int:
+    if args.stealth_command == "init":
+        return cmd_stealth_init(
+            args.directory,
+            args.targets,
+            name=args.name,
+            harnesses=args.harnesses,
+            yes=args.yes,
+        )
     if args.stealth_command == "add":
         return cmd_stealth_add(args.directory, args.name)
     if args.stealth_command == "remove":

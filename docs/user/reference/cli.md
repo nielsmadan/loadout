@@ -124,13 +124,14 @@ registered.
 0.10.0 called a stealth source an overlay. The old spellings are refused with a message that
 gives the 0.10.0 `overlay remove` command to run first, then names the new spelling: `loadout
 overlay` and `--overlay` with exit 2, an `[overlay]` table with exit 3. The old state is not
-migrated: while 0.10.0's `overlays.toml` lists an overlay, `stealth add`, `stealth remove` and
+migrated: while 0.10.0's `overlays.toml` lists an overlay, `stealth init`, `stealth add`, `stealth remove` and
 stealth `sync` and `check` exit 3, and so do `sync`, `check` and `init project` for a target still
 holding an overlay's exclude block. `stealth list` exits 0 and, after the list, prints the same
 message on stderr as a warning; see
 [upgrading from 0.10.0](../guides/stealth.md#upgrading-from-0100).
 
 ```sh
+loadout stealth init ~/agent-config/work --targets "~/work/app*" --yes
 loadout stealth add ~/agent-config/work
 loadout stealth add --name work-api
 loadout stealth list
@@ -141,9 +142,28 @@ loadout stealth remove work --yes
 
 | Command | Result |
 | --- | --- |
+| `stealth init [DIRECTORY] --targets PATTERN... [--name NAME] [--harness NAME]... [--yes]` | Start a stealth source: write a minimal `loadout.toml` in `DIRECTORY` (default the current directory, created if missing), then register it as `stealth add` does; see below |
 | `stealth add [DIRECTORY] [--name NAME]` | Register the stealth source in `DIRECTORY` (default the current directory) under `NAME` (default the folder's name in lowercase; lowercase letters, digits and hyphens, at most 63 characters; any other name is a usage error, exit 2). It loads the manifest first, so a manifest error stops it. It refuses this machine's registered global source, a name or a folder already registered (under any spelling of its path, such as another case on macOS), and a folder whose earlier record is held under another name |
 | `stealth list` | One line per stealth source: its name, folder and `targets` patterns. A record that no registration names is listed with the command that removes it |
 | `stealth remove NAME [--force] [--yes]` | Retire everything the stealth source wrote, then delete its record and registration; see below |
+
+`stealth init` writes only `loadout.toml`: a `[stealth]` table with the `--targets` patterns, one
+`[[source]]` entry named after the stealth source with `path = "."`, and an empty table for each
+harness. `--targets` is required and repeatable, and is validated as the `[stealth]` table is; a
+pattern under your home folder given as an absolute path is written with `~/`. Without it,
+`stealth init` exits 2 with an example. The harnesses come from the `--harness` flags; without
+them, from the machine config's `harnesses`; without those, from detection: each harness whose
+global configuration is present. With none of them it exits 2. It refuses with exit 3, before
+writing anything, a folder that already holds a `loadout.toml` (it never overwrites one), the home
+folder, a folder that holds a harness home, invalid targets, a target that would hold or be inside
+the folder, anything `stealth add` refuses, and 0.10.0 leftovers. A target containing a control
+character is invalid. `stealth init` and `stealth add` both check each pattern's fixed parent, the
+part before its first wildcard: a pattern that can only match inside the stealth folder, such as
+`~/agent-config/work/app*` for the folder `~/agent-config/work`, is refused. Which checkouts
+match, and whether one holds the stealth folder, is checked again on every `sync` and `check`. It then lists the checkouts the patterns match now and
+those it would skip, with the reason, asks `create DIRECTORY/loadout.toml and register stealth
+source NAME, which writes into every checkout its targets match? [y/N]`, and prints the next
+steps. Without a terminal it needs `--yes` and otherwise exits 2. It does not sync.
 
 `stealth remove` asks `remove stealth source NAME and retire its N recorded outputs? [y/N]`; declining
 exits 0 with `declined; no changes made`. Without a terminal it needs `--yes` and otherwise

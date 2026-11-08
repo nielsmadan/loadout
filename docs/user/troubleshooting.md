@@ -187,7 +187,7 @@ each refusal first tells you to remove the old overlay with 0.10.0 (`R` below is
 | `` F still holds the 0.10.0 overlay block NAME; remove it first with R `` (exit 3) | That repository's `.git/info/exclude` has a `# >>> loadout overlay NAME` block. Run R |
 
 This version does not migrate what 0.10.0 recorded for an overlay; it only looks for it so that
-it can refuse. While `overlays.toml` lists an overlay, `stealth add`, `stealth remove` and the
+it can refuse. While `overlays.toml` lists an overlay, `stealth init`, `stealth add`, `stealth remove` and the
 stealth part of `sync` and `check` refuse (a project or the global source still syncs, with exit
 3); `stealth list` still lists, then warns. A target whose `.git/info/exclude` still has an
 overlay block is refused on its own, while the other targets sync; `init project` refuses there too, so the overlay's personal files are not

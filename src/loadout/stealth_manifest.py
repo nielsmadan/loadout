@@ -31,6 +31,8 @@ STEALTH_EXTRAS: dict[str, frozenset[str]] = {
 
 _STEALTH_KEYS = ("targets", "follow_worktrees", "git_hook")
 
+_CONTROL = frozenset(map(chr, (*range(0x20), 0x7F)))
+
 _NO_DESTINATION = "would need a destination the team's config does not merge, so a stealth source cannot write it additively"
 
 _REFUSED_KEYS = {
@@ -78,6 +80,14 @@ def renamed_table(folder: Path) -> LoadoutError | None:
     return renamed_overlay_table(_lenient_data(folder), folder / MANIFEST_NAME)
 
 
+def _storable(pattern: str) -> bool:
+    try:
+        pattern.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return not _CONTROL & set(pattern)
+
+
 def _parse_settings(raw: object, path: Path) -> StealthSettings:
     if not isinstance(raw, dict):
         raise LoadoutError(f"{path}: [{STEALTH_TABLE}] must be a table")
@@ -97,6 +107,12 @@ def _parse_settings(raw: object, path: Path) -> StealthSettings:
             f"{path}: [{STEALTH_TABLE}] targets must be a non-empty list of absolute or "
             f'"~/" patterns'
         )
+    unstorable = next((t for t in targets if not _storable(t)), None)
+    if unstorable is not None:
+        raise LoadoutError(
+            f"{path}: [{STEALTH_TABLE}] targets: the pattern {unstorable!r} holds a control "
+            "character or a byte that is not UTF-8, which a target path cannot use"
+        )
     for key in ("follow_worktrees", "git_hook"):
         value = raw.get(key, False)
         if not isinstance(value, bool):
@@ -107,6 +123,10 @@ def _parse_settings(raw: object, path: Path) -> StealthSettings:
                 "release — set it to false or remove it"
             )
     return StealthSettings(targets=tuple(targets))
+
+
+def parse_targets(targets: list[str], path: Path) -> StealthSettings:
+    return _parse_settings({"targets": targets}, path)
 
 
 def _reason(harness: str | None, key: str) -> str:

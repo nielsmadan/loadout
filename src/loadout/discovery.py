@@ -1009,6 +1009,10 @@ def _selection_issues(
     return issues
 
 
+def detected_global_harnesses(home: Path, environ: Mapping[str, str]) -> tuple[str, ...]:
+    return _evident_harnesses(home, "global", live_roots(home, environ))
+
+
 def _evident_harnesses(
     root: Path, scope: Scope | None, live: tuple[RootMapping, ...]
 ) -> tuple[str, ...]:

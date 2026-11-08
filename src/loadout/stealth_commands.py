@@ -49,7 +49,7 @@ from .stealth_registry import (
     without_stealth,
 )
 from .stealth_sync import StealthRun, report, sync_stealth
-from .stealth_targets import expand_patterns, harness_homes
+from .stealth_targets import expand_patterns, harness_homes, refuse_patterns_inside
 
 PROFILE_REFUSAL = (
     "stealth sources render the default profile only; --profile applies to a loadout source"
@@ -67,10 +67,6 @@ class Selection:
     registry_error: str | None = None
 
 
-def _refuse_overlay_registry() -> None:
-    check_registry(machine.config_dir())
-
-
 def _record_holder(folder: Path, registered: set[str]) -> str | None:
     scan = scan_stealth_records()
     if scan.problems:
@@ -85,16 +81,21 @@ def _record_holder(folder: Path, registered: set[str]) -> str | None:
     )
 
 
-def cmd_stealth_add(directory: Path | None, name: str | None) -> int:
-    _refuse_overlay_registry()
-    folder = (directory or Path.cwd()).resolve()
-    load_stealth_manifest(folder)
+def refuse_overlay_registry() -> None:
+    check_registry(machine.config_dir())
+
+
+def stealth_name(folder: Path, name: str | None) -> str:
     chosen = name if name is not None else folder.name.lower()
     if NAME_PATTERN.fullmatch(chosen) is None:
         raise UsageError(
             f"{chosen!r} is not a valid stealth name (lowercase letters, digits and "
             f"hyphens, starting with a letter or digit); pass --name"
         )
+    return chosen
+
+
+def refuse_registration(folder: Path, chosen: str) -> None:
     registered = load_registry(stealth_path())
     if machine.is_registered(folder, machine.registration().source):
         raise LoadoutError(
@@ -105,10 +106,23 @@ def cmd_stealth_add(directory: Path | None, name: str | None) -> int:
             f"{folder} has an unregistered stealth record named {old}; "
             f"run `loadout stealth remove {old}` first"
         )
+    with_stealth(registered, RegisteredStealth(chosen, folder))
+
+
+def register_stealth(folder: Path, chosen: str) -> None:
+    refuse_registration(folder, chosen)
     update_registry(lambda current: with_stealth(current, RegisteredStealth(chosen, folder)))
     print(
         f"registered stealth source {chosen} at {folder}; preview with `loadout check --stealth {chosen}`"
     )
+
+
+def cmd_stealth_add(directory: Path | None, name: str | None) -> int:
+    refuse_overlay_registry()
+    folder = (directory or Path.cwd()).resolve()
+    settings = load_stealth_manifest(folder).settings
+    refuse_patterns_inside(settings, harness_homes().home, folder)
+    register_stealth(folder, stealth_name(folder, name))
     return 0
 
 
@@ -230,7 +244,7 @@ def _local(
 ) -> Selection:
     manifest_here = _has_manifest(root)
     try:
-        _refuse_overlay_registry()
+        refuse_overlay_registry()
         registry = load_registry(stealth_path())
     except (LoadoutError, OSError) as error:
         if isinstance(error, OverlayLeftover) and not manifest_here and not holds_stealth(root):
@@ -278,11 +292,11 @@ def resolve_selection(  # noqa: PLR0913
     if stealth is not None:
         if profile is not None:
             raise UsageError(PROFILE_REFUSAL)
-        _refuse_overlay_registry()
+        refuse_overlay_registry()
         return Selection(None, None, None, ((_registered(stealth), None),), force)
     if use_global:
         try:
-            _refuse_overlay_registry()
+            refuse_overlay_registry()
             stealth_sources = tuple((found, None) for found in load_registry(stealth_path()))
             registry_error = None
         except (LoadoutError, OSError) as error:
@@ -295,7 +309,7 @@ def resolve_selection(  # noqa: PLR0913
     return _local(root.resolve(), profile, force, resolve)
 
 
-def _interactive() -> bool:
+def interactive() -> bool:
     return sys.stdin.isatty() and sys.stdout.isatty()
 
 
@@ -350,7 +364,7 @@ def _scoped_first(
 
 def _sync_one(stealth: RegisteredStealth, scope: Path | None, force: bool) -> int:
     try:
-        outcome = sync_stealth(StealthRun(stealth, scope, force, _interactive()))
+        outcome = sync_stealth(StealthRun(stealth, scope, force, interactive()))
     except (LoadoutError, OSError) as error:
         print(f"stealth {stealth.name}: ERROR: {error}", file=sys.stderr)
         return 3
@@ -519,7 +533,7 @@ def _recorded_count(record: StealthRecord) -> int:
 def _confirmed(name: str, count: int, yes: bool) -> bool:
     if yes:
         return True
-    if not _interactive():
+    if not interactive():
         raise UsageError(f"stealth remove {name} needs --yes when input is not interactive")
     noun = "output" if count == 1 else "outputs"
     try:
@@ -573,7 +587,7 @@ def _failed_removal(stealth: RegisteredStealth, registered: bool) -> str:
 
 
 def cmd_stealth_remove(name: str, *, force: bool, yes: bool) -> int:
-    _refuse_overlay_registry()
+    refuse_overlay_registry()
     stealth, registered = _removal_target(name)
     record, status = read_stealth_record(stealth.folder, name, harness_homes().home)
     path = stealth_record_path(stealth.folder)

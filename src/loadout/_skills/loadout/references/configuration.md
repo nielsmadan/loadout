@@ -263,7 +263,7 @@ global source when the change belongs to the whole machine. loadout 0.10.0 calle
 `loadout overlay`, `--overlay` and an `[overlay]` table are refused. Before renaming anything,
 remove each 0.10.0 overlay with
 `uvx --python 3.13 --from git+https://github.com/nielsmadan/loadout.git@v0.10.0 loadout overlay remove NAME --yes`.
-Until then `stealth add`, `stealth remove` and stealth `sync` and `check` refuse with exit 3 while
+Until then `stealth init`, `stealth add`, `stealth remove` and stealth `sync` and `check` refuse with exit 3 while
 0.10.0's `overlays.toml` lists an overlay, and so do `sync`, `check` and `init project` in a target
 whose `.git/info/exclude` holds an overlay block; each message names what it found.
 `stealth list` does not refuse: it exits 0 and, after the list, warns on stderr with the same
@@ -272,8 +272,11 @@ message (or says `overlays.toml` cannot be read). Then use `loadout stealth`, `-
 
 1. Find it: `loadout stealth list` prints each stealth source's name, folder and `targets`. A repository
    is covered when a pattern matches its top folder. If none does, ask before creating or
-   registering one: `loadout stealth add <folder>` lets that folder write into every repository
-   its patterns match.
+   registering one, since a registered folder writes into every repository its patterns match.
+   To start one, run `loadout stealth init <folder> --targets "<pattern>" --yes` once the user
+   agrees: it writes a minimal `loadout.toml` and registers the folder, and refuses a folder that
+   already has a `loadout.toml`. Then edit the folder as in step 2. For a folder that already has
+   a `loadout.toml` with a `[stealth]` table, run `loadout stealth add <folder>` instead.
 2. Edit the stealth folder, never the files it renders. Its source layout is a global source's:
    `instructions/<name>.md`, `permissions.toml`, `mcp.toml`, `skills/` and `settings/<name>.json`
    (Claude and Droid), named in its `loadout.toml`. The rendered files are

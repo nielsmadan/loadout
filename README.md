@@ -61,6 +61,7 @@ Install the bundled `/loadout` skill, so your agents can make those edits for yo
     loadout kit add [NAME] [--linked | --vendored] [--root PATH] [--yes]
     loadout kit sync NAME [--root PATH] [--yes]
     loadout kit list [--root PATH]
+    loadout stealth init [DIRECTORY] --targets PATTERN... [--name NAME] [--harness NAME]... [--yes]
     loadout stealth add [DIRECTORY] [--name NAME]
     loadout stealth list
     loadout stealth remove NAME [--force] [--yes]

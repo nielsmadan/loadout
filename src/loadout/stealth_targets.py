@@ -159,18 +159,52 @@ def _inside(path: Path, folder: Path) -> bool:
     return any(_same(ancestor, folder) for ancestor in (path, *path.parents))
 
 
-def _unsafe_reason(root: Path, homes: HarnessHomes, stealth_folder: Path) -> str | None:
-    stealth = stealth_folder.resolve()
-    if _same(root, homes.home):
-        return "a target cannot be the home folder"
-    held = next((home for home in homes.homes if _inside(home, root)), None)
+def _home_reason(folder: Path, homes: HarnessHomes, subject: str) -> str | None:
+    if _same(folder, homes.home):
+        return f"{subject} cannot be the home folder"
+    held = next((home for home in homes.homes if _inside(home, folder)), None)
     if held is not None:
-        return f"a target cannot hold the harness home {held}"
+        return f"{subject} cannot hold the harness home {held}"
+    return None
+
+
+def stealth_folder_reason(root: Path, stealth_folder: Path) -> str | None:
+    stealth = stealth_folder.resolve()
     if _inside(stealth, root):
         return f"a target cannot hold the stealth folder {stealth}"
     if _inside(root, stealth):
         return f"a target cannot be inside the stealth folder {stealth}"
     return None
+
+
+def _pattern_reach(pattern: str, home: Path) -> Path:
+    fixed, rest = _split(pattern, home)
+    return fixed if _GLOB_CHARACTERS & set(rest) else fixed / rest
+
+
+def refuse_patterns_inside(settings: StealthSettings, home: Path, stealth_folder: Path) -> None:
+    stealth = stealth_folder.resolve()
+    inside = next(
+        (
+            pattern
+            for pattern in settings.targets
+            if _inside(_pattern_reach(pattern, home).resolve(), stealth)
+        ),
+        None,
+    )
+    if inside is not None:
+        raise LoadoutError(
+            f"the pattern {inside} can match only inside the stealth folder {stealth}, and a "
+            "target cannot be inside the stealth folder"
+        )
+
+
+def unsafe_stealth_folder(folder: Path, homes: HarnessHomes) -> str | None:
+    return _home_reason(folder.resolve(), homes, "a stealth folder")
+
+
+def _unsafe_reason(root: Path, homes: HarnessHomes, stealth_folder: Path) -> str | None:
+    return _home_reason(root, homes, "a target") or stealth_folder_reason(root, stealth_folder)
 
 
 def _skip(
