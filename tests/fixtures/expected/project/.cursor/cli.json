@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Shell(omicron build)",
+      "Shell(alpha)",
+      "Shell(beta sub)",
+      "Shell(gamma-*)",
+      "Shell(mu:status)",
+      "Shell(kappa only-here)",
+      "Mcp(tmpl_server:*)"
+    ],
+    "deny": [
+      "Shell(omicron publish)",
+      "Shell(iota push)",
+      "Shell(nu:wipe)",
+      "Shell(zeta)",
+      "Mcp(blocked:*)"
+    ]
+  }
+}

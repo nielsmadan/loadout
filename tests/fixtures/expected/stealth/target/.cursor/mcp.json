@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "docs": {
+      "url": "https://docs.example/mcp",
+      "headers": {
+        "Authorization": "Bearer ${env:DOCS_TOKEN}"
+      }
+    },
+    "local-tool": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "local-tool-mcp"
+      ]
+    }
+  }
+}

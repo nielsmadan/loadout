@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Shell(alpha)",
+      "Shell(beta sub)",
+      "Shell(gamma-*)",
+      "Shell(delta run --tag=*)",
+      "Shell(eta)",
+      "Shell(mu:status)",
+      "Mcp(web.two:read)"
+    ],
+    "deny": [
+      "Shell(zeta)",
+      "Shell(iota push)",
+      "Shell(nu:wipe)",
+      "Mcp(blocked:*)",
+      "Mcp(svc:purge)"
+    ]
+  }
+}

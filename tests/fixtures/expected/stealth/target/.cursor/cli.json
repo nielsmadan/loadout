@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Shell(ls)",
+      "Shell(git status)",
+      "Mcp(docs:search)"
+    ],
+    "deny": [
+      "Shell(rm -rf)"
+    ]
+  }
+}

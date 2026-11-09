@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "type": "command",
+        "command": "./loadout/guard.sh",
+        "loop_limit": null,
+        "failClosed": false,
+        "matcher": "Shell"
+      }
+    ]
+  }
+}
