@@ -84,11 +84,16 @@ version number. Those three are the failures this workflow would have caught on 
 
 1. Run lint, formatting, strict type checks, the full test suite with Node available, and a
    strict docs build on Linux. The same CI workflow checks pull requests and `main`.
-2. On macOS, verify the tag matches both version fields and the lockfile, then build the
-   source archive and wheel. Exercise the installed wheel using the installation checker.
+2. On macOS, `curtains ci validate-tag` checks that the tag is an annotated release tag on
+   `main` for the pushed commit. Verify the tag matches both version fields and the lockfile,
+   then build the source archive and wheel. Exercise the installed wheel using the installation
+   checker.
 3. Calculate the tagged source archive's SHA-256 and render a Homebrew formula. Install that
    formula through a temporary tap and run its functional initialization and sync test.
-4. Publish the tested wheel and source archive as GitHub Release assets, with generated notes.
+4. Validate the tag again and publish the tested wheel and source archive with
+   `curtains ci publish`. The notes come from git-cliff plus a comparison link to the previous
+   tag from `curtains ci previous-tag`. The release is created as a draft, the assets are
+   uploaded, and it is published once all of them are present.
 5. Copy the tested formula into the real tap, creating or updating it in a separate job.
 
 The formula installs Python 3.13 and includes runtime dependency resources from `uv.lock`.
@@ -122,10 +127,10 @@ checks name real Justfile recipes; formula generation is covered by `tests/test_
 
 A failed preparation or push leaves local changes, commits and tags available for inspection;
 curtains does not automatically resume. A failed GitHub workflow leaves the remote tag in place.
-Fix the cause, then use **Re-run failed jobs** on that workflow. If the tap update fails after
-publication, rerun only its failed job; the GitHub release already exists. Do not rerun the
-successful publication job or replace a public tag. Changes that require new source code need a
-new release tag.
+Fix the cause, then use **Re-run failed jobs** on that workflow. A rerun of a failed publication
+job completes the draft or release it left behind. If the tap update fails after publication,
+rerun only its failed job; the GitHub release already exists. Do not replace a public tag.
+Changes that require new source code need a new release tag.
 
 GitHub retains build outputs as workflow artifacts. Routine verification results stay in
 the workflow logs and conversation, rather than dated reports in the repository.
