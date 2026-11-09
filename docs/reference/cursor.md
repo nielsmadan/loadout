@@ -138,7 +138,8 @@ fields", "Some fields are CLI-managed and may be overwritten", and "Corrupted fi
 as `.bad` and recreated". The file is "Pure JSON format (no comments)".
 
 So loadout can own the `permissions` key only, and must preserve everything else, the way it
-treats Codex's `config.toml`.
+treats Codex's `config.toml`. The CLI ends the file with a newline, and adds one to a file written without
+it (observed in the same container); loadout keeps whichever the file already has.
 
 `permissions.json` (global and project) is a separate surface, read by both the CLI and the app.
 It holds Auto-review's plain-English `allow_instructions` and `block_instructions`, plus

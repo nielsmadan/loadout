@@ -49,6 +49,8 @@ GLOBAL_RENDERERS = {
     "claude-mcp.json": "claude-mcp-permissions",
     "codex.rules": "codex",
     "codex-mcp.toml": "codex-mcp-permissions",
+    "cursor.json": "cursor",
+    "cursor-servers.json": "cursor-servers",
     "droid.json": "droid",
     "opencode.json": "opencode",
     "pi.json": "pi",
@@ -115,6 +117,10 @@ def _serialize(name: str, document: object) -> str:
     # compose_permission_document` serializes one: `_serialize_json`'s default
     # `ensure_ascii=False`, since the spec itself carries no such flag.
     ensure_ascii = spec.ensure_ascii if isinstance(spec, JsonSpec) else False
+    # A `MergedJsonSpec` rendering from rules (`cursor`) follows the newline convention
+    # of the file it merges into, and a staged copy starts from none: no final newline.
+    if isinstance(spec, MergedJsonSpec):
+        return json.dumps(document, indent=2, ensure_ascii=False)
     assert isinstance(spec, JsonSpec | DocumentJsonSpec)
     return json.dumps(document, indent=2, ensure_ascii=ensure_ascii) + "\n"
 
