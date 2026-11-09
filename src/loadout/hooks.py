@@ -11,12 +11,15 @@ __all__ = [
     "ADAPTABLE_TYPES",
     "CLAUDE_EVENTS",
     "CODEX_EVENTS",
+    "CURSOR_EVENTS",
     "DROID_EVENTS",
     "HARNESS_PREFIXES",
     "adaptable_document",
+    "cursor_hooks",
     "foreign_variables",
     "render_claude_hooks",
     "render_codex_hooks",
+    "render_cursor_hooks",
     "render_droid_hooks",
     "unrecognised_events",
 ]
@@ -208,6 +211,108 @@ def render_droid_hooks(document: Mapping[str, Any]) -> dict[str, Any]:
     return copy.deepcopy(dict(document))
 
 
+# Cursor's own translation of a Claude hooks document, ported from the function
+# its 2026.11.05 bundle applies to `.claude/settings.json` (docs/reference/cursor.md
+# #hooks). Rendering what Cursor would make of Claude's file, byte for byte, is
+# also what lets Cursor drop the Claude copy as a duplicate: it compares commands.
+CURSOR_EVENT_NAMES: dict[str, str | None] = {
+    "PreToolUse": "preToolUse",
+    "PermissionRequest": None,
+    "PostToolUse": "postToolUse",
+    "UserPromptSubmit": "beforeSubmitPrompt",
+    "Stop": "stop",
+    "SubagentStop": "subagentStop",
+    "SessionStart": "sessionStart",
+    "SessionEnd": "sessionEnd",
+    "PreCompact": "preCompact",
+    "Notification": None,
+}
+CURSOR_EVENTS = frozenset(event for event, name in CURSOR_EVENT_NAMES.items() if name)
+CURSOR_TOOL_NAMES: dict[str, str | None] = {
+    "Bash": "Shell",
+    "Read": "Read",
+    "Write": "Write",
+    "Edit": "Write",
+    "Glob": None,
+    "Grep": "Grep",
+    "WebFetch": "WebFetch",
+    "WebSearch": "WebSearch",
+    "Task": "Task",
+}
+
+
+def _cursor_matcher(matcher: object) -> str | None:
+    """A tool matcher in Cursor's names, `*` for every tool, or None for no tool."""
+    if not isinstance(matcher, str) or not matcher or matcher == "*":
+        return "*"
+    names: list[str] = []
+    for part in matcher.split("|"):
+        tool = part.strip()
+        if tool.startswith("mcp__") and len(pieces := tool.split("__")) >= 3:  # noqa: PLR2004
+            names.append(f"MCP:{'__'.join(pieces[2:])}")
+            continue
+        if tool not in CURSOR_TOOL_NAMES:
+            names.append(tool)
+        elif (mapped := CURSOR_TOOL_NAMES[tool]) is not None and mapped not in names:
+            names.append(mapped)
+    return "|".join(names) if names else None
+
+
+def _cursor_hook(hook: Mapping[str, Any], matcher: str | None) -> dict[str, Any] | None:
+    options: dict[str, Any] = {"loop_limit": None, "failClosed": False}
+    if matcher and matcher != "*":
+        options["matcher"] = matcher
+    if "timeout" in hook:
+        options["timeout"] = hook["timeout"]
+    if hook.get("type") == "prompt":
+        return (
+            {"type": "prompt", "prompt": hook["prompt"], **options} if hook.get("prompt") else None
+        )
+    return (
+        {"type": "command", "command": hook["command"], **options} if hook.get("command") else None
+    )
+
+
+def cursor_hooks(document: Mapping[str, Any]) -> tuple[dict[str, Any], tuple[str, ...]]:
+    """Cursor's hooks.json for a Claude hooks document, and what it leaves out."""
+    hooks: dict[str, list[dict[str, Any]]] = {}
+    skipped: list[str] = []
+    for event, entries in document.items():
+        name = CURSOR_EVENT_NAMES.get(event)
+        if name is None:
+            if _looks_like_an_event(event):
+                skipped.append(f"{event}: no Cursor event")
+            continue
+        converted: list[dict[str, Any]] = []
+        for entry in entries if isinstance(entries, list) else []:
+            if not isinstance(entry, Mapping) or not isinstance(entry.get("hooks"), list):
+                continue
+            matcher = (
+                _cursor_matcher(entry.get("matcher"))
+                if event in {"PreToolUse", "PostToolUse"}
+                else "*"
+            )
+            if matcher is None:
+                skipped.append(f"{event}: matcher {entry.get('matcher')!r} names no Cursor tool")
+                continue
+            for hook in entry["hooks"]:
+                rendered = _cursor_hook(hook, matcher) if isinstance(hook, Mapping) else None
+                if rendered is None:
+                    kind = hook.get("type") if isinstance(hook, Mapping) else None
+                    skipped.append(f"{event}: {kind}")
+                else:
+                    converted.append(rendered)
+        if converted:
+            hooks[name] = [*hooks.get(name, []), *converted]
+    return {"version": 1, "hooks": hooks}, tuple(skipped)
+
+
+def render_cursor_hooks(document: Mapping[str, Any]) -> dict[str, Any]:
+    """The whole of Cursor's hooks.json, translated as Cursor translates Claude's."""
+    _reject_foreign_variables(document, "cursor")
+    return cursor_hooks(document)[0]
+
+
 def adaptable_document(
     document: Mapping[str, Any], adaptable: frozenset[str] = ADAPTABLE_TYPES
 ) -> tuple[dict[str, Any], tuple[str, ...]]:
@@ -270,8 +375,12 @@ def adaptable_document(
 HARNESS_PREFIXES = {
     "claude": "CLAUDE_",
     "codex": "CODEX_",
+    "cursor": "CURSOR_",
     "droid": ("FACTORY_", "DROID_"),
 }
+# Variables a harness defines inside another's namespace. Cursor sets
+# CLAUDE_PROJECT_DIR as an alias of CURSOR_PROJECT_DIR (its hooks page).
+BORROWED_VARIABLES = {"cursor": frozenset({"CLAUDE_PROJECT_DIR"})}
 
 _VARIABLE = re.compile(r"\$\{?([A-Z][A-Z0-9_]*)\}?")
 
@@ -289,6 +398,7 @@ def foreign_variables(document: Mapping[str, Any], harness: str) -> tuple[str, .
         prefixes = (candidate,) if isinstance(candidate, str) else candidate
         if not any(prefix in own_prefixes for prefix in prefixes):
             foreign.update(prefixes)
+    borrowed = BORROWED_VARIABLES.get(harness, frozenset())
     found: list[str] = []
     for event, entries in document.items():
         if not isinstance(entries, list):
@@ -304,7 +414,7 @@ def foreign_variables(document: Mapping[str, Any], harness: str) -> tuple[str, .
                     if not isinstance(value, str):
                         continue
                     for name in _VARIABLE.findall(value):
-                        if any(name.startswith(p) for p in foreign):
+                        if name not in borrowed and any(name.startswith(p) for p in foreign):
                             found.append(f"{event}: ${name}")
     return tuple(found)
 

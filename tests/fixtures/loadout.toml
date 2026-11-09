@@ -68,6 +68,11 @@ preserve = ["foreign"]
 output = "perm/pi.json"
 render = "pi"
 
+# Cursor's one owned key of cli-config.json: two lists, no ask, and deny over allow.
+[permissions.cursor]
+output = "perm/cursor.json"
+render = "cursor"
+
 # Server definitions from mcp.toml, through each renderer only global scope uses:
 # Claude's flat global entry, Codex's staged text and its merged config.toml, and Pi.
 [permissions.claude-servers]
@@ -85,6 +90,10 @@ render = "codex-config"
 [permissions.pi-servers]
 output = "perm/pi-servers.json"
 render = "pi-servers"
+
+[permissions.cursor-servers]
+output = "perm/cursor-servers.json"
+render = "cursor-servers"
 
 # `permissions = []` selects no rules, so all three lists render empty while the
 # settings around them still render — the autonomous profile's mechanism.

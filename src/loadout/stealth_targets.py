@@ -27,6 +27,7 @@ RecordedFate = Literal["present", "gone", "unreachable"]
 _HOME_TEMPLATES = {
     "claude": "${CLAUDE_CONFIG_DIR:-~/.claude}",
     "codex": "${CODEX_HOME:-~/.codex}",
+    "cursor": "~/.cursor",
     "droid": "${FACTORY_HOME_OVERRIDE:-~}/.factory",
     "opencode": "${XDG_CONFIG_HOME:-~/.config}/opencode",
     "pi": "${PI_CODING_AGENT_DIR:-~/.pi/agent}",

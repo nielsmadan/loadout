@@ -21,8 +21,8 @@ def test_parses_the_harness_list(tmp_path: Path) -> None:
     assert load_project_config(path) == ProjectConfig(harnesses=("claude", "codex"))
 
 
-def test_known_harnesses_are_the_five_supported_names() -> None:
-    assert frozenset({"claude", "codex", "droid", "opencode", "pi"}) == KNOWN_HARNESSES
+def test_known_harnesses_are_the_six_supported_names() -> None:
+    assert frozenset({"claude", "codex", "cursor", "droid", "opencode", "pi"}) == KNOWN_HARNESSES
 
 
 def test_preset_has_an_entry_for_every_known_harness() -> None:

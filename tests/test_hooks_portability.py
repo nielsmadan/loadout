@@ -94,7 +94,7 @@ def test_a_comment_key_does_not_break_the_scan() -> None:
 
 
 def test_every_supported_harness_has_a_namespace() -> None:
-    assert {"claude", "codex", "droid"} == set(HARNESS_PREFIXES)
+    assert {"claude", "codex", "cursor", "droid"} == set(HARNESS_PREFIXES)
 
 
 def test_droids_namespaces_are_foreign_to_the_other_harnesses() -> None:

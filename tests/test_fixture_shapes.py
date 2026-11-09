@@ -251,9 +251,9 @@ def test_the_global_fixture_routes_its_servers_through_each_global_renderer() ->
 STEALTH_FIXTURE = Path(__file__).parent / "fixtures" / "stealth"
 
 
-def test_the_stealth_fixture_declares_all_five_harnesses_and_one_differing_fragment_order() -> None:
+def test_the_stealth_fixture_declares_every_harness_and_one_differing_fragment_order() -> None:
     manifest = load_stealth_manifest(STEALTH_FIXTURE)
-    assert manifest.harnesses == ("claude", "codex", "droid", "opencode", "pi")
+    assert manifest.harnesses == ("claude", "codex", "cursor", "droid", "opencode", "pi")
     orders = {t.name: t.fragments for t in manifest.manifest.targets}
     assert len(set(orders.values())) == 2
 
@@ -275,3 +275,14 @@ def test_the_stealth_fixture_has_an_http_and_a_stdio_server_and_a_settings_fragm
 def test_the_stealth_fixture_skill_has_a_supporting_file() -> None:
     assert (STEALTH_FIXTURE / "skills/probe/SKILL.md").is_file()
     assert (STEALTH_FIXTURE / "skills/probe/reference.md").is_file()
+
+
+def test_an_mcp_allow_covers_an_mcp_ask() -> None:
+    """Cursor has no ask list, so it drops an allow reaching an ask: `svc/*` over
+    `svc/write`. A deny glob past the first word, which Cursor widens, cannot be here:
+    Droid refuses every deny glob."""
+    assert any(
+        mcp_parts(allow)[0] == mcp_parts(ask)[0] and mcp_parts(allow)[1] == "*"
+        for allow in RULES.mcp_allow
+        for ask in RULES.mcp_ask
+    )

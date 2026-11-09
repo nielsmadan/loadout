@@ -72,7 +72,7 @@ drift like any other edit: `check` reports it and `sync` refuses to overwrite it
 
 Which keys count depends on the file. Claude Code's and Droid's `settings.json`, OpenCode's
 `opencode.json` and Pi's `settings.json` are written whole, so any key the harness adds or changes
-there is `hand-edited`, whether the source sets it or not. Codex's `config.toml` is shared: loadout
+there is `hand-edited`, whether the source sets it or not. Codex's `config.toml` and Cursor's `cli-config.json` are shared: loadout
 compares only the keys the source sets, reports a change to one as `owned-key`, and leaves every
 other key to Codex.
 
@@ -120,6 +120,8 @@ What each harness writes, by the version checked:
 | | Installing, enabling or disabling a plugin | `plugins."<name>@<marketplace>"` | same | `owned-key` when `[codex]` declares `plugins` |
 | | Service tier, theme, status line | `service_tier`, `tui` | same | `owned-key` when `defaults` sets them, as it does after `init` adopts them; nothing otherwise |
 | | Trusting a project | `projects` | same | nothing; `init` leaves it to Codex |
+| Cursor CLI 2026.11.05 | Any start of the CLI, `/model`, `/sandbox` and other settings | `version`, `editor`, `model`, `approvalMode` and every other key but `permissions` | `cli-config.json` | nothing; loadout owns only `permissions` (the start was observed in a container) |
+| | "Add to allowlist" at an approval prompt | `permissions` | same | a change to the key loadout owns (read from the bundle, not observed) |
 | Droid 0.251.0 | `/model`, and the reasoning-effort and autonomy pickers | `sessionDefaultSettings` | `~/.factory/settings.json` | `hand-edited` |
 | | `/settings` | `theme` and the other keys it sets | same | `hand-edited` |
 | | Installing or enabling a plugin, adding a marketplace | `enabledPlugins`, `extraKnownMarketplaces` | same | `hand-edited` |

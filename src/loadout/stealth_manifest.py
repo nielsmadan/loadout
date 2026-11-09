@@ -6,7 +6,7 @@ from pathlib import Path
 
 from . import stealth_seams
 from .errors import LoadoutError
-from .harnesses import KNOWN_HARNESSES
+from .harnesses import GLOBAL_PRESET, KNOWN_HARNESSES, SliceOutput
 from .manifest import (
     COMMON_BLOCK,
     MANIFEST_NAME,
@@ -27,6 +27,12 @@ STEALTH_EXTRAS: dict[str, frozenset[str]] = {
         {"settings", "substitute"} if harness in ("claude", "droid") else {"substitute"}
     )
     for harness in KNOWN_HARNESSES
+}
+
+# Cursor has no global instructions file, but a stealth source writes it a rule.
+STEALTH_OFFERED: dict[str, dict[str, SliceOutput]] = {
+    **GLOBAL_PRESET,
+    "cursor": {**GLOBAL_PRESET["cursor"], "instructions": SliceOutput()},
 }
 
 _STEALTH_KEYS = ("targets", "follow_worktrees", "git_hook")
@@ -234,7 +240,9 @@ def load_stealth_manifest(
     settings = _parse_settings(data[STEALTH_TABLE], path)
     rest = {k: v for k, v in data.items() if k != STEALTH_TABLE}
     _refuse_top_level(rest, path)
-    built = stealth_seams.build_manifest(_filtered_data(rest, path), path, sources=sources)
+    built = stealth_seams.build_manifest(
+        _filtered_data(rest, path), path, sources=sources, preset=STEALTH_OFFERED
+    )
     return StealthManifest(
         folder=folder,
         settings=settings,

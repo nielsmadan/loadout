@@ -31,6 +31,7 @@ __all__ = [
     "render_claude_project_servers",
     "render_claude_servers",
     "render_codex_servers",
+    "render_cursor_servers",
     "render_droid_servers",
     "render_opencode_servers",
     "render_pi_servers",
@@ -243,6 +244,31 @@ def render_claude_servers(servers: dict[str, Server]) -> dict[str, Any]:
 
 def render_claude_project_servers(servers: dict[str, Server]) -> dict[str, Any]:
     return {"mcpServers": render_claude_servers(servers)}
+
+
+# --------------------------------------------------------------------------
+# cursor — mcp.json at both scopes, the whole file. Cursor interpolates
+# `${env:NAME}`, not `${NAME}`, and its examples carry no `type` key.
+# --------------------------------------------------------------------------
+
+
+def render_cursor_servers(servers: dict[str, Server]) -> dict[str, Any]:
+    entries: dict[str, Any] = {}
+    for name, server in servers.items():
+        entry: dict[str, Any]
+        if is_http(server):
+            assert server.url is not None
+            entry = {"url": server.url}
+            headers = _bearer_headers(server, f"${{env:{server.auth_env_var}}}")
+            if headers:
+                entry["headers"] = headers
+        else:
+            assert server.command is not None
+            entry = {"command": server.command, "args": list(server.args)}
+            if server.env:
+                entry["env"] = dict(server.env)
+        entries[name] = entry
+    return {"mcpServers": entries}
 
 
 def render_droid_servers(servers: dict[str, Server]) -> dict[str, Any]:

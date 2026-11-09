@@ -11,16 +11,19 @@ from .composition import fragment_paths, load_fragment, render
 from .emit import global_rules, global_servers, settings_document, skill_trees
 from .harnesses import SHARED_SKILL_READERS, SliceOutput
 from .manifest import Manifest, PermissionTarget
+from .notices import cursor_permission_notices
 from .output import Copied
 from .permissions.renderers import (
     refuse_mcp_namespace_overlap,
     render_codex_stealth,
+    render_cursor_project,
     render_pi_project,
 )
 from .permissions.rules import EMPTY_RULES, Rules
 from .servers import (
     Server,
     render_claude_servers,
+    render_cursor_servers,
     render_droid_servers,
     render_pi_servers,
 )
@@ -51,6 +54,12 @@ STEALTH_PRESET: dict[str, dict[str, SliceOutput]] = {
         "permissions": SliceOutput(output=".codex/rules"),
         "skills": SliceOutput(output=".agents/skills"),
     },
+    "cursor": {
+        "instructions": SliceOutput(output=".cursor/rules"),
+        "mcp": SliceOutput(output=".cursor/mcp.json"),
+        "permissions": SliceOutput(output=".cursor/cli.json"),
+        "skills": SliceOutput(output=".cursor/skills"),
+    },
     "droid": {
         "instructions": SliceOutput(output=".factory/AGENTS.md"),
         "mcp": SliceOutput(output=".factory/mcp.json"),
@@ -72,6 +81,8 @@ STEALTH_PRESET: dict[str, dict[str, SliceOutput]] = {
 }
 
 PI_EMPTY_PERMISSIONS: dict[str, Any] = {"permission": {"bash": {}}}
+
+CURSOR_EMPTY_PERMISSIONS: dict[str, Any] = {"permissions": {"allow": [], "deny": []}}
 
 OPENCODE_INSTRUCTIONS = PurePosixPath(".loadout/opencode-instructions.md")
 
@@ -282,6 +293,37 @@ def _opencode_outputs(
     return placed, shared
 
 
+def _cursor_outputs(
+    stealth: StealthManifest, name: str, root: Path, rules: Rules, servers: dict[str, Server]
+) -> tuple[list[tuple[Path, str, StealthOutput]], tuple[str, ...]]:
+    manifest = stealth.manifest
+    preset = STEALTH_PRESET["cursor"]
+    placed: list[tuple[Path, str, StealthOutput]] = []
+    target = next((t for t in manifest.targets if t.name == "cursor"), None)
+    if target is not None and target.fragments:
+        rule = root / str(preset["instructions"].output) / f"{name}.mdc"
+        body = f"---\nalwaysApply: true\n---\n\n{render(target, manifest)}"
+        placed.append((rule, "cursor.instructions", body))
+    notes: tuple[str, ...] = ()
+    if (permissions := _permission_target(manifest, "cursor", "permissions")) is not None:
+        cursor_rules = _target_rules(permissions, rules)
+        notes = tuple(
+            f"cursor: {notice.message}"
+            for notice in cursor_permission_notices("cursor", "cursor-project", cursor_rules)
+        )
+        document = render_cursor_project(cursor_rules, {})
+        if document != CURSOR_EMPTY_PERMISSIONS:
+            relative = str(preset["permissions"].output)
+            placed.append(
+                (root / relative, "cursor.permissions", stealth_seams.serialize_json(document))
+            )
+    if _permission_target(manifest, "cursor", "mcp") is not None and servers:
+        document = render_cursor_servers(servers)
+        relative = str(preset["mcp"].output)
+        placed.append((root / relative, "cursor.mcp", stealth_seams.serialize_json(document)))
+    return placed, notes
+
+
 def render_stealth(
     stealth: StealthManifest, name: str, target_root: Path, facts: TargetFacts
 ) -> StealthRender:
@@ -297,7 +339,9 @@ def render_stealth(
     placed.extend(_json_outputs(stealth, target_root, rules, servers))
     codex_placed, notes = _codex_outputs(stealth, name, target_root, rules, servers)
     opencode_placed, shared = _opencode_outputs(stealth, target_root, rules, servers)
+    cursor_placed, cursor_notes = _cursor_outputs(stealth, name, target_root, rules, servers)
     placed.extend(codex_placed)
+    placed.extend(cursor_placed)
     placed.extend(opencode_placed)
     placed.extend(_skill_files(stealth, target_root))
 
@@ -312,4 +356,6 @@ def render_stealth(
         if servers and _permission_target(manifest, "claude", "mcp") is not None
         else {}
     )
-    return StealthRender(files=files, claude_servers=claude_servers, shared=shared, notes=notes)
+    return StealthRender(
+        files=files, claude_servers=claude_servers, shared=shared, notes=(*notes, *cursor_notes)
+    )

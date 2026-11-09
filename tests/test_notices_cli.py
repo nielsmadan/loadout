@@ -154,7 +154,8 @@ def test_a_project_only_repo_reports_nothing_rather_than_failing(
     assert "opencode.agents: agent 'reviewer': OpenCode agents have no effort field" in " | ".join(
         messages
     )
-    assert sum("[shell] default" in m for m in messages) == 3
+    assert sum("[shell] default" in m for m in messages) == 4
+    assert any(m.startswith("cursor.permissions: [shell] default") for m in messages)
     assert "droid.permissions: allow glob 'gamma-*' is not rendered" in " | ".join(messages)
     assert "codex.permissions: deny '=nu wipe' is rendered as 'nu wipe'" in " | ".join(messages)
 
@@ -196,7 +197,7 @@ def test_a_project_without_opencode_is_not_told_about_its_flag(
     config = project / "loadout" / "config.toml"
     config.write_text(
         config.read_text(encoding="utf-8").replace(
-            '"claude", "codex", "droid", "opencode", "pi"', '"claude"'
+            '"claude", "codex", "cursor", "droid", "opencode", "pi"', '"claude"'
         ),
         encoding="utf-8",
     )

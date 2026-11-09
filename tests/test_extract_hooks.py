@@ -19,7 +19,7 @@ from typing import Any
 import pytest
 
 from loadout.errors import LoadoutError
-from loadout.extract import VALUE_EXTRACTORS, extract_value
+from loadout.extract import EXTRACTORS, VALUE_EXTRACTORS, extract_value
 from loadout.hooks import render_claude_hooks, render_codex_hooks, render_droid_hooks
 from loadout.permissions.renderers import (
     RENDERERS,
@@ -172,7 +172,9 @@ def test_every_value_renderer_has_a_value_extractor() -> None:
         for n, s in RENDERERS.items()
         if isinstance(s, ValueSpec | ValuesSpec | DocumentJsonSpec | MergedJsonSpec)
     }
-    assert value_renderers - NOT_INVERTED == set(VALUE_EXTRACTORS)
+    # A merged JSON spec can render from rules, as Cursor's `permissions` does; its
+    # inverse is a document extractor in EXTRACTORS.
+    assert value_renderers - NOT_INVERTED - set(EXTRACTORS) == set(VALUE_EXTRACTORS)
 
 
 def test_an_unknown_name_is_an_error_rather_than_a_silent_empty() -> None:

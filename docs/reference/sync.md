@@ -114,8 +114,8 @@ Not reported:
   account's skills, and Droid's two mission droids in `~/.factory/droids/`. A source skill or agent
   that would render onto one of those is refused with exit 3; rename it;
 - an entry no harness reading the folder would load, such as a `README.md` beside the skills in a
-  Claude, Codex or Droid skills folder (not Claude's when OpenCode is selected, since OpenCode reads
-  that folder too and loads it), a folder holding no `SKILL.md`, or a Claude agent file without
+  Claude, Codex, Cursor or Droid skills folder (not Claude's when OpenCode is selected, since
+  OpenCode reads that folder too and loads it), a folder holding no `SKILL.md`, or a Claude agent file without
   frontmatter. Init leaves those in place too.
 
 The rule per harness is in

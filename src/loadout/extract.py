@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from .errors import LoadoutError
-from .hooks import foreign_variables
+from .hooks import CURSOR_EVENT_NAMES, foreign_variables
 from .permissions.renderers import render_codex, render_codex_project
 from .permissions.rules import (
     CATCH_ALL_ENTRY,
@@ -1711,7 +1711,211 @@ def extract_codex_servers(document: Any) -> ValueExtraction:
     return ValueExtraction(servers, notes)
 
 
+# --------------------------------------------------------------------------
+# cursor — the four renderers run backwards. The permission lists hold typed
+# tokens, of which only `Shell`/`Bash` and `Mcp` are the source's; a dropped deny
+# token is lost, since Cursor would then allow what it blocked.
+# --------------------------------------------------------------------------
+
+CURSOR_TOKEN = re.compile(r"^\s*(?P<kind>[A-Za-z]+)\s*\((?P<inner>.*)\)\s*$")
+CURSOR_WILDCARDS = frozenset("*?[]{}!")
+
+
+def _cursor_shell_entry(inner: str) -> str | None:
+    command, separator, args = inner.strip().partition(":")
+    if separator:
+        if CURSOR_WILDCARDS.intersection(inner) or not command or not args:
+            return None
+        return f"{EXACT_MARK}{command} {args}"
+    if "*" in inner and not is_glob(inner):
+        return None
+    if CURSOR_WILDCARDS.intersection(inner.rstrip("*")):
+        return None
+    return inner
+
+
+def _cursor_token(token: Any, category: str) -> tuple[str, str] | Note:
+    """One list token as ("shell" | "mcp", entry), or what it costs to leave it out."""
+    match = CURSOR_TOKEN.match(token) if isinstance(token, str) else None
+    if match is not None and match["kind"] in {"Shell", "Bash"}:
+        entry = _cursor_shell_entry(match["inner"])
+        if entry is not None:
+            return "shell", entry
+    if match is not None and match["kind"] == "Mcp":
+        server, separator, tool = match["inner"].partition(":")
+        if separator and server and tool and "/" not in server:
+            return "mcp", f"{server}/{tool}"
+    if category == "deny":
+        return Note("lost", f"cursor: deny {token!r}", "Cursor would allow what it blocks")
+    return Note("cannot", f"cursor: allow {token!r} has no source form, so it is not adopted")
+
+
+def _cursor_rules(document: Any, label: str) -> tuple[Rules, tuple[Note, ...]]:
+    if not isinstance(document, Mapping):
+        return Rules(), (Note("unrecognised", f"{label}: document is not a map"),)
+    permissions = document.get("permissions", {})
+    if not isinstance(permissions, Mapping):
+        return Rules(), (Note("unrecognised", f"{label}: permissions is not a map"),)
+    found: dict[str, dict[str, list[str]]] = {"shell": {}, "mcp": {}}
+    notes: list[Note] = []
+    for category in ("allow", "deny"):
+        tokens = permissions.get(category, [])
+        if not isinstance(tokens, list):
+            notes.append(Note("unrecognised", f"{label}: permissions.{category} is not a list"))
+            continue
+        for token in tokens:
+            result = _cursor_token(token, category)
+            if isinstance(result, Note):
+                notes.append(result)
+            else:
+                found[result[0]].setdefault(category, []).append(result[1])
+    stray = sorted(set(permissions) - {"allow", "deny"})
+    if stray:
+        notes.append(Note("unrecognised", f"{label}: permissions holds {', '.join(stray)}"))
+    shell, mcp = found["shell"], found["mcp"]
+    return Rules(
+        allow=tuple(shell.get("allow", ())),
+        deny=tuple(shell.get("deny", ())),
+        mcp_allow=tuple(mcp.get("allow", ())),
+        mcp_deny=tuple(mcp.get("deny", ())),
+    ), tuple(notes)
+
+
+def extract_cursor(document: Any) -> Extraction:
+    """cli-config.json -> rules. The rest of the file is the CLI's, never a base."""
+    rules, notes = _cursor_rules(document, "cursor")
+    return Extraction(rules, notes=notes)
+
+
+def extract_cursor_project(document: Any) -> Extraction:
+    rules, notes = _cursor_rules(document, "cursor-project")
+    base = {key: value for key, value in document.items() if key != "permissions"}
+    return Extraction(rules, copy.deepcopy(base) if isinstance(document, Mapping) else {}, notes)
+
+
+CURSOR_SERVER_KEYS = frozenset({"url", "headers", "command", "args", "env"})
+CURSOR_BEARER = re.compile(r"^Bearer \$\{env:(?P<var>[A-Za-z_][A-Za-z0-9_]*)\}$")
+
+
+def _extract_cursor_server(name: str, entry: Any) -> tuple[Server | None, tuple[Note, ...]]:
+    label = "cursor-servers"
+    if not isinstance(entry, Mapping):
+        return None, (Note("unrecognised", f"{label}: {name} is not a table"),)
+    notes: list[Note] = []
+    stray = sorted(set(entry) - CURSOR_SERVER_KEYS)
+    if stray:
+        notes.append(_stray_server_keys(label, name, stray))
+    if isinstance(entry.get("url"), str):
+        auth_env_var, headers, found = _extract_headers(
+            entry.get("headers", {}), CURSOR_BEARER, f"{label}: {name}"
+        )
+        notes.extend(found)
+        headers, found = _one_auth(auth_env_var, headers, f"{label}: {name}", "Bearer ${env:VAR}")
+        notes.extend(found)
+        server = Server(
+            name=name,
+            transport="http",
+            url=entry["url"],
+            auth_env_var=auth_env_var,
+            headers=headers,
+        )
+        return server, tuple(notes)
+    if isinstance(entry.get("command"), str):
+        server = Server(
+            name=name,
+            transport="stdio",
+            command=entry["command"],
+            args=tuple(entry.get("args", ())),
+            env=dict(entry.get("env", {})),
+        )
+        return server, tuple(notes)
+    notes.append(Note("unrecognised", f"{label}: {name} has neither a url nor a command"))
+    return None, tuple(notes)
+
+
+def extract_cursor_servers(document: Any) -> ValueExtraction:
+    if not isinstance(document, Mapping):
+        return ValueExtraction(
+            {}, (Note("unrecognised", "cursor-servers: document is not a table"),)
+        )
+    servers, notes = _collect_servers(
+        document.get("mcpServers", {}),
+        _extract_cursor_server,
+        "cursor-servers: mcpServers is not a table",
+    )
+    return ValueExtraction(
+        servers, (*_unowned(document, "cursor-servers: mcp.json", frozenset("*")), *notes)
+    )
+
+
+CLAUDE_EVENT_FOR = {name: event for event, name in CURSOR_EVENT_NAMES.items() if name}
+CLAUDE_TOOL_FOR = {"Shell": "Bash", "Read": "Read", "Write": "Write", "Grep": "Grep"} | {
+    tool: tool for tool in ("WebFetch", "WebSearch", "Task")
+}
+CURSOR_HOOK_DEFAULTS = {"loop_limit": None, "failClosed": False}
+
+
+def _claude_matcher(matcher: Any) -> tuple[bool, str | None]:
+    """Whether a Cursor matcher has a Claude spelling, and that spelling."""
+    if matcher is None:
+        return True, None
+    parts = matcher.split("|") if isinstance(matcher, str) else []
+    tools = [CLAUDE_TOOL_FOR[tool] for tool in parts if tool in CLAUDE_TOOL_FOR]
+    return bool(parts) and len(tools) == len(parts), "|".join(tools)
+
+
+def _claude_hook(event: str, hook: Any) -> dict[str, Any] | Note:
+    def lost(why: str) -> Note:
+        return Note("lost", f"cursor-hooks: a {event} hook {why}", "Cursor would not run it")
+
+    if not isinstance(hook, Mapping):
+        return Note("unrecognised", f"cursor-hooks: a {event} hook is not a table")
+    options = {key: hook.get(key, value) for key, value in CURSOR_HOOK_DEFAULTS.items()}
+    if options != CURSOR_HOOK_DEFAULTS:
+        return lost("sets loop_limit or failClosed, which a Claude hook has no form for")
+    stray = sorted(set(hook) - {"type", "command", "prompt", "matcher", "timeout", *options})
+    if stray:
+        return lost(f"carries {', '.join(stray)}")
+    spelled, matcher = _claude_matcher(hook.get("matcher"))
+    if not spelled:
+        return lost(f"matches {hook.get('matcher')!r}, which no Claude tool name renders to")
+    kind = hook.get("type", "command")
+    body = {"type": kind, kind: hook.get(kind)} if kind in {"command", "prompt"} else None
+    if body is None or not isinstance(body[kind], str):
+        return lost(f"has type {kind!r} with nothing to run")
+    if "timeout" in hook:
+        body["timeout"] = hook["timeout"]
+    return {**({"matcher": matcher} if matcher else {}), "hooks": [body]}
+
+
+def extract_cursor_hooks(document: Any) -> ValueExtraction:
+    """hooks.json -> the hooks fragment, one Claude entry per Cursor hook."""
+    if not isinstance(document, Mapping):
+        return ValueExtraction({}, (Note("unrecognised", "cursor-hooks: not a table"),))
+    notes: list[Note] = []
+    if document.get("version") != 1:
+        notes.append(Note("unrecognised", "cursor-hooks: version is not 1"))
+    hooks = document.get("hooks", {})
+    value: dict[str, list[Any]] = {}
+    for name, entries in hooks.items() if isinstance(hooks, Mapping) else ():
+        event = CLAUDE_EVENT_FOR.get(name)
+        if event is None:
+            notes.append(
+                Note("lost", f"cursor-hooks: {name} has no Claude event", "Cursor would not run it")
+            )
+            continue
+        for hook in entries if isinstance(entries, list) else ():
+            result = _claude_hook(event, hook)
+            if isinstance(result, Note):
+                notes.append(result)
+            else:
+                value.setdefault(event, []).append(result)
+    return ValueExtraction(value, (*notes, *_foreign_variable_notes(value, "cursor")))
+
+
 VALUE_EXTRACTORS: dict[str, ValueExtractor] = {
+    "cursor-hooks": extract_cursor_hooks,
+    "cursor-servers": extract_cursor_servers,
     "claude-hooks": extract_claude_hooks,
     "codex-hooks": extract_codex_hooks,
     "droid-hooks": extract_droid_hooks,
@@ -1733,6 +1937,8 @@ EXTRACTORS: dict[str, Extractor] = {
     "codex": extract_codex,
     "codex-mcp-permissions": extract_codex_mcp,
     "codex-project": extract_codex_project,
+    "cursor": extract_cursor,
+    "cursor-project": extract_cursor_project,
     "droid": extract_droid,
     "opencode": extract_opencode,
     "pi": extract_pi,

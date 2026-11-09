@@ -49,10 +49,17 @@ from .emit import (
     source_agents,
 )
 from .errors import LoadoutError
-from .hooks import CLAUDE_EVENTS, CODEX_EVENTS, DROID_EVENTS, unrecognised_events
+from .hooks import (
+    CLAUDE_EVENTS,
+    CODEX_EVENTS,
+    CURSOR_EVENTS,
+    DROID_EVENTS,
+    cursor_hooks,
+    unrecognised_events,
+)
 from .kits import kit_divergence, unverifiable_kits
 from .manifest import Manifest, load_profile, manifest_path
-from .permissions.renderers import CATCH_ALL_RENDERERS
+from .permissions.renderers import CATCH_ALL_RENDERERS, cursor_shell, cursor_unasked
 from .permissions.rules import Rules, exact_command, is_exact, is_glob
 from .plugins import ADDRESSED_BY, marketplaces, unaddressable, unregistered_marketplaces
 from .project import (
@@ -89,6 +96,8 @@ CATCH_ALL_ELSEWHERE = {
     "codex": "Codex's is approval_policy in config.toml, which the defaults slice sets",
     "codex-project": "Codex's is approval_policy in .codex/config.toml, which loadout does not write",
     "droid": "Droid's unmatched-command behavior comes from the session autonomy level",
+    "cursor": "Cursor's is approvalMode in cli-config.json, which loadout does not write",
+    "cursor-project": "Cursor's is approvalMode in the global cli-config.json, a CLI setting",
 }
 
 # OpenCode scans `.claude/skills` as well as its own directory and keys the result
@@ -153,6 +162,8 @@ def known_events(agent: str) -> frozenset[str]:
         return CODEX_EVENTS
     if agent == "droid":
         return DROID_EVENTS
+    if agent == "cursor":
+        return CURSOR_EVENTS
     return _ADAPTED.get(agent, frozenset())
 
 
@@ -252,7 +263,10 @@ def notices_for(
     def add(message: str) -> None:
         found.append(Notice(owner=agent, slice=slice_name, message=message))
 
-    if slice_name == "hooks":
+    if slice_name == "hooks" and agent == "cursor":
+        for skipped in cursor_hooks(document)[1]:
+            add(f"{skipped} — Cursor's translation of a Claude hook leaves it out")
+    elif slice_name == "hooks":
         adapted = agent in _ADAPTED
         for event in unrecognised_events(document, known_events(agent)):
             add(
@@ -340,6 +354,42 @@ def _claude_skill_race(
     )
 
 
+def cursor_permission_notices(agent: str, renderer: str, rules: Rules) -> tuple[Notice, ...]:
+    """What Cursor's two lists cannot say: an ask, and a glob past the first word."""
+    if renderer not in {"cursor", "cursor-project"}:
+        return ()
+
+    def notice(message: str) -> Notice:
+        return Notice(owner=agent, slice="permissions", message=message)
+
+    shell, mcp = cursor_unasked(rules)
+    asks = (*rules.ask, *rules.mcp_ask)
+    return (
+        *(
+            notice(
+                f"ask {entry!r} has no list in Cursor, so it is left to Cursor's approvalMode, "
+                f"which prompts only in allowlist mode"
+            )
+            for entry in asks
+        ),
+        *(
+            notice(
+                f"allow {entry!r} is not rendered because it would also approve something the "
+                f"source asks about, and Cursor has no ask list to keep that prompting"
+            )
+            for entry in (*shell, *mcp)
+        ),
+        *(
+            notice(
+                f"deny {entry!r} is rendered as {form!r} because Cursor's * stops at /, so it "
+                f"also blocks that command with any arguments"
+            )
+            for entry in rules.deny
+            if is_glob(entry) and (form := cursor_shell(entry, "deny")) != f"Shell({entry})"
+        ),
+    )
+
+
 def _renderer_notices(agent: str, renderer: str, rules: Rules) -> list[Notice]:
     """What a renderer cannot carry of these rules."""
     unreached = unreached_catch_all(agent, renderer, rules.default) if rules.default else ()
@@ -347,6 +397,7 @@ def _renderer_notices(agent: str, renderer: str, rules: Rules) -> list[Notice]:
         *unreached,
         *unsupported_shell_globs(agent, renderer, rules),
         *inexact_shell_entries(agent, renderer, rules),
+        *cursor_permission_notices(agent, renderer, rules),
     ]
 
 

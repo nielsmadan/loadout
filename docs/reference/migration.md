@@ -60,6 +60,8 @@ Global scope:
 | `${CLAUDE_CONFIG_DIR:-~/.claude}` | `CLAUDE.md`, `settings.json`, `mcp-permissions.json`, `skills/`, `agents/`, `hooks/`, `rules/`, `scripts/` |
 | `${CLAUDE_CONFIG_DIR:-~}/.claude.json` | the file itself (only `mcpServers` is adopted) |
 | `${CODEX_HOME:-~/.codex}` | `AGENTS.md`, `AGENTS.override.md`, `config.toml`, `hooks.json`, `rules/`, `skills/`, `agents/` |
+| `~/.cursor` | `hooks.json`, `mcp.json`, `skills/`, `agents/`, `hooks/`, `scripts/` |
+| `${CURSOR_CONFIG_DIR:-~/.cursor}/cli-config.json` | the file itself (only `permissions` is adopted; unset, the variable defaults to `$XDG_CONFIG_HOME/cursor` when that is set) |
 | `${FACTORY_HOME_OVERRIDE:-~}/.factory` | `AGENTS.md`, `settings.json`, `hooks.json`, `mcp.json`, `skills/`, `droids/`, `plugins/`, `hooks/`, `rules/`, `scripts/` |
 | `${XDG_CONFIG_HOME:-~/.config}/opencode`, and `$OPENCODE_CONFIG_DIR` as well when it is set | `AGENTS.md`, `opencode.json`, `opencode.jsonc`, `skills/`, `agents/`, `plugins/`, `plugin/`, `hooks/`, `rules/`, `scripts/` |
 | `$OPENCODE_CONFIG` | the file itself |
@@ -80,13 +82,14 @@ Project scope, relative to the repository root:
 |---|---|
 | `.claude` | `settings.json`, `mcp-permissions.json`, `skills/`, `agents/` |
 | `.codex` | `rules/`, `agents/` |
+| `.cursor` | `cli.json`, `hooks.json`, `mcp.json`, `skills/`, `agents/` |
 | `.factory` | `settings.json`, `hooks.json`, `mcp.json`, `skills/`, `droids/` |
 | `.opencode` | `skills/`, `agents/` |
 | `.pi` | `extensions/pi-permission-system/config.json`, `skills/`, `agents/` |
 | `.agents` | `skills/`, for Codex only, see below |
 | repository | `opencode.json`, `opencode.jsonc`, `.mcp.json`, and every `AGENTS.md`, `AGENTS.override.md`, `CLAUDE.md`, `CLAUDE.local.md` and `opencode.md` outside the harness roots |
 
-Codex, OpenCode and Pi all read `.agents/skills`, but init adopts a shared file only for a harness
+Codex, Cursor, OpenCode and Pi all read `.agents/skills`, but init adopts a shared file only for a harness
 whose loadout output is that folder, since anything else renders to another one and the
 reconstruction would find the original missing. That is Codex in project scope, whose project
 skills render to `.agents/skills`, and no harness in global scope, where every skill renders to

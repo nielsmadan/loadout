@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 __all__ = [
+    "DERIVED_DEFAULTS",
     "DIRECTORY_SLICES",
     "DROID_AGENTS_DIRECTORY",
     "GLOBAL_PRESET",
@@ -67,7 +68,7 @@ DIRECTORY_SLICES = ("skills", "agents")
 # Factory calls its subagents droids, and keeps them in a folder of that name.
 DROID_AGENTS_DIRECTORY = "droids"
 # The harnesses that read the cross-harness `.agents/skills` folder, at both scopes.
-SHARED_SKILL_READERS = ("codex", "opencode", "pi")
+SHARED_SKILL_READERS = ("codex", "cursor", "opencode", "pi")
 
 # Destinations carry each harness's config-directory variable rather than a
 # literal path. The variables differ in name and in kind, and two of OpenCode's
@@ -172,6 +173,25 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
             destination="${CODEX_HOME:-~/.codex}/config.toml",
             source_slice="plugins",
         ),
+    },
+    "cursor": {
+        # Only cli-config.json follows CURSOR_CONFIG_DIR. The 2026.11.05 bundle joins
+        # mcp.json, hooks.json and the skills and agents folders onto the home
+        # directory itself, so a relocated Cursor still reads them from ~/.cursor —
+        # see docs/reference/cursor.md#destinations.
+        "skills": SliceOutput(destination="~/.cursor/skills"),
+        "agents": SliceOutput(destination="~/.cursor/agents"),
+        # A root for hook scripts: user hooks run from ~/.cursor/.
+        "module-config": SliceOutput(destination="~/.cursor"),
+        # One key of a file the CLI rewrites with its own defaults and state on every
+        # start, so loadout owns `permissions` and nothing else.
+        "permissions": SliceOutput(
+            renderer="cursor", destination="${CURSOR_CONFIG_DIR:-~/.cursor}/cli-config.json"
+        ),
+        "hooks": SliceOutput(
+            renderer="cursor-hooks", destination="~/.cursor/hooks.json", source_slice="hooks"
+        ),
+        "mcp": SliceOutput(renderer="cursor-servers", destination="~/.cursor/mcp.json"),
     },
     "droid": {
         "skills": SliceOutput(destination="${FACTORY_HOME_OVERRIDE:-~}/.factory/skills"),
@@ -287,6 +307,16 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
         ),
     },
 }
+
+
+# Cursor has no global instructions slice: its rules loader reads workspace
+# ancestors only, and User Rules are an app setting rather than a file. Nor a
+# plugins slice: plugins are installed by the app, with no enablement key in a file.
+
+# A config-directory variable whose own default depends on another variable. Unset,
+# CURSOR_CONFIG_DIR falls back to $XDG_CONFIG_HOME/cursor when that is set, on every
+# platform, and only then to ~/.cursor.
+DERIVED_DEFAULTS = {"CURSOR_CONFIG_DIR": ("XDG_CONFIG_HOME", "cursor")}
 
 # OpenCode has no plugins slice, and that is a finding rather than an omission: a
 # plugin is on there because a file exists in `~/.config/opencode/plugins/`, and

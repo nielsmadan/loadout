@@ -295,7 +295,7 @@ loadout init global --dry-run --json
 
 | Option | Commands | Meaning |
 | --- | --- | --- |
-| `--harness NAME` | `init project`, `init global` | Select a harness: `claude`, `codex`, `droid`, `opencode` or `pi`; repeat for several |
+| `--harness NAME` | `init project`, `init global` | Select a harness: `claude`, `codex`, `cursor`, `droid`, `opencode` or `pi`; repeat for several |
 | `--root PATH` | `init project` | Project directory to initialise, used as given, also a folder below the repository's top level such as `apps/web`; default the Loadout or Git root enclosing the current directory |
 | `DIR` (positional) | `init global` | Existing directory: a global source, or the directory to hold a new one; default the current directory |
 | `--registration keep\|replace` | `init global` | Resolve a conflict with the source this machine already registers |
@@ -433,7 +433,7 @@ exits 2 with `"status": "interrupted"`. See
 
 `loadout integrate skill copy --harness NAME` (repeatable) copies the bundled skill as it is into
 `~/.claude/skills/loadout` for Claude, `~/.factory/skills/loadout` for Droid and
-`~/.agents/skills/loadout` for Codex, OpenCode and Pi, following `CLAUDE_CONFIG_DIR` and
+`~/.agents/skills/loadout` for Codex, Cursor, OpenCode and Pi, following `CLAUDE_CONFIG_DIR` and
 `FACTORY_HOME_OVERRIDE`. It is a plain copy: no source holds it and `sync` never touches it. An
 identical copy already there is left as it is; one that differs is refused before anything is
 copied, exit 3. It then says how to start the skill in each harness.
@@ -458,7 +458,7 @@ Add the name to `harnesses` in `loadout/config.toml`, then run `loadout sync`:
 harnesses = ["claude", "opencode", "pi"]
 ```
 
-The accepted names are `claude`, `codex`, `droid`, `opencode`, and `pi`. `sync` writes the new
+The accepted names are `claude`, `codex`, `cursor`, `droid`, `opencode`, and `pi`. `sync` writes the new
 harness's outputs and extends `.gitignore` to cover every generated path. Removing a harness from
 the list retires its outputs on the next sync and drops their `.gitignore` entries. What each
 harness generates is in [project setup](../guides/projects.md#what-sync-generates).

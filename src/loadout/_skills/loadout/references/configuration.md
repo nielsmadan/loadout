@@ -61,13 +61,13 @@ outside a known slice remain harness-owned and stay in place.
 | `mcp-permissions` | `loadout/permissions.local.toml` | `loadout/permissions.toml` | MCP policy from selected `permissions.toml` sources |
 | `mcp` | unsupported | `loadout/mcp.toml` | `mcp.toml` from selected sources |
 | `instructions` | unsupported | `loadout/config.toml` and `loadout/instructions/*.md` | manifest selection and `instructions/*.md` fragments |
-| `skills` | `loadout/skills/<name>.local/SKILL.md`, replacing the shared skill of that name | supported for `claude`, `codex`, `droid`, `opencode`, `pi` via `loadout/skills/<name>/SKILL.md` | `skills/<name>/SKILL.md` from selected sources |
-| `agents` | unsupported | supported for `claude`, `codex`, `droid`, `opencode`, `pi` via `loadout/agents/<name>.md` | `agents/<name>.md` from selected sources |
+| `skills` | `loadout/skills/<name>.local/SKILL.md`, replacing the shared skill of that name | supported for `claude`, `codex`, `cursor`, `droid`, `opencode`, `pi` via `loadout/skills/<name>/SKILL.md` | `skills/<name>/SKILL.md` from selected sources |
+| `agents` | unsupported | supported for `claude`, `codex`, `cursor`, `droid`, `opencode`, `pi` via `loadout/agents/<name>.md` | `agents/<name>.md` from selected sources |
 | `settings` | unsupported | supported for `claude`, `droid`, `opencode` via `loadout/settings/<harness>.json` | supported for `claude`, `droid`, `opencode` via `settings/<name>.json` fragments, and for Pi only when `[pi]` also declares `plugins`; Codex uses `defaults` |
 | `defaults` | unsupported | unsupported | Codex top-level and nested settings via `defaults/<name>.json` fragments |
-| `hooks` | unsupported | Droid via `loadout/hooks.json` | `hooks/<name>.json` fragments selected by harnesses offering hooks |
+| `hooks` | unsupported | Cursor and Droid via `loadout/hooks.json` | `hooks/<name>.json` fragments selected by harnesses offering hooks |
 | `plugins` | unsupported | Droid via `loadout/plugins.json` | `plugins/<name>.json` fragments selected by harnesses offering plugins |
-| `module-config` | unsupported | unsupported | supported for `claude`, `droid`, `opencode`, `pi` via `module-config/<harness>/<relative path>`; Codex unsupported |
+| `module-config` | unsupported | unsupported | supported for `claude`, `cursor`, `droid`, `opencode`, `pi` via `module-config/<harness>/<relative path>`; Codex unsupported |
 | `kits` | unsupported | the `kits` list and vendored copies under `loadout/kits/` | definitions under `kits/<name>/` in selected sources |
 | `harnesses` | unsupported | `harnesses` in `loadout/config.toml` | declared harness blocks |
 | `profiles` | unsupported | unsupported | `loadout.toml` plus `<profile>.toml` files |
@@ -86,9 +86,9 @@ cannot bypass a scope-widening confirmation.
 For personal and project requests, read `harnesses` from `<repo>/loadout/config.toml`. The personal
 permission tier uses the same configured harness list as project scope.
 
-For global requests, read top-level harness blocks named `[claude]`, `[codex]`, `[droid]`,
-`[opencode]`, and `[pi]` after profile inheritance. `[all]` supplies defaults but never declares
-a harness. Harness membership selects the known preset destinations.
+For global requests, read top-level harness blocks named `[claude]`, `[codex]`, `[cursor]`,
+`[droid]`, `[opencode]`, and `[pi]` after profile inheritance. `[all]` supplies defaults but never
+declares a harness. Harness membership selects the known preset destinations.
 
 A generic request covers every configured harness supporting the artifact. A request that names a
 harness covers only that harness. Never enable a new harness as a side effect. Partial support means
@@ -117,16 +117,22 @@ own keys; `loadout/settings/claude.json`, `droid.json` or `opencode.json` holds 
 file no slice writes, such as Claude's `model` or `env`, and sync renders the file from it plus
 the slices. It is the whole of those keys, not a delta: a key missing from it is dropped from the
 output. Without one, sync keeps those keys from the file on disk, so before creating one, copy
-into it every key of the current file that no slice writes. Codex and Pi have no project settings
-source. Init writes the settings source gitignored when the file it adopted was untracked or
+into it every key of the current file that no slice writes. Codex, Cursor and Pi have no project
+settings source: Cursor reads only permissions from `.cursor/cli.json`. Init writes the settings source gitignored when the file it adopted was untracked or
 ignored, so check whether Git ignores it before calling a change there shared.
 
-Project MCP server definitions reach Claude, Droid, OpenCode and Pi (`.pi/mcp.json`). Codex project
-scope writes no server config; a stealth source writes Codex servers. Global MCP server definitions render
-for all five configured harnesses. Claude's output owns only `mcpServers` in `.claude.json`; Droid
+Project MCP server definitions reach Claude, Cursor, Droid, OpenCode and Pi (`.pi/mcp.json`). Codex
+project scope writes no server config; a stealth source writes Codex servers. Global MCP server definitions render
+for all six configured harnesses. Claude's output owns only `mcpServers` in `.claude.json`; Droid
 writes `.factory/mcp.json`.
 
-Project skills reach all five harnesses. Codex reads `.agents/skills`.
+Project skills reach all six harnesses. Codex reads `.agents/skills`, and so do Cursor, OpenCode
+and Pi.
+
+Cursor has no ask list. An `ask` entry is left to Cursor's `approvalMode`, and an `allow` that
+would also cover an `ask` is not rendered for Cursor, so that command still prompts there. Tell
+the user both when a rule they ask for reaches Cursor. Cursor has no global instructions file, so
+global instructions do not reach it.
 
 ## Source rules
 
@@ -151,8 +157,8 @@ request and a tool-approval request therefore change different source files even
 the same server.
 
 Global module configuration is copied byte-for-byte from
-`module-config/<harness>/<relative path>` to that harness's configuration directory. Claude, Droid,
-OpenCode and Pi offer this slice; Codex does not. The relative path is authored by the module and must not
+`module-config/<harness>/<relative path>` to that harness's configuration directory. Claude, Cursor,
+Droid, OpenCode and Pi offer this slice; Codex does not. The relative path is authored by the module and must not
 be derived from its package name. An OpenCode plugin's `.ts` file belongs here rather than under
 `plugins`, which renders enablement OpenCode has no list for.
 
@@ -197,15 +203,16 @@ one section. Before deleting the repeat from a fragment, find every harness bloc
 no other harness loses the rule, and apply the deletion only once the user approves.
 
 Agents (subagents) are `agents/<name>.md` in a global source, or `loadout/agents/<name>.md` in a
-project, and reach every configured harness: Claude, Codex (as TOML), Droid (as a custom droid),
-OpenCode and Pi (which needs the `pi-subagents` package). The frontmatter takes `description`
+project, and reach every configured harness: Claude, Codex (as TOML), Cursor, Droid (as a custom
+droid), OpenCode and Pi (which needs the `pi-subagents` package). The frontmatter takes `description`
 (required), an optional `name` equal to the file name, `model` and `effort`; the body is the
 agent's instructions, with `::: <harness>` sections. `model` is `inherit` or a per-harness map, one
 indented `<harness>: <model>` line each; a harness left out inherits its parent's model, and
 OpenCode's needs the `provider/model-id` form. A single model name for every harness is an error,
 because no name means the same model everywhere. `effort` is one of `off`, `minimal`, `low`,
 `medium`, `high`, `xhigh`, `max`, translated per harness (a missing level becomes the nearest
-lower one, with a note; OpenCode has no effort), or a per-harness map written verbatim. Anything
+lower one, with a note; Cursor and OpenCode have no effort, and Cursor takes it in the model,
+as `cursor: <model>[effort=high]`), or a per-harness map written verbatim. Anything
 harness-specific, such as Claude's `tools`, goes in a block keyed by that harness; Droid's `droid:`
 block takes only `tools`, `mcpServers` and `version`, and any other key is refused because Droid
 drops it. A request about
@@ -288,7 +295,8 @@ message (or says `overlays.toml` cannot be read). Then use `loadout stealth`, `-
    `instructions/<name>.md`, `permissions.toml`, `mcp.toml`, `skills/` and `settings/<name>.json`
    (Claude and Droid), named in its `loadout.toml`. The rendered files are
    `CLAUDE.local.md`, `.claude/settings.local.json`, `.claude/skills/`, `.codex/config.toml`,
-   `.codex/rules/<name>.rules`, `.agents/skills/`, `.factory/AGENTS.md`, `.factory/mcp.json`,
+   `.codex/rules/<name>.rules`, `.agents/skills/`, `.cursor/rules/<name>.mdc`, `.cursor/cli.json`,
+   `.cursor/mcp.json`, `.cursor/skills/`, `.factory/AGENTS.md`, `.factory/mcp.json`,
    `.factory/settings.local.json`, `.factory/skills/`, `opencode.json`, `.opencode/skills/`,
    `.pi/` and the servers under `projects.<repository>.mcpServers` in `~/.claude.json`. An edit
    made there is refused or overwritten.
@@ -426,7 +434,8 @@ keys the source sets, as `owned-key` or `owned-key-removed`.
 
 Not drift: OpenCode's TUI model pick (`~/.local/state/opencode/model.json`) and TUI settings
 (`~/.config/opencode/cli.json`), which loadout does not write; Droid's `trustedFolders` and Pi's
-`lastChangelogVersion`, which the presets preserve; Pi's `settings.json` when `[pi]` does not
+`lastChangelogVersion`, which the presets preserve; every key of Cursor's `cli-config.json`
+except `permissions`, which the CLI rewrites with its own defaults and loadout does not own; Pi's `settings.json` when `[pi]` does not
 declare `plugins`; Codex keys the source does not set; Claude's project
 `.claude/settings.local.json`, which a project source does not write.
 

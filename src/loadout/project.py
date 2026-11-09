@@ -214,6 +214,19 @@ PROJECT_PRESET: dict[str, dict[str, SliceOutput]] = {
         "agents": SliceOutput(output=".codex/agents"),
         # No mcp entry: only a stealth source writes [mcp_servers.*]; see docs/reference/servers.md.
     },
+    "cursor": {
+        # Cursor reads only permissions from a project cli.json.
+        "permissions": SliceOutput(renderer="cursor-project", output=".cursor/cli.json"),
+        "hooks": SliceOutput(
+            renderer="cursor-hooks", output=".cursor/hooks.json", source_slice="hooks"
+        ),
+        "mcp": SliceOutput(renderer="cursor-servers", output=".cursor/mcp.json"),
+        # Cursor reads AGENTS.md whether or not third-party imports are on, so a
+        # rules file of its own would put the same instructions in front of it twice.
+        "instructions": SliceOutput(output="AGENTS.md"),
+        "skills": SliceOutput(output=".cursor/skills"),
+        "agents": SliceOutput(output=".cursor/agents"),
+    },
     "droid": {
         "permissions": SliceOutput(
             renderer="droid", output=".factory/settings.json", preserve_foreign=True

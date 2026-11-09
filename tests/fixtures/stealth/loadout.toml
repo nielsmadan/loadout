@@ -12,6 +12,9 @@ settings = "local"
 [codex]
 instructions = ["workflow", "personal"]
 
+[cursor]
+instructions = ["workflow", "personal"]
+
 [droid]
 instructions = ["personal", "workflow"]
 settings = "local"

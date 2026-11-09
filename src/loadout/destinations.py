@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from .errors import LoadoutError
+from .harnesses import DERIVED_DEFAULTS
 
 _ENV_REFERENCE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
 
@@ -20,7 +21,7 @@ def _expand_env(template: str, label: str, environ: Mapping[str, str]) -> str:
 
     def substitute(match: re.Match[str]) -> str:
         name, fallback = match.group(1), match.group(2)
-        value = environ.get(name)
+        value = environ.get(name) or derived_default(name, environ)
         if value:
             return value
         if fallback:
@@ -42,6 +43,16 @@ def _expand_env(template: str, label: str, environ: Mapping[str, str]) -> str:
             f"understand; only ${{VAR}} and ${{VAR:-fallback}} are substituted"
         )
     return expanded
+
+
+def derived_default(name: str, environ: Mapping[str, str]) -> str | None:
+    """What an unset config-directory variable means when its harness derives the
+    default from another variable, as Cursor does from XDG_CONFIG_HOME."""
+    if name not in DERIVED_DEFAULTS:
+        return None
+    variable, child = DERIVED_DEFAULTS[name]
+    base = environ.get(variable)
+    return f"{base.rstrip('/')}/{child}" if base else None
 
 
 def _expand_home(expanded: str, environ: Mapping[str, str]) -> Path:

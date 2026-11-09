@@ -123,9 +123,10 @@ Per-repo configuration, layered on top of global. Two sources per artifact type:
 | personal | **no** | your rules for this repo — machine paths, local tools |
 
 loadout merges the two and writes **generated outputs that are always gitignored** — twelve
-documents across five harnesses (`claude`, `codex`, `droid`, `opencode`, `pi`), of which
-`AGENTS.md` is one file four of them read, plus a skills directory and an agents directory for
-each of the five (Codex, OpenCode and Pi may share `.agents/skills`, below).
+documents across five harnesses (`claude`, `codex`, `droid`, `opencode`, `pi`), plus three for
+`cursor` (`.cursor/cli.json`, `.cursor/hooks.json`, `.cursor/mcp.json`), of which `AGENTS.md` is
+one file five of them read, plus a skills directory and an agents directory for each of the six
+(Codex, Cursor, OpenCode and Pi may share `.agents/skills`, below).
 Claude's fourth non-skill file is
 `.mcp.json`, the document its `mcp` slice adds at project scope on top of its permission and
 instruction outputs — OpenCode's `mcp` key composes into `opencode.json`, an
@@ -141,8 +142,8 @@ people through the committed *source*, which works precisely because adoption is
 all-or-nothing.
 
 **loadout merges the tiers itself rather than using each harness's native mechanism.** Three
-of the five do have one — Claude's `CLAUDE.local.md`, Codex's `AGENTS.override.md`, OpenCode's
-`instructions` config key — but they are three different shapes, Droid and Pi have no equivalent
+of the six do have one — Claude's `CLAUDE.local.md`, Codex's `AGENTS.override.md`, OpenCode's
+`instructions` config key — but they are three different shapes, Cursor, Droid and Pi have no equivalent
 represented here, so the merge path
 must exist anyway, and the only thing native mechanisms would buy is committed outputs, which
 nobody needs given all-or-nothing adoption. Revisit only if that adoption model ever changes.

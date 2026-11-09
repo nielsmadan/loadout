@@ -120,12 +120,12 @@ def test_capability_matrix_pins_every_scope_mapping() -> None:
         ),
         "skills": (
             "`loadout/skills/<name>.local/SKILL.md`, replacing the shared skill of that name",
-            "supported for `claude`, `codex`, `droid`, `opencode`, `pi` via `loadout/skills/<name>/SKILL.md`",
+            "supported for `claude`, `codex`, `cursor`, `droid`, `opencode`, `pi` via `loadout/skills/<name>/SKILL.md`",
             "`skills/<name>/SKILL.md` from selected sources",
         ),
         "agents": (
             "unsupported",
-            "supported for `claude`, `codex`, `droid`, `opencode`, `pi` via `loadout/agents/<name>.md`",
+            "supported for `claude`, `codex`, `cursor`, `droid`, `opencode`, `pi` via `loadout/agents/<name>.md`",
             "`agents/<name>.md` from selected sources",
         ),
         "settings": (
@@ -144,7 +144,7 @@ def test_capability_matrix_pins_every_scope_mapping() -> None:
         ),
         "hooks": (
             "unsupported",
-            "Droid via `loadout/hooks.json`",
+            "Cursor and Droid via `loadout/hooks.json`",
             "`hooks/<name>.json` fragments selected by harnesses offering hooks",
         ),
         "plugins": (
@@ -156,7 +156,7 @@ def test_capability_matrix_pins_every_scope_mapping() -> None:
             "unsupported",
             "unsupported",
             (
-                "supported for `claude`, `droid`, `opencode`, `pi` via "
+                "supported for `claude`, `cursor`, `droid`, `opencode`, `pi` via "
                 "`module-config/<harness>/<relative path>`; Codex unsupported"
             ),
         ),
@@ -222,7 +222,7 @@ def test_project_skill_capability_names_only_agents_with_a_destination() -> None
     documented = {
         agent for agent in PROJECT_PRESET if f"`{agent}`" in _capability_matrix()["skills"][1]
     }
-    assert actual == {"claude", "codex", "droid", "opencode", "pi"}
+    assert actual == {"claude", "codex", "cursor", "droid", "opencode", "pi"}
     assert documented == actual
 
 

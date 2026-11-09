@@ -33,6 +33,7 @@ from loadout.permissions.renderers import (
     ValueSpec,
     ValuesSpec,
 )
+from loadout.permissions.rules import Rules
 from loadout.project import PROJECT_PRESET
 from loadout.servers import render_codex_servers
 from test_extract_roundtrip import NOT_INVERTED
@@ -229,7 +230,7 @@ def test_the_shipped_claude_global_servers_round_trip(profile: str) -> None:
     document = json.loads((EXPECTED / profile / "perm" / "claude-servers.json").read_text())
     extraction = extract_value("claude-servers", document)
     assert extraction.notes == ()
-    assert spec.fn(extraction.value) == document
+    assert spec.fn(Rules(), extraction.value) == document
 
 
 @pytest.mark.parametrize("profile", ["default", "variant"])

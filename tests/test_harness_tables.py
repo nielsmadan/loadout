@@ -18,19 +18,26 @@ from loadout.hooks import HARNESS_PREFIXES
 from loadout.migration_models import Candidate
 from loadout.notices import _ADAPTED as ADAPTED_EVENTS
 from loadout.notices import CATCH_ALL_ELSEWHERE, known_events
-from loadout.permissions.renderers import CATCH_ALL_RENDERERS, RENDERERS, JsonSpec, TextSpec
+from loadout.permissions.renderers import (
+    CATCH_ALL_RENDERERS,
+    RENDERERS,
+    JsonSpec,
+    MergedJsonSpec,
+    TextSpec,
+)
 from loadout.permissions.rules import Rules
 from loadout.plugins import ADDRESSED_BY
 from loadout.project import PROJECT_PRESET
 from loadout.servers import (
     Server,
     render_codex_servers,
+    render_cursor_servers,
     render_droid_servers,
     render_opencode_servers,
     render_pi_servers,
 )
 from loadout.stealth_render import STEALTH_PRESET
-from loadout.subagents import EFFORT_KEY, EFFORT_LEVELS
+from loadout.subagents import EFFORT_KEY, EFFORT_LEVELS, EFFORTLESS
 from loadout.unmanaged import WHOLE_FOLDER_RENDERERS
 
 COMPLETE = {
@@ -137,9 +144,10 @@ def test_every_harness_with_plugins_says_how_it_addresses_one() -> None:
 
 
 def test_every_harness_with_agents_says_how_it_spells_effort() -> None:
-    """OpenCode alone has no effort key: its agents get a note instead."""
+    """Cursor and OpenCode have no effort key: their agents get a note instead."""
     assert set(EFFORT_LEVELS) == set(EFFORT_KEY)
-    assert set(EFFORT_KEY) | {"opencode"} == _harnesses_with("agents")
+    assert set(EFFORTLESS) == {"cursor", "opencode"}
+    assert set(EFFORT_KEY) | set(EFFORTLESS) == _harnesses_with("agents")
 
 
 def test_the_shared_skill_readers_include_the_harness_that_writes_there() -> None:
@@ -167,7 +175,7 @@ def test_runtime_keys_are_the_keys_the_presets_preserve() -> None:
 def _states_shell_rules(name: str) -> bool:
     spec = RENDERERS[name]
     rules = Rules(allow=("pwd-probe",))
-    if isinstance(spec, JsonSpec):
+    if isinstance(spec, JsonSpec | MergedJsonSpec):
         return "pwd-probe" in json.dumps(spec.fn(rules, {}))
     if isinstance(spec, TextSpec):
         return "pwd-probe" in spec.fn(rules)
@@ -214,6 +222,7 @@ STEALTH_COLUMNS = {
 HARNESS_NAMES = {
     "Claude": "claude",
     "Codex": "codex",
+    "Cursor": "cursor",
     "Droid": "droid",
     "OpenCode": "opencode",
     "Pi": "pi",
@@ -306,6 +315,7 @@ def test_the_user_server_tables_a_stealth_source_reads_are_the_keys_the_global_r
     servers = {"docs": Server(name="docs", transport="stdio", command="docs")}
     rendered = {
         "codex": tomllib.loads(render_codex_servers(servers)),
+        "cursor": render_cursor_servers(servers),
         "droid": render_droid_servers(servers),
         "opencode": {GLOBAL_PRESET["opencode"]["mcp"].owned_key: render_opencode_servers(servers)},
         "pi": render_pi_servers(servers),

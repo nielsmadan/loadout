@@ -85,9 +85,9 @@ Use the OpenCode-specific workflow here.
 
 Keep supporting files in the same tree. They travel with the skill. Project skills render to
 `.claude/skills/` for Claude, `.agents/skills/` for Codex and `.factory/skills/` for Droid.
-OpenCode and Pi read `.agents/skills/` too, so when Codex is selected and they would get the same
-bytes, the skill is written there once for all of them; otherwise OpenCode and Pi get
-`.opencode/skills/` and `.pi/skills/`.
+Cursor, OpenCode and Pi read `.agents/skills/` too, so when Codex is selected and they would get
+the same bytes, the skill is written there once for all of them; otherwise they get
+`.cursor/skills/`, `.opencode/skills/` and `.pi/skills/`.
 
 For the bundled configuration skill, see [global setup](global.md#configure-through-your-agent).
 
@@ -211,7 +211,8 @@ A fragment uses event names and hook definitions:
 }
 ```
 
-Claude, Codex, and Droid receive native hook configuration. OpenCode and Pi receive generated adapters
+Claude, Codex, and Droid receive native hook configuration. Cursor receives its own `hooks.json`,
+translated the way Cursor translates Claude's hooks. OpenCode and Pi receive generated adapters
 for supported command hooks. Event mapping and payload differences matter, so test hooks in
 each harness you enable. Hook scripts can travel through module configuration.
 
@@ -262,5 +263,6 @@ module-config/
 Loadout copies it beneath the corresponding global harness directory, preserving bytes and
 executable permissions. The consuming module determines the filename.
 
-The slice is automatic for Claude, Droid, OpenCode, and Pi; opt out with `module-config = false`.
+The slice is automatic for Claude, Cursor, Droid, OpenCode, and Pi; opt out with
+`module-config = false`.
 Files must not collide with another slice's output.

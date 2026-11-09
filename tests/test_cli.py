@@ -639,7 +639,8 @@ def test_init_global_adopts_a_root_manifest_and_syncs_it(
     out = capsys.readouterr().out
     config_path = xdg_home / "loadout" / "config.toml"
     assert config_path.read_text(encoding="utf-8") == (
-        f'source = "{root.resolve()}"\nharnesses = ["claude", "codex", "droid", "opencode", "pi"]\n'
+        f'source = "{root.resolve()}"\n'
+        'harnesses = ["claude", "codex", "cursor", "droid", "opencode", "pi"]\n'
     )
     assert "adopted" in out
     assert not (root / "loadout" / "loadout.toml").exists()

@@ -92,8 +92,8 @@ surfaces the difference.
 
 ## Other harnesses
 
-Claude, Droid, OpenCode and Pi all have a global `module-config` entry, rooted at the harness's
-config directory (`~/.factory` for Droid). Claude, OpenCode and Pi each exercise the mechanism
+Claude, Cursor, Droid, OpenCode and Pi all have a global `module-config` entry, rooted at the
+harness's config directory (`~/.factory` for Droid, `~/.cursor` for Cursor, where user hooks run). Claude, OpenCode and Pi each exercise the mechanism
 differently — which is the point of it being harness-neutral rather than a Pi special case.
 
 **Claude's case is hook scripts.** The hooks slice registers a command *by path*

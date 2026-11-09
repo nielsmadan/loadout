@@ -631,17 +631,24 @@ Each destination is relative to the target's root. The files a stealth source ow
 | --- | --- | --- | --- | --- |
 | Claude | `CLAUDE.local.md` (whole) | `~/.claude.json`, one server at a time under `projects.<root>.mcpServers` | `.claude/settings.local.json` (shared) | `.claude/skills/<name>/` |
 | Codex | `developer_instructions` in `.codex/config.toml` (whole) | `mcp_servers` in `.codex/config.toml` | `.codex/rules/<name>.rules` (whole) | `.agents/skills/<name>/` |
+| Cursor | `.cursor/rules/<name>.mdc` (whole) | `.cursor/mcp.json` (whole) | `.cursor/cli.json` (whole) | `.cursor/skills/<name>/` |
 | Droid | `.factory/AGENTS.md` (whole) | `.factory/mcp.json` (whole) | `.factory/settings.local.json` (shared) | `.factory/skills/<name>/` |
 | OpenCode | `instructions` in `opencode.json` (shared), naming a file in the stealth folder | `mcp` in `opencode.json` | `permission` in `opencode.json` | `.opencode/skills/<name>/` |
 | Pi | `.pi/APPEND_SYSTEM.md` (whole) | `.pi/mcp.json` (whole) | `.pi/extensions/pi-permission-system/config.json` (whole) | `.pi/skills/<name>/` |
 
-- Skills are rendered as at project scope. When Codex, OpenCode and Pi render a skill
-  identically, one `.agents/skills/<name>/` copy serves all three.
+- Skills are rendered as at project scope. When Codex, Cursor, OpenCode and Pi render a skill
+  identically, one `.agents/skills/<name>/` copy serves them all.
 - Codex's `.codex/config.toml` holds the instructions and the servers together, and Codex applies
   it only in a trusted project. A project `developer_instructions` replaces the user-level one. The
   rules file is written only when the stealth source has a shell rule Codex can express.
 - An MCP approval for a server the stealth source does not define is not written to Codex, because a
   project table of that name would merge into the user's server.
+- Cursor's instructions are a rule named for the stealth source, with `alwaysApply: true`, so
+  they load in every session. Its `cli.json` holds only `permissions`, and is written only when
+  the stealth source has a rule Cursor can hold: an `ask` is left to Cursor's `approvalMode`, as
+  at project scope. With its third-party imports on (the default) Cursor also reads
+  `CLAUDE.local.md` and `.claude/skills/`, so a stealth source that declares Claude too reaches it
+  twice; `check` says so.
 - OpenCode's `opencode.json` is written at the repository root, where a tracked
   `.opencode/opencode.json` outranks it. The `instructions` entry names
   `<stealth folder>/.loadout/opencode-instructions.md`, a file the stealth source renders into its own
@@ -741,8 +748,9 @@ under the same name replaces the kit's.
 ## Subagents
 
 A subagent is one Markdown file, `agents/<name>.md` in a global source or `loadout/agents/<name>.md`
-in a project, and it reaches every configured harness: Claude, Codex (as `<name>.toml`), Droid
-(as a custom droid), OpenCode and Pi (read by the `pi-subagents` package, which Pi needs installed).
+in a project, and it reaches every configured harness: Claude, Codex (as `<name>.toml`), Cursor,
+Droid (as a custom droid), OpenCode and Pi (read by the `pi-subagents` package, which Pi needs
+installed).
 
 ```markdown
 ---
@@ -762,8 +770,9 @@ Review the staged diff.
 The body is the agent's instructions, with `::: <harness>` sections as in a skill. The file name is
 the agent's name; a `name` field must match it. `model` is `inherit` or a map per harness, and a
 harness it leaves out inherits; one name for every harness is refused, since no model name means
-the same thing in all five. `effort` is one word from `off` to `max`, translated per harness, or a
-map. A harness lacking the level gets the nearest lower one, and OpenCode none, each with a note.
+the same thing in all six. `effort` is one word from `off` to `max`, translated per harness, or a
+map. A harness lacking the level gets the nearest lower one, and Cursor and OpenCode none, each with a
+note; Cursor takes effort in the model instead, as `cursor: claude-opus-5[effort=high]`.
 A block keyed by a harness holds what only that harness reads; Droid's `droid:` block takes only
 `tools`, `mcpServers` and `version`, since Droid drops any other key when it rewrites its droids
 folder. Droid's copy is written in the form Droid itself writes, so creating or editing a droid in
@@ -856,7 +865,7 @@ deny = ["docs/delete"]
 - The strictest decision wins when the same entry appears in several tiers.
 - An omitted shell default casts no vote in composition. An explicitly stated default does.
 - `[shell] default` is rendered for OpenCode and Pi. Claude and Codex use native settings;
-  Droid uses session autonomy. `loadout sync` names the targets a stated default does not reach.
+  Droid uses session autonomy; Cursor uses `approvalMode`. `loadout sync` names the targets a stated default does not reach.
   `default = "allow"` with a deny list is weaker than it looks; see
   [the catch-all default](https://github.com/nielsmadan/loadout/blob/main/docs/reference/README.md#the-catch-all-default).
 - A bare `"*"` shell entry is invalid. Use the `default` key for a catch-all.
@@ -864,13 +873,18 @@ deny = ["docs/delete"]
   starting with `=` is exact: `"=git status"` matches that command and nothing longer. An exact
   entry may not contain `*`.
 
-Exact entries render exactly for Claude, OpenCode, and Pi. Codex and Droid cannot match a whole
+Exact entries render exactly for Claude, Cursor, OpenCode, and Pi. Codex and Droid cannot match a whole
 command, so Loadout omits an exact `allow` or `ask` for them, leaving the command to their own
 approval, and renders an exact `deny` as its prefix, which blocks more rather than less.
 `loadout sync` reports each one.
 
-Trailing shell globs can be represented by Claude, OpenCode, and Pi. Loadout skips them for
-Codex's literal prefix rules and Droid's literal permission lists. Different matching behavior remains visible in the
+Trailing shell globs can be represented by Claude, Cursor, OpenCode, and Pi. Loadout skips them for
+Codex's literal prefix rules and Droid's literal permission lists. Cursor's `*` stops at `/`, so a
+Cursor deny glob past the first word is widened to its word prefix.
+
+Cursor has no `ask` list. An `ask` entry is left to Cursor's `approvalMode`, and an `allow` that
+would also cover an `ask` is left out for Cursor, so that command still prompts. `loadout sync`
+reports both. Different matching behavior remains visible in the
 [harness reference](harnesses.md#permission-portability).
 
 The same format serves a global source's `permissions.toml`, a project's `loadout/permissions.toml`,

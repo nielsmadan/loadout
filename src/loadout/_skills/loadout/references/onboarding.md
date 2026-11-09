@@ -49,8 +49,9 @@ left to keep. Each verdict (`allow`, `ask`, `deny`) keeps its list:
   and leave it in `settings.local.json`, which then stays.
 
 `[shell]` and `[mcp]` entries are not Claude's alone: they render for every configured harness
-that can express them. An exact entry renders for Claude, OpenCode and Pi, while Codex and Droid
-leave an exact `allow` or `ask` to their own approval and treat an exact `deny` as a prefix. Tell
+that can express them. An exact entry renders for Claude, Cursor, OpenCode and Pi, while Codex and
+Droid leave an exact `allow` or `ask` to their own approval and treat an exact `deny` as a prefix.
+Cursor has no `ask` at all: it leaves one to its `approvalMode` and drops an `allow` covering it. Tell
 the user which harnesses each moved rule now reaches. Loadout never gitignores
 `permissions.local.toml`, so before the first sync ask whether to list
 `/loadout/permissions.local.toml` in `.gitignore` or in `.git/info/exclude`, and add it there.
@@ -164,9 +165,10 @@ each one into an environment variable:
 
 - An HTTP MCP server's bearer token: replace the literal `Authorization` header in `mcp.toml` with
   `auth_env_var = "<NAME>"`. Loadout renders the name for each harness: `bearer_token_env_var` for
-  Codex, `Bearer ${NAME}` for Claude, Droid and Pi, `{env:NAME}` for OpenCode.
+  Codex, `Bearer ${NAME}` for Claude, Droid and Pi, `Bearer ${env:NAME}` for Cursor, `{env:NAME}`
+  for OpenCode.
 - Any other value: use the reference syntax of the harness that reads it (`${NAME}` in Claude and Pi
-  MCP entries, `{env:NAME}` in OpenCode), and only in a source that harness alone reads.
+  MCP entries, `${env:NAME}` in Cursor, `{env:NAME}` in OpenCode), and only in a source that harness alone reads.
   `mcp.toml`'s `env`, `args` and `headers` reach every harness as written, so a reference there is
   read literally by a harness that does not expand that syntax. When no reference fits, say so and
   leave the value in place.

@@ -34,6 +34,7 @@ from loadout.permissions.renderers import (
     PI_UNNAMEABLE,
     RENDERERS,
     JsonSpec,
+    MergedJsonSpec,
     TextSpec,
     render_codex_project,
 )
@@ -203,7 +204,7 @@ def _render(name: str, rules: Rules, base: dict[str, Any]) -> Any:
     spec = RENDERERS[name]
     if isinstance(spec, TextSpec):
         return spec.fn(rules)
-    if isinstance(spec, JsonSpec):
+    if isinstance(spec, JsonSpec | MergedJsonSpec):
         return spec.fn(rules, base)
     raise _unknown_kind(name, spec)
 
@@ -220,6 +221,8 @@ def _serialize(name: str, document: Any) -> str:
         return document
     if isinstance(spec, JsonSpec):
         return json.dumps(document, indent=2, ensure_ascii=spec.ensure_ascii) + "\n"
+    if isinstance(spec, MergedJsonSpec):
+        return json.dumps(document, indent=2, ensure_ascii=False) + "\n"
     raise _unknown_kind(name, spec)
 
 
@@ -399,7 +402,52 @@ def _pi_project_carried(rules: Rules) -> Rules:
     )
 
 
+def _cursor_reaches(entry: str, other: str) -> bool:
+    """Whether a shell entry would approve some command `other` names."""
+
+    def shortest(item: str) -> str:
+        if is_exact(item):
+            return exact_command(item)
+        return item.rstrip("*").rstrip() if is_glob(item) else item
+
+    command = shortest(other)
+    if is_exact(entry):
+        return command == exact_command(entry)
+    stem = shortest(entry)
+    return command == stem or command.startswith(stem if is_glob(entry) else f"{stem} ")
+
+
+def _cursor_mcp_reaches(entry: str, other: str) -> bool:
+    (server, tool), (other_server, other_tool) = mcp_parts(entry), mcp_parts(other)
+    return server == other_server and (tool == other_tool or "*" in (tool, other_tool))
+
+
+def _cursor_deny(entry: str) -> str:
+    """A deny glob past the first word comes back as the word prefix it widened to."""
+    words = entry.split()
+    starred = next((i for i, word in enumerate(words) if "*" in word), 0)
+    return " ".join(words[:starred]) if is_glob(entry) and starred else entry
+
+
+def _cursor_carried(rules: Rules) -> Rules:
+    """Two lists and no ask: an ask is not carried, nor any allow that would reach one."""
+    return Rules(
+        allow=tuple(
+            e
+            for e in rules.allow
+            if not any(_cursor_reaches(e, a) or _cursor_reaches(a, e) for a in rules.ask)
+        ),
+        deny=tuple(dict.fromkeys(_cursor_deny(e) for e in rules.deny)),
+        mcp_allow=tuple(
+            e for e in rules.mcp_allow if not any(_cursor_mcp_reaches(e, a) for a in rules.mcp_ask)
+        ),
+        mcp_deny=rules.mcp_deny,
+    )
+
+
 PROJECTIONS = {
+    "cursor": _cursor_carried,
+    "cursor-project": _cursor_carried,
     "claude": _claude_carried,
     "claude-project": _claude_carried,
     "claude-mcp-permissions": _mcp_only,

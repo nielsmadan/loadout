@@ -128,6 +128,7 @@ ADOPTED_SKIP = (
 
 _USER_SERVERS: tuple[tuple[str, str, str], ...] = (
     ("codex", "${CODEX_HOME:-~/.codex}/config.toml", "mcp_servers"),
+    ("cursor", "~/.cursor/mcp.json", "mcpServers"),
     ("droid", "${FACTORY_HOME_OVERRIDE:-~}/.factory/mcp.json", "mcpServers"),
     ("opencode", "${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json", "mcp"),
     ("opencode", "${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.jsonc", "mcp"),

@@ -41,6 +41,7 @@ from .permissions.renderers import (
     TextSpec,
     ValueSpec,
     ValuesSpec,
+    cursor_permissions,
     evicted_keys,
     refuse_mcp_namespace_overlap,
     render_pi_project,
@@ -385,7 +386,11 @@ def _compose_merged(
             )
         json_spec = json_specs[0]
         _, _, content = contributors[0]
-        document = json.dumps(json_spec.fn(content), indent=2, ensure_ascii=False)
+        document = json.dumps(
+            json_spec.fn(rules if first.select_all else EMPTY_RULES, content),
+            indent=2,
+            ensure_ascii=False,
+        )
         return Merged(json_spec.owns, document, format="json")
 
     owned: set[str] = set()
@@ -695,6 +700,8 @@ def _rule_less(renderer: str, rules: Rules) -> bool:
         return not (rules.mcp_allow or rules.mcp_ask or rules.mcp_deny)
     if renderer == "pi-project":
         return render_pi_project(rules, {}) == {"permission": {"bash": {}}}
+    if renderer == "cursor-project":
+        return cursor_permissions(rules) == {"allow": [], "deny": []}
     return False
 
 

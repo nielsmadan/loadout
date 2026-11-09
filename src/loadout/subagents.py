@@ -49,6 +49,12 @@ EFFORT_KEY = {
     "pi": "thinking",
 }
 EXTENSION = {"codex": ".toml"}
+# Harnesses whose agent files have no effort key. Cursor takes effort inside the
+# model ID, and which options a model accepts depends on the model.
+EFFORTLESS = {
+    "cursor": ("Cursor", "; give it in the model, as cursor: <model>[effort=<level>]"),
+    "opencode": ("OpenCode", ""),
+}
 SOURCE_KEYS = frozenset({"name", "description", "model", "effort"})
 
 
@@ -269,7 +275,7 @@ def _models(block: tuple[str, list[str]] | None, label: str) -> dict[str, str]:
             return {}
         raise LoadoutError(
             f"{label}: model {_unquote(value)!r} would name one model for every harness, and "
-            f"no model name means the same thing in all five; give a per-harness map, one "
+            f"no model name means the same thing in all six; give a per-harness map, one "
             f"indented `<harness>: <model>` line each, or `inherit`"
         )
     models = _harness_map(children, label, "model")
@@ -300,8 +306,8 @@ def _efforts(block: tuple[str, list[str]] | None, label: str) -> tuple[str | Non
 
 def effort_for(agent: Agent, harness: str) -> tuple[str | None, str | None]:
     """The effort value this harness gets, and a note when it is not the one written."""
-    if harness == "opencode":
-        return None, _opencode_effort_note(agent)
+    if harness in EFFORTLESS:
+        return None, _effortless_note(agent, harness)
     if harness in agent.efforts:
         return agent.efforts[harness], None
     if agent.effort is None or harness not in EFFORT_LEVELS:
@@ -325,13 +331,14 @@ def effort_for(agent: Agent, harness: str) -> tuple[str | None, str | None]:
     )
 
 
-def _opencode_effort_note(agent: Agent) -> str | None:
-    stated = agent.efforts.get("opencode") or agent.effort
+def _effortless_note(agent: Agent, harness: str) -> str | None:
+    stated = agent.efforts.get(harness) or agent.effort
     if stated is None:
         return None
+    name, where = EFFORTLESS[harness]
     return (
-        f"agent {agent.name!r}: OpenCode agents have no effort field, so effort "
-        f"{stated!r} is not written for OpenCode"
+        f"agent {agent.name!r}: {name} agents have no effort field, so effort "
+        f"{stated!r} is not written for {name}{where}"
     )
 
 
@@ -352,7 +359,7 @@ def render_agent(agent: Agent, harness: str) -> str:
         return _render_droid(agent, effort, body)
     extra = agent.extra.get(harness, ())
     lines = [] if harness == "opencode" else [f"name: {agent.name}"]
-    lines.append(f"description: {yaml_string(agent.description)}")
+    lines.append(f"description: {_description(agent.description, harness)}")
     if harness == "opencode" and not any(line.startswith("mode:") for line in extra):
         # Omitted, OpenCode's mode is `all`, which also lists the agent as a primary one.
         lines.append("mode: subagent")
@@ -363,6 +370,13 @@ def render_agent(agent: Agent, harness: str) -> str:
     lines.extend(extra)
     banner = f"<!-- {BANNER.format(name=agent.name)} -->"
     return "---\n" + "\n".join(lines) + "\n---\n\n" + banner + "\n" + body
+
+
+def _description(text: str, harness: str) -> str:
+    """Cursor reads each frontmatter line as `key: rest`, with no YAML unquoting, so a
+    one-line description goes to it plain; anything else stays a quoted scalar."""
+    plain = harness == "cursor" and "\n" not in text and text == text.strip()
+    return text if plain and text[:1] not in {'"', "'", "|", ">"} else yaml_string(text)
 
 
 DROID_BLOCK_KEYS = ("tools", "mcpServers", "version")

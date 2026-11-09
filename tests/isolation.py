@@ -6,6 +6,7 @@ from __future__ import annotations
 HARNESS_VARIABLES = (
     "CLAUDE_CONFIG_DIR",
     "CODEX_HOME",
+    "CURSOR_CONFIG_DIR",
     "PI_CODING_AGENT_DIR",
     "XDG_CONFIG_HOME",
     "XDG_STATE_HOME",

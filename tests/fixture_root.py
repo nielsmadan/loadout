@@ -30,7 +30,7 @@ PRESERVE_TARGET = "perm/opencode.json"
 
 
 PROJECT_FIXTURES = FIXTURES / "project"
-PROJECT_HARNESSES = ("claude", "codex", "droid", "opencode", "pi")
+PROJECT_HARNESSES = ("claude", "codex", "cursor", "droid", "opencode", "pi")
 
 # Vendored, so resolution reads no machine config and the expected tree stays
 # machine-independent. It is what puts a kit's contribution into the

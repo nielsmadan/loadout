@@ -9,7 +9,7 @@ Your own agent config in repos you don't control, kept out of git.
 
 A project source is for a repository whose team has adopted loadout. A **stealth source** is for
 the other case: you work in clones of team repositories that have not adopted it, and you want
-your own instructions, MCP servers, permissions and skills in each of them, for any of the five
+your own instructions, MCP servers, permissions and skills in each of them, for any of the six
 harnesses, without committing anything. This is loadout's stealth mode.
 
 A stealth source is a folder outside those repositories. Its `loadout.toml` has a `[stealth]` table
@@ -212,6 +212,8 @@ From then on the stealth source skips the repository; use the project's
 
 - The harness must trust the project before it reads what a stealth source wrote. `check` says so for
   Codex and Pi when their trust files show it is missing.
+- Cursor asks before it starts each project MCP server; approve them with `agent mcp enable` or
+  `--approve-mcps`. `check` does not track that approval.
 - Switching a repository to a branch that tracks one of the stealth source's paths replaces the stealth source's
   copy with the team's. `check` names the branch.
 - `follow_worktrees` and `git_hook` are reserved keys for a later release; setting either to

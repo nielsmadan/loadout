@@ -11,6 +11,7 @@ from typing import Any
 
 from . import git_runner
 from .containment import in_git_dir
+from .destinations import resolve_destination
 from .errors import LoadoutError
 from .git_privacy import ignored_paths, tracked_paths
 from .harnesses import DROID_AGENTS_DIRECTORY, GLOBAL_PRESET, KNOWN_HARNESSES, SHARED_SKILL_READERS
@@ -35,9 +36,15 @@ AGENTS_MD_READERS = tuple(
     if (spec := slices.get("instructions")) is not None and spec.output == "AGENTS.md"
 )
 
+# Cursor's global permissions document, the one file that follows CURSOR_CONFIG_DIR.
+CURSOR_CONFIG = "cli-config.json"
+CURSOR_CONFIG_TEMPLATE = "${CURSOR_CONFIG_DIR:-~/.cursor}/cli-config.json"
+
 GLOBAL_ROOTS = {
     "claude": ("CLAUDE_CONFIG_DIR", ".claude"),
     "codex": ("CODEX_HOME", ".codex"),
+    # Only cli-config.json follows the variable; see `live_roots`.
+    "cursor": ("CURSOR_CONFIG_DIR", ".cursor"),
     "droid": ("FACTORY_HOME_OVERRIDE", ".factory"),
     "opencode": ("XDG_CONFIG_HOME", ".config"),
     "pi": ("PI_CODING_AGENT_DIR", ".pi/agent"),
@@ -54,9 +61,12 @@ DESTINATION_ENVIRONMENT = (
 RUNTIME_DOCUMENTS = {
     "claude": ".claude.json",
     "codex": "config.toml",
+    "cursor": CURSOR_CONFIG,
     "droid": "settings.json",
     "pi": "settings.json",
 }
+# A runtime document of which a person writes one key and the harness all the rest.
+AUTHORED_KEY = {"claude": "mcpServers", "cursor": "permissions"}
 # The keys a harness writes for itself: what its preset carries over from the live
 # destination, and Codex's own, which no slice of loadout's declares.
 RUNTIME_KEYS = {
@@ -70,6 +80,7 @@ RUNTIME_KEYS = {
 PROJECT_ROOTS = {
     "claude": ".claude",
     "codex": ".codex",
+    "cursor": ".cursor",
     "droid": ".factory",
     "opencode": ".opencode",
     "pi": ".pi",
@@ -99,6 +110,15 @@ MANAGED_PATHS: dict[str, dict[str, tuple[str, ...]]] = {
             "rules/",
             "skills/",
             "agents/",
+        ),
+        # cli-config.json is a file mapping of its own: it follows CURSOR_CONFIG_DIR.
+        "cursor": (
+            "hooks.json",
+            "mcp.json",
+            "skills/",
+            "agents/",
+            "hooks/",
+            "scripts/",
         ),
         "droid": (
             "AGENTS.md",
@@ -136,6 +156,7 @@ MANAGED_PATHS: dict[str, dict[str, tuple[str, ...]]] = {
     "project": {
         "claude": ("settings.json", "mcp-permissions.json", "skills/", "agents/"),
         "codex": ("rules/", "agents/"),
+        "cursor": ("cli.json", "hooks.json", "mcp.json", "skills/", "agents/"),
         "droid": (
             "settings.json",
             "hooks.json",
@@ -202,7 +223,7 @@ def path_preconditions(path: Path, *, read: bool = True) -> tuple[EntryState, ..
 def live_roots(home: Path, environ: Mapping[str, str]) -> tuple[RootMapping, ...]:
     result = []
     for agent, (variable, fallback) in GLOBAL_ROOTS.items():
-        value = environ.get(variable)
+        value = environ.get(variable) if agent != "cursor" else None
         root = _home_path(value, home) if value else home / fallback
         if agent == "droid" and value:
             root /= ".factory"
@@ -213,6 +234,8 @@ def live_roots(home: Path, environ: Mapping[str, str]) -> tuple[RootMapping, ...
         template = (
             "${FACTORY_HOME_OVERRIDE:-~}/.factory"
             if agent == "droid"
+            else "~/.cursor"
+            if agent == "cursor"
             else f"${{{variable}:-~/{fallback}}}" + ("/opencode" if agent == "opencode" else "")
         )
         result.append(RootMapping(root, root, (agent,), destination_template=template))
@@ -227,6 +250,14 @@ def live_roots(home: Path, environ: Mapping[str, str]) -> tuple[RootMapping, ...
             "file",
             "mcp",
             "${CLAUDE_CONFIG_DIR:-~}/.claude.json",
+        )
+    )
+    cursor_config = resolve_destination(
+        CURSOR_CONFIG_TEMPLATE, "cursor", {**environ, "HOME": str(home)}
+    )
+    result.append(
+        RootMapping(
+            cursor_config, cursor_config, ("cursor",), "file", "permissions", CURSOR_CONFIG_TEMPLATE
         )
     )
     result.append(
@@ -363,6 +394,7 @@ def _category(relative: Path, agent: str) -> str | None:
             "settings",
         ),
         "mcp-permissions.json": "mcp-permissions",
+        **dict.fromkeys((CURSOR_CONFIG, "cli.json"), "permissions"),
         "hooks.json": "hooks",
     }
     fallback = "module-config" if agent == "pi" and relative.suffix == ".json" else None
@@ -1097,8 +1129,8 @@ def _path_token(value: str) -> bool:
 
 def authored_part(document: Mapping[str, Any], agent: str) -> dict[str, Any]:
     """What a person wrote in a document `agent` also writes runtime state into."""
-    if agent == "claude":
-        return {key: value for key, value in document.items() if key == "mcpServers"}
+    if agent in AUTHORED_KEY:
+        return {key: value for key, value in document.items() if key == AUTHORED_KEY[agent]}
     return {
         key: value
         for key, value in document.items()

@@ -9,9 +9,14 @@ from loadout.harnesses import GLOBAL_PRESET
 from loadout.permissions.renderers import RENDERERS
 from loadout.project import PROJECT_PRESET
 
+# Cursor's variable moves cli-config.json and nothing else: its bundle joins every
+# other global path onto the home directory (docs/reference/cursor.md#destinations).
+UNRELOCATED = {("cursor", name) for name in ("skills", "agents", "module-config", "hooks", "mcp")}
+
 RELOCATION_VARIABLE = {
     "claude": "CLAUDE_CONFIG_DIR",
     "codex": "CODEX_HOME",
+    "cursor": "CURSOR_CONFIG_DIR",
     "droid": "FACTORY_HOME_OVERRIDE",
     "opencode": "XDG_CONFIG_HOME",
     "pi": "PI_CODING_AGENT_DIR",
@@ -20,7 +25,7 @@ RELOCATION_VARIABLE = {
 
 def test_the_preset_covers_exactly_the_supported_agents() -> None:
     """antigravity was dropped (ADR 0012); nothing else has been added quietly."""
-    assert set(GLOBAL_PRESET) == {"claude", "codex", "droid", "opencode", "pi"}
+    assert set(GLOBAL_PRESET) == {"claude", "codex", "cursor", "droid", "opencode", "pi"}
 
 
 @pytest.mark.parametrize("agent", sorted(GLOBAL_PRESET))
@@ -42,7 +47,11 @@ def test_destinations_follow_the_harness_config_variable(agent: str) -> None:
     """ADR 0011's table lives here so a manifest never spells a variable out."""
     variable = RELOCATION_VARIABLE[agent]
     for name, output in GLOBAL_PRESET[agent].items():
-        if output.destination is not None:
+        if output.destination is None:
+            continue
+        if (agent, name) in UNRELOCATED:
+            assert output.destination.startswith("~/"), f"{agent}.{name}"
+        else:
             assert output.destination.startswith(f"${{{variable}:-"), f"{agent}.{name}"
 
 
@@ -55,6 +64,7 @@ def test_every_destination_resolves_to_the_documented_default(
     defaults = {
         "claude": "/.claude/",
         "codex": "/.codex/",
+        "cursor": "/.cursor/",
         "droid": "/.factory/",
         "opencode": "/.config/opencode/",
         "pi": "/.pi/agent/",

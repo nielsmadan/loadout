@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import tomllib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
@@ -453,7 +454,9 @@ RESERVED_KEYS = frozenset(
 AUTOMATIC_SLICES = ("permissions", "mcp-permissions", "mcp", "skills", "agents", "module-config")
 
 
-def _agent_slice_names(agent: str, block: dict[str, object]) -> list[str]:
+def _agent_slice_names(
+    agent: str, block: dict[str, object], offered: Mapping[str, SliceOutput]
+) -> list[str]:
     """Which slices this agent renders: what it names, plus the automatic ones.
 
     `<slice> = false` switches an automatic slice off. It is the only way to say
@@ -463,7 +466,6 @@ def _agent_slice_names(agent: str, block: dict[str, object]) -> list[str]:
     is still a capability, so it stays, and the manifest is where one machine
     says it has no use for it.
     """
-    offered = GLOBAL_PRESET[agent]
     disabled = {k for k, v in block.items() if v is False}
     named = [k for k in block if k in offered and k not in disabled]
     automatic = [s for s in AUTOMATIC_SLICES if s in offered and s not in block]
@@ -473,7 +475,9 @@ def _agent_slice_names(agent: str, block: dict[str, object]) -> list[str]:
 AGENT_EXTRAS = ("settings", "preserve", "substitute")
 
 
-def _check_block(agent: str, declared: dict[str, object], offered: dict[str, SliceOutput]) -> None:
+def _check_block(
+    agent: str, declared: dict[str, object], offered: Mapping[str, SliceOutput]
+) -> None:
     # Only what the agent block itself names is checked. A key from [all]
     # that this agent has no slice for is simply not for it — [all] is a
     # default, so it applies where it applies. An unknown key the agent
@@ -497,7 +501,10 @@ def _check_block(agent: str, declared: dict[str, object], offered: dict[str, Sli
 
 
 def _require_settings_read(
-    agent: str, declared: dict[str, object], offered: dict[str, SliceOutput], names: list[str]
+    agent: str,
+    declared: dict[str, object],
+    offered: Mapping[str, SliceOutput],
+    names: list[str],
 ) -> None:
     """A `settings` fragment has to reach a slice whose renderer reads one, and is read
     only when the block declares such a slice: Pi's is `plugins`, which is not automatic.
@@ -532,7 +539,10 @@ def _require_settings_read(
 
 
 def _parse_agents(
-    data: dict[str, object], path: Path, claimed: set[PurePosixPath]
+    data: dict[str, object],
+    path: Path,
+    claimed: set[PurePosixPath],
+    preset: Mapping[str, Mapping[str, SliceOutput]] = GLOBAL_PRESET,
 ) -> tuple[
     tuple[InstructionTarget, ...],
     tuple[PermissionTarget, ...],
@@ -573,10 +583,10 @@ def _parse_agents(
         if not isinstance(declared, dict):
             raise LoadoutError(f"{path}: [{agent}] must be a table")
         block = {**common, **declared}
-        offered = GLOBAL_PRESET[agent]
+        offered = preset[agent]
         _check_block(agent, declared, offered)
         block = {k: v for k, v in block.items() if k in offered or k in AGENT_EXTRAS}
-        names = _agent_slice_names(agent, block)
+        names = _agent_slice_names(agent, block, offered)
         _require_settings_read(agent, declared, offered, names)
         for slice_name in names:
             spec = offered[slice_name]
@@ -663,6 +673,7 @@ def _build_manifest(
     *,
     config_paths: tuple[Path, ...] = (),
     sources: SourceParser = parse_sources,
+    preset: Mapping[str, Mapping[str, SliceOutput]] = GLOBAL_PRESET,
 ) -> Manifest:
     if (renamed := renamed_overlay_table(data, path)) is not None:
         raise renamed
@@ -680,7 +691,7 @@ def _build_manifest(
         agent_skills,
         agent_module_config,
         agent_definitions,
-    ) = _parse_agents(data, path, claimed)
+    ) = _parse_agents(data, path, claimed, preset)
     targets += agent_targets
     permissions += agent_permissions
 

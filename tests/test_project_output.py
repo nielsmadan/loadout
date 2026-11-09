@@ -17,6 +17,9 @@ EXPECTED = Path(__file__).parent / "fixtures" / "expected" / "project"
 OUTPUTS = (
     ".claude/settings.json",
     ".codex/rules/permissions.rules",
+    ".cursor/cli.json",
+    ".cursor/hooks.json",
+    ".cursor/mcp.json",
     ".factory/settings.json",
     ".factory/hooks.json",
     ".factory/mcp.json",
@@ -32,6 +35,7 @@ OUTPUTS = (
 SKILL_DIRS = {
     "claude": ".claude/skills",
     "codex": ".agents/skills",
+    "cursor": ".cursor/skills",
     "droid": ".factory/skills",
     "opencode": ".opencode/skills",
     "pi": ".pi/skills",
@@ -42,6 +46,7 @@ SKILL_FILES = ("from-kit/SKILL.md", "probe/SKILL.md", "probe/reference.md")
 AGENT_FILES = {
     "claude": ".claude/agents/reviewer.md",
     "codex": ".codex/agents/reviewer.toml",
+    "cursor": ".cursor/agents/reviewer.md",
     "droid": ".factory/droids/reviewer.md",
     "opencode": ".opencode/agents/reviewer.md",
     "pi": ".pi/agents/reviewer.md",
@@ -55,7 +60,7 @@ def agent_outputs(*harnesses: str) -> set[str]:
 def skill_outputs(*harnesses: str) -> set[str]:
     outputs = {f"{SKILL_DIRS[h]}/{f}" for h in harnesses for f in SKILL_FILES}
     if "codex" in harnesses:
-        for harness in {"opencode", "pi"}.intersection(harnesses):
+        for harness in {"cursor", "opencode", "pi"}.intersection(harnesses):
             outputs.discard(f"{SKILL_DIRS[harness]}/from-kit/SKILL.md")
     return outputs
 
@@ -85,7 +90,7 @@ def test_only_enabled_harnesses_are_rendered(project: Path) -> None:
     config = project / "loadout" / "config.toml"
     config.write_text(
         config.read_text(encoding="utf-8").replace(
-            '"claude", "codex", "droid", "opencode", "pi"', '"claude"'
+            '"claude", "codex", "cursor", "droid", "opencode", "pi"', '"claude"'
         ),
         encoding="utf-8",
     )
@@ -455,6 +460,9 @@ def test_a_project_declaring_no_instructions_generates_neither_document(
         ".claude/mcp-permissions.json",
         ".mcp.json",
         ".codex/rules/permissions.rules",
+        ".cursor/cli.json",
+        ".cursor/hooks.json",
+        ".cursor/mcp.json",
         ".factory/settings.json",
         ".factory/hooks.json",
         ".factory/mcp.json",

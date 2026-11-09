@@ -16,11 +16,11 @@ default = "allow"
 allow = [
   "alpha",                    # bare command
   "beta sub",                 # multi-word prefix
-  "gamma-*",                  # trailing glob: literal on 3 harnesses, skipped on 2
+  "gamma-*",                  # trailing glob: literal on 4 harnesses, skipped on 2
   "delta run --tag=*",        # glob that is not the whole final token
   "zeta",                     # also in deny, and not last: shows Pi's key-move
   "eta",                      # follows zeta, so "moved to the end" is observable
-  "=mu status",               # exact: bare on 3 harnesses, omitted on Codex and Droid
+  "=mu status",               # exact: kept on 4 harnesses, omitted on Codex and Droid
 ]
 
 ask = [
@@ -30,7 +30,7 @@ ask = [
 deny = [
   "zeta",                     # overwrites the allow above
   "iota push",
-  "=nu wipe",                 # exact deny: bare on 3 harnesses, widened to a prefix on 2
+  "=nu wipe",                 # exact deny: kept on 4 harnesses, widened to a prefix on 2
 ]
 
 [mcp]
@@ -42,7 +42,7 @@ allow = [
 ]
 
 ask = [
-  "svc/write",                # per-tool, non-default mode
+  "svc/write",                # per-tool, non-default mode; Cursor drops svc/* for it
 ]
 
 deny = [

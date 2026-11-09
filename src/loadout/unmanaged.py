@@ -31,7 +31,7 @@ WHOLE_FOLDER_RENDERERS = frozenset({"codex", "codex-project"})
 # Each harness's loading rule for an entry at the top of its skills or agents folder,
 # verified against its code (docs/reference/config.md, "What a harness loads from a skills
 # or agents folder").
-ROOT_FILES_IGNORED = frozenset({"claude", "codex", "droid"})
+ROOT_FILES_IGNORED = frozenset({"claude", "codex", "cursor", "droid"})
 SKILL_DOCUMENT = "SKILL.md"
 
 Readers = frozenset[tuple[str, str]]
@@ -107,15 +107,20 @@ def managed_folders(
 def _readers(
     folder: Path, slice_name: str, harness: str, selected: frozenset[str]
 ) -> tuple[str, ...]:
-    """Every harness that reads `folder`: Codex, OpenCode and Pi all read `.agents/skills`,
-    and OpenCode, when selected, also scans Claude's skills folders."""
+    """Every harness that reads `folder`: Codex, Cursor, OpenCode and Pi all read
+    `.agents/skills`, OpenCode also scans Claude's skills folders, and Cursor Claude's
+    and Codex's, when selected."""
     if slice_name != "skills":
         return (harness,)
     if folder.parts[-2:] == (".agents", "skills"):
         return SHARED_SKILL_READERS
-    if harness == "claude" and "opencode" in selected:
-        return ("claude", "opencode")
-    return (harness,)
+    # With third-party imports on, as they are by default, Cursor also reads Claude's
+    # and Codex's skills folders (docs/reference/cursor.md#skills).
+    scanners = (
+        *(("opencode",) if harness == "claude" else ()),
+        *(("cursor",) if harness in {"claude", "codex"} else ()),
+    )
+    return (harness, *(scanner for scanner in scanners if scanner in selected))
 
 
 def _ignored(relative: Path) -> bool:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import fnmatch
 import json
 import re
 import shlex
@@ -12,7 +13,12 @@ import tomlkit
 
 from ..adapters import render_opencode_adapter, render_pi_adapter
 from ..errors import LoadoutError
-from ..hooks import render_claude_hooks, render_codex_hooks, render_droid_hooks
+from ..hooks import (
+    render_claude_hooks,
+    render_codex_hooks,
+    render_cursor_hooks,
+    render_droid_hooks,
+)
 from ..plugins import (
     render_claude_plugins,
     render_codex_plugins,
@@ -25,6 +31,7 @@ from ..servers import (
     render_claude_global_servers,
     render_claude_project_servers,
     render_codex_servers,
+    render_cursor_servers,
     render_droid_servers,
     render_opencode_servers,
     render_pi_servers,
@@ -145,7 +152,7 @@ class MergedJsonSpec:
     and the only shape needed — Claude's `mcpServers` is alone in `.claude.json`.
     """
 
-    fn: Callable[[dict[str, Any]], dict[str, Any]]
+    fn: Callable[[Rules, dict[str, Any]], dict[str, Any]]
     owns: frozenset[str]
 
 
@@ -724,6 +731,90 @@ def render_opencode(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
     return config
 
 
+# --------------------------------------------------------------------------
+# cursor — `permissions` in cli-config.json (global) and .cursor/cli.json
+# (project): two lists of typed tokens, deny over allow regardless of order, no
+# ask list. `Shell(x)` matches the first word, the whole command as a glob, or
+# `x` followed by a space; `Shell(cmd:args)` matches the arguments separately,
+# which is the only exact form. See docs/reference/cursor.md#shell-permissions.
+# --------------------------------------------------------------------------
+
+
+def cursor_shell(entry: str, category: str) -> str:
+    if is_exact(entry):
+        command, _, args = exact_command(entry).partition(" ")
+        return f"Shell({command}:{args})"
+    tokens = entry.split()
+    starred = next((index for index, token in enumerate(tokens) if "*" in token), 0)
+    if category == "deny" and starred > 0:
+        # Cursor's `*` stops at `/`, so a glob past the first word under-blocks an
+        # argument with a path in it. Its word prefix does not.
+        return f"Shell({' '.join(tokens[:starred])})"
+    return f"Shell({entry})"
+
+
+def _shell_range(entry: str) -> str:
+    """The shortest command an entry matches, to compare two entries by."""
+    if is_exact(entry):
+        return exact_command(entry)
+    return entry.rstrip("*").rstrip() if is_glob(entry) else entry
+
+
+def _shell_matches(entry: str, command: str) -> bool:
+    if is_exact(entry):
+        return command == exact_command(entry)
+    if is_glob(entry):
+        return fnmatch.fnmatchcase(command, entry) or command.startswith(_shell_range(entry))
+    return command == entry or command.startswith(f"{entry} ")
+
+
+def _mcp_overlap(one: str, other: str) -> bool:
+    (server, tool), (other_server, other_tool) = mcp_parts(one), mcp_parts(other)
+    return server == other_server and (tool == other_tool or "*" in (tool, other_tool))
+
+
+def cursor_unasked(rules: Rules) -> tuple[list[str], list[str]]:
+    """The shell and MCP allows Cursor would apply to something the source asks about.
+
+    Cursor has no ask list: an unlisted call prompts. An allow reaching an ask
+    would therefore approve what the source says to ask about, so it is dropped,
+    and everything it covered prompts instead.
+    """
+    shell = [
+        entry
+        for entry in rules.allow
+        if any(
+            _shell_matches(entry, _shell_range(ask)) or _shell_matches(ask, _shell_range(entry))
+            for ask in rules.ask
+        )
+    ]
+    mcp = [entry for entry in rules.mcp_allow if any(_mcp_overlap(entry, a) for a in rules.mcp_ask)]
+    return shell, mcp
+
+
+def cursor_mcp(entry: str) -> str:
+    server, tool = mcp_parts(entry)
+    return f"Mcp({server}:{tool})"
+
+
+def cursor_permissions(rules: Rules) -> dict[str, list[str]]:
+    shell_dropped, mcp_dropped = cursor_unasked(rules)
+    allow = [cursor_shell(e, "allow") for e in rules.allow if e not in shell_dropped]
+    allow += [cursor_mcp(e) for e in rules.mcp_allow if e not in mcp_dropped]
+    deny = [cursor_shell(e, "deny") for e in rules.deny] + [cursor_mcp(e) for e in rules.mcp_deny]
+    return {"allow": dedupe(allow), "deny": dedupe(deny)}
+
+
+def render_cursor(rules: Rules, content: dict[str, Any]) -> dict[str, Any]:
+    return {"permissions": cursor_permissions(rules)}
+
+
+def render_cursor_project(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
+    config = copy.deepcopy(base)
+    config["permissions"] = cursor_permissions(rules)
+    return config
+
+
 PROJECT_CATEGORIES = ("allow", "ask", "deny")
 
 CODEX_PROJECT_DECISION = {"allow": "allow", "ask": "prompt", "deny": "forbidden"}
@@ -845,7 +936,13 @@ RENDERERS: dict[
     "claude-project-servers": DocumentJsonSpec(render_claude_project_servers),
     "droid-servers": DocumentJsonSpec(render_droid_servers),
     "opencode-servers": ValueSpec(render_opencode_servers),
-    "claude-servers": MergedJsonSpec(render_claude_global_servers, frozenset({"mcpServers"})),
+    "claude-servers": MergedJsonSpec(
+        lambda _rules, servers: render_claude_global_servers(servers), frozenset({"mcpServers"})
+    ),
+    "cursor": MergedJsonSpec(render_cursor, frozenset({"permissions"})),
+    "cursor-project": JsonSpec(render_cursor_project),
+    "cursor-hooks": DocumentJsonSpec(render_cursor_hooks),
+    "cursor-servers": DocumentJsonSpec(render_cursor_servers),
     "codex-servers": DocumentTextSpec(render_codex_servers),
     "codex-config": MergedTomlSpec(render_codex_config, frozenset({"mcp_servers"})),
     "codex-settings": MergedTomlSpec(render_codex_settings, _fragment_keys),

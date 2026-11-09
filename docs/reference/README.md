@@ -129,6 +129,7 @@ of where each keeps one and who owns that key:
 | Claude | `permissions.defaultMode`, in the same `settings.json` | **preserves** it — hand-maintained through the settings slice, and `render_claude` copies it back rather than writing a second spelling |
 | Codex | `approval_policy` in `config.toml` | writes the global file's `mcp_servers`, plugin tables and `defaults`, so a `defaults/codex.json` fragment sets it there; the project's `.codex/config.toml` it does not write |
 | Droid | session autonomy level | reports that the portable default is not represented |
+| Cursor | `approvalMode` in `cli-config.json` | reports it; the key is a CLI setting beside the `permissions` key loadout owns |
 
 Claude's is a deliberate narrowing, not an inability: `defaultMode` sits inside the very map
 `render_claude` rebuilds. Codex's rules file is the one that genuinely has nowhere to put it —
@@ -206,6 +207,7 @@ only.
 | Claude | `settings.json` → `permissions.{allow,ask,deny}` | **both** the same `settings.json` list (as `mcp__<server>__<tool>` patterns) **and** a separate `mcp-permissions.json` | split — MCP policy is rendered twice, to two consumers |
 | Codex | `.codex/rules/permissions.rules` | `config.toml` → `[mcp_servers.<name>].tools.<tool>`, owned by declared key | split |
 | Droid | `settings.json` → three command lists | not rendered | shell only |
+| Cursor | `cli-config.json` / `.cursor/cli.json` → `permissions.{allow,deny}` as `Shell(…)` | the same lists, as `Mcp(<server>:<tool>)` | shared |
 | OpenCode | `opencode.json` → `permission.bash` | the same `opencode.json` → `permission.<server>_<tool>` | shared |
 | Pi | `extensions/pi-permission-system/config.json` → `permission.bash` | the same document → `permission.mcp__<server>__<tool>` | shared |
 
@@ -219,7 +221,7 @@ file.
 
 ### Relocating the config directory
 
-Five of the six let an environment variable move the directory `loadout` writes into.
+Six of the seven let an environment variable move the directory `loadout` writes into.
 The variable differs in name *and in kind* — this is the case the "never generalise from
 Claude" rule exists for.
 
@@ -230,6 +232,7 @@ Claude" rule exists for.
 | Droid | `FACTORY_HOME_OVERRIDE` | the parent home directory; Loadout appends `.factory` |
 | Pi | `PI_CODING_AGENT_DIR` | `~/.pi/agent`, and `extensions/` under it |
 | OpenCode | `XDG_CONFIG_HOME` | the global config dir: `(XDG_CONFIG_HOME ?? ~/.config) / "opencode"` |
+| Cursor | `CURSOR_CONFIG_DIR` | only `cli-config.json` (and `permissions.json`); unset, `$XDG_CONFIG_HOME/cursor` on every platform, then `~/.cursor`. `mcp.json`, `hooks.json`, `skills/` and `agents/` stay in `~/.cursor` — see [cursor.md](cursor.md#destinations) |
 | Antigravity | **none** | `~/.gemini/antigravity-cli/settings.json` is built from `$HOME` and nothing else |
 
 **Verified 2026-08-09** by inspecting the installed binaries: Claude Code **2.1.226**
@@ -265,6 +268,7 @@ matching what a harness actually enforces.
 | Codex rules | https://developers.openai.com/codex/rules | |
 | Droid | https://docs.factory.ai/docs/autonomy-and-safety/auto-run | https://docs.factory.ai/cli/configuration/settings |
 | OpenCode | https://opencode.ai/docs/permissions/ | https://opencode.ai/docs/config/ |
+| Cursor | https://cursor.com/docs/cli/reference/permissions | https://cursor.com/docs/cli/reference/configuration |
 | Antigravity | https://antigravity.google/docs/cli-features | |
 | Pi | `@gotgenes/pi-permission-system` package docs | |
 

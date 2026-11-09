@@ -14,6 +14,7 @@ on upstream documentation only.
 |---|---|---|---|---|---|
 | Claude | **yes**: `model`, `effort`; `context: fork` + `agent` | Markdown + YAML frontmatter | `~/.claude/agents/`, `.claude/agents/` | `sonnet`, `opus`, `haiku`, `fable`, a full ID, `inherit` | `effort` |
 | Codex | no | **TOML** | `~/.codex/agents/*.toml`, `.codex/agents/*.toml` | an OpenAI model ID | `model_reasoning_effort` |
+| Cursor | no | Markdown + `key: value` frontmatter, read without YAML unquoting | `~/.cursor/agents/`, `.cursor/agents/` | `inherit` or a model ID | none; in the ID, `<id>[effort=high]` ([cursor.md](cursor.md#agents-subagents)) |
 | OpenCode | no | Markdown + YAML frontmatter | `~/.config/opencode/agents/`, `.opencode/agents/` | `provider/model-id` | none documented |
 | Droid | no | Markdown + YAML frontmatter ("custom droids") | `~/.factory/droids/`, `.factory/droids/` | `inherit`, a public model ID, `custom:<id>` | `reasoningEffort` |
 | Pi | no | none in core; `pi-subagents` package: Markdown | `~/.pi/agent/agents/`, `.pi/agents/` (package) | Pi model ID, `:level` suffix | `thinking` |

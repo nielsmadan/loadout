@@ -170,6 +170,7 @@ def test_harness_homes_follow_the_harness_variables(
     assert homes.homes == (
         fake_home.resolve() / ".claude",
         (tmp_path / "codex").resolve(),
+        fake_home.resolve() / ".cursor",
         fake_home.resolve() / ".factory",
         fake_home.resolve() / ".config" / "opencode",
         fake_home.resolve() / ".pi" / "agent",

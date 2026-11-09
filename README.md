@@ -5,8 +5,8 @@
 One source of truth for AI coding-agent configuration, rendered out to every harness.
 
 **Switch agents. Keep your setup.** Reuse project kits and compose shared and personal
-configuration from one source. Loadout renders for Claude Code, Codex, Factory Droid, OpenCode
-and Pi.
+configuration from one source. Loadout renders for Claude Code, Codex, Cursor CLI, Factory
+Droid, OpenCode and Pi.
 
 [Documentation](https://loadoutai.dev/) · [Getting started](https://loadoutai.dev/getting-started/)
 · [Kits](https://loadoutai.dev/guides/kits/)

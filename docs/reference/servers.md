@@ -69,14 +69,15 @@ the way they vote on which decision is stricter. One section holding both would 
 rules keyed by which field is being read — the kind of thing that reads fine when written and
 produces a defect later.
 
-## Ten destinations, nine built
+## Twelve destinations, eleven built
 
-Five harnesses, two scopes:
+Six harnesses, two scopes:
 
 | harness | global | project |
 |---|---|---|
 | Claude | `${CLAUDE_CONFIG_DIR:-~}/.claude.json` → `mcpServers` | `.mcp.json` |
 | Codex | `~/.codex/config.toml` → `[mcp_servers.*]` | **none for a project source** — a [stealth source](#codex-project-config-applies-in-a-trusted-project) writes `.codex/config.toml` |
+| Cursor | `~/.cursor/mcp.json` (not under `CURSOR_CONFIG_DIR`) | `.cursor/mcp.json` |
 | Droid | `${FACTORY_HOME_OVERRIDE:-~}/.factory/mcp.json` | `.factory/mcp.json` |
 | OpenCode | `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` → `mcp` | `opencode.json` → `mcp` |
 | Pi | `${PI_CODING_AGENT_DIR:-~/.pi/agent}/mcp.json` | `.pi/mcp.json` |
@@ -87,7 +88,8 @@ Renderers, keyed the way `RENDERERS` in `permissions/renderers.py` names them: `
 document, owning `.mcp.json` outright),
 `codex-servers` (TOML text; the function is scope-agnostic and no preset entry uses it now that
 `codex-config` renders definitions and policy together — it stays registered for extraction),
-`droid-servers` (the `{"mcpServers": …}` document at both scopes), `opencode-servers` (one
+`cursor-servers` (the whole `{"mcpServers": …}` document at both scopes, with Cursor's
+`${env:VAR}` references), `droid-servers` (the `{"mcpServers": …}` document at both scopes), `opencode-servers` (one
 `ValueSpec` used at both scopes, contributing the `mcp` key to `opencode.json` — the same
 document `permissions` also writes), `pi-servers` (`DocumentJsonSpec`,
 `~/.pi/agent/mcp.json` and `.pi/mcp.json`).
@@ -218,13 +220,14 @@ Every other definition renderer's inverse is registered in `VALUE_EXTRACTORS`:
 |---|---|---|
 | `claude-project-servers` (`.mcp.json`) | every field; a stray top-level key or unknown `type` is reported | — |
 | `claude-servers` (global) | every field, from the `mcpServers` key of `.claude.json`; the harness's keys beside it are expected and not reported | — |
+| `cursor-servers` | every field; `Bearer ${env:VAR}` as the auth variable; any top-level key beside `mcpServers`, and a server's `type`, `envFile` or `auth`, are lost and refuse init | — |
 | `droid-servers` | every field from the `mcpServers` wrapper | — |
 | `opencode-servers` | every field; nothing is noted about the rest of `opencode.json`, since `permission` has its own owner | — |
 | `pi-servers` | every field; pi-mcp-adapter's `auth: "bearer"` with `bearerTokenEnv` as the auth variable; a stray top-level key is reported | `bearerTokenEnv` without `auth: "bearer"` and `auth: "oauth"`, both noted |
 | `codex-servers` | every field, parsed from `[mcp_servers.*]` text with `tomllib` | not registered — see above |
 
-An `Authorization` header that is exactly `Bearer ${VAR}` (Claude, Droid, Pi) or `Bearer {env:VAR}`
-(OpenCode), with `VAR` one variable name, becomes `auth_env_var`. Every other header with a literal
+An `Authorization` header that is exactly `Bearer ${VAR}` (Claude, Droid, Pi), `Bearer ${env:VAR}`
+(Cursor) or `Bearer {env:VAR}` (OpenCode), with `VAR` one variable name, becomes `auth_env_var`. Every other header with a literal
 value is carried into `headers`, from Pi's `headers` and Codex's `http_headers` too. A header
 holding any other reference, such as `Bearer ${VAR:-fallback}`, refuses init with
 `uncarried-setting` — extraction never invents an environment variable name from an opaque header

@@ -125,6 +125,7 @@ Loadout derives every output path from its project preset. Each harness can gene
 | --- | --- |
 | `claude` | `.claude/settings.json`, `.claude/mcp-permissions.json`, `.mcp.json`, `CLAUDE.md`, `.claude/skills/`, `.claude/agents/` |
 | `codex` | `.codex/rules/permissions.rules`, `AGENTS.md`, `.agents/skills/`, `.codex/agents/` (`<name>.toml`) |
+| `cursor` | `.cursor/cli.json`, `.cursor/hooks.json`, `.cursor/mcp.json`, `AGENTS.md`, `.cursor/skills/`, `.cursor/agents/` |
 | `droid` | `.factory/settings.json`, `.factory/hooks.json`, `.factory/mcp.json`, `AGENTS.md`, `.factory/skills/`, `.factory/droids/` |
 | `opencode` | `opencode.json`, `AGENTS.md`, `.opencode/skills/`, `.opencode/agents/` |
 | `pi` | `.pi/extensions/pi-permission-system/config.json`, `.pi/mcp.json`, `AGENTS.md`, `.pi/skills/`, `.pi/agents/` |
@@ -140,9 +141,9 @@ Which permission files are written with no rules in them is in the same
 ### Skills
 
 Codex's copy of a skill goes to `.agents/skills/`. When Codex is selected and its copy is
-byte-identical to OpenCode's and Pi's, whichever of those two are selected, the one copy in
-`.agents/skills/` serves them all; otherwise OpenCode's goes to `.opencode/skills/` and Pi's to
-`.pi/skills/`.
+byte-identical to Cursor's, OpenCode's and Pi's, whichever of those are selected, the one copy in
+`.agents/skills/` serves them all; otherwise Cursor's goes to `.cursor/skills/`, OpenCode's to
+`.opencode/skills/` and Pi's to `.pi/skills/`.
 
 OpenCode needs `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1` in your shell, or it also scans
 `.claude/skills/` and picks between the two copies of each skill at random. `loadout check` says so

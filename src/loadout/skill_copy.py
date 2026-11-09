@@ -15,12 +15,14 @@ from .errors import LoadoutError, unwritable, write_denied
 from .harnesses import GLOBAL_PRESET, SHARED_SKILL_READERS
 from .kits import tree_hash
 
-# Codex, OpenCode and Pi all read `~/.agents/skills` (docs/reference/config.md, Skills).
+# Codex, Cursor, OpenCode and Pi all read `~/.agents/skills` (docs/reference/config.md,
+# Skills; docs/reference/cursor.md#skills).
 SHARED_SKILLS = "~/.agents/skills"
 
 STARTS = {
     "claude": "type /loadout",
     "codex": "type $loadout",
+    "cursor": "type /loadout",
     "droid": "type /loadout",
     "opencode": "ask it to use the loadout skill",
     "pi": "type /skill:loadout",

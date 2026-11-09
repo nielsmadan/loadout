@@ -13,6 +13,7 @@ from .composition import HEADER
 from .containment import PROJECT_DIR
 from .credentials import credential_material
 from .discovery import (
+    CURSOR_CONFIG,
     LINKED_SKILLS,
     PROJECT_ROOTS,
     RUNTIME_DOCUMENTS,
@@ -70,6 +71,8 @@ OWNERS: dict[str, dict[str, tuple[str, ...]]] = {
         "plugins": ("enabledPlugins", "extraKnownMarketplaces"),
     },
     "codex": {"mcp": ("mcp_servers",), "plugins": ("plugins", "marketplaces")},
+    # The rest of cli-config.json is the CLI's own defaults and state, never a settings base.
+    "cursor": {"permissions": ("permissions",)},
     "droid": {
         "permissions": ("commandAllowlist", "commandDenylist", "commandBlocklist"),
         "plugins": ("enabledPlugins", "extraKnownMarketplaces"),
@@ -81,6 +84,9 @@ NOT_UTF8_TEXT = "Text document is not UTF-8; re-encode it as UTF-8, then run ini
 # Codex's renderers write only the keys they own into config.toml, so the rest of it renders
 # from `defaults`, not from a `settings` base.
 RESIDUAL_SLICE = {"codex": "defaults"}
+# Harnesses with no residual document at all: every file loadout writes for Cursor
+# is either wholly its own or one key of a file the CLI keeps.
+NO_RESIDUAL = frozenset({"cursor"})
 DROID_INERT_SETTINGS_HOOKS = (
     "hooks in settings.json are not adopted as hooks, because Droid reads them only when no "
     "hooks.json is beside them; they stay in the settings fragment"
@@ -1079,12 +1085,13 @@ class _PlanBuilder:
                     else "settings.json"
                 )
             )
-            self.dormant(
-                settings,
-                (agent,),
-                RESIDUAL_SLICE.get(agent, "settings"),
-                "toml" if agent == "codex" else "json",
-            )
+            if agent not in NO_RESIDUAL:
+                self.dormant(
+                    settings,
+                    (agent,),
+                    RESIDUAL_SLICE.get(agent, "settings"),
+                    "toml" if agent == "codex" else "json",
+                )
             instruction = (
                 self.inventory.root / ("CLAUDE.md" if agent == "claude" else "AGENTS.md")
                 if project
@@ -1095,7 +1102,8 @@ class _PlanBuilder:
                 if project and agent != "claude"
                 else (agent,)
             )
-            self.dormant(instruction, consumers, "instructions")
+            if project or "instructions" in GLOBAL_PRESET[agent]:
+                self.dormant(instruction, consumers, "instructions")
             self.available_categories.add((agent, "skills"))
             if not project:
                 self.global_slices[agent].update(DIRECTORY_SLICES)
@@ -1119,6 +1127,22 @@ class _PlanBuilder:
                 if not project:
                     self.dormant(root / "hooks.json", (agent,), "hooks", "json")
                     self.available_categories.add((agent, "plugins"))
+            elif agent == "cursor":
+                config = (
+                    root / "cli.json"
+                    if project
+                    else next(
+                        (
+                            m.destination
+                            for m in self.inventory.mappings
+                            if m.kind == "file" and m.harnesses == (agent,)
+                        ),
+                        root / CURSOR_CONFIG,
+                    )
+                )
+                self.dormant(config, (agent,), "permissions", "json")
+                self.dormant(root / "hooks.json", (agent,), "hooks", "json")
+                self.dormant(root / "mcp.json", (agent,), "mcp", "json")
             elif agent == "opencode":
                 self.available_categories.add((agent, "hooks"))
                 self.dormant(root / "plugins", (agent,), "plugins", "tree")
