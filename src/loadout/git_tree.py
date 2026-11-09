@@ -106,6 +106,7 @@ def blobs(
     completed = False
     try:
         for name, oid in wanted:
+            content: bytes | None
             match replies.readline().split():
                 case [found, b"blob", size] if found.decode() == oid:
                     content = replies.read(int(size))
