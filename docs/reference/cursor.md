@@ -14,8 +14,10 @@ Sources, in the order AGENTS.md ranks them:
 - **Upstream docs:** `https://cursor.com/docs/…​.md`, read 2026-11-08.
 
 Most of this page was not observed with a signed-in agent run, since every one needs a Cursor
-account, so the behavioural claims, the headless one most of all, are still unverified. The
-exception is the home-folder rule under [Instructions](#instructions), observed on 2026-11-09. One thing
+account. The exceptions are the home-folder rule under [Instructions](#instructions), observed on
+2026-11-09, and the headless runs of 2026-11-10: CLI 2026.11.05-86047df in a throwaway Linux
+container, authenticated with `CURSOR_API_KEY` on a team account, rendering from a 0.11.0 build of
+loadout. Each section says what those runs showed. One thing
 was observed in a throwaway container without an account: given a `cli-config.json` holding only
 `permissions`, `agent --version` rewrote it with about twenty defaults (`version`, `editor`,
 `display`, `approvalMode`, `sandbox`, `attribution` and more) appended after the key, which kept its
@@ -135,8 +137,15 @@ that makes it a catch-all stated elsewhere, like Claude's.
 **Headless** (ADR 0012's first test): the parameters page describes `--force` as "Force allow
 commands unless explicitly denied". So deny entries bind even under `--force`, and without it the
 allowlist decides. The CLI usage page also says "Cursor has full write access in non-interactive
-mode". Whether an unlisted shell command is refused or auto-run in `-p` mode without `--force`
-has **not** been observed.
+mode".
+
+Observed on 2026-11-10, in `-p` mode without `--force`: an allowed `echo` ran; a denied `uname`
+was refused with "Permission denied: Command blocked by permissions configuration"; and an
+unlisted `uname`, with an empty deny list, was refused with "Rejected: Review cancelled or failed"
+under `approvalMode` `unrestricted` and `allowlist` alike. Whether that last refusal is headless
+behaviour or the account's team policy is not established: the same account refused `--force`
+outright ("Your team administrator has disabled the 'Run Everything' option"), so the deny list
+under `--force` could not be run either.
 
 ### `cli-config.json` is a shared document
 
@@ -178,8 +187,11 @@ for Sonnet 5.5 at medium effort:
     "hasChangedDefaultModel": true
 
 A settings fragment therefore sets `selectedModel` and `hasChangedDefaultModel` and leaves `model`
-to the CLI. Whether `selectedModel` alone holds against a stale `model` has not been run; by the
-code it does, since step 2 returns before `model` is read.
+to the CLI. Observed on 2026-11-10: after a `--model gpt-5.2` run had saved its choice, loadout
+set `selectedModel` to `composer-2.5` and the next run without `--model` reported `Composer 2.5`
+in its `stream-json` init event. A second `--model gpt-5.2` run then showed as `owned-key` drift
+in `check`, plain `sync` refused, and `sync --force` put `composer-2.5` back. Starting the CLI
+without `--model` rewrote the file without disturbing the owned keys: `check` stayed clean.
 
 `permissions.json` (global and project) is a separate surface, read by both the CLI and the app.
 It holds Auto-review's plain-English `allow_instructions` and `block_instructions`, plus
@@ -262,8 +274,14 @@ hooks page's own sentence listing them, not assembled by search.
 One switch decides whether Cursor reads Claude's `CLAUDE.md`, skills, agents, hooks and plugins.
 The third-party hooks page names it **Include Third-Party Plugins, Skills, and Other Configs**,
 under Settings → Agents → Third-Party Imports, and says: "The setting is on by default." In the CLI
-bundle the getter defaults to true (`e??(()=>!0)`). Whether the CLI exposes a way to turn it off
-has not been found.
+bundle the getter defaults to true (`e??(()=>!0)`), and the rules loader adds `CLAUDE.md` and
+`CLAUDE.local.md` only when it is on (`a&&r.push("CLAUDE.md","CLAUDE.local.md")`). Whether the CLI
+exposes a way to turn it off has not been found: `cli-config.json` has no key for it, and the
+getter's value is passed in from outside the loader.
+
+Observed on 2026-11-10 in a stealth target with no app installed: Cursor listed both
+`.cursor/rules/agent-config.mdc` and `CLAUDE.local.md` as always-applied rules, with the same
+first heading, so the import is on for the CLI when nothing turns it off.
 
 This matters more for Cursor than anything else on the page. Out of the box, Cursor already
 consumes most of what loadout renders for Claude. Rendering Cursor's own copies on top of that
@@ -284,7 +302,7 @@ the bundle's default config. The plugin enablement mechanism is therefore **not 
 
 | 0012's test | Cursor CLI 2026.11.05 |
 |---|---|
-| The generated file is honoured where it matters | interactive: yes, per the docs. Headless: deny binds even under `--force`, and the allowlist governs without it, per the docs. Runtime: **unverified** |
+| The generated file is honoured where it matters | interactive: yes, per the docs. Headless: observed 2026-11-10 without `--force`, allow and deny both bind; deny under `--force` not run (team policy refused `--force`) |
 | A global skills path | yes: `~/.cursor/skills/`, plus `~/.agents/skills/` |
 | A config-directory variable | yes, `CURSOR_CONFIG_DIR`, but it moves only `cli-config.json` and `permissions.json` |
 | The plugin enablement mechanism | **not established**: app-managed, with no file key |
@@ -379,4 +397,5 @@ file git ignores is not always a file Cursor reads:
 
 With third-party imports on, a stealth source that also declares Claude reaches Cursor twice:
 through `CLAUDE.local.md`, and through `.claude/skills/` for each skill both harnesses get.
-`check` names both. Nothing here was run with an account.
+`check` names both. The instructions half was observed on 2026-11-10 (see
+[Third-party imports](#third-party-imports)); the skills half has not been run.
