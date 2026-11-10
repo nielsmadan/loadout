@@ -8,6 +8,8 @@ updates:
       time: "08:00"
       timezone: "Europe/Berlin"
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
     assignees:
       - "nielsmadan"
     groups:
@@ -26,6 +28,8 @@ updates:
       time: "08:00"
       timezone: "Europe/Berlin"
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
     assignees:
       - "nielsmadan"
     groups:
