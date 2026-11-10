@@ -1,4 +1,4 @@
-# 0054 — A stealth source links kits by name
+# 0055 — A stealth source links kits by name
 
 **Status:** accepted (2026-11-08, ruled by the user). Extends kits
 ([0053](0053-overlays-become-stealth-sources-and-templates-become-kits.md)) to stealth sources

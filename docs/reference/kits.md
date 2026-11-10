@@ -197,7 +197,7 @@ A stealth source names kits in its `[stealth]` table (`kits = ["react-native"]`)
 `loadout kit add KIT --stealth NAME`. Resolution is the linked half of the order above:
 the machine's global sources, then the bundled kits. There is no vendored step, because a stealth
 folder is personal and keeps no copy, so `--vendored` and `[kit.NAME]` are refused
-([0054](../decisions/0054-a-stealth-source-links-kits-by-name.md)).
+([0055](../decisions/0055-a-stealth-source-links-kits-by-name.md)).
 
 The names are parsed with the manifest, but the kits resolve only when a render, `check` or
 `sync` needs them (`StealthManifest.kits`, cached for the run), so a kit that stops resolving
