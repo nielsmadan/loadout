@@ -198,9 +198,10 @@ def test_the_files_own_trailing_newline_convention_is_kept() -> None:
 
 
 def test_an_absent_destination_starts_from_an_empty_object() -> None:
-    applied = json.loads(apply_json("", JSON_OWNED, document("jina")))
+    created = apply_json("", JSON_OWNED, document("jina"))
 
-    assert list(applied["mcpServers"]) == ["jina"]
+    assert list(json.loads(created)["mcpServers"]) == ["jina"]
+    assert created.endswith("}\n")
 
 
 def test_a_destination_that_is_not_an_object_is_refused() -> None:

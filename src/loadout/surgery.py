@@ -62,7 +62,8 @@ def apply_json(existing: str, owned: frozenset[str], document: str) -> str:
     rendered = json.dumps(base, indent=2, ensure_ascii=False)
     # Match the file's own convention rather than imposing one: Claude writes this
     # file without a trailing newline, and adding one would read as drift forever.
-    return rendered + "\n" if existing.endswith("\n") else rendered
+    # A file loadout creates gets one, like every other generated file.
+    return rendered + "\n" if existing.endswith("\n") or not existing.strip() else rendered
 
 
 _ABSENT = object()

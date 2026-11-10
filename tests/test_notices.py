@@ -203,9 +203,14 @@ def test_a_codex_catch_all_names_where_its_approval_policy_is_set(
     assert f"Codex's is {where};" in notice.message
 
 
-def test_a_cursor_catch_all_names_the_settings_slice() -> None:
-    (notice,) = unreached_catch_all("cursor", "cursor", "ask")
+@pytest.mark.parametrize(
+    ("renderer", "where"),
+    [
+        ("cursor", "cli-config.json, which the settings slice sets"),
+        ("cursor-project", "the global cli-config.json, which the global settings slice sets"),
+    ],
+)
+def test_a_cursor_catch_all_names_the_settings_slice(renderer: str, where: str) -> None:
+    (notice,) = unreached_catch_all("cursor", renderer, "ask")
 
-    assert "Cursor's is approvalMode in cli-config.json, which the settings slice sets;" in (
-        notice.message
-    )
+    assert f"Cursor's is approvalMode in {where};" in notice.message

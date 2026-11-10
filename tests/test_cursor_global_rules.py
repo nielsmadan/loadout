@@ -56,11 +56,13 @@ def test_an_mdc_destination_gets_the_frontmatter_and_a_markdown_one_does_not(
     root = build(
         tmp_path,
         '\n[instructions.shared]\norder = ["intro"]\n'
-        'destinations = ["~/.cursor/rules/shared.mdc", "~/notes/shared.md"]\n',
+        'destinations = ["~/.cursor/rules/shared.mdc", "~/.cursor/rules/LOUD.MDC", '
+        '"~/notes/shared.md"]\n',
     )
     outputs = rendered(root)
     document = f"{HEADER}\n\nintro\n"
     assert outputs[str(fake_home / ".cursor" / "rules" / "shared.mdc")] == RULE + document
+    assert outputs[str(fake_home / ".cursor" / "rules" / "LOUD.MDC")] == RULE + document
     assert outputs[str(fake_home / "notes" / "shared.md")] == document
 
 

@@ -24,7 +24,7 @@ CURSOR_RULE = "---\nalwaysApply: true\n---\n\n"
 
 
 def for_destination(path: Path, content: str) -> str:
-    return CURSOR_RULE + content if path.suffix == ".mdc" else content
+    return CURSOR_RULE + content if path.suffix.lower() == ".mdc" else content
 
 
 def load_fragment(path: Path) -> str:
