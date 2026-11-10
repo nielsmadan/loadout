@@ -19,7 +19,7 @@ def test_formula_uses_release_source_and_locked_runtime_dependencies(tmp_path):
     output = tmp_path / "Formula/loadout.rb"
     digest = "a" * 64
     result = subprocess.run(
-        [sys.executable, str(ROOT / "scripts/homebrew.py"), "9.8.7", digest, str(output)],
+        [sys.executable, str(ROOT / "scripts/homebrew.py"), "render", "9.8.7", digest, str(output)],
         text=True,
         capture_output=True,
         check=False,
@@ -87,3 +87,51 @@ def test_missing_source_archive_fails_instead_of_omitting_dependency():
 def test_invalid_release_identity_is_rejected(version, digest):
     with pytest.raises(ValueError):
         homebrew.render(version, digest, ROOT)
+
+
+def formula_for(version):
+    return homebrew.render(version, "a" * 64, ROOT)
+
+
+@pytest.mark.parametrize(
+    "existing,expected_output,expected_version",
+    [
+        (None, "updated", "1.2.3"),
+        ("1.2.2", "updated", "1.2.3"),
+        ("1.2.3", "updated", "1.2.3"),
+        ("1.10.0", "skipped-newer", "1.10.0"),
+    ],
+)
+def test_publish_never_downgrades_the_tap(tmp_path, existing, expected_output, expected_version):
+    formula = tmp_path / "loadout.rb"
+    formula.write_text(formula_for("1.2.3"))
+    tap_formula = tmp_path / "tap/Formula/loadout.rb"
+    if existing is not None:
+        tap_formula.parent.mkdir(parents=True)
+        tap_formula.write_text(formula_for(existing))
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/homebrew.py"),
+            "publish",
+            str(formula),
+            str(tap_formula),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == f"{expected_output}\n"
+    assert tap_formula.read_text() == formula_for(expected_version)
+
+
+def test_publish_rejects_an_unrecognised_tap_formula(tmp_path):
+    formula = tmp_path / "loadout.rb"
+    formula.write_text(formula_for("1.2.3"))
+    tap_formula = tmp_path / "tap.rb"
+    unrecognised = 'class Loadout < Formula\n  url "https://example.com/loadout.tar.gz"\nend\n'
+    tap_formula.write_text(unrecognised)
+    with pytest.raises(ValueError, match="one Loadout release version"):
+        homebrew.publish(formula, tap_formula)
+    assert tap_formula.read_text() == unrecognised

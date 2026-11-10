@@ -66,7 +66,7 @@ jobs:
           curl --fail --location --retry 3 --output "$RUNNER_TEMP/loadout-source.tar.gz" \
             "https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${RELEASE_TAG}.tar.gz"
           source_sha=$(shasum -a 256 "$RUNNER_TEMP/loadout-source.tar.gz" | cut -d' ' -f1)
-          python3 scripts/homebrew.py "${RELEASE_TAG#v}" "$source_sha" loadout.rb
+          python3 scripts/homebrew.py render "${RELEASE_TAG#v}" "$source_sha" loadout.rb
       - name: Install and test through Homebrew
         run: |
           brew tap-new --no-git nielsmadan/loadout-release-test
@@ -122,6 +122,10 @@ jobs:
     needs: publish
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+          path: release-tools
       - uses: actions/download-artifact@v8.0.2
         with:
           name: release-package
@@ -135,8 +139,12 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          mkdir -p homebrew-tap/Formula
-          cp release-assets/loadout.rb homebrew-tap/Formula/loadout.rb
+          FORMULA_ACTION=$(python3 release-tools/scripts/homebrew.py publish \
+            release-assets/loadout.rb homebrew-tap/Formula/loadout.rb)
+          if [ "$FORMULA_ACTION" = "skipped-newer" ]; then
+            echo "A newer Homebrew formula is already published"
+            exit 0
+          fi
           cd homebrew-tap
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

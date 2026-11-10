@@ -41,7 +41,8 @@ just release 0.1.0
 The dry run inspects Git state and prints the proposal without changing files. It skips the
 tool check and every policy command, including the checks and the git-cliff version suggestion,
 so its proposal is curtains' built-in conventional-commit estimate. A normal release runs
-`just check` and `just build-docs`, then shows the proposed version, files and publication
+`just check`, the integration and migration tiers (`just test-integration`, `just test-migration`)
+and `just build-docs`, then shows the proposed version, files and publication
 steps. Enter `y` to proceed, another version or bump to revise the proposal, or Enter to cancel.
 `--yes` explicitly bypasses the prompt for automation.
 
@@ -118,7 +119,8 @@ uv tool install --python 3.13 git+https://github.com/nielsmadan/loadout.git@v0.9
 
 `scripts/release.json` is the curtains release policy. `scripts/prepare_release.py` maintains
 the versions, and `scripts/homebrew.py` renders `scripts/loadout.rb.in` using the lockfile.
-The template and lockfile are the formula source; subsequent releases replace the tap copy.
+The template and lockfile are the formula source; subsequent releases replace the tap copy
+through `scripts/homebrew.py publish`, which leaves a newer published formula in place.
 Update the template's Python dependency when changing the supported Homebrew runtime.
 
 Use `just build` to check packaging locally. Version preparation is tested in

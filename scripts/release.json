@@ -9,6 +9,14 @@
     ],
     [
       "just",
+      "test-integration"
+    ],
+    [
+      "just",
+      "test-migration"
+    ],
+    [
+      "just",
       "build-docs"
     ]
   ],

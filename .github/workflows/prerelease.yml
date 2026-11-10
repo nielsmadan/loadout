@@ -60,7 +60,7 @@ jobs:
           archive="$RUNNER_TEMP/loadout-source.tar.gz"
           git archive --format=tar.gz --prefix="loadout-${version}/" -o "$archive" HEAD
           source_sha=$(shasum -a 256 "$archive" | cut -d' ' -f1)
-          python3 scripts/homebrew.py "$version" "$source_sha" loadout.rb
+          python3 scripts/homebrew.py render "$version" "$source_sha" loadout.rb
           # No tag exists yet, so build from the archive this commit produces.
           python3 - "$archive" "$version" <<'PY'
           import pathlib
