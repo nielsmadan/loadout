@@ -560,7 +560,6 @@ def _parse_agents(
     data: dict[str, object],
     path: Path,
     claimed: set[PurePosixPath],
-    preset: Mapping[str, Mapping[str, SliceOutput]] = GLOBAL_PRESET,
 ) -> tuple[
     tuple[InstructionTarget, ...],
     tuple[PermissionTarget, ...],
@@ -601,7 +600,7 @@ def _parse_agents(
         if not isinstance(declared, dict):
             raise LoadoutError(f"{path}: [{agent}] must be a table")
         block = {**common, **declared}
-        offered = preset[agent]
+        offered = GLOBAL_PRESET[agent]
         _check_block(agent, declared, offered)
         block = {k: v for k, v in block.items() if k in offered or k in AGENT_EXTRAS}
         _check_automatic_values(path, agent, declared, block)
@@ -692,7 +691,6 @@ def _build_manifest(
     *,
     config_paths: tuple[Path, ...] = (),
     sources: SourceParser = parse_sources,
-    preset: Mapping[str, Mapping[str, SliceOutput]] = GLOBAL_PRESET,
 ) -> Manifest:
     if (renamed := renamed_overlay_table(data, path)) is not None:
         raise renamed
@@ -710,7 +708,7 @@ def _build_manifest(
         agent_skills,
         agent_module_config,
         agent_definitions,
-    ) = _parse_agents(data, path, claimed, preset)
+    ) = _parse_agents(data, path, claimed)
     targets += agent_targets
     permissions += agent_permissions
 

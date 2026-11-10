@@ -63,7 +63,7 @@ outside a known slice remain harness-owned and stay in place.
 | `instructions` | unsupported | `loadout/config.toml` and `loadout/instructions/*.md` | manifest selection and `instructions/*.md` fragments |
 | `skills` | `loadout/skills/<name>.local/SKILL.md`, replacing the shared skill of that name | supported for `claude`, `codex`, `cursor`, `droid`, `opencode`, `pi` via `loadout/skills/<name>/SKILL.md` | `skills/<name>/SKILL.md` from selected sources |
 | `agents` | unsupported | supported for `claude`, `codex`, `cursor`, `droid`, `opencode`, `pi` via `loadout/agents/<name>.md` | `agents/<name>.md` from selected sources |
-| `settings` | unsupported | supported for `claude`, `droid`, `opencode` via `loadout/settings/<harness>.json` | supported for `claude`, `droid`, `opencode` via `settings/<name>.json` fragments, and for Pi only when `[pi]` also declares `plugins`; Codex uses `defaults` |
+| `settings` | unsupported | supported for `claude`, `droid`, `opencode` via `loadout/settings/<harness>.json` | supported for `claude`, `cursor`, `droid`, `opencode` via `settings/<name>.json` fragments, and for Pi only when `[pi]` also declares `plugins`; Codex uses `defaults` |
 | `defaults` | unsupported | unsupported | Codex top-level and nested settings via `defaults/<name>.json` fragments |
 | `hooks` | unsupported | Cursor and Droid via `loadout/hooks.json` | `hooks/<name>.json` fragments selected by harnesses offering hooks |
 | `plugins` | unsupported | Droid via `loadout/plugins.json` | `plugins/<name>.json` fragments selected by harnesses offering plugins |
@@ -132,7 +132,14 @@ and Pi.
 Cursor has no ask list. An `ask` entry is left to Cursor's `approvalMode`, and an `allow` that
 would also cover an `ask` is not rendered for Cursor, so that command still prompts there. Tell
 the user both when a rule they ask for reaches Cursor. Cursor has no global instructions file, so
-global instructions do not reach it.
+loadout writes its global instructions as the rule `~/.cursor/rules/loadout.mdc`, which Cursor
+applies to every workspace under the home folder and to none outside it.
+
+Cursor's `settings` fragment sets keys in `cli-config.json`, such as `approvalMode`,
+`sandbox.mode` and the default model as `selectedModel` with `hasChangedDefaultModel: true`.
+loadout owns only the leaves the fragment names; the CLI's own keys stay. Starting Cursor with
+`--model` saves that model over `selectedModel`, which `check` then reports as drift and `sync`
+refuses to overwrite until the user ports it into the fragment or runs `loadout sync --force`.
 
 ## Source rules
 

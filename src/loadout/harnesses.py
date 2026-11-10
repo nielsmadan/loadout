@@ -181,12 +181,19 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
         # see docs/reference/cursor.md#destinations.
         "skills": SliceOutput(destination="~/.cursor/skills"),
         "agents": SliceOutput(destination="~/.cursor/agents"),
+        # Cursor has no config-directory instructions file. Its rules loader reads
+        # `.cursor/rules/` in every ancestor of the workspace, so a rule in the home
+        # folder applies to every workspace beneath it.
+        "instructions": SliceOutput(destination="~/.cursor/rules/loadout.mdc"),
         # A root for hook scripts: user hooks run from ~/.cursor/.
         "module-config": SliceOutput(destination="~/.cursor"),
-        # One key of a file the CLI rewrites with its own defaults and state on every
-        # start, so loadout owns `permissions` and nothing else.
+        # A file the CLI rewrites with its own defaults and state on every start, so
+        # loadout owns `permissions` and the leaves a settings fragment names, and
+        # nothing else.
         "permissions": SliceOutput(
-            renderer="cursor", destination="${CURSOR_CONFIG_DIR:-~/.cursor}/cli-config.json"
+            renderer="cursor",
+            destination="${CURSOR_CONFIG_DIR:-~/.cursor}/cli-config.json",
+            takes_settings=True,
         ),
         "hooks": SliceOutput(
             renderer="cursor-hooks", destination="~/.cursor/hooks.json", source_slice="hooks"
@@ -309,9 +316,8 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
 }
 
 
-# Cursor has no global instructions slice: its rules loader reads workspace
-# ancestors only, and User Rules are an app setting rather than a file. Nor a
-# plugins slice: plugins are installed by the app, with no enablement key in a file.
+# Cursor has no plugins slice: plugins are installed by the app, with no enablement
+# key in a file.
 
 # A config-directory variable whose own default depends on another variable. Unset,
 # CURSOR_CONFIG_DIR falls back to $XDG_CONFIG_HOME/cursor when that is set, on every

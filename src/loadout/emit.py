@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from .composition import HEADER, load_fragment, render
+from .composition import HEADER, for_destination, load_fragment, render
 from .containment import is_read_through, refuse_escaping, refuse_external_links
 from .destinations import resolve_destination
 from .documents import merge_documents
@@ -32,6 +32,7 @@ from .output import Copied, Merged, Output, SharedText, output_record_paths
 from .permissions.merge import merge_rules
 from .permissions.renderers import (
     MCP_NAMESPACE_HARNESS,
+    REMOVE_KEY,
     RENDERERS,
     DocumentJsonSpec,
     DocumentTextSpec,
@@ -80,7 +81,7 @@ from .subagents import (
     render_agent,
 )
 from .surgery import concat_documents
-from .toml_paths import overlapping_keys
+from .toml_paths import key_name, leaf_values, overlapping_keys
 from .worktrees import linked_worktree_source
 
 PERMISSIONS_SOURCE = "permissions.toml"
@@ -385,13 +386,11 @@ def _compose_merged(
                 f"TOML tables can"
             )
         json_spec = json_specs[0]
-        _, _, content = contributors[0]
-        document = json.dumps(
-            json_spec.fn(rules if first.select_all else EMPTY_RULES, content),
-            indent=2,
-            ensure_ascii=False,
-        )
-        return Merged(json_spec.owns, document, format="json")
+        _, residual, content = contributors[0]
+        rendered = json_spec.fn(rules if first.select_all else EMPTY_RULES, content)
+        settings = _settings_leaves(first, residual, json_spec.owns)
+        document = json.dumps({**residual, **rendered}, indent=2, ensure_ascii=False)
+        return Merged(json_spec.owns | settings, document, format="json")
 
     owned: set[str] = set()
     fragments: list[str] = []
@@ -433,6 +432,27 @@ def _apply_value_renderer(
     document.update(spec.fn(content))
 
 
+def _settings_leaves(
+    target: PermissionTarget, residual: dict[str, Any], generated: frozenset[str]
+) -> frozenset[str]:
+    """The leaves a settings fragment sets in a file the harness shares with its own state.
+
+    Owned one leaf at a time, so a table the harness also writes keeps its other keys.
+    """
+    if REMOVE_KEY in residual:
+        raise LoadoutError(
+            f"permissions.{target.name}: `{REMOVE_KEY}` is Codex defaults vocabulary; a "
+            "settings fragment stops managing a key when the fragment leaves it out"
+        )
+    clash = sorted(set(residual) & generated)
+    if clash:
+        raise LoadoutError(
+            f"permissions.{target.name}: the settings fragment sets {', '.join(clash)}, "
+            f"which the {target.name} slice generates; remove it from the fragment"
+        )
+    return frozenset(key_name(path) for path, _ in leaf_values(residual))
+
+
 def _attach_records(
     document: str | Merged,
     contributors: list[tuple[PermissionTarget, dict[str, Any], dict[str, Any]]],
@@ -456,8 +476,15 @@ def _attach_records(
     owned = document.owned
     evicted = document.evicted
     records: list[tuple[Path, str]] = []
-    for target, _, content in contributors:
+    for target, residual, content in contributors:
         spec = _resolve_renderer(target.renderer, f"permissions.{target.name}")
+        if isinstance(spec, MergedJsonSpec) and target.settings:
+            first = resolve_item(manifest.sources, target.settings[0], SETTINGS)
+            path = first.path.with_suffix(".owned")
+            present = _settings_leaves(target, residual, spec.owns)
+            owned |= owned_now(read_record(path), present)
+            records.append((path, render_record(present)))
+            continue
         if not isinstance(spec, MergedTomlSpec) or not callable(spec.owns):
             continue
         if not target.content or target.content_slice is None:
@@ -622,10 +649,11 @@ def _owner_label(target: InstructionTarget | PermissionTarget) -> str:
 
 def _fixed(content: str) -> Callable[[Path], str]:
     """An instruction document reads nothing from the file it overwrites, so it is
-    rendered once and every path it expands to gets the same bytes."""
+    rendered once and every path it expands to gets the same bytes, bar the
+    frontmatter a Cursor rule needs."""
 
-    def render_for(_path: Path) -> str:
-        return content
+    def render_for(path: Path) -> str:
+        return for_destination(path, content)
 
     return render_for
 

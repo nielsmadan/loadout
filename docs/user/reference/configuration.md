@@ -287,6 +287,46 @@ key both given a value and listed in `$remove` is an error. Entries use TOML key
 `"skills.max_context_tokens"` removes only that field. Parent/child ownership conflicts, including
 conflicts with another slice, are refused.
 
+### Cursor settings
+
+Cursor keeps its settings in `cli-config.json`, beside the `permissions` loadout writes and the
+state the CLI writes itself: sign-in, caches, prompt counters. `settings` under `[cursor]` names
+fragments resolved as `<source>/settings/<name>.json`, and loadout sets the keys they hold and
+leaves every other key alone:
+
+```toml
+[cursor]
+settings = "cursor"        # settings/cursor.json
+```
+
+```json
+{
+  "approvalMode": "unrestricted",
+  "sandbox": { "mode": "disabled" },
+  "selectedModel": {
+    "modelId": "claude-sonnet-5-5",
+    "parameters": [{ "id": "reasoning_effort", "value": "medium" }]
+  },
+  "hasChangedDefaultModel": true
+}
+```
+
+As with [Codex defaults](#codex-defaults), a nested object owns its leaves rather than the whole
+object, so `sandbox.mode` is set and the CLI's other `sandbox` keys stay. An array is owned whole.
+The slice keeps an owned-key record beside the fragment, `settings/<name>.owned`, so a key you
+remove from the fragment is removed from `cli-config.json`, and a table left empty goes with it.
+`$remove` is not accepted here: leaving a key out of the fragment stops managing it. The fragment
+cannot set `permissions`, which the permissions slice writes, and settings render only while that
+slice does, so `permissions = false` under `[cursor]` is an error and `permissions = []` is not.
+
+The default model is `selectedModel`: a model id from Cursor's parameterised list with its
+parameters, which Cursor reads before anything else in the file. `hasChangedDefaultModel: true`
+keeps Cursor from replacing it with the server's default. The `model` object beside it is display
+data the CLI fills in itself, so leave it out of the fragment. Starting Cursor with `--model`,
+headless `-p` runs included, saves that model over `selectedModel`. `check` then reports it as an
+owned key edited outside loadout, and `sync` stops there, as it does for any such key: put the
+model in the fragment to keep it, or run `loadout sync --force` to put yours back.
+
 ### Where harness blocks write
 
 Each destination in the preset carries that harness's config-directory variable:
@@ -295,6 +335,13 @@ Each destination in the preset carries that harness's config-directory variable:
 `${PI_CODING_AGENT_DIR:-~/.pi/agent}`. Relocating a harness is followed automatically, and with the
 variable unset each resolves to that harness's own default. The paths per harness are in
 [harness support](harnesses.md).
+
+Cursor has no instructions file in its config folder, so its global instructions are the rule
+`~/.cursor/rules/loadout.mdc`. Cursor reads `.cursor/rules/` in every folder above a workspace, so
+the rule applies to every workspace under the home folder and to none outside it, and it stays in
+the home folder when `CURSOR_CONFIG_DIR` moves the rest of Cursor's config. Any instructions
+destination ending in `.mdc`, including one in an `[instructions.<name>]` target, starts with the
+`alwaysApply: true` frontmatter Cursor needs before the generated header.
 
 ### Skill policy
 

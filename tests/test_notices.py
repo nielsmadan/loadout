@@ -201,3 +201,11 @@ def test_a_codex_catch_all_names_where_its_approval_policy_is_set(
     (notice,) = unreached_catch_all("codex", renderer, "ask")
 
     assert f"Codex's is {where};" in notice.message
+
+
+def test_a_cursor_catch_all_names_the_settings_slice() -> None:
+    (notice,) = unreached_catch_all("cursor", "cursor", "ask")
+
+    assert "Cursor's is approvalMode in cli-config.json, which the settings slice sets;" in (
+        notice.message
+    )

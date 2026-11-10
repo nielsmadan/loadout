@@ -13,8 +13,9 @@ Sources, in the order AGENTS.md ranks them:
   citations below quote code, not symbol names.
 - **Upstream docs:** `https://cursor.com/docs/…​.md`, read 2026-11-08.
 
-Nothing on this page was observed with a signed-in agent run, since every one needs a Cursor
-account, so the behavioural claims, the headless one most of all, are still unverified. One thing
+Most of this page was not observed with a signed-in agent run, since every one needs a Cursor
+account, so the behavioural claims, the headless one most of all, are still unverified. The
+exception is the home-folder rule under [Instructions](#instructions), observed on 2026-11-09. One thing
 was observed in a throwaway container without an account: given a `cli-config.json` holding only
 `permissions`, `agent --version` rewrote it with about twenty defaults (`version`, `editor`,
 `display`, `approvalMode`, `sandbox`, `attribution` and more) appended after the key, which kept its
@@ -76,12 +77,21 @@ loaded as `alwaysApply: true`.
   `@AGENTS.md` import ([0027](../decisions/0027-project-claude-md-imports-agents-md.md)). Cursor
   does not inline that import. The rules page says: "A file mention like `@migration-template.sql`
   tells Agent where to look … The file's contents are not inlined into the prompt".
-- **Global:** verified negative, there is no global instructions file in the 2026.11.05 bundle.
-  The rules loader above is the only file-based instructions source, and it reads workspace
-  ancestors, not the config directory. The bundle contains no `".claude","CLAUDE.md"` join, so
-  Claude's global `~/.claude/CLAUDE.md` is not read either. The rules page puts "User Rules" in
-  **Customize → Rules**, an app setting, not a file. A `~/AGENTS.md` would apply to every project
-  under the home directory, but only as an ancestor. It is not a config-directory file.
+- **Global:** verified negative, there is no config-directory instructions file in the
+  2026.11.05 bundle. The rules loader above is the only file-based instructions source, and it
+  reads workspace ancestors, not the config directory. The bundle contains no
+  `".claude","CLAUDE.md"` join, so Claude's global `~/.claude/CLAUDE.md` is not read either. The
+  rules page puts "User Rules" in **Customize → Rules**, an app setting, not a file.
+
+  The ancestor walk is the global mechanism. The home folder is an ancestor of every workspace
+  under it, so `~/.cursor/rules/*.mdc` applies to all of them, and no other harness reads that
+  folder. `~/AGENTS.md` works the same way but is read by others too. Observed on 2026-11-09 with
+  a signed-in headless `cursor-agent -p --mode ask` in a fresh git repository under `~/wrksp`: a
+  rule in `~/.cursor/rules/` starting with `---\nalwaysApply: true\n---` was applied, and the same
+  rule with a comment line above the frontmatter was ignored. So the frontmatter has to come first,
+  ahead of loadout's generated header. A workspace outside the home folder gets nothing from it,
+  and `CURSOR_CONFIG_DIR` does not move it. Loadout writes its global rule there
+  ([0056](../decisions/0056-cursor-gets-a-home-folder-rule-and-owned-settings-keys.md)).
 
 ## Shell permissions
 
@@ -137,9 +147,39 @@ lists `editor.vimMode` as a **required** field, and adds: "CLI performs self-rep
 fields", "Some fields are CLI-managed and may be overwritten", and "Corrupted files are backed up
 as `.bad` and recreated". The file is "Pure JSON format (no comments)".
 
-So loadout can own the `permissions` key only, and must preserve everything else, the way it
-treats Codex's `config.toml`. The CLI ends the file with a newline, and adds one to a file written without
+So loadout owns the `permissions` key and the leaves a settings fragment names, and must
+preserve everything else, the way it treats Codex's `config.toml`. The CLI ends the file with a newline, and adds one to a file written without
 it (observed in the same container); loadout keeps whichever the file already has.
+
+### The default model
+
+At startup the CLI reads `selectedModel` first. From `selectModel` in `483.index.js`
+(`2026.11.05-86047df`), where `n` is the parsed `cli-config.json`, `r` the server's default model
+and `o()` a validity check:
+
+    if(t.initialModel)return i(await this.handleInitialModel(t.initialModel,t.configProvider));if(n.selectedModel&&this.parameterizedModelMap.has(n.selectedModel.modelId)){const e=this.createModelDetailsFromSelection(n.selectedModel.modelId,n.selectedModel.parameters??[],t.configProvider);if(o(e))return i(e)}if(!r){if(o(n.model))return i(n.model);...}if(!n.hasChangedDefaultModel||n.model?.modelId===r.modelId){...}
+
+So, in order:
+
+1. The `--model` flag.
+2. `selectedModel`, only when its `modelId` is a parameterised base id such as
+   `claude-sonnet-5-5`. The details are rebuilt from `modelId` and `parameters`, so the display
+   names never come from the file. The flat ids `--list-models` prints, such as
+   `claude-sonnet-5-5-medium`, are not base ids and fall through.
+3. `model`, only when `hasChangedDefaultModel` is true and its id is available.
+4. Otherwise the server's default, and the CLI rewrites the file.
+
+`handleInitialModel` saves with `updateConfig(…, true)`, so any `--model` run, headless `-p` runs
+included, replaces the saved default. After the model list loads, the CLI also re-maps and saves
+`selectedModel`, `model`, `modelParameters` and `modelSelectionHistory` itself. What the CLI saved
+for Sonnet 5.5 at medium effort:
+
+    "selectedModel": {"modelId": "claude-sonnet-5-5", "parameters": [{"id": "context", "value": "300k"}, {"id": "reasoning_effort", "value": "medium"}]},
+    "hasChangedDefaultModel": true
+
+A settings fragment therefore sets `selectedModel` and `hasChangedDefaultModel` and leaves `model`
+to the CLI. Whether `selectedModel` alone holds against a stale `model` has not been run; by the
+code it does, since step 2 returns before `model` is read.
 
 `permissions.json` (global and project) is a separate surface, read by both the CLI and the app.
 It holds Auto-review's plain-English `allow_instructions` and `block_instructions`, plus
@@ -255,9 +295,10 @@ the bundle's default config. The plugin enablement mechanism is therefore **not 
 | slice | global | project |
 |---|---|---|
 | permissions | the `permissions` key of `${CURSOR_CONFIG_DIR:-~/.cursor}/cli-config.json` | `.cursor/cli.json` |
+| settings | the leaves a `settings` fragment names, in the same `cli-config.json` | — |
 | mcp | `~/.cursor/mcp.json` | `.cursor/mcp.json` |
 | hooks | `~/.cursor/hooks.json` | `.cursor/hooks.json` |
-| instructions | — | `AGENTS.md`, shared with Codex, Droid, OpenCode and Pi |
+| instructions | the rule `~/.cursor/rules/loadout.mdc`, frontmatter first | `AGENTS.md`, shared with Codex, Droid, OpenCode and Pi |
 | skills | `~/.cursor/skills/` | `.cursor/skills/`, or the shared `.agents/skills` copy beside Codex |
 | agents | `~/.cursor/agents/` | `.cursor/agents/` |
 | module-config | beneath `~/.cursor` | — |
@@ -280,7 +321,7 @@ otherwise.
 | `svc/read` | `Mcp(svc:read)` | |
 
 `[shell] default` is not rendered: Cursor's catch-all is `approvalMode`, a CLI setting in the same
-file, which loadout does not own.
+file, which a settings fragment sets.
 
 **Hooks** are Cursor's own translation of a Claude hooks document, ported from the bundle:
 

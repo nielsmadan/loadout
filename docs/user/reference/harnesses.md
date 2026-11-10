@@ -17,13 +17,13 @@ An absent output is an implementation limit of Loadout.
 
 | Configuration | Claude Code | Codex | Cursor CLI | Factory Droid | OpenCode | Pi |
 | --- | --- | --- | --- | --- | --- | --- |
-| Instructions | Yes | Yes | Not rendered | Yes | Yes | Yes |
+| Instructions | Yes | Yes | The rule `~/.cursor/rules/loadout.mdc` | Yes | Yes | Yes |
 | Shell permissions | Yes | Yes | `permissions` in `cli-config.json` | Yes | Yes | Permission extension |
 | MCP tool policy | Yes | Yes, with server config | Yes, in the permission lists | Not rendered | Yes | Permission extension |
 | MCP server definitions | Yes | Yes | Yes | Yes | Yes | Yes |
 | Skills | Yes | Yes | Yes | Yes | Yes | Yes |
 | Agents | `~/.claude/agents/` | `~/.codex/agents/`, as TOML | `~/.cursor/agents/` | `~/.factory/droids/` | `~/.config/opencode/agents/` | `~/.pi/agent/agents/`, read by `pi-subagents` |
-| Native settings | JSON settings | Defaults slice | Not rendered | JSON settings | JSON settings | JSON settings with plugins selected |
+| Native settings | JSON settings | Defaults slice | Named keys in `cli-config.json` | JSON settings | JSON settings | JSON settings with plugins selected |
 | Hooks | Native document | Native document | Native document | Native document | Command-hook adapter | Command-hook adapter |
 | Plugin declarations | Marketplace enablement | Enablement and registrations | Not rendered | Enablement and registrations | Plugin files via module-config | Package references |
 | Module files | Yes | Not rendered | Yes | Yes | Yes | Yes |
@@ -112,9 +112,15 @@ export OPENCODE_DISABLE_EXTERNAL_SKILLS=1
 ## Cursor CLI
 
 Cursor's global permissions live in `cli-config.json`, a file the CLI also fills with its own
-defaults and state. Loadout owns its `permissions` key and leaves the rest alone. Cursor has no ask
-list: an `ask` falls to Cursor's `approvalMode`, and an allow that would cover an ask is left out
-so the command still prompts. `sync` reports both.
+defaults and state. Loadout owns its `permissions` key, plus the keys a `settings` fragment names
+(`approvalMode`, `sandbox.mode`, the default model), and leaves the rest alone; see
+[Cursor settings](configuration.md#cursor-settings). Cursor has no ask list: an `ask` falls to
+Cursor's `approvalMode`, and an allow that would cover an ask is left out so the command still
+prompts. `sync` reports both.
+
+Cursor has no global instructions file. Loadout writes the rule `~/.cursor/rules/loadout.mdc`,
+which Cursor applies to every workspace under the home folder, because it reads `.cursor/rules/`
+in each folder above the workspace.
 
 By default Cursor also reads Claude's and Codex's skills, agents and hooks, and a project's
 `CLAUDE.md`. Loadout writes Cursor's own copies, so with Claude selected too Cursor can see a skill

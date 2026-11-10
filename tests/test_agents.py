@@ -11,7 +11,10 @@ from loadout.project import PROJECT_PRESET
 
 # Cursor's variable moves cli-config.json and nothing else: its bundle joins every
 # other global path onto the home directory (docs/reference/cursor.md#destinations).
-UNRELOCATED = {("cursor", name) for name in ("skills", "agents", "module-config", "hooks", "mcp")}
+UNRELOCATED = {
+    ("cursor", name)
+    for name in ("skills", "agents", "module-config", "hooks", "mcp", "instructions")
+}
 
 RELOCATION_VARIABLE = {
     "claude": "CLAUDE_CONFIG_DIR",

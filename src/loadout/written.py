@@ -393,7 +393,7 @@ def owned_values(text: str, owned: Iterable[str], format_name: str) -> dict[str,
     found: dict[str, Any] = {}
     for name in sorted(owned):
         value: Any = document
-        for part in (name,) if format_name == "json" else key_path(name):
+        for part in key_path(name):
             if not isinstance(value, dict):
                 return None
             value = value.get(part, _MISSING)

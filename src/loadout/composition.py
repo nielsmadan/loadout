@@ -19,6 +19,14 @@ HEADER = (
 )
 
 
+# Cursor ignores a rule whose frontmatter is not the first thing in the file.
+CURSOR_RULE = "---\nalwaysApply: true\n---\n\n"
+
+
+def for_destination(path: Path, content: str) -> str:
+    return CURSOR_RULE + content if path.suffix == ".mdc" else content
+
+
 def load_fragment(path: Path) -> str:
     if not path.is_file():
         raise LoadoutError(f"fragment not found: {path}")

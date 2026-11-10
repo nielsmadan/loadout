@@ -13,7 +13,7 @@ from loadout import stealth_seams
 
 SIGNATURES = {
     "read_toml": ["path"],
-    "build_manifest": ["data", "path", "config_paths", "sources", "preset"],
+    "build_manifest": ["data", "path", "config_paths", "sources"],
     "claim": ["path", "owner", "claimed"],
     "serialize_json": ["document", "ensure_ascii"],
     "codex_definition_block": ["server", "block"],

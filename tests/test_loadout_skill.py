@@ -132,7 +132,8 @@ def test_capability_matrix_pins_every_scope_mapping() -> None:
             "unsupported",
             "supported for `claude`, `droid`, `opencode` via `loadout/settings/<harness>.json`",
             (
-                "supported for `claude`, `droid`, `opencode` via `settings/<name>.json` "
+                "supported for `claude`, `cursor`, `droid`, `opencode` via "
+                "`settings/<name>.json` "
                 "fragments, and for Pi only when `[pi]` also declares `plugins`; Codex uses "
                 "`defaults`"
             ),
@@ -197,7 +198,7 @@ def test_settings_capability_names_only_agents_whose_render_preserves_settings(
     documented = {
         agent for agent in GLOBAL_PRESET if f"`{agent}`" in _global_capability("settings")
     }
-    assert actual == {"claude", "droid", "opencode"}
+    assert actual == {"claude", "cursor", "droid", "opencode"}
     assert documented == actual
 
 

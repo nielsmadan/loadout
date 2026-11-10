@@ -1102,7 +1102,9 @@ class _PlanBuilder:
                 if project and agent != "claude"
                 else (agent,)
             )
-            if project or "instructions" in GLOBAL_PRESET[agent]:
+            # Cursor's global rule is a file loadout names, so no file of the user's
+            # sits there for init to adopt.
+            if project or ("instructions" in GLOBAL_PRESET[agent] and agent != "cursor"):
                 self.dormant(instruction, consumers, "instructions")
             self.available_categories.add((agent, "skills"))
             if not project:

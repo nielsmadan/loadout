@@ -7,7 +7,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from . import stealth_seams
-from .composition import document, joined
+from .composition import document, for_destination, joined
 from .emit import settings_document
 from .harnesses import SHARED_SKILL_READERS, SliceOutput
 from .manifest import Manifest, PermissionTarget
@@ -304,8 +304,7 @@ def _cursor_outputs(
     placed: list[tuple[Path, str, StealthOutput]] = []
     if paths := _instruction_paths(stealth, "cursor"):
         rule = root / str(preset["instructions"].output) / f"{name}.mdc"
-        body = f"---\nalwaysApply: true\n---\n\n{document(paths)}"
-        placed.append((rule, "cursor.instructions", body))
+        placed.append((rule, "cursor.instructions", for_destination(rule, document(paths))))
     notes: tuple[str, ...] = ()
     if (permissions := _permission_target(manifest, "cursor", "permissions")) is not None:
         cursor_rules = _target_rules(permissions, rules)

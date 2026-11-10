@@ -96,7 +96,7 @@ CATCH_ALL_ELSEWHERE = {
     "codex": "Codex's is approval_policy in config.toml, which the defaults slice sets",
     "codex-project": "Codex's is approval_policy in .codex/config.toml, which loadout does not write",
     "droid": "Droid's unmatched-command behavior comes from the session autonomy level",
-    "cursor": "Cursor's is approvalMode in cli-config.json, which loadout does not write",
+    "cursor": "Cursor's is approvalMode in cli-config.json, which the settings slice sets",
     "cursor-project": "Cursor's is approvalMode in the global cli-config.json, a CLI setting",
 }
 

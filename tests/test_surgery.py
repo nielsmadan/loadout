@@ -274,3 +274,67 @@ def test_removing_a_multiline_key_leaves_no_orphaned_body() -> None:
 
     assert "line one" not in out and "line two" not in out
     assert tomllib.loads(out) == {"model": "keep"}
+
+
+CLI_CONFIG = """{
+  "permissions": {
+    "allow": [],
+    "deny": []
+  },
+  "approvalMode": "allowlist",
+  "sandbox": {
+    "mode": "enabled",
+    "networkAccess": "allowlist"
+  },
+  "authInfo": {
+    "email": "me@example.com"
+  }
+}"""
+
+
+def test_an_owned_leaf_is_set_inside_its_table_and_the_tables_other_keys_stay() -> None:
+    applied = json.loads(
+        apply_json(CLI_CONFIG, frozenset({"sandbox.mode"}), '{"sandbox": {"mode": "disabled"}}')
+    )
+
+    assert applied["sandbox"] == {"mode": "disabled", "networkAccess": "allowlist"}
+    assert list(applied) == ["permissions", "approvalMode", "sandbox", "authInfo"]
+
+
+def test_an_owned_leaf_the_document_drops_is_removed_and_its_siblings_stay() -> None:
+    applied = json.loads(apply_json(CLI_CONFIG, frozenset({"sandbox.mode"}), "{}"))
+
+    assert applied["sandbox"] == {"networkAccess": "allowlist"}
+    assert applied["approvalMode"] == "allowlist"
+
+
+def test_an_owned_leaf_under_a_missing_table_creates_the_table_at_the_end() -> None:
+    owned = frozenset({"selectedModel.modelId"})
+    applied = json.loads(
+        apply_json(CLI_CONFIG, owned, '{"selectedModel": {"modelId": "claude-sonnet-5-5"}}')
+    )
+
+    assert applied["selectedModel"] == {"modelId": "claude-sonnet-5-5"}
+    assert list(applied)[-1] == "selectedModel"
+
+
+def test_an_owned_leaf_is_applied_as_identity_when_it_already_holds_the_value() -> None:
+    owned = frozenset({"approvalMode", "sandbox.mode"})
+    same = '{"approvalMode": "allowlist", "sandbox": {"mode": "enabled"}}'
+
+    assert apply_json(CLI_CONFIG, owned, same) == CLI_CONFIG
+
+
+def test_new_owned_leaves_are_added_in_the_documents_order() -> None:
+    owned = frozenset({"zeta", "alpha.b", "alpha.a"})
+    applied = json.loads(apply_json("{}", owned, '{"zeta": 1, "alpha": {"b": 2, "a": 3}}'))
+
+    assert list(applied) == ["zeta", "alpha"]
+    assert list(applied["alpha"]) == ["b", "a"]
+
+
+def test_a_table_left_empty_by_removing_its_owned_leaves_is_removed_too() -> None:
+    existing = '{"keep": 1, "selectedModel": {"modelId": "x", "parameters": []}}'
+    owned = frozenset({"selectedModel.modelId", "selectedModel.parameters"})
+
+    assert json.loads(apply_json(existing, owned, "{}")) == {"keep": 1}

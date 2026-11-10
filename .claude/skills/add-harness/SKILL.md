@@ -32,20 +32,39 @@ slice, record the mechanism at both scopes, or a sourced "none":
 | Slice | Settle |
 |---|---|
 | destinations | the config-directory variable and whether it names the directory or a home (ADR 0011); global and project roots; project trust |
-| instructions | the file it reads: `AGENTS.md`, `CLAUDE.md` or its own |
+| instructions | the file it reads: `AGENTS.md`, `CLAUDE.md` or its own. With no config-directory file, check for an ancestor walk: Cursor reads `.cursor/rules/` above every workspace, so `~/.cursor/rules/` is its global file |
 | permissions | the shell matcher (prefix, glob, exact; order-independent or last-match), where the catch-all lives (ADR 0016), MCP tool policy |
 | mcp | the server-definition file, its keys and auth, and name rules |
 | skills | its folder; whether it reads `.agents/skills`; which frontmatter it reads |
 | agents | the format, the identity key, model and effort spelling |
 | hooks | a native document, or registered in code (then it needs an adapter); event names; variables |
-| plugins, module-config, settings | how a plugin is addressed; module files; runtime keys it writes into shared files |
+| settings | the document holding its approval or permission mode (where the catch-all lives, ADR 0016), default model and sandbox; how it reads the model at startup; which keys the harness writes into the same document itself |
+| plugins, module-config | how a plugin is addressed; module files |
+
+Two slices ship by default, not on request:
+
+- **Settings.** A user who declares the harness expects to set its approval mode and default model
+  through loadout, as they already can for Claude (`settings`) and Codex (`defaults`). If the
+  harness keeps them in a file it also writes state into, the slice owns only the keys a fragment
+  names, leaf by leaf, with an owned-key record (ADR 0017): `takes_settings` on a `MergedJsonSpec`
+  slice for JSON, as Cursor's `cli-config.json` does, or a `defaults`-style `MergedTomlSpec` for
+  TOML. A shared file is the reason to own keys rather than the whole document, never a reason to
+  render no settings. `CATCH_ALL_ELSEWHERE` then names the slice that sets the catch-all.
+- **Global instructions,** through the config-directory file, or else an ancestor folder the
+  harness reads, as with Cursor's `~/.cursor/rules/loadout.mdc` (ADR 0056).
+
+Either may still be left out, but only for the reason any slice is: a sourced "none" in the
+reference doc, agreed with the user. "The file is shared" or "the CLI rewrites it" is not that
+reason: loadout owns keys in shared files already, and a key the harness rewrites is drift that
+`check` reports and `sync` restores.
 
 Then measure the harness against ADR 0012, which dropped Antigravity because its generated file
 was ignored where it mattered, it had no config-directory variable, and its mechanisms were
 unestablished. If the harness fails the same tests, stop and report to the user rather than
 building it. Otherwise record the adoption in a new ADR.
 
-Success: every slice has a sourced answer and the user has agreed to which slices ship.
+Success: every slice has a sourced answer, settings and global instructions ship or have a sourced
+"none", and the user has agreed to which slices ship.
 
 ### Step 2: Enumerate every touch point
 

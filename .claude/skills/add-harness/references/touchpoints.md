@@ -61,7 +61,7 @@ Symbols are stable across checkouts; line numbers are not, so find each by name.
 
 | File | Symbol | Add |
 |---|---|---|
-| `src/loadout/notices.py` | `CATCH_ALL_ELSEWHERE`, `PREFIX_ONLY`, `known_events`, `unreached_catch_all` | where the catch-all lives if not in the document; whether its matcher has an exact form; the hook events it knows |
+| `src/loadout/notices.py` | `CATCH_ALL_ELSEWHERE`, `PREFIX_ONLY`, `known_events`, `unreached_catch_all` | where the catch-all lives if not in the document, naming the settings slice that sets it; whether its matcher has an exact form; the hook events it knows |
 | `src/loadout/skill_copy.py` | `STARTS` | how a user starts the bundled skill in that harness |
 | `src/loadout/cli.py`, `init_workflow.py`, `completions.py` | | derive from `KNOWN_HARNESSES`; check the help and prompt text still reads right |
 
