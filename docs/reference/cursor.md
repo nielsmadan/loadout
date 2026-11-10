@@ -346,6 +346,10 @@ file, which a settings fragment sets.
 - the events map `PreToolUse→preToolUse`, `PostToolUse→postToolUse`,
   `UserPromptSubmit→beforeSubmitPrompt`, `Stop→stop`, `SubagentStop→subagentStop`,
   `SessionStart→sessionStart`, `SessionEnd→sessionEnd` and `PreCompact→preCompact`;
+- one addition the bundle's import lacks, `PostToolUseFailure→postToolUseFailure`: Cursor runs that
+  event for a failed tool and matches on the tool name (`case"postToolUseFailure"` beside
+  `preToolUse` and `postToolUse` in the 2026.11.05 bundle), but its import of Claude's hooks has no
+  entry for it, so the rendered hook is the only copy Cursor runs;
 - `Bash` matches as `Shell`, and `Edit` as `Write`;
 - `mcp__server__tool` matches as `MCP:tool`, without the server;
 - `Glob` has no Cursor tool;

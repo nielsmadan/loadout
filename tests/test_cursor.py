@@ -187,6 +187,39 @@ def test_hooks_translate_as_cursor_translates_claude_hooks() -> None:
     }
 
 
+def test_a_failed_tool_hook_reaches_cursors_failure_event_with_its_matcher() -> None:
+    document = {
+        "PostToolUseFailure": [{"matcher": "Bash", "hooks": [command("failed.sh", timeout=5)]}],
+        "PostToolUse": [{"matcher": "Bash", "hooks": [command("done.sh")]}],
+    }
+    rendered, skipped = cursor_hooks(document)
+    assert skipped == ()
+    assert rendered["hooks"] == {
+        "postToolUseFailure": [
+            {
+                "type": "command",
+                "command": "failed.sh",
+                "loop_limit": None,
+                "failClosed": False,
+                "matcher": "Shell",
+                "timeout": 5,
+            }
+        ],
+        "postToolUse": [
+            {
+                "type": "command",
+                "command": "done.sh",
+                "loop_limit": None,
+                "failClosed": False,
+                "matcher": "Shell",
+            }
+        ],
+    }
+    extraction = extract_value("cursor-hooks", render_cursor_hooks(document))
+    assert extraction.notes == ()
+    assert render_cursor_hooks(extraction.value) == render_cursor_hooks(document)
+
+
 def test_what_cursor_has_no_place_for_is_reported() -> None:
     document = {
         "PreToolUse": [

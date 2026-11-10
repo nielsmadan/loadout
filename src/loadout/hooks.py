@@ -215,10 +215,13 @@ def render_droid_hooks(document: Mapping[str, Any]) -> dict[str, Any]:
 # its 2026.11.05 bundle applies to `.claude/settings.json` (docs/reference/cursor.md
 # #hooks). Rendering what Cursor would make of Claude's file, byte for byte, is
 # also what lets Cursor drop the Claude copy as a duplicate: it compares commands.
+# PostToolUseFailure is the one addition: Cursor has the event but its import
+# leaves Claude's out, so there is no imported copy to collide with.
 CURSOR_EVENT_NAMES: dict[str, str | None] = {
     "PreToolUse": "preToolUse",
     "PermissionRequest": None,
     "PostToolUse": "postToolUse",
+    "PostToolUseFailure": "postToolUseFailure",
     "UserPromptSubmit": "beforeSubmitPrompt",
     "Stop": "stop",
     "SubagentStop": "subagentStop",
@@ -228,6 +231,7 @@ CURSOR_EVENT_NAMES: dict[str, str | None] = {
     "Notification": None,
 }
 CURSOR_EVENTS = frozenset(event for event, name in CURSOR_EVENT_NAMES.items() if name)
+CURSOR_TOOL_EVENTS = frozenset({"PreToolUse", "PostToolUse", "PostToolUseFailure"})
 CURSOR_TOOL_NAMES: dict[str, str | None] = {
     "Bash": "Shell",
     "Read": "Read",
@@ -287,11 +291,7 @@ def cursor_hooks(document: Mapping[str, Any]) -> tuple[dict[str, Any], tuple[str
         for entry in entries if isinstance(entries, list) else []:
             if not isinstance(entry, Mapping) or not isinstance(entry.get("hooks"), list):
                 continue
-            matcher = (
-                _cursor_matcher(entry.get("matcher"))
-                if event in {"PreToolUse", "PostToolUse"}
-                else "*"
-            )
+            matcher = _cursor_matcher(entry.get("matcher")) if event in CURSOR_TOOL_EVENTS else "*"
             if matcher is None:
                 skipped.append(f"{event}: matcher {entry.get('matcher')!r} names no Cursor tool")
                 continue
