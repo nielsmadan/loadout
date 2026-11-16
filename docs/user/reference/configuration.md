@@ -890,8 +890,10 @@ offline; they add no dependencies, permission grants, models or credentials.
 Kits contribute instructions, skills, MCP servers and permissions through the same project
 slices as directly authored source, as a tier beneath the project, so anything the project
 declares outranks them. A vendored copy is source, not generated output: `check` reports one you
-edited without failing, and `kit sync` refuses to overwrite it
+edited without failing, and `kit sync` and `sync --global` leave it as it is
 ([0014](https://github.com/nielsmadan/loadout/blob/main/docs/decisions/0014-a-vendored-template-is-source-not-output.md)).
+`sync` in the project, in a terminal, offers to push the edit back to the kit
+([0057](https://github.com/nielsmadan/loadout/blob/main/docs/decisions/0057-one-sync-reaches-every-project-and-a-vendored-edit-can-be-pushed-back.md)).
 
 In a global source, a kit is either a directory, `kits/<name>/`, holding its own files
 such as `instructions.md`, `permissions.toml`, `mcp.toml` and `skills/`, or a manifest,

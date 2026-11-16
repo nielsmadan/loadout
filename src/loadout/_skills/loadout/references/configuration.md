@@ -179,7 +179,11 @@ personal only while Git ignores it, so add it to `.gitignore` or `.git/info/excl
 create one.
 `[skills.<name>] agents = [...]` narrows the default set of configured consumers. Kits are
 listed by name; use `loadout kit add <name> --linked`, `--vendored`, or
-`kit sync <name>` when that command exactly expresses the request.
+`kit sync <name>` when that command exactly expresses the request. A kit edited in a global
+source reaches every project on this machine that uses it on `loadout sync --global`, which also
+updates their unedited vendored copies and syncs each one; report the projects it wrote into. An
+edit to a vendored copy stays in its project unless the user answers `loadout sync`'s push offer
+in a terminal; never answer it for them.
 
 A skill's frontmatter key `agent: <name>` hands its work to the agent of that name from
 `agents/` (or `loadout/agents/`). Claude's copy also gets `context: fork` unless the skill sets
@@ -324,7 +328,8 @@ message (or says `overlays.toml` cannot be read). Then use `loadout stealth`, `-
    brings hooks or plugins is refused; report it.
 4. Preview and apply with `loadout check --stealth <name>` and `loadout sync --stealth <name>`, or
    plain `loadout sync` from inside a target repository. `loadout sync --global` also syncs every
-   stealth source, but `--force` then reaches only the global source.
+   stealth source and every project that uses a kit, but `--force` then reaches only the global
+   source.
 5. A key in a stealth source's settings fragment that the harness rewrites (Claude's `/model`, say) is
    an owned key edited outside loadout. Port the harness's value into the stealth source's
    `settings/<name>.json` and sync. `preserve` is refused in a stealth source, so the key cannot be

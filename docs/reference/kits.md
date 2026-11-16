@@ -336,6 +336,52 @@ The cost is honest and worth stating: a kit fix that must reach twelve modified 
 twelve manual merges. If that becomes the common case rather than the rare one, that is the
 signal to build three-way.
 
+## One sync reaches every project, and an edit can be pushed back
+
+[0057](../decisions/0057-one-sync-reaches-every-project-and-a-vendored-edit-can-be-pushed-back.md)
+adds two paths around `kit sync`, without changing it.
+
+**Fan-out** (`kit_fanout.py`). A sync at the global source also runs every project in this
+machine's sync records (`written.recorded_roots`) whose config lists a kit. Each vendored copy is
+classified once by `kit_vendor.vendored_state`, from three hashes: the copy's, the recorded one and
+the source's:
+
+| State | Meaning | Fan-out | `check --global` |
+| --- | --- | --- | --- |
+| `current` | copy = source = recorded | nothing | nothing |
+| `stale` | copy = recorded, source moved | updated as `kit sync` would | `its source changed` |
+| `level` | copy = source, recorded differs or is missing | hash recorded | `matches its source` |
+| `edited` | copy ≠ recorded, copy ≠ source | note | the project's own notice |
+| `unverifiable` | no recorded hash, copy ≠ source | note | note |
+
+Containment (`kits.contained`) runs per project and per kit before any copy is read or written,
+as for every `kit` command, since the fan-out writes before the project's own sync would refuse a
+link out of `loadout/`. Sources are resolved and hashed once per run (`Upstreams`). A catalog
+update runs `vendor_catalog(yes=True)`: the run already asked to update everything, and
+`_clean` still refuses when an affected sibling is edited.
+
+**Push** (`kit_push.py`), offered by a project `sync` in a terminal. It is a fast-forward:
+
+- the source must still hash to the recorded value, or the push is held with a diff;
+- the copy is validated first: a catalog through `load_catalog`, a directory kit's
+  `permissions.toml` and `mcp.toml` through their parsers;
+- a catalog push writes the manifest and every part it lists, removes from a skill part only
+  files the source catalog already listed, and refuses a newly listed part that would replace a
+  different source file;
+- `also` names the source's other manifests listing a changed part, matched by part, so a new
+  file inside a shared skill counts; their projects are updated afterwards too;
+- the plan holds each target's bytes, and `apply_push` refuses when they or the copy changed while
+  the question waited, then writes through `kit_vendor.apply_changes`, which restores on failure;
+- each kit is planned in turn against the source's hash from before the run, so a kit sharing a
+  part an earlier push in the same run changed is not mistaken for one whose source moved.
+
+`record_matching` then records every vendored kit in the project that now equals its source,
+which is the pushed kit and any sibling sharing its parts.
+
+Hooks call `cmd_sync` directly and reach neither path. A push that fails on one kit is reported,
+and the rest still run; the project's own sync always follows, and the projects using what was
+pushed are updated even when it fails.
+
 ## `check` and `sync` report divergence; they do not fail on it
 
 A vendored copy is source, so a user editing it is not drift. `loadout check` and `loadout sync`
@@ -351,7 +397,8 @@ exemption.
 Each with its reason, so a later reader knows whether the reason still holds.
 
 - **Three-way merge** — deferred deliberately, as above. The hash is chosen so this stays
-  possible without a state migration.
+  possible without a state migration. The push covers edits on one side only; when both sides
+  moved, the user still reconciles by hand.
 - **Fetching or versioning kit repositories.** A kit arrives on disk however you like —
   git clone, submodule, a shared drive. loadout resolves names against directories and fetches
   nothing, the same position [0010](../decisions/0010-a-machine-config-locates-the-global-source.md)

@@ -25,8 +25,8 @@ loadout check --staged
 
 | Option | Commands | Meaning |
 | --- | --- | --- |
-| `--root PATH` | `sync`, `check` | Directory containing the source/project configuration, a stealth folder, or a repository a stealth source targets; a `loadout.toml` there renders only when the directory is this machine's registered global source |
-| `--global` | `sync`, `check` | Resolve the source and default profile from this machine's configuration, then render every registered [stealth source](#stealth-sources) |
+| `--root PATH` | `sync`, `check` | Directory containing the source/project configuration, a stealth folder, or a repository a stealth source targets; a `loadout.toml` there renders only when the directory is this machine's registered global source, and then every [project that uses a kit](#kit-changes-across-projects) follows |
+| `--global` | `sync`, `check` | Resolve the source and default profile from this machine's configuration, then render every registered [stealth source](#stealth-sources), then every [project that uses a kit](#kit-changes-across-projects) |
 | `--stealth NAME` | `sync`, `check` | Render only the registered stealth source `NAME`, for every target it matches. `kit add` and `kit list` take it too, to work on that stealth source's kits; see [kits](#kits) |
 | `--profile NAME` | `sync`, `check` | Select a global manifest profile; without it, the registered global source uses the machine's profile and any other root uses `default` |
 | `--force` | `sync` | Overwrite generated files protected as modified outside Loadout; for stealth sources, see [`--force`](#stealth-sources) |
@@ -193,9 +193,10 @@ read (without `--force`), stops `stealth remove` with exit 3 before it asks or m
   stealth source retired its files here`, and a stealth source that never did reports it as skipped. Inside
   such a repository its stealth sources run first and the project follows, so the project never finds
   the stealth source's files.
-- `--global`: the global source, then every registered stealth source in name order. A missing machine
-  config, or a global source that fails, such as on a fragment it cannot read, is reported with
-  exit 3 and the stealth sources still run.
+- `--global`: the global source, then every registered stealth source in name order, then every
+  project that uses a kit (see [kit changes across projects](#kit-changes-across-projects)). A
+  missing machine config, or a global source that fails, such as on a fragment it cannot read, is
+  reported with exit 3 and the stealth sources and projects still run.
 - A `stealth.toml` that does not parse or is invalid is an error everywhere:
   `loadout: <file>: <problem>`, exit 3, an `errors` entry under `--json`, and the global source
   or the project still runs. One that cannot be read at all, such as in a config folder without
@@ -508,7 +509,7 @@ vendored copy to confirm a change to. `kit sync
 | `add NAME --linked` | Add the kit to the project; it resolves from a source on every render |
 | `add NAME --vendored` | Copy the source into the project and record its content hash |
 | `add` (bare) | List every resolvable kit and prompt for a name and a mode; without a terminal, a missing name or mode is a usage error (exit 2) |
-| `sync NAME` | Update an unchanged vendored copy from the available upstream source |
+| `sync NAME` | Update an unchanged vendored copy from the available upstream source; `sync` at the global source does this for every project, see [kit changes across projects](#kit-changes-across-projects) |
 | `list` | Show the project's kits, each one's mode, and where it resolves |
 | `add NAME --stealth NAME` | Link the kit into the registered stealth source's `[stealth]` table |
 | `list --stealth NAME` | Show the stealth source's linked kits and where each resolves |
@@ -528,6 +529,45 @@ and changes nothing. Declining exits 0 with "declined; no changes made".
 
 Run the ordinary `loadout sync` to render the resulting project configuration.
 See [kits](../guides/kits.md) for the complete lifecycle.
+
+### Kit changes across projects
+
+A sync at the global source, by `--global` or with the registered source as its root or working
+directory, also reaches every project this machine has synced whose `loadout/config.toml` lists a
+kit. For each one it prints `project PATH:`, then:
+
+- updates each vendored copy whose source moved and that has no edits of its own, as `kit sync`
+  would, and notes `kit NAME: updated from its source`; a catalog update that changes a part
+  shared with another vendored kit applies without the `--yes` prompt;
+- records the hash of a copy that already equals its source;
+- notes a copy with edits of its own, or with no recorded hash, and leaves it as it is;
+- syncs the project.
+
+Each note names its project: `note: project PATH: kit NAME: …`. The updated `loadout/kits/` and
+`loadout/config.toml` are left uncommitted in each project. A project's exit code feeds the run's,
+so one that fails makes it exit 3, with `project PATH: ERROR: …` on stderr, and the rest still run.
+`check` at the global source previews the same projects and writes nothing; under `--json` their
+drift joins `drift`, their notes join `notes` as `project PATH: …`, and a project that fails is an
+`errors` entry with `"stealth": null` and its path as `target`. The projects are the roots in this
+machine's sync records, so a project never synced here is not reached; each clone or worktree is
+its own project.
+
+In a project, `sync` in a terminal first offers each vendored kit edited since it was vendored to
+its source. It shows the diff and the files it would write or remove, names any other kit in the
+source that shares a changed part, and asks `Push them to source NAME and update N other
+project(s)? [y/N]`. On yes it writes the copy's files into the source, records the hash, syncs the
+project, then updates the other projects using any kit the push changed, as above. A push is held,
+with a `WARNING` and nothing written, when:
+
+- the source changed too since the copy was vendored, shown with a diff to reconcile by hand;
+- the copy does not load, such as a `permissions.toml` that is refused;
+- the kit was vendored from a bundled kit, or its source does not resolve;
+- a catalog copy lists a part that would replace a different file in the source;
+- the copy or the source changed while the question waited.
+
+A copy that already equals its source is recorded without asking. A copy with no recorded hash is
+never offered. Without a terminal, and from the [git hooks](#git-hooks), `sync` never pushes and
+never reaches other projects.
 
 0.10.0 called a kit a template. The old spellings are refused with a message naming the new one:
 `loadout template` and `--tracked` with exit 2; `templates = [...]`, a `[template.NAME]` block, a

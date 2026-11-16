@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 
 import loadout
-from loadout import cli, stealth_commands
+from loadout import cli, kit_fanout, stealth_commands
 from loadout.errors import LoadoutError, UsageError
 from loadout.files import Drift
 from loadout.stealth_check import StealthCheck
@@ -148,7 +148,7 @@ def test_global_force_reaches_the_global_source_but_not_the_stealth_sources(
 
     selection = _select(fake_home, use_global=True, force=True)
 
-    assert selection == Selection(root, "default", None, ((app, None),), False)
+    assert selection == Selection(root, "default", None, ((app, None),), False, fan_out=True)
 
 
 def test_a_registered_stealth_folder_selects_that_stealth_source(fake_home: Path) -> None:
@@ -399,7 +399,7 @@ def test_global_selection_resolves_through_the_cli_resolver(
         synced.append((root, profile))
         return 0
 
-    monkeypatch.setattr(stealth_commands, "cmd_sync", recording)
+    monkeypatch.setattr(kit_fanout, "cmd_sync", recording)
 
     assert loadout.main(["sync", "--global", "--profile", "work"]) == 0
     assert synced == [(source, "work-chosen")]

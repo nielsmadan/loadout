@@ -1,6 +1,9 @@
 # 0014 — A vendored template is source, not generated output
 
-**Status:** accepted (2026-08-15, templates). Settles the template source-ownership question.
+**Status:** accepted (2026-08-15, templates); superseded in part by
+[0057](0057-one-sync-reaches-every-project-and-a-vendored-edit-can-be-pushed-back.md), under
+which a sync at the global source also updates vendored copies. Settles the template
+source-ownership question.
 
 ## Context
 

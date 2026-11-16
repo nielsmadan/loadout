@@ -245,6 +245,14 @@ def resolve_upstream_kit(name: str, *, offering: tuple[Source, ...] | None = Non
     )
 
 
+def upstream_or_none(name: str) -> ResolvedItem | None:
+    """The kit a vendored copy of `name` came from, or None when nothing resolves it."""
+    try:
+        return resolve_upstream_kit(name)
+    except LoadoutError:
+        return None
+
+
 def _bundled_kit(name: str, path: Path) -> ResolvedItem:
     if not (path / "instructions.md").is_file():
         raise LoadoutError(f"bundled kit missing at {path}; reinstall the loadout package")
@@ -444,6 +452,11 @@ def kit_files(tree: Path) -> tuple[Path, ...]:
     )
 
 
+def kit_base(tree: Path) -> Path:
+    """The folder a kit's `kit_files` are relative to: a catalog manifest's folder."""
+    return tree.parent if tree.is_file() else tree
+
+
 def tree_hash(tree: Path) -> str:
     """A content hash of a kit, independent of where the tree sits.
 
@@ -456,7 +469,7 @@ def tree_hash(tree: Path) -> str:
     """
     digest = hashlib.sha256()
     for relative in kit_files(tree):
-        path = (tree.parent if tree.is_file() else tree) / relative
+        path = kit_base(tree) / relative
         payload = path.read_bytes()
         digest.update(relative.as_posix().encode("utf-8"))
         digest.update(b"\0")

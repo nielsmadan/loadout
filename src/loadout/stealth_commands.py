@@ -9,10 +9,18 @@ from pathlib import Path
 from typing import Any
 
 from . import machine
-from .commands import check_result, cmd_check, cmd_sync
+from .commands import check_result, cmd_check
 from .errors import LoadoutError, UsageError
 from .exclude import exclude_path
 from .git_runner import toplevel
+from .kit_fanout import (
+    check_projects,
+    check_projects_json,
+    project_index,
+    sync_projects,
+    sync_with_push,
+    warn,
+)
 from .manifest import manifest_path
 from .overlay_leftovers import (
     OverlayLeftover,
@@ -65,6 +73,9 @@ class Selection:
     stealth_sources: tuple[tuple[RegisteredStealth, Path | None], ...]
     stealth_force: bool
     registry_error: str | None = None
+    # The root is this machine's global source, so the run also reaches every project
+    # that uses a kit (ADR 0057).
+    fan_out: bool = False
 
 
 def _record_holder(folder: Path, registered: set[str]) -> str | None:
@@ -304,9 +315,16 @@ def resolve_selection(  # noqa: PLR0913
         try:
             source, chosen = resolve()
         except LoadoutError as error:
-            return Selection(None, None, str(error), stealth_sources, False, registry_error)
-        return Selection(source, chosen, None, stealth_sources, False, registry_error)
-    return _local(root.resolve(), profile, force, resolve)
+            return Selection(
+                None, None, str(error), stealth_sources, False, registry_error, fan_out=True
+            )
+        return Selection(source, chosen, None, stealth_sources, False, registry_error, fan_out=True)
+    selection = _local(root.resolve(), profile, force, resolve)
+    return replace(selection, fan_out=_global_source(selection.root))
+
+
+def _global_source(root: Path | None) -> bool:
+    return root is not None and machine.is_registered(root, machine.registration().source)
 
 
 def interactive() -> bool:
@@ -351,7 +369,9 @@ def _root_part(selection: Selection, action: Callable[[Path, str], int]) -> int:
 
 
 def _root_alone(selection: Selection) -> bool:
-    return not selection.stealth_sources and selection.registry_error is None
+    return (
+        not selection.stealth_sources and selection.registry_error is None and not selection.fan_out
+    )
 
 
 def _scoped_first(
@@ -372,9 +392,26 @@ def _sync_one(stealth: RegisteredStealth, scope: Path | None, force: bool) -> in
     return outcome.code
 
 
+def _ask_terminal(question: str) -> bool:
+    try:
+        return input(question).strip().lower() in _YES
+    except (EOFError, OSError):
+        return False
+
+
+def _projects(selection: Selection) -> tuple[Path, ...]:
+    """The projects a run at the global source also reaches, never the source itself."""
+    if not selection.fan_out:
+        return ()
+    index = project_index(skip=selection.root)
+    warn(index)
+    return index.roots
+
+
 def cmd_sync_selection(selection: Selection, *, force: bool) -> int:
     def root_sync(root: Path, profile: str) -> int:
-        return cmd_sync(root, profile=profile, force=force)
+        ask = _ask_terminal if interactive() else None
+        return sync_with_push(root, profile, force=force, ask=ask)
 
     if _root_alone(selection):
         return _root_only(selection, root_sync)
@@ -383,6 +420,7 @@ def cmd_sync_selection(selection: Selection, *, force: bool) -> int:
         *(_sync_one(stealth, scope, selection.stealth_force) for stealth, scope in scoped),
         _root_part(selection, root_sync),
         *(_sync_one(stealth, scope, selection.stealth_force) for stealth, scope in rest),
+        sync_projects(_projects(selection)),
     ]
     return max(codes)
 
@@ -432,7 +470,22 @@ def _check_json(selection: Selection) -> int:
         for check in checks
         for target, message in check.errors
     )
-    code = max(int(base["exit_code"]), 3 if errors else 0, *(check.code for check in checks))
+    projects = check_projects_json(_projects(selection))
+    drift.extend(item for project in projects for item in project.drift)
+    notes.extend(
+        f"project {project.root}: {note}" for project in projects for note in project.notes
+    )
+    errors.extend(
+        _error_entry(None, project.root, project.error)
+        for project in projects
+        if project.error is not None
+    )
+    code = max(
+        int(base["exit_code"]),
+        3 if errors else 0,
+        *(check.code for check in checks),
+        *(project.exit_code for project in projects),
+    )
     result = {
         "status": _status(code, drift),
         "exit_code": code,
@@ -457,6 +510,7 @@ def cmd_check_selection(selection: Selection, *, as_json: bool) -> int:
         *(_report_one(_checked(stealth, scope)) for stealth, scope in scoped),
         _root_part(selection, root_check),
         *(_report_one(_checked(stealth, scope)) for stealth, scope in rest),
+        check_projects(_projects(selection)),
     ]
     return max(codes)
 

@@ -26,6 +26,7 @@ from loadout.written import (
     owned_values,
     read_written,
     record_written,
+    recorded_roots,
     text_entry,
     written_state_path,
 )
@@ -218,3 +219,30 @@ def test_a_record_entry_of_an_unknown_shape_is_dropped(tmp_path: Path) -> None:
     )
 
     assert read_written(root) == {Path(kept): WrittenEntry(kind="copied", sha256="abc")}
+
+
+def test_recorded_roots_names_each_root_a_record_was_written_for(tmp_path: Path) -> None:
+    a, b = tmp_path / "a", tmp_path / "b"
+    a.mkdir()
+    b.mkdir()
+    record_written(a, {Path("/dest/a.md"): entry()})
+    record_written(b, {Path("/dest/b.md"): entry()})
+    written_state_path(a).with_name("garbage.json").write_bytes(b"\xff")
+
+    assert recorded_roots() == (a.resolve(), b.resolve())
+
+
+def test_recorded_roots_skips_a_record_filed_under_another_roots_name(tmp_path: Path) -> None:
+    a, b = tmp_path / "a", tmp_path / "b"
+    a.mkdir()
+    b.mkdir()
+    record_written(a, {Path("/dest/a.md"): entry()})
+    moved = written_state_path(b)
+    moved.write_bytes(written_state_path(a).read_bytes())
+    written_state_path(a).unlink()
+
+    assert recorded_roots() == ()
+
+
+def test_recorded_roots_is_empty_before_any_sync() -> None:
+    assert recorded_roots() == ()

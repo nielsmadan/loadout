@@ -27,8 +27,8 @@ Edit the declared source for each configured consumer. Generated harness files a
    private sources and unrelated fields; never create overlapping producers.
 4. Sync the edited source: `loadout sync --root <repo>` for project/personal changes;
    `loadout sync --global` for the active global profile, or
-   `loadout sync --global --profile <name>` when explicitly selected; `loadout sync --stealth <name>`
-   for a stealth source. Rendered files are output: edit the source folder. Ask whether an unnamed change
+   `loadout sync --global --profile <name>` when explicitly selected (both also sync every project
+   on this machine that uses a kit); `loadout sync --stealth <name>` for a stealth source. Rendered files are output: edit the source folder. Ask whether an unnamed change
    under a non-default profile belongs to that profile or its inherited default.
 5. Report source files changed, harnesses reached, unsupported consumers and the sync result.
 

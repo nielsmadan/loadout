@@ -203,6 +203,25 @@ def every_recorded_path(
     return frozenset(paths)
 
 
+def recorded_roots(env: Mapping[str, str] | None = None) -> tuple[Path, ...]:
+    """Every root a sync has recorded, sorted: the index of the projects this machine
+    syncs. A record filed under another root's name is skipped, as `every_recorded_path`
+    skips it; a record directory that cannot be listed raises."""
+    folder = config_dir(env) / "written"
+    try:
+        records = sorted(path for path in folder.iterdir() if path.suffix == ".json")
+    except FileNotFoundError:
+        return ()
+    roots = (_root(_document(record)) for record in records)
+    return tuple(
+        sorted(
+            root
+            for root, record in zip(roots, records, strict=True)
+            if root is not None and written_state_path(root, env) == record
+        )
+    )
+
+
 def _names(document: object) -> list[str]:
     """The destinations a record names, by the rule `_entries` reads it with."""
     if not isinstance(document, dict) or document.get("version") != VERSION:

@@ -449,7 +449,9 @@ def kit_notices(root: Path) -> tuple[Notice, ...]:
                 "project",
                 "kits",
                 f"the vendored kit {name!r} was modified after it was vendored — "
-                f"`loadout kit sync {name}` will refuse until those edits go upstream",
+                f"`loadout sync` in a terminal offers to push the edits to its source when "
+                f"the source has not changed since and is not bundled with loadout, and "
+                f"`loadout kit sync {name}` refuses until they are there",
             )
             for name in kit_divergence(root)
         ),

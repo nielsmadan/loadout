@@ -115,6 +115,9 @@ To link a kit into a [stealth source](stealth.md#link-kits) instead, name it:
 | Linked | A source in your machine's global manifest | The next `loadout sync` reads the current kit |
 | Vendored | `loadout/kits/python/` in the project | Run `loadout kit sync python`, then `loadout sync` |
 
+Either way, `loadout sync --global` brings every project on this machine up to date at once:
+see [change a kit everywhere](#change-a-kit-everywhere).
+
 Linked kits work well across your own projects or a team that shares the same source.
 Edit the kit once, then sync the projects that consume it.
 
@@ -155,9 +158,63 @@ loadout sync
 Loadout updates an unchanged vendored copy and records the new hash. If you modified the copy,
 it prints a diff and refuses to overwrite it. Reconcile those changes manually.
 
+To send an edit made in the copy back to the kit instead, see
+[push an edit back](#push-an-edit-back).
+
 Keep project customisations in the project's own fragments where possible, so the vendored
 kit stays easy to update. `loadout check` reports a modified or unverifiable vendored
 source separately from generated-file drift.
+
+## Change a kit everywhere
+
+Edit the kit in its source, then sync your global source:
+
+```sh
+loadout sync --global
+```
+
+Running `loadout sync` in the global source folder does the same. After the global source and
+any stealth sources, it reaches every project this machine has synced that lists a kit:
+
+```text
+project ~/work/api:
+note: project ~/work/api: kit python: updated from its source, 1 file(s); commit loadout/ in this project
+wrote CLAUDE.md
+1 written, 1 unchanged
+```
+
+A linked kit is simply rendered again. A vendored copy is updated first, unless it has edits of
+its own: that copy is left as it is, with a note. Commit the updated `loadout/kits/` and
+`loadout/config.toml` in each project as usual. `loadout check --global` shows the same projects
+without writing anything.
+
+Only projects this machine has synced are reached. A project you clone later joins once you run
+`loadout sync` in it, and each clone or worktree counts on its own.
+
+## Push an edit back
+
+When you change a vendored copy inside a project, run `loadout sync` there in a terminal. It shows
+what you changed and asks:
+
+```text
+kit python has edits its source does not have; '+' lines are the copy's:
+--- python/instructions.md (on disk)
++++ python/instructions.md (expected)
+@@ -1,3 +1,3 @@
+...
+    write ~/agent-config/loadout/kits/python/instructions.md
+Push them to source migrated and update 2 other project(s)? [y/N]
+```
+
+On yes, the edit is written into the kit's source, the project is synced, and every other
+project using the kit is updated, as `loadout sync --global` would. Commit the change in the kit
+source's repository. On no, the edit stays in this project, and the next sync in a terminal asks
+again.
+
+The push only goes ahead when the source still holds what you vendored. If the kit changed there
+too, nothing is written: sync shows how the copy and the source differ, and you bring the source
+to what you want by hand. Once the two match, the next sync records it. A kit vendored from one
+of loadout's bundled kits is never pushed. Git hooks and runs without a terminal never push.
 
 ## Share a kit source
 

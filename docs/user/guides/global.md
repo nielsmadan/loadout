@@ -106,6 +106,8 @@ loadout check --global
 
 Loadout writes to each selected harness's global configuration directory. The destinations follow
 the harness environment variables listed in the [support reference](../reference/harnesses.md).
+`sync --global` then syncs every project on this machine that uses a kit, so a kit you changed
+reaches them all; see [change a kit everywhere](kits.md#change-a-kit-everywhere).
 
 If you are adopting an existing setup, first move the configuration you want to retain into the
 source. Sync may refuse an output containing changes it cannot recognise. Review its diff and

@@ -24,7 +24,7 @@ from .files import Drift, DriftKind, pi_settings_as_read, refuse_unparsable
 from .git_privacy import still_tracked
 from .kit_catalog import load_catalogs
 from .kit_discover import AvailableKit, available_kits
-from .kit_vendor import vendor_catalog
+from .kit_vendor import kit_diff, update_vendored_directory, vendor_catalog
 from .kits import (
     contained,
     copy_tree,
@@ -617,7 +617,9 @@ def _make_vendored(root: Path, name: str, *, yes: bool = False) -> int:
     found = resolve_kit(name, root)
     local = vendored_path(root, name)
     if found.path.is_file():
-        return vendor_catalog(root, name, found, yes=yes)
+        if vendor_catalog(root, name, found, yes=yes):
+            print(f"vendored {name}; run `loadout sync` to regenerate project outputs")
+        return 0
     copy_tree(found.path, local)
     declare(root, name)
     record_hash(root, name, tree_hash(local))
@@ -650,7 +652,7 @@ def _make_linked(root: Path, name: str) -> int:
                 f"{name}: vendored copy is modified or has no recorded provenance; switch to "
                 f"linked refused. Keep it vendored, or {discard} to discard the edits"
             )
-        _report_local_edits(name, local, found.path, recorded)
+        _report_local_edits(name, local, found.path, unverifiable=recorded is None)
         print(
             f"\nSwitch to linked refused — the '-' lines above are in your copy, not the "
             f"source, and linking deletes the copy. To keep them, leave {name} vendored; "
@@ -665,51 +667,21 @@ def _make_linked(root: Path, name: str) -> int:
     return 0
 
 
-def _report_local_edits(name: str, local: Path, upstream: Path, recorded: str | None) -> None:
-    state = (
-        "has no recorded provenance" if recorded is None else "was modified after it was vendored"
-    )
+def _report_local_edits(name: str, local: Path, upstream: Path, *, unverifiable: bool) -> None:
+    state = "has no recorded provenance" if unverifiable else "was modified after it was vendored"
     print(f"WARNING: the vendored copy of {name} {state}", file=sys.stderr)
-    report_diff(_tree_diff(local, upstream, name))
-
-
-def _tree_diff(local: Path, upstream: Path, label: str) -> list[str]:
-    """A unified diff per file across both trees, added and removed files included."""
-    return [line for diff in _file_diffs(local, upstream, label) for line in diff]
-
-
-def _file_diffs(local: Path, upstream: Path, label: str) -> list[list[str]]:
-    """Each changed file's diff lines, so a file whose diff is withheld still counts."""
-    diffs: list[list[str]] = []
-    for relative in sorted({*kit_files(local), *kit_files(upstream)}):
-        here, there = local / relative, upstream / relative
-        try:
-            actual = here.read_text(encoding="utf-8") if here.is_file() else ""
-            expected = there.read_text(encoding="utf-8") if there.is_file() else ""
-        except UnicodeDecodeError:
-            # A kit carries whatever a skill carries, binaries included, and
-            # a byte diff of one is noise rather than a review.
-            if not (here.is_file() and there.is_file()) or here.read_bytes() != there.read_bytes():
-                diffs.append([f"{label}/{relative}: differs (binary)\n"])
-            continue
-        if actual != expected:
-            diffs.append(diff_lines(f"{label}/{relative}", actual, expected, context=3))
-    return diffs
+    report_diff(kit_diff(local, upstream, name))
 
 
 def cmd_kit_sync(root: Path, name: str, *, yes: bool = False) -> int:
-    """Update a vendored copy from its source, refusing rather than merging.
-
-    Refuse-and-diff is never wrong and never silently mangles anything. The
-    alternative — a three-way merge against the version you vendored — is the
-    largest single piece of work in this design, and the recorded hash is exactly
-    the base it would need, so deferring it costs no state migration.
-    """
+    """Update a vendored copy from its source, refusing rather than merging."""
     contained(root, name)
     config = load_project_config(project_config_path(root))
     local = vendored_path(root, name)
     if local.is_file():
-        return vendor_catalog(root, name, resolve_upstream_kit(name), update=True, yes=yes)
+        if vendor_catalog(root, name, resolve_upstream_kit(name), update=True, yes=yes):
+            print(f"updated {name}; run `loadout sync` to regenerate project outputs")
+        return 0
     if not local.is_dir() and name not in config.kits:
         raise LoadoutError(
             f"{name} is not listed in loadout/config.toml, so there is nothing to sync; "
@@ -721,24 +693,12 @@ def cmd_kit_sync(root: Path, name: str, *, yes: bool = False) -> int:
             f"source on every render. Run `loadout kit add {name} --vendored` to copy it in."
         )
 
-    recorded = config.vendored_hash(name)
-    # A vendored copy resolves ahead of every source, so the upstream has to be
-    # reached past it deliberately.
-    found = resolve_upstream_kit(name)
-    upstream = found.path
-    if upstream.is_file():
-        raise LoadoutError("kit sync cannot change between a directory and a catalog manifest")
-    current = tree_hash(local)
-
-    # Refuse unless the copy can be *proved* unmodified, rather than refusing only
-    # when it can be proved modified. Those differ exactly when there is no
-    # provenance to compare against — which is the state `harness add` produced —
-    # and fail-open there would let a command whose contract is refuse-rather-than-
-    # merge silently overwrite local edits. Matching upstream is proof enough, so a
-    # clean copy still falls through to the self-heal below and is never refused.
-    if has_local_edits(local, recorded, upstream):
-        _report_local_edits(name, local, upstream, recorded)
-        if recorded is None:
+    update = update_vendored_directory(root, name)
+    if update.state in {"edited", "unverifiable"}:
+        _report_local_edits(
+            name, local, update.upstream, unverifiable=update.state == "unverifiable"
+        )
+        if update.state == "unverifiable":
             print(
                 f"\nSync refused — with no recorded hash, nothing can tell your edits from "
                 f"the source's, so the '-' lines above may be either. Commit your copy first "
@@ -754,22 +714,9 @@ def cmd_kit_sync(root: Path, name: str, *, yes: bool = False) -> int:
                 file=sys.stderr,
             )
         return 1
-
-    # **Position is deliberate: this must stay below both refusals.** It reads
-    # like a cheap early-out that belongs at the top, and hoisting it changes a
-    # real case — a copy whose recorded hash says modified but whose content now
-    # equals the upstream currently refuses, and would start reporting "up to
-    # date" instead. Nothing asked for that. The no-provenance gate above already
-    # falls through to here when the copy matches, which is the self-heal.
-    if tree_hash(upstream) == current:
+    if update.state == "current":
         print(f"{name} is up to date")
-        if recorded is None:
-            record_hash(root, name, current)
         return 0
-
-    changed = _file_diffs(local, upstream, name)
-    copy_tree(upstream, local)
-    record_hash(root, name, tree_hash(local))
-    print(f"updated {name} from source, {len(changed)} file(s) changed")
-    report_diff([line for diff in changed for line in diff])
+    print(f"updated {name} from source, {len(update.changed)} file(s) changed")
+    report_diff([line for diff in update.changed for line in diff])
     return 0

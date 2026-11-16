@@ -313,6 +313,8 @@ If two sources offer the same name, use a qualified name such as `company/python
 
 `loadout kit sync NAME` refuses to overwrite a copy that has changed since it was
 vendored, or whose original hash cannot be verified. It prints a diff for you to reconcile.
+`loadout sync --global` leaves such a copy as it is too, with a note. If the changes belong in
+the kit, run `loadout sync` in the project in a terminal to [push them back](guides/kits.md#push-an-edit-back).
 
 Keep project-specific changes in project fragments rather than editing the shared kit
 copy where possible. See [kit updates](guides/kits.md#update-a-vendored-kit).
