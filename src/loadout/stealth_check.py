@@ -17,6 +17,7 @@ from .claude_json import (
     leaf_refusal,
     read_claude_document,
 )
+from .color import BOLD_YELLOW, GREEN, print_styled
 from .commands import DRIFT_ADVICE, drift_summary
 from .destinations import resolve_destination
 from .diffs import diff_lines, report_diff
@@ -737,7 +738,7 @@ def report_check(check: StealthCheck) -> None:
         print(f"{lead}: ERROR: {where}{message}", file=sys.stderr)
     for item in check.drift:
         label = shown(item.path)
-        print(f"{lead}: DRIFT ({item.kind}): {label}", file=sys.stderr)
+        print_styled(f"{lead}: DRIFT ({item.kind}): {label}", BOLD_YELLOW, sys.stderr)
         if item.kind == "missing":
             continue
         format_name = "json" if item.path in check.json_labels else None
@@ -754,4 +755,4 @@ def report_check(check: StealthCheck) -> None:
     for note in check.notes:
         print(f"note: {lead}: {note}")
     if not check.drift and not check.errors:
-        print(f"{lead}: up to date")
+        print_styled(f"{lead}: up to date", GREEN, sys.stdout)

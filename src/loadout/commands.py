@@ -10,6 +10,7 @@ from typing import Any, Literal
 
 from .atomic import atomic_install
 from .bundled_skill import bundled_skill_path
+from .color import BOLD_YELLOW, GREEN, print_styled
 from .diffs import diff_lines, report_diff, withheld
 from .emit import (
     SKILLS_SUBDIR,
@@ -410,11 +411,11 @@ def cmd_check(root: Path, profile: str, *, as_json: bool = False) -> int:
     for note in _check_notes(root, profile, context):
         print(f"note: {note}")
     if not drift:
-        print("generated files are up to date")
+        print_styled("generated files are up to date", GREEN, sys.stdout)
         return 0
     for item in drift:
         rel = _display(item.path, root)
-        print(f"DRIFT ({item.kind}): {rel}", file=sys.stderr)
+        print_styled(f"DRIFT ({item.kind}): {rel}", BOLD_YELLOW, sys.stderr)
         if item.kind != "missing":
             report_diff(list(diff_lines(rel, item.actual, item.expected, context=3)))
     summary = drift_summary(drift)

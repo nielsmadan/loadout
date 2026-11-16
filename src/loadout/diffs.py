@@ -3,16 +3,22 @@
 from __future__ import annotations
 
 import difflib
+import os
+import re
 import sys
+from collections.abc import Mapping
 from pathlib import PurePath
-from typing import TextIO
+from typing import NamedTuple, TextIO
 
+from .color import BOLD, CYAN, GREEN, RED, color_enabled, paint
 from .credentials import secret_reason
 
 DIFF_LIMIT = 40
 
 
 NO_NEWLINE = "\\ No newline at end of file\n"
+
+_HUNK = re.compile(r"@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@")
 
 
 def diff_lines(
@@ -71,11 +77,54 @@ def _range(start: int, stop: int) -> str:
     return f"{start if not length else start + 1},{length}"
 
 
-def report_diff(lines: list[str], stream: TextIO | None = None) -> bool:
+class _Place(NamedTuple):
+    old: int = 0
+    new: int = 0
+    header: bool = False
+
+
+def _body_style(line: str, place: _Place) -> tuple[str | None, _Place]:
+    if line.startswith("-"):
+        return RED, place._replace(old=place.old - 1)
+    if line.startswith("+"):
+        return GREEN, place._replace(new=place.new - 1)
+    if line.startswith(" "):
+        return None, _Place(place.old - 1, place.new - 1)
+    return None, place
+
+
+def _style(line: str, following: str, place: _Place) -> tuple[str | None, _Place]:
+    if place.header:
+        return BOLD, _Place()
+    if place.old or place.new:
+        return _body_style(line, place)
+    if hunk := _HUNK.match(line):
+        return CYAN, _Place(int(hunk[1] or 1), int(hunk[2] or 1))
+    if line.startswith("--- ") and following.startswith("+++ "):
+        return BOLD, _Place(header=True)
+    return None, _Place()
+
+
+def colored(lines: list[str]) -> list[str]:
+    """Each line painted by its place in the diff, so a removed `-- note` is red rather
+    than a header, and a line that names a file stays plain."""
+    painted: list[str] = []
+    place = _Place()
+    for line, following in zip(lines, [*lines[1:], ""], strict=True):
+        style, place = _style(line, following, place)
+        painted.append(line if style is None else paint(line, style))
+    return painted
+
+
+def report_diff(
+    lines: list[str], stream: TextIO | None = None, environ: Mapping[str, str] | None = None
+) -> bool:
     """Show at most DIFF_LIMIT lines of a diff, on stderr unless told otherwise; True
     when some were left out."""
     stream = stream or sys.stderr
-    stream.writelines(lines[:DIFF_LIMIT])
+    shown = lines[:DIFF_LIMIT]
+    on = color_enabled(stream, os.environ if environ is None else environ)
+    stream.writelines(colored(shown) if on else shown)
     if len(lines) <= DIFF_LIMIT:
         return False
     print(f"    ... {len(lines) - DIFF_LIMIT} more diff line(s)", file=stream)

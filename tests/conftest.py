@@ -23,7 +23,7 @@ def fake_home(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.Monk
     """
     home = tmp_path_factory.mktemp("home")
     monkeypatch.setenv("HOME", str(home))
-    for variable in HARNESS_VARIABLES:
+    for variable in (*HARNESS_VARIABLES, "NO_COLOR", "FORCE_COLOR"):
         monkeypatch.delenv(variable, raising=False)
     return home
 

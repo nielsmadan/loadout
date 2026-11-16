@@ -80,6 +80,14 @@ has nothing to replace it, so `sync` refuses it with or without `--force` until 
 deleted). Settings a harness saves itself, such as Claude Code's `/model`, are drift too; see
 [settings a harness saves itself](../troubleshooting.md#settings-a-harness-saves-itself).
 
+On a terminal, a diff that any command shows is colored: removed lines red, added lines green,
+hunk headers cyan and the two file lines bold. `check` also shows each `DRIFT` line in
+yellow and the up-to-date line in green, for stealth sources too. Output to a pipe or a file stays plain,
+as do `--json` and the complete diff a truncated sync abort keeps; stdout and stderr are judged
+separately. `NO_COLOR` set to any non-empty value turns color off and wins over everything else.
+`FORCE_COLOR` set to a non-empty value other than `0` or `false` keeps color on a pipe, and
+`TERM=dumb` turns it off when `FORCE_COLOR` does not force it.
+
 `check --json` prints one object with `status`, `exit_code`, `drift`, a list of `{"path", "kind"}`
 with the same kind per path, and `notes`, and exits with the same code as `check`:
 
