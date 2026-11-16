@@ -53,6 +53,20 @@ newly managed key. When a slice stops rendering into a shared file, each of its 
 judged the same way before sync strips it, so a server added by hand stops the retirement as
 `owned-key` instead of going with it.
 
+Codex's `mcp_servers` table is shared per server. Loadout owns only the server names its
+definitions or MCP permissions render, and remembers those names in the written record.
+Servers added by Codex or another tool are left alone: they cause no drift and survive
+`sync --force` and retirement. Removing a server from loadout's source removes that server
+only; editing or deleting a managed server outside loadout still stops sync.
+
+Older records hash the entire `mcp_servers` table and cannot identify its individual servers.
+On upgrade, loadout starts recording the names it currently renders and leaves other names
+alone, including previously managed servers already removed from the source. Their ownership
+cannot be proved from the old record. A managed server that differs from both the current and
+committed source still stops sync; the old whole-table hash cannot vouch for its value alone.
+Explicit `$remove` ownership has no hash and is retained, so a requested eviction of the
+whole `mcp_servers` table still applies during retirement.
+
 A tool that rewrites loadout's output in its own spelling reads as an edit too, since loadout
 accepts no alternate spelling of a value. hooklinesinker rewrites the hook entries loadout renders,
 writing an absolute path where loadout writes `~/`, so each rewrite is drift. The fix belongs to

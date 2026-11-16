@@ -57,8 +57,10 @@ an unchanged file is deleted with its `.gitignore` entry, and a shared file lose
 loadout recorded writing. A retired file edited since sync wrote it is refused like any other
 hand edit. `check` compares them with the current source and reports
 drift without rewriting the generated files, so `check` is the preview of `sync`; there is no
-`sync --dry-run`. Each drifted file carries a kind, judged by the same comparison `sync` uses to
-refuse an overwrite: `source-changed` (the source moved on; run `sync`), `hand-edited` (it differs
+`sync --dry-run`. In Codex's `config.toml`, loadout manages only the MCP servers named by its
+source definitions or permissions. Extra servers added by Codex or other tools cause no drift
+and survive sync, including `--force`. Each drifted file carries a kind, judged by the same
+comparison `sync` uses to refuse an overwrite: `source-changed` (the source moved on; run `sync`), `hand-edited` (it differs
 from what sync last wrote, including bytes that are not UTF-8, which are shown with `�` in
 their place; port the edit into the source with `/loadout`, or `sync --force` to discard it), `owned-key` (a key loadout writes in a file it shares with the harness, such as a
 server in `~/.claude.json`, was edited there; port it with `/loadout`, or `sync --force` to discard

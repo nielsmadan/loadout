@@ -83,6 +83,7 @@ from .subagents import (
 from .surgery import concat_documents
 from .toml_paths import key_name, leaf_values, overlapping_keys
 from .worktrees import linked_worktree_source
+from .written import codex_server_ownership, read_written
 
 PERMISSIONS_SOURCE = "permissions.toml"
 PROJECT_LOCAL_SOURCE = "permissions.local.toml"
@@ -783,9 +784,21 @@ def render_global(
                 else:
                     _claim(path, _owner_label(target), claimed)
                 group.append((target, residual, content))
+        written = read_written(root)
         for path, contributors in groups.items():
-            outputs[path] = _attach_records(
+            document = _attach_records(
                 compose_permission_document(contributors, rules, path), contributors, manifest
+            )
+            outputs[path] = (
+                codex_server_ownership(
+                    document,
+                    written.get(path),
+                    renders_servers=any(
+                        target.renderer == "codex-config" for target, _, _ in contributors
+                    ),
+                )
+                if isinstance(document, Merged)
+                else document
             )
 
     _expand_every_skill(manifest, expansion, context)

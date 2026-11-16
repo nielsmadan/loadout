@@ -48,6 +48,7 @@ from .output import (
 from .project import gitignore_entries
 from .retirement import orphan_drift, orphaned, retire, stripped
 from .state import SyncState, sync_state
+from .toml_paths import contains, key_path
 from .unmanaged import describe_unmanaged, unmanaged_entries
 from .written import (
     ABSENT,
@@ -212,10 +213,14 @@ def _unexplained(
         key
         for key in sorted(keys)
         if disk[key] != want.get(key, ABSENT)
-        and (key in recorded if recorded else disk[key] != ABSENT)
+        and (_previously_owned(key, recorded) if recorded else disk[key] != ABSENT)
         and disk[key] != recorded.get(key)
         and f"{key}\0{disk[key]}" not in forms()
     ]
+
+
+def _previously_owned(key: str, recorded: Mapping[str, str]) -> bool:
+    return any(contains(key_path(parent), key_path(key)) for parent in recorded)
 
 
 def newly_managed(state: SyncState, outputs: Mapping[Path, Output]) -> list[tuple[Path, str, str]]:
@@ -230,7 +235,7 @@ def newly_managed(state: SyncState, outputs: Mapping[Path, Output]) -> list[tupl
         if entry is None or not entry.owned_sha256:
             continue  # with no per-key entry the guard has judged every key already
         recorded = dict(entry.owned_sha256)
-        keys = sorted(expected.guarded - recorded.keys())
+        keys = sorted(key for key in expected.guarded if not _previously_owned(key, recorded))
         text = read_document(path, newline=None)
         values = (None if text is None else owned_values(text, keys, expected.format)) or {}
         rendered = owned_values(expected.document, keys, expected.format) or {}

@@ -62,6 +62,15 @@ it — see [0022](../decisions/0022-sync-retires-what-it-no-longer-renders.md). 
 nothing is retired. Do not
 confuse it with `record.py`, which records owned key *names* beside a fragment in the source
 repo and is committed.
+
+For Codex MCP, `written.codex_server_ownership` narrows the renderer's reserved `mcp_servers`
+namespace to its rendered server names plus previously written names pending removal. Global
+composition reads that record without reading the destination; the rendered content stays a
+pure function of the source. Each server is guarded and retired separately, leaving servers
+Codex adds untouched. A removed server is dropped from the next record. Older whole-table
+records keep their digest for guard checks but release the table's ownership, since a table
+hash cannot establish which individual servers may be retired.
+
 `project.py` (harness preset) is project scope. `init` for both scopes is `init_workflow.py`,
 which runs `discovery.py`'s inventory through `migration*.py`'s plan, backup and transaction;
 `credentials.py` decides which values in what it adopts look like secrets, for the warning.

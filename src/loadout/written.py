@@ -27,14 +27,14 @@ import os
 import re
 import tomllib
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Literal
 
 from .atomic import replace_atomically
 from .machine import config_dir
 from .output import Merged, file_sha256, sha256
-from .toml_paths import key_path
+from .toml_paths import key_name, key_path, overlapping_keys
 
 VERSION = 1
 
@@ -160,12 +160,15 @@ def _entry(raw: object) -> WrittenEntry | None:
         isinstance(owned, list) and all(isinstance(key, str) for key in owned)
     ):
         return None
+    owned_hashes = _pairs(raw.get("owned_sha256"))
+    hashed = frozenset(key for key, _ in owned_hashes)
+    # A whole-table digest cannot prove which individual servers may be retired.
     return WrittenEntry(
         kind=raw["kind"],
         sha256=hashes[0],
         norm_sha256=hashes[1],
-        owned=tuple(owned),
-        owned_sha256=_pairs(raw.get("owned_sha256")),
+        owned=tuple(key for key in owned if key != "mcp_servers" or key not in hashed),
+        owned_sha256=owned_hashes,
     )
 
 
@@ -336,15 +339,38 @@ def copied_entry(source: Path, digest: Callable[[Path], str] = file_sha256) -> W
 
 
 def merged_entry(merged: Merged) -> WrittenEntry:
-    """Every owned key, which retirement strips; only the guarded ones are hashed, since
-    an evicted key the harness writes back is no edit, and moving it to a managed value is
-    opting it in (review 3, batch 2.1)."""
+    """Retain eviction keys, hash guarded keys, and release removed server names."""
     hashes = owned_hashes(merged.document, merged.guarded, merged.format) or {}
+    owned = frozenset(
+        key for key in merged.owned if not _codex_server_key(key) or hashes.get(key) != ABSENT
+    )
     return WrittenEntry(
         kind="merged",
-        owned=tuple(sorted(merged.owned)),
-        owned_sha256=tuple(sorted(hashes.items())),
+        owned=tuple(sorted(owned)),
+        owned_sha256=tuple(sorted((key, digest) for key, digest in hashes.items() if key in owned)),
     )
+
+
+def _codex_server_key(key: str) -> bool:
+    return key_path(key)[:-1] == ("mcp_servers",)
+
+
+def codex_server_ownership(
+    merged: Merged, entry: WrittenEntry | None, *, renders_servers: bool
+) -> Merged:
+    if merged.format != "toml":
+        return merged
+    owned = merged.owned
+    if renders_servers:
+        servers = tomllib.loads(merged.document).get("mcp_servers", {})
+        owned = (owned - {"mcp_servers"}) | frozenset(
+            key_name(("mcp_servers", name)) for name in servers
+        )
+    previous = (
+        frozenset(key for key in entry.owned if _codex_server_key(key)) if entry else frozenset()
+    )
+    retired = previous - overlapping_keys(previous, owned)
+    return replace(merged, owned=owned | retired)
 
 
 # The recorded hash of an owned key the document does not hold.

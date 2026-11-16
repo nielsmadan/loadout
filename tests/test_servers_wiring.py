@@ -148,7 +148,7 @@ def test_codex_global_writes_config_toml(tmp_path: Path, fake_home: Path) -> Non
 
     merged = rendered[fake_home / ".codex" / "config.toml"]
     assert isinstance(merged, Merged)
-    assert merged.owned == frozenset({"mcp_servers"})
+    assert merged.owned == frozenset({"mcp_servers.jina"})
     assert "[mcp_servers.jina]" in merged.document
     assert root / "codex" / "config.toml" not in rendered
 

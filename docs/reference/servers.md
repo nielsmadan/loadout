@@ -162,13 +162,20 @@ harness rewrote it, and `check` would report that as drift on every run.
 **One key, statically owned, so `record.py` is not needed.** Only Codex's `defaults` slice
 (`codex-settings`) keeps a `.owned` record beside its fragment, because the keys it owns are
 whichever top-level keys the user's fragment names — an open set loadout cannot enumerate. Every
-other merged renderer declares a fixed set: `codex-config` owns `mcp_servers`, `codex-plugins`
-owns `plugins` and `marketplaces`, and here the owned set is the constant `{"mcpServers"}`
+other merged renderer reserves a fixed namespace: `codex-config` reserves `mcp_servers`,
+`codex-plugins` owns `plugins` and `marketplaces`, and here the owned set is the constant
+`{"mcpServers"}`
 (`RENDERERS` in `permissions/renderers.py`; `_attach_records` in `emit.py` writes a record only
 for a `MergedTomlSpec` whose `owns` is a function). Writing the map is enough for add, update
 *and* delete.
 
-That last one closed a real defect. The staged path was **add-only**: `sync_claude_mcp` listed
+Codex's reserved namespace is narrowed to the individual server tables before writing.
+The written record remembers those names so a server removed from the source is removed on
+the next sync. Servers absent from loadout's definitions and permissions stay untouched,
+including servers Codex adds itself. See [sync](sync.md#files-modified-outside-loadout) for
+the guard and the upgrade from older whole-table records.
+
+Replacing Claude's server map closed a real defect. The staged path was **add-only**: `sync_claude_mcp` listed
 what was registered and called `add-json` for the rest, and `claude mcp add-json` refuses to
 overwrite an existing name (exits 0 saying so). Dropping a server from `mcp.toml` left it
 registered, and *editing* one silently did nothing — so `mcp.toml` was authoritative for

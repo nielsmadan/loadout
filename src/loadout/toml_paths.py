@@ -219,7 +219,7 @@ def _insert_pending(
 def _section_suffix(section: Section) -> str:
     suffix = ""
     for entry in reversed(section.entries):
-        if entry.text.strip():
+        if entry.path:
             break
         suffix = entry.text + suffix
     return suffix
@@ -239,7 +239,8 @@ def _replace_owned_sections(
         ][:1]
     )
     if not matches:
-        return None
+        suffix = _section_suffix(section) if owner is None else ""
+        return Section(entries=[Entry(suffix)]) if suffix else None
     for match in matches:
         full.remove(match)
     text = "\n\n".join(match.text().rstrip("\r\n") for match in matches) + "\n"
