@@ -774,7 +774,7 @@ def project_notices(root: Path, environ: Mapping[str, str]) -> tuple[Notice, ...
         )
     )
     kits = project_kits(root, config, RenderContext())
-    rules = project_rules(root, kits)
+    rules = project_rules(root, kits, config.server_policies)
     permissions: list[Notice] = []
     documents: list[Notice] = []
     for agent, slice_name, spec in project_slices(config.harnesses):

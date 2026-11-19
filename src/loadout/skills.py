@@ -13,12 +13,12 @@ from __future__ import annotations
 import os
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path, PurePath
 
 from .errors import LoadoutError
 from .harnesses import KNOWN_HARNESSES
-from .output import item_name
+from .output import Copied, item_name
 
 SKILL_DOCUMENT = "SKILL.md"
 
@@ -87,6 +87,46 @@ class Skill:
     supporting_root: Path
     supporting: tuple[Path, ...]
     """Paths relative to supporting_root, sorted, excluding SKILL.md."""
+    local: bool = False
+    original: str | None = None
+
+
+def renamed_skill(skill: Skill, alias: str) -> Skill:
+    return replace(skill, name=alias, original=skill.original or skill.name)
+
+
+def _renamed_frontmatter(lines: list[str], name: str) -> list[str]:
+    return [_renamed_line(line, name) for line in lines]
+
+
+def skill_source(skill: Skill) -> str | Copied:
+    if skill.original is None:
+        return Copied(skill.document)
+    try:
+        text = skill.document.read_bytes().decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise LoadoutError(
+            f"{skill.document}: not UTF-8, so its frontmatter name cannot be renamed to "
+            f"{skill.name!r}: {error.reason}"
+        ) from error
+    lines = text.split("\n")
+    if lines[0].rstrip("\r") != "---":
+        return text
+    closing = next((i for i in range(1, len(lines)) if lines[i].rstrip("\r") == "---"), None)
+    if closing is None:
+        return text
+    return "\n".join(
+        _renamed_line(line, skill.name) if 0 < index < closing else line
+        for index, line in enumerate(lines)
+    )
+
+
+def _renamed_line(line: str, name: str) -> str:
+    content = line.rstrip("\r")
+    match = TOP_LEVEL_KEY.match(content)
+    if match is None or match.group(1) != "name":
+        return line
+    return f"name: {name}{line[len(content) :]}"
 
 
 def excluded(relative: PurePath) -> bool:
@@ -148,7 +188,7 @@ def discover_skills(skills_root: Path) -> tuple[Skill, ...]:
         is_local = entry.name.endswith(".local")
         name = item_name(entry.name.removesuffix(".local") if is_local else entry.name, entry)
         target = local if is_local else public
-        target[name] = Skill(name, document, entry, _supporting(entry, document))
+        target[name] = Skill(name, document, entry, _supporting(entry, document), is_local)
 
     return tuple((local.get(name) or public[name]) for name in sorted(public.keys() | local.keys()))
 
@@ -307,8 +347,8 @@ def _fork(lines: list[str]) -> list[str]:
 def render_skill(skill: Skill, harness: str) -> str:
     text = skill.document.read_text(encoding="utf-8")
     frontmatter, body = split_frontmatter(text)
-    banner = BANNER.format(name=skill.name)
-    resolved = apply_body(body, harness, f"{skill.name}/{SKILL_DOCUMENT}")
+    banner = BANNER.format(name=skill.original or skill.name)
+    resolved = apply_body(body, harness, f"{skill.original or skill.name}/{SKILL_DOCUMENT}")
     if frontmatter is None:
         # No frontmatter to sit under, so the banner leads.
         return f"{banner}\n{resolved}"
@@ -320,5 +360,7 @@ def render_skill(skill: Skill, harness: str) -> str:
         if agent is not None:
             gap = "" if resolved.startswith("\n") else "\n"
             resolved = f"\n{DELEGATION.format(agent=agent)}\n{gap}{resolved}"
+    if skill.original is not None:
+        merged = _renamed_frontmatter(merged, skill.name)
     # Keep the banner below the frontmatter so the harness parses the description.
     return "---\n" + "\n".join(merged) + "\n---\n\n" + banner + "\n" + resolved

@@ -8,7 +8,7 @@ from typing import Any
 
 from . import stealth_seams
 from .composition import document, for_destination, joined
-from .emit import settings_document
+from .emit import aliased_skill, declaring_file, settings_document, skill_aliases_in
 from .harnesses import SHARED_SKILL_READERS, SliceOutput
 from .manifest import PermissionTarget
 from .notices import cursor_permission_notices, devin_permission_notices
@@ -31,7 +31,7 @@ from .servers import (
     render_pi_servers,
 )
 from .skill_policy import render_skill_for, selected_skill_agents
-from .skills import SKILL_DOCUMENT, Skill, check_skill_agents, render_skill
+from .skills import SKILL_DOCUMENT, Skill, check_skill_agents, render_skill, skill_source
 from .stealth_documents import OwnedJson
 from .stealth_kits import stealth_instruction_sources
 from .stealth_manifest import StealthManifest
@@ -182,10 +182,12 @@ def _skill_files(stealth: StealthManifest, root: Path) -> list[tuple[Path, str, 
         frozenset(),
     )
     available = tuple(item.harness for item in manifest.skills)
+    aliases = skill_aliases_in(declaring_file(manifest), trees, manifest.skill_policies)
     placed: list[tuple[Path, str, StealthOutput]] = []
-    for skill in trees:
-        selected = selected_skill_agents(skill.name, available, manifest.skill_policies)
-        rendered = render_skill_for(skill.name, manifest.skill_policies)
+    for original in trees:
+        selected = selected_skill_agents(original.name, available, manifest.skill_policies)
+        rendered = render_skill_for(original.name, manifest.skill_policies)
+        skill = aliased_skill(original, aliases)
         for agent in _skill_agents(skill, selected, rendered):
             base = root / str(STEALTH_PRESET[agent]["skills"].output)
             placed.extend(_skill_outputs(skill, agent, base, rendered))
@@ -212,7 +214,7 @@ def _skill_outputs(
 ) -> list[tuple[Path, str, StealthOutput]]:
     directory = base / skill.name
     owner = f"{agent}.skills"
-    document: StealthOutput = render_skill(skill, agent) if rendered else Copied(skill.document)
+    document: StealthOutput = render_skill(skill, agent) if rendered else skill_source(skill)
     return [
         (directory / SKILL_DOCUMENT, owner, document),
         *(

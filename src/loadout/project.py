@@ -9,6 +9,7 @@ from . import containment
 from .errors import LoadoutError
 from .gitignore import escape
 from .harnesses import DROID_AGENTS_DIRECTORY, KNOWN_HARNESSES, SliceOutput
+from .server_policy import ServerPolicy, parse_server_policies
 from .skill_policy import SkillPolicy, parse_skill_policies
 
 # Defined beside the containment rules, which need it and nothing else of this module.
@@ -41,6 +42,7 @@ class ProjectConfig:
     vendored: tuple[tuple[str, str], ...] = ()
     instructions: tuple[str, ...] = ()
     skill_policies: tuple[SkillPolicy, ...] = ()
+    server_policies: tuple[ServerPolicy, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.harnesses:
@@ -72,7 +74,7 @@ class ProjectConfig:
 
 def _validate_skill_policies(policies: tuple[SkillPolicy, ...], harnesses: tuple[str, ...]) -> None:
     for policy in policies:
-        extra = set(policy.agents) - set(harnesses)
+        extra = set(policy.agents or ()) - set(harnesses)
         if extra:
             raise LoadoutError(
                 f"skills.{policy.name} names unconfigured harness(es) {', '.join(sorted(extra))}"
@@ -116,12 +118,13 @@ def load_project_config(path: Path) -> ProjectConfig:
             "kit",
             "instructions",
             "skills",
+            "servers",
         }
     )
     if unknown:
         raise LoadoutError(
             f"{path}: unrecognised key(s) {', '.join(unknown)}; 'harnesses', "
-            f"'kits', 'instructions', 'skills' and [kit.<name>] are the keys this "
+            f"'kits', 'instructions', 'skills', 'servers' and [kit.<name>] are the keys this "
             f"file accepts"
         )
 
@@ -146,6 +149,7 @@ def load_project_config(path: Path) -> ProjectConfig:
             vendored=_parse_provenance(data.get("kit", {}), path),
             instructions=tuple(raw_instructions),
             skill_policies=parse_skill_policies(data.get("skills")),
+            server_policies=parse_server_policies(data.get("servers")),
         )
     except LoadoutError as error:
         raise LoadoutError(f"{path}: {error}") from error

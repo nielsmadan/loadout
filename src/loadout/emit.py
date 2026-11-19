@@ -61,15 +61,18 @@ from .project import (
 from .record import owned_now, read_record, render_record
 from .resolve import INSTRUCTIONS, SETTINGS, ResolvedItem, json_slice, resolve_item
 from .runtime_paths import harness_owned
+from .server_policy import ServerPolicy, aliased_rules, aliased_servers
 from .servers import SERVERS_SOURCE, Server, parse_servers
-from .skill_policy import SkillPolicy, render_skill_for, selected_skill_agents
+from .skill_policy import SkillPolicy, render_skill_for, selected_skill_agents, skill_aliases
 from .skills import (
     EXCLUDED_DIRECTORIES,
     SKILL_DOCUMENT,
     Skill,
     check_skill_agents,
     discover_skills,
+    renamed_skill,
     render_skill,
+    skill_source,
 )
 from .sources import Source, SourceParser, parse_sources, select_overrides
 from .stealth_registry import find_by_folder, load_registry, stealth_path
@@ -204,8 +207,55 @@ def permission_sources(manifest: Manifest) -> tuple[Source, ...]:
 def global_rules(manifest: Manifest) -> Rules:
     """Every permission source's rules merged, lowest priority first."""
     return merge_rules(
-        *(parse_rules(source.path / PERMISSIONS_SOURCE) for source in permission_sources(manifest))
+        *(
+            aliased_rules(
+                parse_rules(source.path / PERMISSIONS_SOURCE), _source_renames(source, manifest)
+            )
+            for source in permission_sources(manifest)
+        )
     )
+
+
+def declaring_file(manifest: Manifest) -> Path:
+    return manifest.config_paths[0] if manifest.config_paths else Path(MANIFEST_NAME)
+
+
+def _defined_renames(
+    policies: tuple[ServerPolicy, ...], defined: Mapping[str, Server]
+) -> dict[str, str]:
+    return {policy.name: policy.alias for policy in policies if policy.name in defined}
+
+
+def _source_renames(source: Source, manifest: Manifest) -> dict[str, str]:
+    if (
+        not manifest.server_policies
+        or "mcp" not in source.use
+        or source.path.resolve() == declaring_file(manifest).parent.resolve()
+    ):
+        return {}
+    return _defined_renames(manifest.server_policies, parse_servers(source.path / SERVERS_SOURCE))
+
+
+def aliased_in(
+    declared: Path, servers: Mapping[str, Server], policies: tuple[ServerPolicy, ...]
+) -> dict[str, Server]:
+    try:
+        return aliased_servers(servers, policies)
+    except LoadoutError as error:
+        raise LoadoutError(f"{declared}: {error}") from error
+
+
+def skill_aliases_in(
+    declared: Path, trees: tuple[Skill, ...], policies: tuple[SkillPolicy, ...]
+) -> dict[str, str]:
+    try:
+        return skill_aliases((skill.name for skill in trees), policies)
+    except LoadoutError as error:
+        raise LoadoutError(f"{declared}: {error}") from error
+
+
+def aliased_skill(skill: Skill, aliases: Mapping[str, str]) -> Skill:
+    return renamed_skill(skill, aliases[skill.name]) if skill.name in aliases else skill
 
 
 def _load_base(path: Path) -> dict[str, Any]:
@@ -776,7 +826,9 @@ def render_global(
     selected_permissions = [t for t in manifest.permissions if selected_target(t, profile)]
     if selected_permissions:
         rules = global_rules(manifest)
-        servers = global_servers(manifest)
+        servers = aliased_in(
+            declaring_file(manifest), global_servers(manifest), manifest.server_policies
+        )
         groups: dict[Path, list[tuple[PermissionTarget, dict[str, Any], dict[str, Any]]]] = {}
         for target in selected_permissions:
             # A source offering no mcp.toml contributes no tier, the same as a
@@ -877,6 +929,7 @@ def _expand_skills(
     context: RenderContext,
 ) -> None:
     available = tuple(item.harness for item in manifest.skills)
+    aliases = skill_aliases_in(declaring_file(manifest), trees, manifest.skill_policies)
     owned = harness_owned(context.destination)
     for destination in target.destinations:
         base = context.destination(str(destination), f"{target.harness}.skills")
@@ -885,9 +938,10 @@ def _expand_skills(
                 skill.name, available, manifest.skill_policies
             ):
                 continue
-            _refuse_owned(base / skill.name, "skill", skill.name, owned)
+            placed = aliased_skill(skill, aliases)
+            _refuse_owned(base / placed.name, "skill", placed.name, owned)
             render = render_skill_for(skill.name, manifest.skill_policies)
-            _write_skill(skill, target.harness, base, state, render=render)
+            _write_skill(placed, target.harness, base, state, render=render)
 
 
 def _check_skill_agents(
@@ -1091,7 +1145,7 @@ def _render_project(
     return outputs, inputs
 
 
-def project_rules(root: Path, kits: ProjectKits) -> Rules:
+def project_rules(root: Path, kits: ProjectKits, policies: tuple[ServerPolicy, ...] = ()) -> Rules:
     """The permission tiers project scope merges, lowest first.
 
     Kits are the lowest tier, in listed order: a kit describes a kind
@@ -1108,13 +1162,32 @@ def project_rules(root: Path, kits: ProjectKits) -> Rules:
         for path in (project_dir / PERMISSIONS_SOURCE, project_dir / PROJECT_LOCAL_SOURCE)
         if path.is_file()
     )
-    return layered_rules(kits, own)
+    return layered_rules(kits, own, policies)
 
 
-def layered_rules(kits: ProjectKits, own: Iterable[Rules]) -> Rules:
-    return merge_rules(
-        *(parse_rules(contributed) for contributed in kits.contributions("permissions")), *own
-    )
+def layered_rules(
+    kits: ProjectKits, own: Iterable[Rules], policies: tuple[ServerPolicy, ...] = ()
+) -> Rules:
+    if not policies:
+        return merge_rules(
+            *(parse_rules(contributed) for contributed in kits.contributions("permissions")), *own
+        )
+    tiers: list[Rules] = []
+    for kit in kits.paths:
+        renames = _defined_renames(policies, _kit_servers(kits, kit))
+        tiers.extend(
+            aliased_rules(parse_rules(contributed), renames)
+            for contributed in contribution_paths((kit,), "permissions", catalogs=kits.catalogs)
+        )
+    return merge_rules(*tiers, *own)
+
+
+def _kit_servers(kits: ProjectKits, kit: Path) -> dict[str, Server]:
+    return {
+        name: server
+        for contributed in contribution_paths((kit,), "mcp", catalogs=kits.catalogs)
+        for name, server in parse_servers(contributed).items()
+    }
 
 
 def _retired_keys(
@@ -1190,8 +1263,8 @@ def _render_project_slices(
     inputs = personal_inputs(
         tier,
         config.harnesses,
-        project_rules(root, kits),
-        project_servers(root, kits),
+        project_rules(root, kits, config.server_policies),
+        project_servers(root, kits, config.server_policies),
         lambda harness, rules, servers: _trial_render(root, harness, rules, servers),
     )
 
@@ -1341,14 +1414,17 @@ def layered_skill_trees(kits: ProjectKits, own: Iterable[Skill]) -> tuple[Skill,
     return tuple(sorted(collected.values(), key=lambda s: s.name))
 
 
-def project_servers(root: Path, kits: ProjectKits) -> dict[str, Server]:
+def project_servers(
+    root: Path, kits: ProjectKits, policies: tuple[ServerPolicy, ...] = ()
+) -> dict[str, Server]:
     """Every server this project defines, kits first and the project last.
 
     Same tier rule as permissions, instructions and skills: a kit
     sits beneath the project, so a project server of the same name
     replaces the kit's rather than merging with it.
     """
-    return layered_servers(kits, parse_servers(root / PROJECT_DIR / SERVERS_SOURCE))
+    servers = layered_servers(kits, parse_servers(root / PROJECT_DIR / SERVERS_SOURCE))
+    return aliased_in(project_config_path(root), servers, policies)
 
 
 def layered_servers(kits: ProjectKits, own: Mapping[str, Server]) -> dict[str, Server]:
@@ -1371,7 +1447,7 @@ def _write_skill(
     directory = base / skill.name
     document = directory / SKILL_DOCUMENT
     _claim(document, f"{agent}.skills", claimed)
-    outputs[document] = render_skill(skill, agent) if render else Copied(skill.document)
+    outputs[document] = render_skill(skill, agent) if render else skill_source(skill)
     for relative in skill.supporting:
         path = directory / relative
         _claim(path, f"{agent}.skills", claimed)
@@ -1385,9 +1461,11 @@ def _expand_project_catalog(
     state: _Expansion,
 ) -> None:
     available = tuple(agent for agent in config.harnesses if "skills" in PROJECT_PRESET[agent])
-    for skill in trees:
-        selected = selected_skill_agents(skill.name, available, config.skill_policies)
-        should_render = render_skill_for(skill.name, config.skill_policies)
+    aliases = skill_aliases_in(project_config_path(root), trees, config.skill_policies)
+    for original in trees:
+        selected = selected_skill_agents(original.name, available, config.skill_policies)
+        should_render = render_skill_for(original.name, config.skill_policies)
+        skill = aliased_skill(original, aliases)
         remaining = list(selected)
         convention = frozenset(SHARED_SKILL_READERS)
         if "codex" in selected:

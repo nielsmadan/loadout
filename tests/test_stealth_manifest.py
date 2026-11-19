@@ -233,3 +233,16 @@ def test_every_harness_allows_the_same_slices_and_only_claude_and_droid_take_set
         "claude",
         "droid",
     ]
+
+
+def test_top_level_skill_and_server_aliases_parse(tmp_path: Path) -> None:
+    folder = stealth(
+        tmp_path,
+        '\n[claude]\n\n[skills.review]\nname = "review-mine"\n\n'
+        '[servers.figma]\nname = "figma-haufe"\n',
+    )
+    manifest = load_stealth_manifest(folder).manifest
+    assert [(p.name, p.agents, p.alias) for p in manifest.skill_policies] == [
+        ("review", None, "review-mine")
+    ]
+    assert [(p.name, p.alias) for p in manifest.server_policies] == [("figma", "figma-haufe")]

@@ -7,6 +7,8 @@ from .bundled_kits import BUNDLED_KITS
 from .composition import fragment_paths
 from .emit import (
     ProjectKits,
+    aliased_in,
+    declaring_file,
     global_rules,
     global_servers,
     layered_rules,
@@ -122,11 +124,15 @@ def stealth_instruction_sources(
 
 
 def stealth_rules(manifest: Manifest, kits: ProjectKits) -> Rules:
-    return layered_rules(kits, (global_rules(manifest),))
+    return layered_rules(kits, (global_rules(manifest),), manifest.server_policies)
 
 
 def stealth_servers(manifest: Manifest, kits: ProjectKits) -> dict[str, Server]:
-    return layered_servers(kits, global_servers(manifest))
+    return aliased_in(
+        declaring_file(manifest),
+        layered_servers(kits, global_servers(manifest)),
+        manifest.server_policies,
+    )
 
 
 def stealth_skill_trees(manifest: Manifest, kits: ProjectKits) -> tuple[Skill, ...]:

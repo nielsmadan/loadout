@@ -9,6 +9,7 @@ from pathlib import Path, PurePosixPath
 from .errors import LoadoutError
 from .harnesses import DIRECTORY_SLICES, GLOBAL_PRESET, KNOWN_HARNESSES, SliceOutput
 from .overlay_leftovers import FIRST_REMOVE
+from .server_policy import ServerPolicy, parse_server_policies
 from .skill_policy import SkillPolicy, parse_skill_policies
 from .sources import Source, SourceParser, parse_sources
 from .toml_paths import contains, key_path
@@ -140,6 +141,7 @@ class Manifest:
     module_config: tuple[ModuleConfigTarget, ...] = ()
     config_paths: tuple[Path, ...] = ()
     agents: tuple[AgentsTarget, ...] = ()
+    server_policies: tuple[ServerPolicy, ...] = ()
 
 
 def _require(block: dict[str, object], key: str, label: str) -> object:
@@ -399,7 +401,9 @@ def _resolve_extends(path: Path) -> tuple[dict[str, object], tuple[Path, ...]]:
             if key in {"extends", "remove"}:
                 continue
             existing = merged.get(key)
-            if key in {"instructions", "permissions", "skills"} and isinstance(value, dict):
+            if key in {"instructions", "permissions", "skills", "servers"} and isinstance(
+                value, dict
+            ):
                 targets = dict(existing) if isinstance(existing, dict) else {}
                 for name, fields in value.items():
                     targets[name] = _inherit_fields(targets.get(name), fields)
@@ -439,6 +443,7 @@ RESERVED_KEYS = frozenset(
         "instructions",
         "permissions",
         "skills",
+        "servers",
         "extends",
         "remove",
         COMMON_BLOCK,
@@ -723,10 +728,15 @@ def _build_manifest(
         raise LoadoutError(
             f"{path}: no [<harness>], [instructions.<harness>] or [permissions.<name>] targets declared"
         )
-    skill_policies = parse_skill_policies(data.get("skills"))
+    try:
+        skill_policies = parse_skill_policies(data.get("skills"))
+        server_policies = parse_server_policies(data.get("servers"))
+    except LoadoutError as error:
+        chain = " + ".join(str(declared) for declared in config_paths or (path,))
+        raise LoadoutError(f"{chain}: {error}") from error
     configured_skill_agents = {target.harness for target in agent_skills}
     for policy in skill_policies:
-        extra = set(policy.agents) - configured_skill_agents
+        extra = set(policy.agents or ()) - configured_skill_agents
         if extra:
             raise LoadoutError(
                 f"skills.{policy.name} names harness(es) without an active skills slice: "
@@ -742,4 +752,5 @@ def _build_manifest(
         module_config=agent_module_config,
         config_paths=config_paths or (path,),
         agents=agent_definitions,
+        server_policies=server_policies,
     )
