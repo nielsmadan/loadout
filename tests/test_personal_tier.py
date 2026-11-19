@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from fixture_root import EXPECTED
+from fixture_root import EXPECTED, FIXTURES, build_project_root
 from loadout import stealth_git
 from loadout.composition import HEADER
 from loadout.emit import RenderContext, render_project, render_project_detailed
@@ -32,6 +32,7 @@ from loadout.stealth_git import GitFailure
 from loadout.stealth_registry import RegisteredStealth, render_registry
 from loadout.written import merged_entry, record_written, text_entry
 
+PERSONAL_FIXTURES = FIXTURES / "personal"
 PI_PERMISSIONS = ".pi/extensions/pi-permission-system/config.json"
 TEAM_SERVER = '[team]\ntransport = "http"\nurl = "https://team.example/mcp"\n'
 MINE_SERVER = '[mine]\ntransport = "http"\nurl = "https://mine.example/mcp"\n'
@@ -1048,3 +1049,29 @@ def test_a_root_with_a_line_break_is_not_an_adopted_target(fake_home: Path) -> N
     (root / "loadout/config.toml").write_text('harnesses = ["pi"]\n', encoding="utf-8")
 
     assert not adopted_target(root)
+
+
+def test_the_personal_fixture_denies_what_the_project_fixture_allows_through_the_real_tier(
+    tmp_path: Path, fake_home: Path
+) -> None:
+    root = build_project_root(tmp_path / "adopted")
+    _git(root, "init", "-q", "-b", "main")
+    root = root.resolve()
+    folder = _stealth(
+        fake_home,
+        "mine",
+        root,
+        "[pi]\n",
+        {"permissions.toml": (PERSONAL_FIXTURES / "permissions.toml").read_text(encoding="utf-8")},
+    )
+    _register(RegisteredStealth("mine", folder))
+
+    team = _json(render_project(root, RenderContext()), root / PI_PERMISSIONS)["permission"]["bash"]
+    merged = _json(render_project(root, _personal(root)), root / PI_PERMISSIONS)["permission"][
+        "bash"
+    ]
+
+    assert team["zeta"] == "allow"
+    assert "kappa only-here" not in team
+    assert merged["zeta"] == "deny"
+    assert merged["kappa only-here"] == "allow"

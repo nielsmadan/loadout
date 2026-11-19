@@ -34,7 +34,7 @@ own, as “Guidance held twice” in [configuration routing](configuration.md#gu
 describes, and offer to delete what the project repeats.
 
 Init keeps a project's `.claude/settings.local.json` in place, and Claude still applies it. After
-init, offer to move the permissions it still needs into `loadout/permissions.local.toml`, ask
+init, offer to move the permissions it still needs into a stealth source's `permissions.toml`, ask
 about each entry that looks stale, and delete the file once the user agrees nothing in it is
 left to keep. Each verdict (`allow`, `ask`, `deny`) keeps its list:
 
@@ -53,10 +53,8 @@ that can express them. An exact entry renders for Claude, Cursor, Devin, OpenCod
 Codex and Droid leave an exact `allow` or `ask` to their own approval and treat an exact `deny` as a
 prefix. Cursor has no `ask` at all: it leaves one to its `approvalMode` and drops an `allow` covering
 it. Devin has no glob: it drops an `allow` glob and widens an `ask` or `deny` glob to the words
-before its `*`, and it drops an `allow` that falls inside an `ask`. Tell
-the user which harnesses each moved rule now reaches. Loadout never gitignores
-`permissions.local.toml`, so before the first sync ask whether to list
-`/loadout/permissions.local.toml` in `.gitignore` or in `.git/info/exclude`, and add it there.
+before its `*`, and it drops an `allow` that falls inside an `ask`. Tell the user which harnesses
+each moved rule now reaches.
 
 Init installs no Git hooks. When the project or global source is in a Git repository, offer them
 separately, after init. Preview first with

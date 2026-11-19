@@ -44,8 +44,7 @@ change does not itself authorize a migration; report the missing setup.
 
 ## Canonical producers
 
-Project configuration uses fixed sources under `loadout/`: `permissions.toml`, optional
-`permissions.local.toml`, named `instructions/` fragments, `skills/`, `agents/`, `mcp.toml`,
+Project configuration uses fixed sources under `loadout/`: `permissions.toml`, named `instructions/` fragments, `skills/`, `agents/`, `mcp.toml`,
 `hooks.json`, `plugins.json` and `settings/<harness>.json`. Global sources use the corresponding
 slice directories and harness blocks in `loadout.toml`. Do not invent destinations or edit generated
 outputs.
@@ -57,11 +56,11 @@ outside a known slice remain harness-owned and stay in place.
 
 | artifact | personal project | shared project | global |
 |---|---|---|---|
-| `permissions` | `loadout/permissions.local.toml` | `loadout/permissions.toml` | `permissions.toml` from selected sources |
-| `mcp-permissions` | `loadout/permissions.local.toml` | `loadout/permissions.toml` | MCP policy from selected `permissions.toml` sources |
+| `permissions` | `permissions.toml` in a stealth source that targets the repository | `loadout/permissions.toml` | `permissions.toml` from selected sources |
+| `mcp-permissions` | `permissions.toml` in a stealth source that targets the repository | `loadout/permissions.toml` | MCP policy from selected `permissions.toml` sources |
 | `mcp` | unsupported | `loadout/mcp.toml` | `mcp.toml` from selected sources |
 | `instructions` | unsupported | `loadout/config.toml` and `loadout/instructions/*.md` | manifest selection and `instructions/*.md` fragments |
-| `skills` | `loadout/skills/<name>.local/SKILL.md`, replacing the shared skill of that name | supported for `claude`, `codex`, `cursor`, `devin`, `droid`, `opencode`, `pi` via `loadout/skills/<name>/SKILL.md` | `skills/<name>/SKILL.md` from selected sources |
+| `skills` | `skills/<name>.local/SKILL.md` in a stealth source, replacing the shared skill of that name | supported for `claude`, `codex`, `cursor`, `devin`, `droid`, `opencode`, `pi` via `loadout/skills/<name>/SKILL.md` | `skills/<name>/SKILL.md` from selected sources |
 | `agents` | unsupported | supported for `claude`, `codex`, `cursor`, `devin`, `droid`, `opencode`, `pi` via `loadout/agents/<name>.md` | `agents/<name>.md` from selected sources |
 | `settings` | unsupported | supported for `claude`, `devin`, `droid`, `opencode` via `loadout/settings/<harness>.json` | supported for `claude`, `cursor`, `devin`, `droid`, `opencode` via `settings/<name>.json` fragments, and for Pi only when `[pi]` also declares `plugins`; Codex uses `defaults` |
 | `defaults` | unsupported | unsupported | Codex top-level and nested settings via `defaults/<name>.json` fragments |
@@ -172,11 +171,9 @@ Permissions are TOML rules in four tables, and no others:
 
 Any other table or key is refused by name; fix the name it reports rather than moving the rules.
 Preserve the existing order: OpenCode and Pi use last-match-wins
-semantics after rendering. Project permissions merge kit, committed, then personal tiers;
-use `permissions.local.toml` only for personal requests. Loadout never gitignores
-`loadout/permissions.local.toml`: when you create it, ask whether to list
-`/loadout/permissions.local.toml` in the project's `.gitignore` or in `.git/info/exclude`, which
-keeps it off the shared list, and add it there before syncing.
+semantics after rendering. Project permissions merge kit, then committed tiers.
+`loadout/permissions.local.toml` is no longer read; sync refuses it, so personal requests go to
+a stealth source that targets the repository.
 
 MCP server definitions are tables in `mcp.toml`, separate from permission policy. Project scope
 has one committed `loadout/mcp.toml`; global scope composes selected sources last-wins. A server
@@ -192,11 +189,8 @@ be derived from its package name. An OpenCode plugin's `.ts` file belongs here r
 Project instructions are named in `loadout/config.toml` and stored in
 `loadout/instructions/<name>.md`. Project skills use `loadout/skills/<name>/SKILL.md` with
 supporting files beside it; that is the only form, and a loose file in `skills/` is not a skill.
-The only personal skill form is a folder `loadout/skills/<name>.local/` with its own `SKILL.md`
-and supporting files. It replaces the shared `<name>` skill whole, document and supporting files
-together, and is not an overlay; with no shared skill of that name it is a skill of its own. It is
-personal only while Git ignores it, so add it to `.gitignore` or `.git/info/exclude` when you
-create one.
+A `loadout/skills/<name>.local/` folder is no longer read and sync refuses it; a personal skill
+lives in a stealth source, in a folder `<name>.local` that replaces the shared `<name>` skill.
 `[skills.<name>] agents = [...]` narrows the default set of configured consumers. Kits are
 listed by name; use `loadout kit add <name> --linked`, `--vendored`, or
 `kit sync <name>` when that command exactly expresses the request. A kit edited in a global
@@ -425,7 +419,7 @@ flags these changes; it does not merge them.
    source” in [onboarding](onboarding.md) describes, and never print the value back to the user.
 3. Port each change into the source that owns it:
    - a global harness file goes to the global source, a project file to the project source, and a
-     project `*.local*` file to the personal tier. For a stealth output or key (the scope is
+     project `*.local*` file to a stealth source that targets the repository. For a stealth output or key (the scope is
      `--stealth <name>`), none of these applies: the owning source is the stealth folder, or the
      `[[source]]` its `loadout.toml` names, even though the file sits in the target repository.
      Never write `loadout/` into the target repository and never run `init project` there;

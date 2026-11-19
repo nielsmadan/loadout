@@ -16,3 +16,4 @@ class InitOptions:
     dry_run: bool = False
     json: bool = False
     yes: bool = False
+    stealth_written: tuple[tuple[Path, str], ...] = ()

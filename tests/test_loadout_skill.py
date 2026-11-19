@@ -99,12 +99,12 @@ def test_named_global_profile_syncs_that_profile() -> None:
 def test_capability_matrix_pins_every_scope_mapping() -> None:
     expected = {
         "permissions": (
-            "`loadout/permissions.local.toml`",
+            "`permissions.toml` in a stealth source that targets the repository",
             "`loadout/permissions.toml`",
             "`permissions.toml` from selected sources",
         ),
         "mcp-permissions": (
-            "`loadout/permissions.local.toml`",
+            "`permissions.toml` in a stealth source that targets the repository",
             "`loadout/permissions.toml`",
             "MCP policy from selected `permissions.toml` sources",
         ),
@@ -119,7 +119,10 @@ def test_capability_matrix_pins_every_scope_mapping() -> None:
             "manifest selection and `instructions/*.md` fragments",
         ),
         "skills": (
-            "`loadout/skills/<name>.local/SKILL.md`, replacing the shared skill of that name",
+            (
+                "`skills/<name>.local/SKILL.md` in a stealth source, "
+                "replacing the shared skill of that name"
+            ),
             (
                 "supported for `claude`, `codex`, `cursor`, `devin`, `droid`, `opencode`, `pi` "
                 "via `loadout/skills/<name>/SKILL.md`"

@@ -67,7 +67,14 @@ def _plan(options: InitOptions) -> MigrationPlan:
         raise LoadoutError(
             f"selected directory must exist: {options.root}; create a dedicated project/source directory first"
         )
-    return plan_migration(discover(options.root, scope=options.scope, harnesses=options.harnesses))
+    return plan_migration(
+        discover(
+            options.root,
+            scope=options.scope,
+            harnesses=options.harnesses,
+            stealth_written=dict(options.stealth_written),
+        )
+    )
 
 
 def _project_harness_defaults(options: InitOptions) -> InitOptions:

@@ -591,7 +591,7 @@ def test_list_names_an_unregistered_record_and_remove_takes_it_by_name(
     _assert_removed(folder, roots, fake_home)
 
 
-def test_init_project_in_a_target_exits_3(
+def test_init_project_in_a_target_succeeds_and_leaves_the_stealth_files_alone(
     fake_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _, (root,) = _stealth(fake_home, "a")
@@ -599,11 +599,16 @@ def test_init_project_in_a_target_exits_3(
     monkeypatch.chdir(root)
     capsys.readouterr()
 
-    assert loadout.main(["init", "project", "--dry-run"]) == 3
-    assert (
-        f"remove this repository from stealth source {NAME} first: narrow its `targets`, then run "
-        f"`loadout sync --stealth {NAME}`"
-    ) in capsys.readouterr().err
+    assert loadout.main(["init", "project", "--dry-run", "--json"]) == 0
+
+    originals = json.loads(capsys.readouterr().out)["originals"]
+    actions = {o["path"]: o["action"] for o in originals}
+    assert actions[str(root / "AGENTS.md")] == "generated"
+    left = [o for o in originals if o["action"] == "retain"]
+    assert left
+    assert {o["reason"] for o in left} == {
+        f"written by stealth source {NAME}; it keeps rendering them"
+    }
 
 
 def test_a_server_edited_in_claude_json_names_the_stealth_source_force_command(

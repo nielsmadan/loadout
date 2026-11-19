@@ -73,7 +73,6 @@ def build_project_root(destination: Path) -> Path:
     shutil.copytree(PROJECT_FIXTURES / "agents", directory / "agents", dirs_exist_ok=True)
     for name in (
         "permissions.toml",
-        "permissions.local.toml",
         "mcp.toml",
         "hooks.json",
         "plugins.json",

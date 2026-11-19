@@ -604,7 +604,7 @@ def _refuse_overlay_block(root: Path) -> None:
         check_exclude(exclude_path(found.common_dir))
 
 
-def refuse_targeted_init(root: Path) -> None:
+def stealth_written_files(root: Path) -> tuple[tuple[Path, str], ...]:
     resolved = root.resolve()
     _refuse_overlay_block(resolved)
     scan = scan_stealth_records()
@@ -613,20 +613,13 @@ def refuse_targeted_init(root: Path) -> None:
             "a stealth record cannot be read, so loadout cannot tell whether a stealth source writes "
             f"personal files here; {record_problem_message(scan.problems[0])}"
         )
-    holder = next(
-        (
-            record.name
-            for record in scan.records
-            if any(_same(target, resolved) for target in record.targets)
-        ),
-        None,
-    )
-    if holder is not None:
-        raise LoadoutError(
-            "a stealth source writes personal files here; adopting would sweep them into the team's "
-            f"source — remove this repository from stealth source {holder} first: narrow its `targets`, "
-            f"then run `loadout sync --stealth {holder}`"
-        )
+    written: dict[Path, str] = {}
+    for record in scan.records:
+        for target, entry in record.targets.items():
+            if _same(target, resolved):
+                for path in (*entry.files, *entry.documents, *entry.pending):
+                    written.setdefault(path, record.name)
+    return tuple(written.items())
 
 
 def _removal_target(name: str) -> tuple[RegisteredStealth, bool]:

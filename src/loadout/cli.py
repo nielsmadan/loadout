@@ -43,8 +43,8 @@ from .stealth_commands import (
     cmd_stealth_list,
     cmd_stealth_remove,
     cmd_sync_selection,
-    refuse_targeted_init,
     resolve_selection,
+    stealth_written_files,
 )
 from .stealth_init import cmd_stealth_init
 from .stealth_kit_commands import cmd_stealth_kit_add, cmd_stealth_kit_list
@@ -534,7 +534,6 @@ def _dispatch_init(args: argparse.Namespace) -> int:
             )
         )
     root = args.root.expanduser().absolute() if args.root is not None else project_root(Path.cwd())
-    refuse_targeted_init(root)
     return run_init(
         InitOptions(
             root=root,
@@ -543,6 +542,7 @@ def _dispatch_init(args: argparse.Namespace) -> int:
             dry_run=args.dry_run,
             json=args.json,
             yes=args.yes,
+            stealth_written=stealth_written_files(root),
         )
     )
 

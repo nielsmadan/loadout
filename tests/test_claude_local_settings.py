@@ -48,7 +48,7 @@ def test_the_preview_keeps_claude_s_local_settings_in_place_and_says_why(
     assert loadout.main(_init(root, "--dry-run")) == 0
 
     assert f"Keep in place: {local} ({CLAUDE_LOCAL_SETTINGS})" in capsys.readouterr().out
-    assert "permissions.local.toml" in CLAUDE_LOCAL_SETTINGS
+    assert "stealth source" in CLAUDE_LOCAL_SETTINGS
     assert "/loadout" in CLAUDE_LOCAL_SETTINGS
 
 

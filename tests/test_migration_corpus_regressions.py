@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from loadout.discovery import discover
+from loadout.discovery import PERSONAL_ITEM, discover
 from loadout.git_privacy import ignored_paths
 
 pytestmark = pytest.mark.migration_integration
@@ -39,11 +39,9 @@ def test_many_siblings_share_privacy_probe(tmp_path: Path, monkeypatch) -> None:
 
     monkeypatch.setattr(subprocess, "run", run)
     inventory = discover(tmp_path, scope="project", harnesses=("claude",))
-    migrated = [
-        candidate for candidate in inventory.candidates if candidate.disposition == "migrated"
-    ]
-    assert len(migrated) == 25
-    assert {(c.private, c.private_reason) for c in migrated} == {(True, "Git ignores it")}
+    left = [c for c in inventory.candidates if c.disposition == "retained dependency"]
+    assert len(left) == 25
+    assert {c.reason for c in left} == {PERSONAL_ITEM}
     assert 0 < len(calls) <= 4
 
 

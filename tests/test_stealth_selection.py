@@ -11,15 +11,16 @@ import pytest
 
 import loadout
 from loadout import cli, kit_fanout, stealth_commands
+from loadout.claude_json import server_path
 from loadout.errors import LoadoutError, UsageError
 from loadout.files import Drift
 from loadout.stealth_check import StealthCheck
 from loadout.stealth_commands import (
     Selection,
     cmd_check_selection,
-    refuse_targeted_init,
     resolve_selection,
     stealth_targeting,
+    stealth_written_files,
 )
 from loadout.stealth_record import TargetRecord, empty_record, write_stealth_record
 from loadout.stealth_registry import (
@@ -28,6 +29,7 @@ from loadout.stealth_registry import (
     update_registry,
     with_stealth,
 )
+from loadout.written import WrittenEntry
 from registration import register
 
 STEALTH_BODY = """
@@ -258,23 +260,28 @@ def _entry(root: Path) -> TargetRecord:
     )
 
 
-def test_init_project_is_refused_in_a_repository_a_stealth_record_targets(
+def test_the_files_a_stealth_record_lists_for_a_repository_are_named_with_their_source(
     fake_home: Path,
 ) -> None:
     folder = _stealth_folder(fake_home)
     target = fake_home / "apps" / "a"
     target.mkdir(parents=True)
-    record = empty_record(folder, "app", fake_home)
-    write_stealth_record(replace(record, targets={target.resolve(): _entry(target.resolve())}))
-
-    with pytest.raises(LoadoutError) as raised:
-        refuse_targeted_init(target)
-    assert str(raised.value) == (
-        "a stealth source writes personal files here; adopting would sweep them into the team's "
-        "source — remove this repository from stealth source app first: narrow its `targets`, then run "
-        "`loadout sync --stealth app`"
+    entry = replace(
+        _entry(target.resolve()),
+        files={target.resolve() / "CLAUDE.local.md": WrittenEntry(kind="copied", sha256="c0")},
+        leaves={target.resolve() / ".claude.json": {server_path(target.resolve(), "figma"): "l1"}},
     )
-    assert loadout.main(["init", "project", "--root", str(target), "--dry-run"]) == 3
+    record = empty_record(folder, "app", fake_home)
+    write_stealth_record(
+        replace(
+            record,
+            targets={
+                target.resolve(): entry,
+            },
+        )
+    )
+
+    assert stealth_written_files(target) == ((target.resolve() / "CLAUDE.local.md", "app"),)
 
 
 def _check(

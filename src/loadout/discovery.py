@@ -465,8 +465,10 @@ PI_ADAPTER_FILE = (
 )
 CLAUDE_LOCAL_SETTINGS = (
     "Claude's personal settings for this repository, which loadout does not render and Claude "
-    "still applies; /loadout can move its permissions into loadout/permissions.local.toml"
+    "still applies; /loadout can move its permissions into a stealth source"
 )
+UNTRACKED_SETTINGS = "Git does not track it"
+PERSONAL_ITEM = "personal; init leaves it where it is — manage it from a stealth source"
 SKILLS_FOLDER = "skills"
 SHARED_SKILLS = ".agents/skills"
 LINKED_SKILLS = "linked-skills"
@@ -865,9 +867,33 @@ def _privacy(
     reason = (
         c.private_reason
         or ("Git ignores it" if (c.canonical or c.path) in ignored else "")
-        or ("Git does not track it" if c.path in settings else "")
+        or (UNTRACKED_SETTINGS if c.path in settings else "")
     )
     return replace(c, private=bool(reason), private_reason=reason)
+
+
+def _left_alone(c: Candidate, root: Path, stealth_written: Mapping[Path, str]) -> Candidate:
+    if c.disposition not in {"migrated", "retained dependency"}:
+        return c
+    source = stealth_written.get((c.canonical or c.path).resolve()) or stealth_written.get(
+        c.path.resolve()
+    )
+    if source is not None:
+        reason = f"written by stealth source {source}; it keeps rendering them"
+    elif c.disposition == "migrated" and (
+        (c.private and c.private_reason != UNTRACKED_SETTINGS) or _personal_path(c.path, root)
+    ):
+        reason = PERSONAL_ITEM
+    else:
+        return c
+    return replace(
+        c, disposition="retained dependency", reason=reason, private=False, private_reason=""
+    )
+
+
+def _personal_path(path: Path, root: Path) -> bool:
+    relative = path.relative_to(root) if path.is_relative_to(root) else Path(path.name)
+    return any(part.endswith(".local") or ".local." in part for part in relative.parts)
 
 
 def _co_owned_settings(
@@ -954,6 +980,7 @@ def discover(
     scope: Scope | None = None,
     harnesses: tuple[str, ...] = (),
     environ: Mapping[str, str] | None = None,
+    stealth_written: Mapping[Path, str] | None = None,
 ) -> Inventory:
     environment = dict(os.environ if environ is None else environ)
     # One home for the live roots, the layout and the recorded environment, which the
@@ -1014,6 +1041,9 @@ def discover(
         _privacy(c, ignored, settings, published) if c.disposition == "migrated" else c
         for c in builder.candidates.values()
     )
+    if scope != "global":
+        resolved_written = {path.resolve(): name for path, name in (stealth_written or {}).items()}
+        candidates = tuple(_left_alone(c, root, resolved_written) for c in candidates)
     return Inventory(
         root,
         root / PROJECT_DIR,

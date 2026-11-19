@@ -1,4 +1,4 @@
-# Synthetic personal tier. Gitignored in a real repo.
+# Synthetic personal tier: what a stealth source merges into the project's rules.
 #
 # Holds an entry unique to it, and a deny that overrides the committed tier's
 # allow, so the merge is exercised as more than the identity function.

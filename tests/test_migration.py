@@ -9,7 +9,7 @@ import pytest
 
 import loadout
 import loadout.migration as migration_module
-from loadout.discovery import discover, entry_state, live_roots
+from loadout.discovery import PERSONAL_ITEM, discover, entry_state, live_roots
 from loadout.emit import render_all
 from loadout.errors import LoadoutError
 from loadout.migration import plan_migration
@@ -110,7 +110,7 @@ def test_project_init_leaves_an_agent_file_it_cannot_read_in_place(tmp_path: Pat
     assert all("agents" not in write.path.parts for write in plan.source_writes)
 
 
-def test_personal_sources_are_kept_private_and_credentials_are_named(tmp_path: Path) -> None:
+def test_personal_files_stay_in_place_and_credentials_are_named(tmp_path: Path) -> None:
     secret = "literal-test-token-123"
     mcp = write(
         tmp_path,
@@ -121,8 +121,13 @@ def test_personal_sources_are_kept_private_and_credentials_are_named(tmp_path: P
     personal = write(tmp_path, ".claude/skills/s/notes.local.md", "personal\n")
     auth = write(tmp_path, ".claude/skills/s/auth.json", secret)
     plan = migration(tmp_path)
-    assert {personal, auth} <= set(plan.private_paths)
-    assert {mcp, skill}.isdisjoint(plan.private_paths)
+    assert auth in plan.private_paths
+    assert {mcp, skill, personal}.isdisjoint(plan.private_paths)
+    assert {o.path: (o.action, o.reason) for o in plan.originals}[personal] == (
+        "retain",
+        PERSONAL_ITEM,
+    )
+    assert "/.claude/skills/s/notes.local.md" not in plan.ignores
     assert plan.secrets == ((tmp_path / "loadout/mcp.toml", "env.CUSTOM"),)
     # The reason names the key, so the preview never repeats the value it found.
     assert secret not in json.dumps(plan.preview())
@@ -334,7 +339,7 @@ def test_a_harness_root_linked_inside_the_project_is_reported_not_walked(tmp_pat
     assert not plan.complete
 
 
-def test_private_instruction_excludes_canonical_original_and_aliases(tmp_path: Path) -> None:
+def test_a_private_instruction_and_its_aliases_stay_in_place_unlisted(tmp_path: Path) -> None:
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     write(tmp_path, ".gitignore", "/authoring/private.md\n")
     canonical = write(tmp_path, "authoring/private.md", "personal notes\n")
@@ -342,24 +347,40 @@ def test_private_instruction_excludes_canonical_original_and_aliases(tmp_path: P
         (tmp_path / name).symlink_to(canonical)
     plan = migration(tmp_path, ("claude", "codex"))
     originals = {canonical, tmp_path / "CLAUDE.md", tmp_path / "AGENTS.md"}
-    assert originals <= set(plan.private_paths)
-    assert {"/" + p.relative_to(tmp_path).as_posix() for p in originals} <= set(plan.ignores)
+    assert originals.isdisjoint(plan.private_paths)
+    assert plan.ignores == ()
+    assert {
+        o.path: (o.action, o.reason) for o in plan.originals if o.path in originals
+    } == dict.fromkeys(originals, ("retain", PERSONAL_ITEM))
     assert set(plan.obsolete).isdisjoint(originals)
 
 
-def test_private_tree_namespace_ignores_future_entries(tmp_path: Path) -> None:
+def test_project_init_makes_no_private_namespace_for_a_personal_skill_file(tmp_path: Path) -> None:
     write(tmp_path, ".claude/skills/one/SKILL.md", "---\nname: one\ndescription: d\n---\n")
-    write(tmp_path, ".claude/skills/one/notes.local.md", "personal\n")
+    personal = write(tmp_path, ".claude/skills/one/notes.local.md", "personal\n")
     plan = migration(tmp_path)
-    namespace = tmp_path / "loadout/skills/one.local"
+    assert {w.path.relative_to(tmp_path).as_posix() for w in plan.source_writes} >= {
+        "loadout/skills/one/SKILL.md"
+    }
+    assert not any("one.local" in w.path.parts[-3] for w in plan.source_writes)
+    assert not any(".local" in line for line in plan.ignores)
+    assert {o.path: o.action for o in plan.originals}[personal] == "retain"
+
+
+def test_global_private_tree_namespace_ignores_future_entries(fake_home: Path) -> None:
+    write(fake_home, ".claude/skills/one/SKILL.md", "---\nname: one\ndescription: d\n---\n")
+    write(fake_home, ".claude/skills/one/notes.local.md", "personal\n")
+    source = fake_home / "agent-config"
+    source.mkdir()
+    plan = plan_migration(discover(source, scope="global", harnesses=("claude",)))
+    namespace = source / "loadout/skills/one.local"
     assert namespace in plan.private_paths
     assert "/loadout/skills/one.local/" in plan.ignores
-    materialize_sources(plan, tmp_path)
     added = write(namespace, "scripts/future.sh", "private future support")
-    write(tmp_path, ".gitignore", "\n".join(plan.ignores) + "\n")
-    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    write(source, ".gitignore", "\n".join(plan.ignores) + "\n")
+    subprocess.run(["git", "init", "-q", str(source)], check=True)
     result = subprocess.run(
-        ["git", "-C", str(tmp_path), "check-ignore", "--", str(added)],
+        ["git", "-C", str(source), "check-ignore", "--", str(added)],
         capture_output=True,
         text=True,
         check=False,

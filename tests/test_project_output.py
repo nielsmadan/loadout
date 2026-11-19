@@ -108,35 +108,28 @@ def test_only_enabled_harnesses_are_rendered(project: Path) -> None:
     } | skill_outputs("claude") | agent_outputs("claude")
 
 
-def test_personal_tier_merges_into_the_output(project: Path) -> None:
-    (project / "loadout" / "permissions.local.toml").write_text(
-        '[shell]\nallow = ["my-local-tool"]\n', encoding="utf-8"
+def test_permissions_local_toml_is_refused_naming_its_replacement(project: Path) -> None:
+    local = project / "loadout" / "permissions.local.toml"
+    local.write_text('[shell]\nallow = ["my-local-tool"]\n', encoding="utf-8")
+    with pytest.raises(LoadoutError) as raised:
+        render_project(project)
+    assert str(raised.value) == (
+        f"{local}: `loadout/permissions.local.toml` is no longer read; personal permissions "
+        "come from a stealth source that targets this repository (`loadout stealth init`): "
+        "move its rules there and delete the file"
     )
-    rendered = {str(p.relative_to(project)): c for p, c in render_project(project).items()}
-    doc = json.loads(rendered[".claude/settings.json"])
-    assert "Bash(my-local-tool:*)" in doc["permissions"]["allow"]
 
 
-def test_personal_deny_beats_committed_allow(project: Path) -> None:
-    (project / "loadout" / "permissions.local.toml").write_text(
-        '[shell]\ndeny = ["just build"]\n', encoding="utf-8"
+def test_a_local_skill_folder_is_refused_naming_its_replacement(project: Path) -> None:
+    folder = project / "loadout" / "skills" / "review.local"
+    folder.mkdir()
+    (folder / "SKILL.md").write_text("---\nname: review\n---\nbody\n", encoding="utf-8")
+    with pytest.raises(LoadoutError) as raised:
+        render_project(project)
+    assert str(raised.value) == (
+        f"{folder}: `loadout/skills/<name>.local/` is no longer read; move the skill into a "
+        "stealth source; name its folder `review.local` there to replace the team's `review`"
     )
-    rendered = {str(p.relative_to(project)): c for p, c in render_project(project).items()}
-    doc = json.loads(rendered[".claude/settings.json"])
-    assert "Bash(just build:*)" in doc["permissions"]["deny"]
-    assert "Bash(just build:*)" not in doc["permissions"]["allow"]
-
-
-def test_missing_personal_tier_is_not_an_error(project: Path) -> None:
-    with_tier = json.loads(render_project(project)[project / ".claude/settings.json"])
-    (project / "loadout" / "permissions.local.toml").unlink()
-    without_tier = json.loads(render_project(project)[project / ".claude/settings.json"])
-
-    assert "Bash(kappa only-here:*)" in with_tier["permissions"]["allow"]
-    assert "Bash(kappa only-here:*)" not in without_tier["permissions"]["allow"]
-    # The committed tier's allow is only overridden while the personal deny is present.
-    assert "Bash(zeta:*)" in without_tier["permissions"]["allow"]
-    assert "Bash(zeta:*)" in with_tier["permissions"]["deny"]
 
 
 def test_claude_runtime_settings_file_is_not_a_loadout_output(project: Path) -> None:
@@ -163,10 +156,10 @@ def test_a_missing_committed_source_renders_exactly_as_an_empty_one(project: Pat
     source.unlink()
 
     assert render_project(project) == empty
-    # The personal tier still arrives, so the comparison is between two renders with
+    # The kit's rules still arrive, so the comparison is between two renders with
     # rules in them rather than two empty documents.
     settings = json.loads(empty[project / ".claude/settings.json"])
-    assert "Bash(kappa only-here:*)" in settings["permissions"]["allow"]
+    assert "Bash(omicron build:*)" in settings["permissions"]["allow"]
 
 
 def test_an_invalid_committed_source_is_still_an_error(project: Path) -> None:
@@ -341,7 +334,7 @@ def test_a_project_deny_beats_a_kit_allow(bare_project: Path) -> None:
     """
     _vendor(bare_project, "web", '[shell]\nallow = ["vite build", "vite preview"]\n')
     _declare(bare_project, "web")
-    (bare_project / "loadout" / "permissions.local.toml").write_text(
+    (bare_project / "loadout" / "permissions.toml").write_text(
         '[shell]\ndeny = ["vite build"]\n', encoding="utf-8"
     )
     doc = json.loads(render_project(bare_project)[bare_project / ".claude/settings.json"])

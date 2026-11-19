@@ -15,7 +15,14 @@ from pathlib import Path
 
 from fixture_root import PROJECT_INSTRUCTIONS
 from loadout.manifest import MANIFEST_NAME, load_manifest
-from loadout.permissions.rules import UNSTATED_DEFAULT, is_exact, is_glob, mcp_parts, parse_rules
+from loadout.permissions.merge import merge_rules
+from loadout.permissions.rules import (
+    UNSTATED_DEFAULT,
+    is_exact,
+    is_glob,
+    mcp_parts,
+    parse_rules,
+)
 from loadout.servers import parse_servers
 from loadout.stealth_manifest import load_stealth_manifest
 
@@ -122,6 +129,7 @@ def test_a_destination_is_env_templated() -> None:
 
 
 PROJECT_FIXTURES = Path(__file__).parent / "fixtures" / "project"
+PERSONAL_FIXTURES = Path(__file__).parent / "fixtures" / "personal"
 KIT_RULES = parse_rules(PROJECT_FIXTURES / "kits" / "web" / "permissions.toml")
 
 
@@ -141,11 +149,22 @@ def test_the_project_tiers_disagree_about_the_catch_all_default() -> None:
     """
     kit = parse_rules(PROJECT_FIXTURES / "kits" / "web" / "permissions.toml")
     project = parse_rules(PROJECT_FIXTURES / "permissions.toml")
-    personal = parse_rules(PROJECT_FIXTURES / "permissions.local.toml")
+    personal = parse_rules(PERSONAL_FIXTURES / "permissions.toml")
     assert kit.default is not None
     assert project.default is not None
     assert kit.default != project.default, "the tiers must disagree or nothing is resolved"
     assert personal.default is None, "a silent tier is what proves silence casts no vote"
+
+
+def test_the_personal_fixture_denies_what_the_project_allows_and_adds_an_entry_of_its_own() -> None:
+    project = parse_rules(PROJECT_FIXTURES / "permissions.toml")
+    personal = parse_rules(PERSONAL_FIXTURES / "permissions.toml")
+    merged = merge_rules(project, personal)
+    assert set(personal.deny) & set(project.allow), "no project allow for the personal deny to beat"
+    assert set(personal.allow) - set(project.allow + project.ask + project.deny)
+    assert set(personal.deny) <= set(merged.deny)
+    assert set(project.allow) - set(personal.deny) <= set(merged.allow)
+    assert not set(personal.deny) & set(merged.allow)
 
 
 def test_the_project_fixture_carries_a_vendored_kit() -> None:
@@ -159,7 +178,7 @@ def test_every_kit_rule_is_absent_from_the_other_project_tiers() -> None:
     """A rule a project tier already carries would render identically whether or not
     the kit merged, so the comparison would pass with kits switched off."""
     committed = parse_rules(PROJECT_FIXTURES / "permissions.toml")
-    local = parse_rules(PROJECT_FIXTURES / "permissions.local.toml")
+    local = parse_rules(PERSONAL_FIXTURES / "permissions.toml")
     others = set(
         committed.allow
         + committed.deny

@@ -107,7 +107,6 @@ if TYPE_CHECKING:
     from .stealth_render import TargetFacts
 
 PERMISSIONS_SOURCE = "permissions.toml"
-PROJECT_LOCAL_SOURCE = "permissions.local.toml"
 PROJECT_DOCUMENTS = {"hooks": "hooks.json", "plugins": "plugins.json"}
 
 
@@ -1173,12 +1172,8 @@ def project_rules(root: Path, kits: ProjectKits, policies: tuple[ServerPolicy, .
     Shared with `project_notices` so the verdict a notice names is the one that
     actually rendered, the way `permission_sources` guarantees it at global scope.
     """
-    project_dir = root / PROJECT_DIR
-    own = tuple(
-        parse_rules(path)
-        for path in (project_dir / PERMISSIONS_SOURCE, project_dir / PROJECT_LOCAL_SOURCE)
-        if path.is_file()
-    )
+    source = root / PROJECT_DIR / PERMISSIONS_SOURCE
+    own = (parse_rules(source),) if source.is_file() else ()
     return layered_rules(kits, own, policies)
 
 
