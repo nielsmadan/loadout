@@ -4,7 +4,7 @@
     "omicron build",
     "alpha",
     "beta sub",
-    "kappa only-here"
+    "zeta"
   ],
   "commandDenylist": [
     "theta check"
@@ -12,8 +12,7 @@
   "commandBlocklist": [
     "omicron publish",
     "iota push",
-    "nu wipe",
-    "zeta"
+    "nu wipe"
   ],
   "enabledPlugins": {
     "review@official": true,

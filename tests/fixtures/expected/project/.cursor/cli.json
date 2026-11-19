@@ -5,15 +5,14 @@
       "Shell(alpha)",
       "Shell(beta sub)",
       "Shell(gamma-*)",
+      "Shell(zeta)",
       "Shell(mu:status)",
-      "Shell(kappa only-here)",
       "Mcp(tmpl_server:*)"
     ],
     "deny": [
       "Shell(omicron publish)",
       "Shell(iota push)",
       "Shell(nu:wipe)",
-      "Shell(zeta)",
       "Mcp(blocked:*)"
     ]
   }

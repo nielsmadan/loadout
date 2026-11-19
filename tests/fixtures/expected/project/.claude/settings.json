@@ -6,8 +6,8 @@
       "Bash(alpha:*)",
       "Bash(beta sub:*)",
       "Bash(gamma-*)",
+      "Bash(zeta:*)",
       "Bash(mu status)",
-      "Bash(kappa only-here:*)",
       "mcp__tmpl_server__*",
       "mcp__svc__*"
     ],
@@ -19,7 +19,6 @@
       "Bash(omicron publish:*)",
       "Bash(iota push:*)",
       "Bash(nu wipe)",
-      "Bash(zeta:*)",
       "mcp__blocked__*"
     ]
   }
