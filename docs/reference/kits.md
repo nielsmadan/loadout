@@ -211,6 +211,35 @@ declared harness takes them, and a slice switched off takes nothing from the kit
 contributes `hooks.json` or `plugins.json` is refused, since a stealth source cannot write either
 additively.
 
+## Aliases: renaming what a kit supplies
+
+A kit's skill or server can clash with one the team already has. A personal tier loses a name it
+shares with the team's ([0058](../decisions/0058-a-stealth-source-reaches-adopted-repositories.md)),
+and two kits can supply the same one. The declaring scope renames it instead of editing the kit:
+`[skills.<name>] name = "<new>"` and `[servers.<name>] name = "<new>"`, in a global manifest, a
+project's `config.toml` or a stealth manifest. A kit's `figma` server declared as
+`[servers.figma] name = "figma-haufe"` renders as `figma-haufe` on every harness, and a rule of the
+kit's `permissions.toml` that names `figma/*` is rewritten to `figma-haufe/*`; both follow the
+rename together, so the rule still applies to the server it was written for.
+
+- **Only neutral rules follow.** The rewrite covers `[mcp]` entries in a `permissions.toml` the same
+  kit or source supplies as the server. A rule in the declaring scope's own permissions is not
+  rewritten, since that is where the user writes by hand and already uses the new name: in a global
+  or stealth manifest that is the `[[source]]` whose path is the manifest's own folder, and in a
+  project it is `loadout/permissions.toml`.
+- **Native extras do not follow.** `[claude.extra]` and `[opencode.extra]` entries that name the old
+  server keep their text, because loadout passes harness-native strings through without parsing
+  them. A kit that uses native extras for a server you rename needs those entries rewritten by hand.
+- **The grammar.** A name matches `[A-Za-z0-9][A-Za-z0-9_.-]*` and may not end in `.local`, which
+  would turn it into a replacement by accident ([0058](../decisions/0058-a-stealth-source-reaches-adopted-repositories.md)).
+  A table that repeats its own name, renames onto another table's key or shares a target with
+  another is refused when the file is read; one that lands on a skill or server that exists is
+  refused when rendering, prefixed with the declaring file. In a profile that extends another the
+  render-time message names the profile, not the file in the chain that holds the alias.
+- **A rendered skill is renamed everywhere it appears:** its folder and its frontmatter `name`. With
+  `render = false` it keeps every byte except that top-level `name:` line, and the banner still
+  points at the source folder under its original name.
+
 ## Bundled kits and native projects
 
 `frontend` and `backend` ship in the package and resolve offline. `loadout kit add

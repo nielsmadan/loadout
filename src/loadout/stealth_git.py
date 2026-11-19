@@ -268,3 +268,11 @@ def reincluded(root: Path, units: Iterable[str], folders: frozenset[str]) -> dic
 
 def _team_file(source: str) -> bool:
     return not posixpath.isabs(source) and posixpath.basename(source) == ".gitignore"
+
+
+def tracked_message(unit: str) -> str:
+    return f"the team tracks {unit}; the stealth source does not write it"
+
+
+def tracked_note(unit: str) -> str:
+    return f"the team tracks {unit}; it is left in place and no longer recorded"

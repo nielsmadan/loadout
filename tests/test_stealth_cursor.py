@@ -6,7 +6,8 @@ from pathlib import Path
 from loadout.composition import HEADER
 from loadout.stealth_check import Machine, TargetView, target_notes
 from loadout.stealth_manifest import load_stealth_manifest
-from loadout.stealth_render import TargetFacts, render_stealth
+from loadout.stealth_preset import TargetFacts
+from loadout.stealth_render import render_stealth
 from test_stealth_render import make_stealth, relative, render
 
 NO_FACTS = TargetFacts(agents_md=False, claude_md_on_path=False)

@@ -45,7 +45,7 @@ from .output import (
     output_record_paths,
     sha256,
 )
-from .personal_sync import personal_view, team_only
+from .personal_plan import planned_view
 from .project import gitignore_entries
 from .retirement import orphan_drift, orphaned, retire, stripped
 from .state import SyncState, sync_state
@@ -669,10 +669,7 @@ def classified_drift(root: Path, profile: str, context: RenderContext | None = N
     """
     rendered, project = render_all_detailed(root, profile, context or RenderContext())
     found_state = sync_state(root)
-    try:
-        view = personal_view(root, rendered, project, found_state.written, read_personal(root))
-    except LoadoutError as error:
-        view = team_only(rendered, project, found_state.written, read_personal(root), str(error))
+    view = planned_view(root, rendered, project, found_state.written, read_personal(root))
     outputs = view.outputs
     state = replace(found_state, written=view.written)
     orphans = orphaned(state.written, outputs)
@@ -681,7 +678,12 @@ def classified_drift(root: Path, profile: str, context: RenderContext | None = N
     verdicts = {u.path: u.kind for u in unaccepted_outputs(state, outputs, context=context)}
     drift = check_all(outputs)
     drift += orphan_drift(orphans)
-    found = unmanaged_entries(state, outputs, profile)
+    drift += [
+        Drift(path=path, actual="", expected="", kind="unparsable") for path in view.unparsable
+    ]
+    # A held source's recorded files are still loadout's, as sync's record keeps them.
+    accounted = {p: e for p, e in found_state.written.items() if p not in view.released}
+    found = unmanaged_entries(replace(found_state, written=accounted), outputs, profile)
     unmanaged = set(found)
     drift += [
         Drift(path=path, actual=describe_unmanaged(path), expected="", kind="unmanaged")

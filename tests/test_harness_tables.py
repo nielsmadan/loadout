@@ -37,7 +37,7 @@ from loadout.servers import (
     render_opencode_servers,
     render_pi_servers,
 )
-from loadout.stealth_render import STEALTH_PRESET
+from loadout.stealth_preset import STEALTH_PRESET
 from loadout.subagents import EFFORT_KEY, EFFORT_LEVELS, EFFORTLESS
 from loadout.unmanaged import WHOLE_FOLDER_RENDERERS
 

@@ -18,9 +18,9 @@ Edit the declared source for each configured consumer. Generated harness files a
    Locate the existing config and follow its declared producers: the manifest's harness blocks and
    the source slices they name. Ask before widening scope or changing a source shared by other
    consumers.
-   A repository that has not adopted loadout, where the user wants personal configuration, is
-   covered by a stealth source if one targets it: edit the stealth source's files and sync with
-   `loadout sync --stealth <name>`, never `init project` or a new `loadout/` there; see the
+   Personal configuration for a repository, adopted or not, is covered by a stealth source if one
+   targets it: edit the stealth source's files and sync with `loadout sync --stealth <name>` (or
+   `loadout sync` in a repository that has adopted loadout), never a new `loadout/` there; see the
    stealth row of the scope table and “Stealth sources” in the same reference.
 3. Apply a generic request to configured harnesses with a sound mapping. Report unsupported consumers.
    Keep MCP server definitions separate from MCP tool-approval policy. Preserve ordering, comments,

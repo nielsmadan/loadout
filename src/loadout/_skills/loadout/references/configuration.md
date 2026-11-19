@@ -19,7 +19,7 @@ Read scope selection, then choose the narrowest canonical slice source from the 
 | personal, or none named | uncommitted configuration for this repository and user | `loadout/config.toml` must exist | `loadout sync --root <repo>` |
 | project | committed configuration shared by this repository | `loadout/config.toml` must exist | `loadout sync --root <repo>` |
 | global | this machine across repositories | machine config must exist | `loadout sync --global` |
-| stealth-targeted repository: the user wants personal configuration in a repository that has no `loadout/config.toml` and that a stealth source targets (see Stealth sources below) | the stealth folder (or the `[[source]]` it names), never the repository | none: never run `init project` there, it exits 3 once the stealth source has written there | `loadout sync --stealth <name>` |
+| stealth-targeted repository: the user wants personal configuration in a repository that has no `loadout/config.toml` and that a stealth source targets (see Stealth sources below) | the stealth folder (or the `[[source]]` it names), never the repository | none: never run `init project` there; it leaves the stealth source's files in place and does not adopt them | `loadout sync --stealth <name>` |
 
 The request scope is what the user's request names, in words or as `--personal`, `--project` or
 `--global` after the skill's name. It selects a row; it is not an argument to loadout. The sync
@@ -118,8 +118,7 @@ Devin's `read_config_from`, and sync renders the file from it plus
 the slices. It is the whole of those keys, not a delta: a key missing from it is dropped from the
 output. Without one, sync keeps those keys from the file on disk, so before creating one, copy
 into it every key of the current file that no slice writes. Codex, Cursor and Pi have no project
-settings source: Cursor reads only permissions from `.cursor/cli.json`. Init writes the settings source gitignored when the file it adopted was untracked or
-ignored, so check whether Git ignores it before calling a change there shared.
+settings source: Cursor reads only permissions from `.cursor/cli.json`. Init writes the settings source gitignored when the file it adopted was untracked, so check whether Git ignores it before calling a change there shared.
 
 Project MCP server definitions reach Claude, Cursor, Devin (`.devin/mcp_config.json`), Droid,
 OpenCode and Pi (`.pi/mcp.json`). Codex
@@ -191,7 +190,10 @@ Project instructions are named in `loadout/config.toml` and stored in
 supporting files beside it; that is the only form, and a loose file in `skills/` is not a skill.
 A `loadout/skills/<name>.local/` folder is no longer read and sync refuses it; a personal skill
 lives in a stealth source, in a folder `<name>.local` that replaces the shared `<name>` skill.
-`[skills.<name>] agents = [...]` narrows the default set of configured consumers. Kits are
+`[skills.<name>] agents = [...]` narrows the default set of configured consumers; `agents` is
+optional, and a `[skills.<name>]` table needs at least one key. `[skills.<name>] name = "<new>"`
+renames a skill, and `[servers.<name>] name = "<new>"` renames an MCP server, in a global manifest, a
+project `config.toml` or a stealth manifest. Kits are
 listed by name; use `loadout kit add <name> --linked`, `--vendored`, or
 `kit sync <name>` when that command exactly expresses the request. A kit edited in a global
 source reaches every project on this machine that uses it on `loadout sync --global`, which also
@@ -297,8 +299,9 @@ A stealth source is personal, uncommitted configuration for repositories that ha
 which the user cannot add a `loadout/` folder to. It is a registered folder outside those
 repositories whose `loadout.toml` has a `[stealth]` table with `targets` patterns. Use it when
 the user wants their own instructions, MCP servers, permissions or skills in such a repository.
-Use a personal project source instead when the repository has `loadout/config.toml`, and the
-global source when the change belongs to the whole machine. loadout 0.10.0 called it an overlay;
+A repository that has `loadout/config.toml` is also a target: the project's `loadout sync` renders
+every stealth source that targets it as a personal tier (see item 6 below). Use the global source
+when the change belongs to the whole machine. loadout 0.10.0 called it an overlay;
 `loadout overlay`, `--overlay` and an `[overlay]` table are refused. Before renaming anything,
 remove each 0.10.0 overlay with
 `uvx --python 3.13 --from git+https://github.com/nielsmadan/loadout.git@v0.10.0 loadout overlay remove NAME --yes`.
@@ -351,11 +354,36 @@ message (or says `overlays.toml` cannot be read). Then use `loadout stealth`, `-
    handed to the harness: removing it from the fragment makes the next sync delete it from the
    file, the harness's value with it. Do that only when the user asks, and say so first.
 6. In a repository that has adopted loadout (it has `loadout/config.toml`), a stealth source writes
-   only its Claude MCP servers into `~/.claude.json`; the project's sync renders the rest. Stealth files
-   written there before adoption retire on the next sync, before the project syncs. When `check`
-   there prints `adopted loadout; the stealth source retired its files here`, run `loadout sync`
-   before porting anything: the stealth source's files in it are the user's
-   personal configuration, never the project's, and must not be ported into `loadout/`.
+   only its Claude MCP servers into `~/.claude.json`; the project's `loadout sync` renders the rest, as a
+   personal tier merged into the same pass, for the harnesses both declare (a `note:` names the
+   skipped ones). Stealth files written there before adoption retire on the next sync, before the
+   project syncs. When `check` there prints `adopted loadout; the stealth source retired its files
+   here`, run `loadout sync` before porting anything: the stealth source's files in it are the
+   user's personal configuration, never the project's, and must not be ported into `loadout/`. The
+   project has no personal files: `loadout/permissions.local.toml` and `loadout/skills/<name>.local/`
+   are refused with exit 3, so move their content into a stealth source that targets the repository.
+   - The team's name wins. A `refused: stealth <name>: its skill|server <x> clashes with the team's
+     ...` line (exit 3, the rest still written) gives the fix: add `[skills.<x>] name = "<new>"` or
+     `[servers.<x>] name = "<new>"` to the stealth manifest, or name a skill's folder `<x>.local` to
+     replace the team's. An alias matches `[A-Za-z0-9][A-Za-z0-9_.-]*` and does not end in `.local`.
+     A renamed server's rules from the same kit or source follow it; rules in the manifest's own
+     folder and native `[claude.extra]` / `[opencode.extra]` entries do not, so write those with the
+     new name.
+   - Several stealth sources compose in alphabetical order of their names; the first wins a name.
+   - A source that cannot be read (a broken manifest, an unresolved kit) is held with a `refused:`
+     line and exit 3: its files stay until it is fixed, and a team permission file or shared personal
+     instruction document it wrote into is left as it is on disk, with its own `refused:` line. Run
+     from a git hook the sync keeps the team's exit code.
+   - `loadout sync --stealth <name>`, `--global` and `loadout stealth remove <name>` also sync the
+     adopted clones the source matches; a plain `loadout sync` does not. `stealth remove` keeps the
+     `removing` mark until every clone is done, so run it again after a failure. When a clone stops
+     it because the user edited a personal file, show the diff and ask: `loadout stealth remove
+     <name> --force` keeps that file as it is and finishes; it stops managing a file only that
+     source wrote, and leaves one another source writes managed by that source. An edited team file
+     still stops it: port the edit with /loadout or undo it, then run the removal again.
+   - A personal document that no longer parses (such as `.claude/settings.local.json`) is refused
+     alone with exit 3; the team still syncs. `sync --force` does not replace it: tell the user to
+     fix or delete it.
 7. Stealth refusals have their own meaning. A path the team tracks, a path another owner records,
    a key or server the user defined and a path git would not ignore (exit 3) cannot be forced:
    report them. An output or key edited outside loadout (exit 1) follows “Porting a change made

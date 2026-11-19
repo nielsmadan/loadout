@@ -74,10 +74,9 @@ ask = ["git commit"]
 deny = ["git push"]
 ```
 
-Both permission files are optional. A missing `permissions.toml` means the same as an empty one:
+`permissions.toml` is optional. A missing one means the same as an empty one:
 no shared rules. The next sync writes `.claude/settings.json` with empty lists, and retires a
-Codex rules file it wrote earlier rather than writing it empty. The personal
-`loadout/permissions.local.toml` can stay absent too.
+Codex rules file it wrote earlier rather than writing it empty.
 
 ## Render both harnesses' files
 

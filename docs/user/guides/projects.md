@@ -1,12 +1,12 @@
 ---
 title: Project setup
-description: Share repository configuration while keeping personal permission rules local.
+description: Share repository configuration while keeping personal configuration in stealth sources.
 ---
 
 # Share configuration in a project
 
 A project keeps the sources that everyone shares in `loadout/`. Each person renders their own
-harness files, including their local permission choices.
+harness files, and adds personal configuration from a stealth source on their own machine.
 
 ## Initialise and choose harnesses
 
@@ -35,19 +35,19 @@ the [CLI reference](../reference/cli.md#initialise).
 | --- | --- | --- |
 | `loadout/config.toml` | Harnesses, instruction order, skill policy, kits | Yes |
 | `loadout/permissions.toml` | Shared permission rules | Yes |
-| `loadout/permissions.local.toml` | Your permission rules for this repository | No: add it to `.gitignore` or `.git/info/exclude` yourself |
 | `loadout/instructions/` | Shared instruction fragments | Yes |
 | `loadout/skills/` | Project skill trees | Yes |
-| `loadout/skills/<name>.local/` | Your private replacement for one skill | No |
 | `loadout/agents/` | Project subagents, one Markdown file each | Yes |
 | `loadout/mcp.toml` | Project MCP server definitions | Yes |
 | `loadout/settings/<harness>.json` | The rest of a shared settings file | Yes |
 | `loadout/kits/` | Vendored kit sources | Yes |
 | Generated harness files | Combined output for this checkout | No |
 
-Personal project configuration covers permissions and private skill replacements. Loadout never
-adds `permissions.local.toml` to `.gitignore`, so keeping it out of Git is up to you; check that a
-`.local` skill you create is ignored too. Every key of these files is in the
+A project has no personal files. Your own instructions, permissions, skills, servers and settings
+come from a [stealth source](stealth.md) whose `targets` match the clone: `loadout sync` renders
+it with the team's configuration and hides what it adds in the clone's `.git/info/exclude`.
+`loadout/permissions.local.toml` and `loadout/skills/<name>.local/` are no longer read; sync
+refuses them by name with exit 3. Every key of the project files is in the
 [configuration reference](../reference/configuration.md#project-configuration).
 
 Everyone using the managed project configuration needs Loadout installed and must run
@@ -82,14 +82,20 @@ neither document is generated.
 
 ## Add personal permissions
 
-```toml title="loadout/permissions.local.toml"
+Put them in a stealth source that targets the repository:
+
+```toml title="~/agent-config/work/permissions.toml"
 [shell]
 allow = ["just local-test"]
 ```
 
-Add the file to `.gitignore`, or to `.git/info/exclude` for this clone alone; loadout does neither.
-Then run `loadout sync`. For the same permission entry, deny beats ask, and ask beats allow
-across the kit, shared, and personal tiers. A personal allow cannot cancel a shared deny.
+Register the source with `loadout stealth init`, with a `targets` pattern that matches the clone,
+then run `loadout sync` in it. For the same permission entry, deny beats ask, and ask beats allow
+across the kit, shared and personal tiers. A personal allow cannot cancel a shared deny. Several
+stealth sources compose in alphabetical order of their names. When the team renders a skill or an
+MCP server under the name one of yours has, the team's wins and yours is refused with the fix to
+apply; rename it with `name = "<new>"` in `[skills.<name>]` or `[servers.<name>]`. The
+[stealth guide](stealth.md#when-a-repository-adopts-loadout) has the details.
 
 For overlapping patterns, the harness's matcher still matters. See
 [permission portability](../reference/harnesses.md#permission-portability).
@@ -171,8 +177,11 @@ so a clone gets the same file, and an edit to it outside loadout is reported lik
 Without a settings file, the keys loadout does not write are kept from the file on disk.
 
 `init` fills these from the files it adopts. A file Git tracks is already shared with the team, so
-its keys go into committed source. An untracked or ignored one may hold something personal, so its
-keys go into a settings file that is itself gitignored and stays on this machine.
+its keys go into committed source. An untracked one, such as a `.claude/settings.json` that was
+never committed, is usually a team file that nobody has committed yet, so its keys go into a
+settings file that is itself gitignored and stays on this machine. A file Git ignores, a `.local`
+file and a `.local` folder are personal: init leaves them where they are, with the note
+`personal; init leaves it where it is — manage it from a stealth source`.
 
 ## Links and .gitignore
 

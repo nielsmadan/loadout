@@ -8,7 +8,6 @@ from .composition import fragment_paths
 from .emit import (
     ProjectKits,
     aliased_in,
-    declaring_file,
     global_rules,
     global_servers,
     layered_rules,
@@ -20,7 +19,7 @@ from .errors import LoadoutError
 from .kit_catalog import kit_name, load_catalogs
 from .kits import KitNotFound, NoGlobalSource, kit_sources, resolve_upstream_kit
 from .machine import machine_config_path
-from .manifest import Manifest
+from .manifest import Manifest, declaring_file
 from .permissions.rules import Rules
 from .servers import Server
 from .skills import Skill

@@ -248,6 +248,10 @@ def _replace_owned_sections(
     return Section(section.path, text + suffix, section.array)
 
 
+def _ends_blank(text: str) -> bool:
+    return text.endswith(("\n\n", "\n\r\n"))
+
+
 def _join_sections(blocks: list[Section], original_sections: set[int]) -> str:
     result = ""
     for section in blocks:
@@ -256,7 +260,7 @@ def _join_sections(blocks: list[Section], original_sections: set[int]) -> str:
             continue
         if id(section) not in original_sections:
             text = text.rstrip("\r\n") + "\n"
-            if result:
+            if result and not _ends_blank(result):
                 result += "\n" if result.endswith("\n") else "\n\n"
         result += text
     return result

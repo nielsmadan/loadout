@@ -24,8 +24,11 @@ from .stealth_documents import (
     judge_strip,
     strip_owned,
 )
+from .stealth_git import tracked_message, tracked_note
+from .stealth_lock import same_path
+from .stealth_preset import STEALTH_PRESET
 from .stealth_record import StealthRecord, TargetRecord, united_document
-from .stealth_render import STEALTH_PRESET, StealthRender
+from .stealth_render import StealthRender
 from .stealth_targets import Expansion, RecordedFate, Target
 from .sync import Unaccepted, unaccepted_against_record
 from .written import WrittenEntry, copied_entry, text_entry
@@ -189,13 +192,7 @@ def folder_units(root: Path, paths: Iterable[Path]) -> frozenset[str]:
 
 
 def tracked_refusal(root: Path, unit: str) -> Refusal:
-    return Refusal(
-        "tracked", 3, f"the team tracks {unit}; the stealth source does not write it", root / unit
-    )
-
-
-def tracked_note(unit: str) -> str:
-    return f"the team tracks {unit}; it is left in place and no longer recorded"
+    return Refusal("tracked", 3, tracked_message(unit), root / unit)
 
 
 def plan_units(
@@ -476,15 +473,22 @@ class _Split:
     notes: tuple[str, ...]
 
 
-def _split(
+def _split(  # noqa: PLR0913
     root: Path,
     rendered: Mapping[Path, str | Copied | OwnedJson],
     entry: TargetRecord,
     git: GitFacts,
     claims: Mapping[Path, str],
+    *,
+    name: str,
 ) -> _Split:
     def unit(path: Path) -> str:
         return _unit(root, path)[0]
+
+    def fix(owner: str) -> str:
+        if not (Path(owner).is_absolute() and same_path(Path(owner), root)):
+            return ""
+        return f"; run `loadout sync --stealth {name}` (or `loadout stealth remove {name}`)"
 
     orphans = _orphans(rendered, entry)
     tracked_units = frozenset(
@@ -548,7 +552,7 @@ def _split(
                 Refusal(
                     "claimed",
                     3,
-                    f"{u} is written by {owner}; the stealth source does not write it",
+                    f"{u} is written by {owner}; the stealth source does not write it{fix(owner)}",
                     root / u,
                 )
                 for u, owner in claimed_out
@@ -660,7 +664,7 @@ def plan_target(  # noqa: PLR0913
     root = target.root
     entry = recorded if recorded is not None else _blank_entry(target.common_dir, target.device)
     rendered = render.files if render is not None else {}
-    split = _split(root, rendered, entry, git, disk.claimed)
+    split = _split(root, rendered, entry, git, disk.claimed, name=name)
     sources = digests()
     findings = unaccepted_against_record(split.whole, entry.files, split.orphan_files, sources)
     documents = {

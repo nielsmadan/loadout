@@ -4,9 +4,11 @@ import tomllib
 from dataclasses import dataclass, replace
 from functools import cached_property
 from pathlib import Path
+from typing import Any
 
 from . import stealth_seams
-from .emit import ProjectKits
+from .composition import joined
+from .emit import ProjectKits, settings_document
 from .errors import LoadoutError
 from .harnesses import KNOWN_HARNESSES
 from .manifest import (
@@ -23,6 +25,7 @@ from .sources import SourceParser, parse_stealth_sources
 from .stealth_kits import (
     parse_kit_names,
     resolve_stealth_kits,
+    stealth_instruction_sources,
     stealth_rules,
     stealth_servers,
     stealth_skill_trees,
@@ -96,6 +99,15 @@ class StealthManifest:
 
     def takes_kit_instructions(self, harness: str) -> bool:
         return harness in self.harnesses and harness not in self.instructions_off
+
+    def instruction_fragments(self, harness: str) -> str | None:
+        paths = stealth_instruction_sources(
+            self.manifest, self.kits, harness, kit_parts=self.takes_kit_instructions(harness)
+        )
+        return joined(paths) if paths else None
+
+    def settings_fragment(self, target: PermissionTarget) -> dict[str, Any]:
+        return settings_document(target, self.manifest, self.folder)
 
 
 def _lenient_data(folder: Path) -> dict[str, object]:

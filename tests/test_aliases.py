@@ -18,8 +18,9 @@ from loadout.servers import Server
 from loadout.skill_policy import SkillPolicy
 from loadout.skills import discover_skills
 from loadout.stealth_manifest import load_stealth_manifest
+from loadout.stealth_preset import TargetFacts
 from loadout.stealth_registry import RegisteredStealth
-from loadout.stealth_render import StealthOutput, TargetFacts, render_stealth
+from loadout.stealth_render import StealthOutput, render_stealth
 from registration import register
 from test_personal_tier import _project, _register, _stealth
 from test_stealth_kits import kit_source
@@ -374,6 +375,11 @@ REFUSALS = [
         id="invalid-name",
     ),
     pytest.param(
+        '[servers.figma]\nname = "figma.local"\n',
+        r"servers\.figma\.name 'figma\.local' ends in '\.local', which marks a replacement",
+        id="local-suffix",
+    ),
+    pytest.param(
         '[servers.figma]\nname = "figma"\n',
         r"servers\.figma\.name repeats its own name; remove it",
         id="alias-equals-original",
@@ -501,6 +507,8 @@ def test_aliased_rules_rewrites_only_the_renamed_servers_entries() -> None:
         mcp_allow=("figma/*", "other/*"),
         mcp_deny=("figma/delete",),
         mcp_ask=("figmatic/read",),
+        claude_extra_allow=("mcp__figma__x",),
+        opencode_extra={"figma_*": "deny"},
     )
 
     renamed = aliased_rules(rules, {"figma": "figma-haufe"})
@@ -510,6 +518,8 @@ def test_aliased_rules_rewrites_only_the_renamed_servers_entries() -> None:
         mcp_allow=("figma-haufe/*", "other/*"),
         mcp_deny=("figma-haufe/delete",),
         mcp_ask=("figmatic/read",),
+        claude_extra_allow=("mcp__figma__x",),
+        opencode_extra={"figma_*": "deny"},
     )
 
 

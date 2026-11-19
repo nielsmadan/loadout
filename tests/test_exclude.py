@@ -33,7 +33,6 @@ from loadout.exclude import (
     write_personal_block,
     write_repo_block,
 )
-from loadout.gitignore import gitignore_to_remove
 from loadout.stealth_git import scratch_repo
 
 APP_BEGIN = BLOCK_BEGIN.format(name="app")
@@ -399,13 +398,6 @@ def test_the_block_before_is_the_ordered_union_of_old_and_new() -> None:
 def test_the_block_after_keeps_an_unwanted_unit_still_on_disk() -> None:
     assert block_after(["/a"], ["/b", "/a"]) == ("/a", "/b")
     assert block_after(["/a"], []) == ("/a",)
-
-
-def test_gitignore_to_remove_returns_only_recorded_lines_the_team_dropped() -> None:
-    recorded = [".agents/", ".pi/", ".agents/"]
-
-    assert gitignore_to_remove(recorded, [".pi/", "unrecorded/"]) == (".agents/",)
-    assert gitignore_to_remove([], [".pi/"]) == ()
 
 
 def test_the_personal_block_is_keyed_by_the_resolved_root(tmp_path: Path) -> None:

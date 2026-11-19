@@ -6,12 +6,14 @@ import os
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from . import containment, stealth_git
 from .destinations import resolve_destination
 from .errors import LoadoutError
-from .stealth_manifest import StealthSettings
+
+if TYPE_CHECKING:
+    from .stealth_manifest import StealthSettings
 
 SkipKind = Literal[
     "submodule",

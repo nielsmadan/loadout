@@ -154,7 +154,7 @@ A profile can extend another profile. Cycles are errors. Set the machine configu
 `profile` key to choose the default for future `--global` commands.
 
 Project configuration has no profile selector of its own. Profiles vary your machine setup;
-project-specific permissions use `permissions.local.toml`.
+project-specific permissions use `loadout/permissions.toml`, and personal ones a [stealth source](stealth.md).
 
 ## Keep the two scope axes clear
 

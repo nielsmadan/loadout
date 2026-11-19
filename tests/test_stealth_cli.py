@@ -13,7 +13,7 @@ import pytest
 
 import loadout
 from fixture_root import STEALTH_FIXTURES, build_root
-from loadout import stealth_commands, stealth_record, stealth_sync
+from loadout import commands, stealth_commands, stealth_record, stealth_sync
 from loadout.exclude import (
     BLOCK_BEGIN,
     GlobalIgnoreState,
@@ -30,7 +30,7 @@ from loadout.stealth_record import (
     write_stealth_record,
 )
 from loadout.stealth_registry import load_registry, stealth_path
-from loadout.written import read_personal
+from loadout.written import read_personal, written_state_path
 from registration import register
 
 pytestmark = pytest.mark.integration
@@ -1415,6 +1415,22 @@ def _stranded(home: Path) -> tuple[Path, Path, tuple[Path, ...]]:
     return folder, first, (second, *personal)
 
 
+def test_a_plain_sync_in_a_clone_that_stopped_being_adopted_names_the_fix(
+    fake_home: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, _, (second, *_) = _stranded(fake_home)
+    monkeypatch.chdir(second)
+    capsys.readouterr()
+
+    assert loadout.main(["sync"]) == 3
+
+    assert (
+        f"{LOCAL} is written by {second}; the stealth source does not write it; run "
+        f"`loadout sync --stealth {NAME}` (or `loadout stealth remove {NAME}`)"
+    ) in capsys.readouterr().err
+    assert "# Personal" in (second / LOCAL).read_text(encoding="utf-8")
+
+
 def test_stealth_remove_retires_the_personal_tier_of_a_clone_that_stopped_being_adopted(
     fake_home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -1483,7 +1499,7 @@ def test_a_clone_that_stopped_being_adopted_keeps_a_personal_file_the_team_track
 
     captured = capsys.readouterr()
     assert f"note: the team tracks {LOCAL}; it is left in place and no longer recorded" in (
-        captured.err
+        captured.out.splitlines()
     )
     assert (second / LOCAL).read_text(encoding="utf-8") == committed
     assert _git(second, "status", "--porcelain") == "?? .gitignore\n"
@@ -1922,3 +1938,66 @@ def test_once_0_10_0_state_is_removed_stealth_writes_every_output(
     assert all(
         BLOCK_BEGIN.format(name=NAME) in exclude.read_text(encoding="utf-8") for exclude in excludes
     )
+
+
+@pytest.mark.parametrize("as_json", [False, True], ids=["text", "json"])
+def test_check_by_name_keeps_the_record_of_a_clone_that_vanished(
+    fake_home: Path, as_json: bool
+) -> None:
+    _, (first, second) = _adopted_clones(fake_home)
+    assert loadout.main(["sync", "--stealth", NAME]) == 0
+    record = written_state_path(second)
+    assert record.is_file()
+    shutil.rmtree(second)
+
+    loadout.main(["check", "--stealth", NAME, *(["--json"] if as_json else [])])
+
+    assert record.is_file()
+    assert written_state_path(first).is_file()
+    assert loadout.main(["sync", "--stealth", NAME]) == 0
+    assert not record.exists()
+
+
+def test_a_git_hook_in_an_adopted_clone_leaves_the_claude_json_leaves_alone(
+    fake_home: Path,
+) -> None:
+    folder, (root, _) = _adopted_clones(fake_home)
+    assert loadout.main(["sync", "--stealth", NAME]) == 0
+    leaves = fake_home / ".claude.json"
+    before = leaves.read_bytes()
+    (folder / "mcp.toml").write_text(
+        '[docs]\ntransport = "http"\nurl = "https://docs.example/mcp"\n', encoding="utf-8"
+    )
+
+    assert loadout.main(["hook-event", "post-merge", "--root", str(root)]) == 0
+
+    assert leaves.read_bytes() == before
+    assert loadout.main(["sync", "--stealth", NAME]) == 0
+    assert _claude_servers(fake_home, root) == ["docs"]
+
+
+def test_check_by_name_previews_the_personal_files_sync_retires_in_a_stranded_clone(
+    fake_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _, _, (second, *personal) = _stranded(fake_home)
+    rule = second / ".claude" / "skills" / "probe" / "SKILL.md"
+    assert rule in personal
+    local = second / LOCAL
+    local.write_text(local.read_text(encoding="utf-8") + "Mine.\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert loadout.main(["check", "--stealth", NAME]) == 3
+
+    captured = capsys.readouterr()
+    assert "DRIFT (orphaned): .claude/skills/probe/SKILL.md" in captured.err.splitlines()
+    assert (
+        f"note: {LOCAL} was modified since loadout wrote it; `loadout sync --stealth {NAME}` "
+        "keeps it and stops managing it"
+    ) in captured.out.splitlines()
+    assert all(path.exists() for path in personal)
+    assert commands.stranded_result(second, f"loadout sync --stealth {NAME}")["exit_code"] == 1
+    assert loadout.main(["check", "--stealth", NAME, "--json"]) == 3
+    drift = json.loads(capsys.readouterr().out)["drift"]
+    assert {"path": str(rule), "kind": "orphaned"} in drift
+    assert {"path": str(local), "kind": "orphaned"} not in drift
+    assert read_personal(second).personal[rule] == NAME

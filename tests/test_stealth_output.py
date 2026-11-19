@@ -6,7 +6,8 @@ from pathlib import Path
 
 from fixture_root import EXPECTED, STEALTH_NAME, build_stealth, render_stealth_expected
 from loadout.stealth_manifest import load_stealth_manifest
-from loadout.stealth_render import gather_facts, render_stealth
+from loadout.stealth_preset import gather_facts
+from loadout.stealth_render import render_stealth
 
 
 def test_the_stealth_source_renders_exactly_its_expected_files(tmp_path: Path) -> None:

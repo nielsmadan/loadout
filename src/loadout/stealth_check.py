@@ -38,6 +38,7 @@ from .stealth_git import (
 from .stealth_lock import same_path
 from .stealth_manifest import StealthManifest, load_stealth_manifest
 from .stealth_plan import Carried, Refusal, TargetPlan, path_units
+from .stealth_preset import STEALTH_PRESET
 from .stealth_record import (
     StealthRecord,
     TargetRecord,
@@ -47,7 +48,6 @@ from .stealth_record import (
     recorded_paths_within,
 )
 from .stealth_registry import RegisteredStealth
-from .stealth_render import STEALTH_PRESET
 from .stealth_sync import (
     StealthRun,
     expansion_notes,

@@ -1,34 +1,28 @@
 from __future__ import annotations
 
-import os
-from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any
 
 from . import stealth_seams
-from .composition import HEADER, for_destination, joined
+from .composition import for_destination
 from .emit import (
-    aliased_skill,
-    declaring_file,
-    settings_document,
     skill_agents,
-    skill_aliases_in,
-    team_render_servers,
 )
-from .harnesses import SliceOutput
-from .manifest import PermissionTarget
+from .manifest import PermissionTarget, declaring_file
 from .notices import cursor_permission_notices, devin_permission_notices
 from .output import Copied
 from .permissions.renderers import (
+    codex_stealth_notes,
     refuse_mcp_namespace_overlap,
     render_codex_stealth,
+    render_codex_stealth_config,
     render_cursor_project,
     render_devin_project,
     render_pi_project,
 )
 from .permissions.rules import EMPTY_RULES, Rules
-from .personal import PersonalSource, adopted_claude_servers, permission_target
+from .personal import AdoptedFacts, PersonalSource, adopted_claude_servers, permission_target
 from .servers import (
     Server,
     render_claude_servers,
@@ -37,82 +31,26 @@ from .servers import (
     render_droid_servers,
     render_pi_servers,
 )
-from .skill_policy import render_skill_for, selected_skill_agents
+from .skill_policy import aliased_skill, render_skill_for, selected_skill_agents, skill_aliases_in
 from .skills import SKILL_DOCUMENT, Skill, check_skill_agents, render_skill, skill_source
 from .stealth_documents import OwnedJson
-from .stealth_kits import stealth_instruction_sources
 from .stealth_manifest import StealthManifest
-from .stealth_renderers import (
-    claude_owned,
-    codex_stealth_notes,
-    droid_owned,
-    opencode_owned,
-    render_claude_local,
-    render_codex_stealth_config,
+from .stealth_preset import (
+    NO_FACTS,
+    OPENCODE_INSTRUCTIONS,
+    STEALTH_PRESET,
+    TargetFacts,
+    instruction_document,
 )
+from .stealth_renderers import claude_owned, droid_owned, opencode_owned
 
 StealthOutput = str | Copied | OwnedJson
-
-STEALTH_PRESET: dict[str, dict[str, SliceOutput]] = {
-    "claude": {
-        "instructions": SliceOutput(output="CLAUDE.local.md"),
-        "permissions": SliceOutput(output=".claude/settings.local.json"),
-        "skills": SliceOutput(output=".claude/skills"),
-    },
-    "codex": {
-        "instructions": SliceOutput(output=".codex/config.toml"),
-        "mcp": SliceOutput(output=".codex/config.toml"),
-        "permissions": SliceOutput(output=".codex/rules"),
-        "skills": SliceOutput(output=".agents/skills"),
-    },
-    "cursor": {
-        "instructions": SliceOutput(output=".cursor/rules"),
-        "mcp": SliceOutput(output=".cursor/mcp.json"),
-        "permissions": SliceOutput(output=".cursor/cli.json"),
-        "skills": SliceOutput(output=".cursor/skills"),
-    },
-    "devin": {
-        "instructions": SliceOutput(output=".devin/rules"),
-        "mcp": SliceOutput(output=".devin/mcp_config.local.json"),
-        "permissions": SliceOutput(output=".devin/config.local.json"),
-        "skills": SliceOutput(output=".devin/skills"),
-    },
-    "droid": {
-        "instructions": SliceOutput(output=".factory/AGENTS.md"),
-        "mcp": SliceOutput(output=".factory/mcp.json"),
-        "permissions": SliceOutput(output=".factory/settings.local.json"),
-        "skills": SliceOutput(output=".factory/skills"),
-    },
-    "opencode": {
-        "instructions": SliceOutput(output="opencode.json"),
-        "mcp": SliceOutput(output="opencode.json"),
-        "permissions": SliceOutput(output="opencode.json"),
-        "skills": SliceOutput(output=".opencode/skills"),
-    },
-    "pi": {
-        "instructions": SliceOutput(output=".pi/APPEND_SYSTEM.md"),
-        "mcp": SliceOutput(output=".pi/mcp.json"),
-        "permissions": SliceOutput(output=".pi/extensions/pi-permission-system/config.json"),
-        "skills": SliceOutput(output=".pi/skills"),
-    },
-}
 
 PI_EMPTY_PERMISSIONS: dict[str, Any] = {"permission": {"bash": {}}}
 
 CURSOR_EMPTY_PERMISSIONS: dict[str, Any] = {"permissions": {"allow": [], "deny": []}}
 
 DEVIN_EMPTY_PERMISSIONS: dict[str, Any] = {"permissions": {"allow": [], "ask": [], "deny": []}}
-
-OPENCODE_INSTRUCTIONS = PurePosixPath(".loadout/opencode-instructions.md")
-
-
-@dataclass(frozen=True)
-class TargetFacts:
-    agents_md: bool
-    claude_md_on_path: bool
-
-
-NO_FACTS = TargetFacts(agents_md=False, claude_md_on_path=False)
 
 
 @dataclass(frozen=True)
@@ -123,63 +61,13 @@ class StealthRender:
     notes: tuple[str, ...]
 
 
-def _user_memory_file(environ: Mapping[str, str]) -> Path:
-    config_dir = environ.get("CLAUDE_CONFIG_DIR") or ""
-    home = Path(environ["HOME"]) if environ.get("HOME") else Path.home()
-    return Path(
-        os.path.abspath((Path(config_dir) if config_dir else home / ".claude") / "CLAUDE.md")
-    )
-
-
-def gather_facts(target_root: Path, environ: Mapping[str, str] | None = None) -> TargetFacts:
-    return target_facts(target_root, Path.is_file, environ)
-
-
-def target_facts(
-    target_root: Path, present: Callable[[Path], bool], environ: Mapping[str, str] | None = None
-) -> TargetFacts:
-    env = os.environ if environ is None else environ
-    root = target_root.resolve()
-    user_memory = _user_memory_file(env).resolve()
-    candidates = (
-        folder / name
-        for folder in (root, *root.parents)
-        for name in ("CLAUDE.md", ".claude/CLAUDE.md")
-    )
-    local_above = (folder / "CLAUDE.local.md" for folder in root.parents)
-    found = any(present(path) and path.resolve() != user_memory for path in candidates)
-    return TargetFacts(
-        agents_md=present(root / "AGENTS.md"),
-        claude_md_on_path=found or any(present(path) for path in local_above),
-    )
-
-
 def _target_rules(target: PermissionTarget, rules: Rules) -> Rules:
     return rules if target.select_all else EMPTY_RULES
 
 
-def instruction_fragments(stealth: StealthManifest, harness: str) -> str | None:
-    paths = stealth_instruction_sources(
-        stealth.manifest, stealth.kits, harness, kit_parts=stealth.takes_kit_instructions(harness)
-    )
-    return joined(paths) if paths else None
-
-
-def instruction_document(harness: str, fragments: Sequence[str], facts: TargetFacts) -> str:
-    if harness != "claude":
-        return "\n\n".join([HEADER, *fragments]) + "\n"
-    return render_claude_local(
-        "\n\n".join(fragments), import_agents=facts.agents_md and not facts.claude_md_on_path
-    )
-
-
 def _instructions(stealth: StealthManifest, harness: str, facts: TargetFacts) -> str | None:
-    fragments = instruction_fragments(stealth, harness)
+    fragments = stealth.instruction_fragments(harness)
     return None if fragments is None else instruction_document(harness, (fragments,), facts)
-
-
-def settings_fragment(target: PermissionTarget, stealth: StealthManifest) -> dict[str, Any]:
-    return settings_document(target, stealth.manifest, stealth.folder)
 
 
 def _with_content(owned: OwnedJson) -> OwnedJson | None:
@@ -235,10 +123,10 @@ def _json_outputs(
             placed.append((root / relative, f"{harness}.{slice_name}", output))
 
     if (target := permission_target(manifest, "claude", "permissions")) is not None:
-        owned = claude_owned(_target_rules(target, rules), settings_fragment(target, stealth))
+        owned = claude_owned(_target_rules(target, rules), stealth.settings_fragment(target))
         put("claude", "permissions", _with_content(owned))
     if (target := permission_target(manifest, "droid", "permissions")) is not None:
-        owned = droid_owned(_target_rules(target, rules), settings_fragment(target, stealth))
+        owned = droid_owned(_target_rules(target, rules), stealth.settings_fragment(target))
         put("droid", "permissions", _with_content(owned))
     if permission_target(manifest, "droid", "mcp") is not None and servers:
         put("droid", "mcp", stealth_seams.serialize_json(render_droid_servers(servers)))
@@ -260,7 +148,7 @@ def _codex_outputs(
     permissions = permission_target(manifest, "codex", "permissions")
     codex_rules = _target_rules(permissions, rules) if permissions is not None else EMPTY_RULES
     defined = servers if permission_target(manifest, "codex", "mcp") is not None else {}
-    instructions = instruction_fragments(stealth, "codex")
+    instructions = stealth.instruction_fragments("codex")
     placed: list[tuple[Path, str, StealthOutput]] = []
     notes = codex_stealth_notes(codex_rules, defined)
     if instructions is not None or defined:
@@ -288,7 +176,7 @@ def _opencode_outputs(
     stealth: StealthManifest, root: Path, rules: Rules, servers: dict[str, Server]
 ) -> tuple[list[tuple[Path, str, StealthOutput]], dict[Path, str]]:
     manifest = stealth.manifest
-    fragments = instruction_fragments(stealth, "opencode")
+    fragments = stealth.instruction_fragments("opencode")
     permissions = permission_target(manifest, "opencode", "permissions")
     opencode_rules = _target_rules(permissions, rules) if permissions is not None else None
     defined = servers if permission_target(manifest, "opencode", "mcp") is not None else {}
@@ -311,7 +199,7 @@ def _cursor_outputs(
     manifest = stealth.manifest
     preset = STEALTH_PRESET["cursor"]
     placed: list[tuple[Path, str, StealthOutput]] = []
-    if (fragments := instruction_fragments(stealth, "cursor")) is not None:
+    if (fragments := stealth.instruction_fragments("cursor")) is not None:
         rule = root / str(preset["instructions"].output) / f"{name}.mdc"
         text = instruction_document("cursor", (fragments,), NO_FACTS)
         placed.append((rule, "cursor.instructions", for_destination(rule, text)))
@@ -341,9 +229,10 @@ def _devin_outputs(
     manifest = stealth.manifest
     preset = STEALTH_PRESET["devin"]
     placed: list[tuple[Path, str, StealthOutput]] = []
-    if paths := _instruction_paths(stealth, "devin"):
+    if (fragments := stealth.instruction_fragments("devin")) is not None:
         rule = root / str(preset["instructions"].output) / f"{name}.md"
-        placed.append((rule, "devin.instructions", for_destination(rule, document(paths))))
+        text = instruction_document("devin", (fragments,), NO_FACTS)
+        placed.append((rule, "devin.instructions", for_destination(rule, text)))
     notes: tuple[str, ...] = ()
     if (permissions := permission_target(manifest, "devin", "permissions")) is not None:
         devin_rules = _target_rules(permissions, rules)
@@ -406,13 +295,11 @@ def render_stealth(
     )
 
 
-def render_adopted(stealth: StealthManifest, name: str, target_root: Path) -> StealthRender:
+def render_adopted(stealth: StealthManifest, name: str, facts: AdoptedFacts) -> StealthRender:
     source = PersonalSource(name, stealth, "matched")
     return StealthRender(
         files={},
-        claude_servers=adopted_claude_servers(
-            target_root, source, team_render_servers(target_root)
-        ),
-        shared=opencode_shared(stealth, instruction_fragments(stealth, "opencode")),
+        claude_servers=adopted_claude_servers(facts, source),
+        shared=opencode_shared(stealth, stealth.instruction_fragments("opencode")),
         notes=(),
     )

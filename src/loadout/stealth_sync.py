@@ -23,6 +23,7 @@ from .claude_json import (
 from .containment import no_symlinks
 from .destinations import resolve_destination
 from .diffs import report_diff
+from .emit import team_render_servers
 from .errors import LoadoutError
 from .exclude import (
     PERSONAL_UNITS,
@@ -43,7 +44,7 @@ from .guarded_write import write_if_unchanged as _write_document
 from .json_paths import JsonPath, leaf_digest
 from .native_documents import jsonc_to_json
 from .overlay_leftovers import check_exclude
-from .personal import adopted_target
+from .personal import adopted_facts, adopted_target
 from .retirement import retire
 from .stealth_documents import OwnedJson
 from .stealth_git import (
@@ -51,6 +52,7 @@ from .stealth_git import (
     excludes_file,
     reincluded,
     scratch_repo,
+    tracked_note,
     tracked_units,
     unignored,
 )
@@ -69,10 +71,10 @@ from .stealth_plan import (
     plan_target,
     plan_units,
     shared_drift,
-    tracked_note,
     tracked_refusal,
     unit_of,
 )
+from .stealth_preset import gather_facts
 from .stealth_record import (
     NEWER_RECORD,
     NO_CLAIMS,
@@ -98,7 +100,7 @@ from .stealth_record import (
     write_stealth_record,
 )
 from .stealth_registry import RegisteredStealth
-from .stealth_render import StealthRender, gather_facts, render_adopted, render_stealth
+from .stealth_render import StealthRender, render_adopted, render_stealth
 from .stealth_targets import (
     Expansion,
     HarnessHomes,
@@ -265,7 +267,8 @@ def _render(context: _Context, target: Target) -> StealthRender:
     if context.manifest is None:
         raise LoadoutError(f"stealth {context.stealth.name}: no manifest to render from")
     if adopted_target(target.root):
-        return render_adopted(context.manifest, context.stealth.name, target.root)
+        adopted = adopted_facts(target.root, team_render_servers(target.root))
+        return render_adopted(context.manifest, context.stealth.name, adopted)
     facts = gather_facts(target.root)
     return render_stealth(context.manifest, context.stealth.name, target.root, facts)
 

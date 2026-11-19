@@ -374,24 +374,53 @@ destination ending in `.mdc`, including one in an `[instructions.<name>]` target
 
 ### Skill policy
 
-A skill reaches every configured harness that consumes its source. `[skills.<name>]` narrows one,
-in a global manifest and in a project's `config.toml` alike:
+A skill reaches every configured harness that consumes its source. `[skills.<name>]` narrows or
+renames one, in a global manifest, in a project's `config.toml` and in a stealth manifest alike:
 
 ```toml
 [skills.review]
 agents = ["claude", "droid"]
 render = false
+
+[skills.figma]
+name = "figma-work"
 ```
 
 | Key | Meaning |
 | --- | --- |
-| `agents` | Required. The harnesses that get the skill; in a global manifest each must have an active skills slice |
+| `agents` | Optional. The harnesses that get the skill; without it, every harness that consumes the skill. In a global manifest each must have an active skills slice. An empty list means none |
 | `render` | Optional, default `true`. `false` copies the skill as written to each harness instead of rendering it per harness |
+| `name` | Optional. Renders the skill under this name: its folder and its frontmatter `name`. See [aliases](#aliases) |
 
-A rendered skill has its `::: <harness>` sections, `:concept[…]` and frontmatter selected per
-harness (see [skills](#skills)). With `render = false`, `SKILL.md` and its supporting files are
-copied byte for byte. Init writes `render = false` for every skill it adopts, so each harness keeps
-reading the skill exactly as it was.
+A table needs at least one key. A rendered skill has its `::: <harness>` sections, `:concept[…]` and
+frontmatter selected per harness (see [skills](#skills)). With `render = false`, `SKILL.md` and its
+supporting files are copied byte for byte, except the top-level frontmatter `name:` line of a skill
+that also has a `name`. Init writes `render = false` for every skill it adopts, so each harness
+keeps reading the skill exactly as it was.
+
+### Aliases
+
+`name = "<new>"` renames what a source or kit defines, so a name the team already uses does not
+clash. `[skills.<name>]` renames a skill and `[servers.<name>]` an MCP server, with `name` the only
+key a servers table accepts:
+
+```toml
+[servers.figma]
+name = "figma-work"
+```
+
+An alias matches `[A-Za-z0-9][A-Za-z0-9_.-]*` and may not end in `.local`. It may not repeat its
+own name or the name of another table, or be claimed by two tables; those are refused when the
+file is read. An alias that lands on a skill or server that exists is refused when rendering,
+naming the file that declares it. An alias applies wherever its table is read: in a stealth source
+it applies in every repository the source targets.
+
+A permission rule that names a renamed server follows it (`figma/*` becomes `figma-work/*`) when the
+rule comes from the same kit or source that defines the server. A rule in the declaring scope's own
+permissions, meaning the `[[source]]` whose path is the manifest's own folder in a global or stealth
+manifest, is not rewritten: write it with the new name. Native `[claude.extra]` and `[opencode.extra]`
+entries do not follow a rename either, because loadout passes them through without parsing them; edit
+those by hand.
 
 ### Profiles
 
@@ -590,7 +619,8 @@ vendored = "sha256:9f2a1c4e…"
 | `harnesses` | Non-empty list of supported harness names |
 | `instructions` | Ordered project instruction fragment names, from `loadout/instructions/` |
 | `kits` | Ordered kit names |
-| `[skills.NAME]` | `agents` and `render` for one skill; see [skill policy](#skill-policy) |
+| `[skills.NAME]` | `agents`, `render` and `name` for one skill; see [skill policy](#skill-policy) |
+| `[servers.NAME]` | `name` for one MCP server; see [aliases](#aliases) |
 | `[kit.NAME].vendored` | Content hash maintained by `kit add --vendored` and `kit sync`; the only key it accepts |
 
 Any other key is refused by name. The project file has no source-path list or profile
@@ -601,7 +631,6 @@ inheritance. Shared sources reach projects through kits.
 ```text
 loadout/config.toml              configured harnesses, instructions, skill policy and kits
 loadout/permissions.toml         shared permission rules, optional
-loadout/permissions.local.toml   your own permission rules, optional; keep it out of Git
 loadout/instructions/            ordered instruction fragments
 loadout/skills/                  skills, one folder each, with supporting files
 loadout/agents/                  subagents, one Markdown file each
@@ -615,25 +644,17 @@ loadout/kits/                    vendored kits
 A missing `permissions.toml` means the same as an empty one. `loadout/` must be a real folder, and
 the files in it are read only there; see [links](../guides/projects.md#links-and-gitignore).
 
-### Personal files
-
-`loadout/permissions.local.toml` holds your own rules for the repository, in the
-[permission rules](#permission-rules) format. It is a tier above `permissions.toml`, and the same
-deny-wins merge applies, so a personal allow cannot cancel a shared deny.
-
-`loadout/skills/<name>.local/` is a private replacement for the whole `<name>` skill: its document
-and supporting files replace the shared variant together. It is the only personal skill form, and
-it is not an overlay.
-
-Loadout never adds `permissions.local.toml` to `.gitignore`: add it to `.gitignore`, or to
-`.git/info/exclude` for this clone alone, yourself. Keep a `.local` skill you create out of Git the
-same way.
+The project has no personal files. A `loadout/permissions.local.toml`, or a
+`loadout/skills/<name>.local/` folder, is no longer read: sync refuses it by name with exit 3, in
+one refusal that names every such file and folder, and points to a [stealth source](#stealth-sources) that targets the repository. Your own rules and
+skills live there, and [reach the clone](#adopted-repositories) when the team has adopted loadout.
 
 ## Stealth sources
 
 A **stealth source** is a folder registered on this machine whose `loadout.toml` renders
-personal, never-committed configuration into repositories that have not adopted loadout. The
-[stealth sources guide](../guides/stealth.md) walks through one; this section is the schema.
+personal, never-committed configuration into repositories. In a repository that has not adopted
+loadout it writes the files itself; in one that has, the project's sync renders it as a personal
+tier (see [adopted repositories](#adopted-repositories)). The [stealth sources guide](../guides/stealth.md) walks through one; this section is the schema.
 [`loadout stealth init`](cli.md#stealth-sources) writes a minimal one and registers it.
 
 ```toml title="~/agent-config/work/loadout.toml"
@@ -669,9 +690,8 @@ see [`stealth.toml`](#stealthtoml).
 
 Any other key is refused by name. A pattern may use `*`, `?` and `[...]`. A match that is not a
 git checkout, a bare repository, a submodule or a linked worktree is skipped with a message, not
-an error, so a broad pattern does not fail every run. So is a repository that has adopted loadout
-(it holds `loadout/config.toml`); what the stealth source wrote there before is retired, as for a
-repository the patterns stopped matching. A match that is the home folder, holds a
+an error, so a broad pattern does not fail every run. A repository that has adopted loadout (it
+holds `loadout/config.toml`) is a target too; see [adopted repositories](#adopted-repositories). A match that is the home folder, holds a
 harness home or the stealth folder, is inside the stealth folder, or has a `.git` of its own but
 is not the top of its checkout, is refused with exit 3. A pattern whose fixed parent folder
 cannot be listed is reported, and its targets are neither written nor retired. Targets are
@@ -728,7 +748,11 @@ Removing a name from `kits` retires what it rendered on the next sync.
 
 Each destination is relative to the target's root. The files a stealth source owns whole are marked
 (whole); in the three shared documents the stealth source owns only the keys and rules it renders
-(see [owned documents](#owned-documents)).
+(see [owned documents](#owned-documents)). The table is where a stealth source writes in a
+repository that has not adopted loadout. In an [adopted repository](#adopted-repositories) the
+instructions and skills go to the destinations in the table, while permission rules and every
+harness's servers except Claude's are merged into the files the project renders; Claude's servers
+still go to `~/.claude.json`.
 
 | Harness | Instructions | MCP servers | Permissions and settings | Skills |
 | --- | --- | --- | --- | --- |
@@ -769,6 +793,68 @@ Each destination is relative to the target's root. The files a stealth source ow
 - A path the team tracks is never written. `CLAUDE.local.md`, `.claude/settings.local.json` and
   `.factory/settings.local.json` can be ignored in every repository; see
   [stealth sources](../guides/stealth.md#what-stays-out-of-git).
+
+### Adopted repositories
+
+A target that holds `loadout/config.toml` is rendered by the project's `loadout sync`, not by the
+stealth source's own run. The project sync takes every registered stealth source whose `targets`
+match the repository as a personal tier, in the same pass, so each file in the clone has one
+writer. Everything the source renders reaches the clone, for the harnesses both the project and the
+source declare; `sync` prints a `note:` naming the ones skipped. The source's per-harness
+choices hold: `mcp = false`, its permission targets and its skill policy. A project whose
+`loadout/config.toml` is below the repository's top level has no personal tier, with a note when a
+stealth source targets that folder or the repository's top.
+
+- **Destinations.** Permission rules merge into the team's rendered permission files, every
+  harness included. Claude and Droid `settings` fragments go to `.claude/settings.local.json` and
+  `.factory/settings.local.json`, owning only their keys. Instructions go only to the destinations
+  in the table above that the team does not write: never `AGENTS.md` or `CLAUDE.md`. Codex servers
+  and instructions go to `.codex/config.toml`, which the project does not write. A personal Claude
+  server goes to `~/.claude.json` under the repository's key, still written by the stealth
+  machinery, and never to `.mcp.json`; a git hook never touches it.
+- **The team's name wins.** A personal skill or server with the same name as one the team renders
+  is refused, with the one-line fix `rename yours with [skills.<name>] name = "<new>" in
+  <manifest>`. A skill folder named `<name>.local` in the stealth source replaces the team's
+  `<name>` instead, for the harnesses the source renders it for. Where a harness the source did not
+  select reads the same shared `.agents/skills` folder, the personal copy wins there too and a note
+  names that harness. Any personal skill the source renders for Codex lands in `.agents/skills`, so
+  one note also names each harness the project declares that reads that folder and the source does
+  not select.
+- **Several sources compose alphabetically.** Sources are taken in the registry's order, which is
+  by name. Rules merge, deny beating ask beating allow; instructions for one destination are one
+  document in that order; on a server, skill or settings key two sources both set, the first wins
+  and the second is refused naming the first.
+- **`refused:` lines and exit 3.** A refusal prints `refused: stealth <name>: ...` on stderr and
+  the sync exits 3, but everything else is still written. A path the team tracks or re-includes
+  that several sources write into is refused without a name, as `refused: the team tracks <path>;
+  ...` or `refused: <path> would show in git status: ...`. A personal document that no longer
+  parses is refused alone, and the team still syncs. Run from a git hook, the same refusals
+  print and the hook keeps the exit code of the team's sync, so a teammate's commit cannot fail every
+  checkout. A composition that fails for one harness is refused for that harness alone.
+- **A source that cannot be read is held.** A manifest that does not parse, a kit that does not
+  resolve, an unreadable registry, a failed git probe where a source could match, and a source
+  being removed (only in repositories its targets match) make that source unknown. Its files and
+  keys recorded earlier are kept, its exclude lines stay, and sync exits 3 until it is fixed. While
+  any source is held, no recorded personal key is stripped, and a team permission or MCP file the
+  personal tier writes into (`.claude/settings.json`, `.cursor/cli.json`,
+  `.codex/rules/permissions.rules`, `opencode.json`, Pi's config and the like) or a personal
+  instruction document another source still renders (`CLAUDE.local.md`, `.codex/config.toml`,
+  `.factory/AGENTS.md`, `.pi/APPEND_SYSTEM.md`) is left exactly as it is on disk when this run
+  would change it, with a `refused:` line naming the file and the held source, so a held source's
+  deny never drops out.
+- **Hidden from git.** Project sync keeps a block in the repository's `.git/info/exclude`, named
+  for the repository's root, that lists each unit only the personal tier produces; `.gitignore` is not
+  changed for them. A line is dropped only after its unit is gone from disk, or once the team renders that unit itself. A path the team tracks, or a
+  committed `.gitignore` re-includes, is never written: it is refused (exit 3), and one recorded
+  earlier is left in place and dropped from the record.
+- **Several clones.** `sync` takes a lock on the project folder. On a filesystem that refuses locks
+  it carries on without one. `sync --stealth NAME`, `sync --global` and `stealth remove NAME` also
+  sync the adopted clones `NAME` matches and those whose record names it; a clone that is no longer
+  adopted has its personal files retired. A plain `loadout sync` does neither; in a clone no longer
+  adopted it refuses each personal file, naming `loadout sync --stealth NAME` as the fix.
+
+Removing a kit from the stealth source, or a source from the registry, retires what it rendered
+into the clone on the next such sync.
 
 ### Owned documents
 
@@ -1001,8 +1087,8 @@ would also cover an `ask` is left out for Cursor, so that command still prompts.
 [harness reference](harnesses.md#permission-portability).
 
 The same format serves a global source's `permissions.toml`, a project's `loadout/permissions.toml`,
-a kit's `permissions.toml`, and a project's personal `loadout/permissions.local.toml`. In a
-project the tiers are kit, shared and personal, merged with deny winning.
+a kit's `permissions.toml`, and a stealth source's `permissions.toml`. In a project the tiers are
+kit and shared, then every stealth source that targets the repository, merged with deny winning.
 
 ### Harness-specific entries
 

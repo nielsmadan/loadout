@@ -34,8 +34,9 @@ loadout keeps for itself: the backup of an init in progress and sync's complete 
 `destinations.py:resolve_destination` expands `${VAR}` in a destination against the environment, per
 [0011](../decisions/0011-a-destination-follows-a-relocated-harness.md).
 A render takes an `emit.RenderContext`: the destination resolver, the resolver for a kit
-that is not vendored, the manifest source parser, and `registration`, the one root that may render
-global scope, read once with why there is none, so a refusal names what decided it. `render_global` refuses any other root before it reads the manifest
+that is not vendored, the manifest source parser, `registration`, the one root that may render
+global scope, read once with why there is none, so a refusal names what decided it, and
+`personal`, the personal tier of an adopted repository (none by default). `render_global` refuses any other root before it reads the manifest
 (`emit.refuse_unregistered_global`, [0031](../decisions/0031-global-scope-renders-only-from-the-registered-source.md));
 by default that root is the source the machine config registers, and init's scratch preview, its
 isolated validation, the staged snapshot and the guard's committed tree name their own copy. The staged-render and migration-validation
@@ -76,7 +77,8 @@ which runs `discovery.py`'s inventory through `migration*.py`'s plan, backup and
 `credentials.py` decides which values in what it adopts look like secrets, for the warning.
 `gitignore.py` holds the one escaping rule and the line edits both init and sync use.
 `commands.py` is the CLI's commands; what `sync` decides and does (the guard, writing, retiring)
-is `sync.py`, and returns values for the command to report. `files.py` writes outputs and
+is `sync.py`, and for the personal tier `personal_plan.py` and `personal_sync.py`, and returns
+values for the command to report. `files.py` writes outputs and
 compares them with disk, through any link at the destination. A rendered text output that replaces a
 file keeps that file's mode, so a chmod survives a rewrite; a new one gets `0o666 & ~umask`, or
 0600 when it holds a secret the credential check recognises (`files.text_mode`). Copied and
@@ -95,6 +97,18 @@ the tree hash `kit sync` compares a vendored copy against. A kit is a source, so
 through the slice's own operator and adds no merge rule.
 `emit.py:render_project` renders it; `render_all` unions it with `render_global`'s global-scope
 output, so `sync`/`check` regenerate whichever scopes are present.
+
+The personal tier of an adopted repository ([sync.md](sync.md#the-personal-tier-in-an-adopted-repository))
+flows `personal_plan.sync_tier` (which calls `personal.personal_tier`) → `RenderContext.personal` →
+`emit.render_project_detailed`, which composes the tier through `personal.py` and returns the
+outputs beside the team-only ones → `personal_plan.personal_view`, which decides what is written,
+held, released and refused, from the render, the record and git → `personal_sync`, which records
+the pending paths and hides them, deploys, writes the key-owned documents, retires, records and
+hides again, in that order. `cmd_sync` takes the project lock, calls the guard and reports;
+`sync.classified_drift` reads the same view: `check` accounts for what `sync` holds or releases,
+so neither shows as drift, and reports unparsable personal documents; the other refusals are
+`sync`'s alone. Which source owns a path is decided in one place, `personal_plan.owner`, over one
+per-source render (`personal_plan.rendered_by`); `personal_sync` records what it returns.
 
 Stealth sources ([sync.md](sync.md#stealth-sources)) are a third kind of source beside project and global. They
 share `emit.py`'s rule and server parsing and its kit layering (`layered_rules`,
@@ -119,23 +133,28 @@ would make cannot be missing from it. That holds for the write plan. It does not
 instead of the plan), the unmanaged scan and the per-harness notes, which `check` computes on its
 own; a change to one rule needs both places. A check that disagrees with `sync` is a bug in
 whichever of them was not changed.
-`stealth_*.py` imports another module's private names only through `stealth_seams.py`. Below
-`cli.py`, a 1.0 module imports only `stealth_registry` and `stealth_lock` at its top; any other
-stealth source import in it is function-local, so a stealth source module may import the seams hub without
-`commands` or `unmanaged` meeting themselves half-initialised (`tests/test_stealth_seams.py`
-pins this).
+`stealth_*.py` imports another module's private names only through `stealth_seams.py`. Every
+module that is not a stealth module, apart from `cli.py` and `kit_fanout.py` (which runs the
+stealth fan-out and sits above `commands`), imports at its top only the stealth modules that never
+reach the seams hub or `emit`: `stealth_registry`, `stealth_lock`, `stealth_git`,
+`stealth_targets`, `stealth_preset` and `exclude`. That includes the personal tier's
+`personal.py`, `personal_plan.py` and `personal_sync.py`. Any other stealth source import in it is
+function-local (`personal._load` reads a stealth manifest that way), so a stealth source module may
+import the seams hub without `commands` or `unmanaged` meeting themselves half-initialised, and
+`emit` can import `personal` without meeting itself. `tests/test_stealth_seams.py` pins both by
+walking the top-level imports of every such module.
 
 ## Module map
 
 | area | modules |
 |---|---|
 | CLI | `__init__.py` and `__main__.py` (the entry points), `cli.py` (arguments, exit codes, `--json` errors), `errors.py` (`LoadoutError` and `UsageError`, exit 3 and 2), `commands.py` (the commands), `diffs.py` (the diffs they show), `color.py` (whether a stream gets color: `NO_COLOR`, `FORCE_COLOR`, `TERM`, a terminal), `credentials.py` (telling a secret from a value: init's warnings, owner-only modes, and whether a diff may be shown), `completions.py` |
-| render | `emit.py`, `composition.py`, `documents.py` (merging JSON documents), `permissions/` (`rules.py`, `merge.py`, `renderers.py`), `hooks.py`, `adapters.py`, `plugins.py`, `servers.py`, `skills.py`, `subagents.py`, `module_config.py`, `output.py` (the output types and file digests) |
-| sources | `harnesses.py` (the global preset), `manifest.py`, `sources.py`, `resolve.py`, `destinations.py`, `machine.py`, `project.py`, `skill_policy.py` |
-| sync | `containment.py` (where loadout may read and write: `within`, `protected`, `first_link` and the project rules built on them), `sync.py` (guard, deploy, retirement, drift), `state.py` (`SyncState`, one root as a command finds it), `files.py` (writers, `check_all`), `atomic.py` (`replace_atomically`, the one way a file is replaced, `atomic_install` and `read_file`), `retirement.py`, `written.py` (the write record), `record.py` (owned key names), `surgery.py` and `toml_paths.py` (writing into shared documents), `notices.py`, `unmanaged.py`, `gitignore.py` |
+| render | `emit.py`, `personal.py` (the personal tier: which stealth sources match, and composing them into the project render), `composition.py`, `documents.py` (merging JSON documents), `permissions/` (`rules.py`, `merge.py`, `renderers.py`), `hooks.py`, `adapters.py`, `plugins.py`, `servers.py`, `skills.py`, `subagents.py`, `module_config.py`, `output.py` (the output types and file digests) |
+| sources | `harnesses.py` (the global preset), `manifest.py`, `sources.py`, `resolve.py`, `destinations.py`, `machine.py`, `project.py`, `skill_policy.py` and `server_policy.py` (renames and render choices per skill or server) |
+| sync | `containment.py` (where loadout may read and write: `within`, `protected`, `first_link` and the project rules built on them), `sync.py` (guard, deploy, retirement, drift), `state.py` (`SyncState`, one root as a command finds it), `files.py` (writers, `check_all`), `atomic.py` (`replace_atomically`, the one way a file is replaced, `atomic_install` and `read_file`), `retirement.py`, `written.py` (the write record), `guarded_write.py` (writing a document only if it is still the bytes read), `personal_plan.py` and `personal_sync.py` (the personal tier: what it writes, holds and refuses; writing, recording and retiring it), `record.py` (owned key names), `surgery.py` and `toml_paths.py` (writing into shared documents), `notices.py`, `unmanaged.py`, `gitignore.py` |
 | init | `init_workflow.py` (preview, apply, putting back on failure, the skill fallback), `init_options.py` (what was asked for), `discovery.py` (inventory), `runtime_paths.py` (what a harness writes for itself, shared with `unmanaged.py`), `migration.py` (plan), `migration_models.py`, `migration_paths.py`, `migration_transaction.py` (apply), `migration_validation.py` (isolated reconstruction), `migration_images.py` (what a path holds, captured and installed), `migration_backup.py` (the before-image of one run, and putting it back), `migration_git.py`, `git_privacy.py`, `native_documents.py`, `extract.py` (reading native documents back), `skill_copy.py` (the plain copy of the bundled skill init offers) |
 | git | `git_runner.py` (every git loadout starts, without a hook's repository variables), `git_tree.py` (a tree or the index as entries, what a render reads of it, and that written out: the link rules are the pure `select_inputs`), `staged.py` and `staged_render.py` (`check --staged`), `git_hooks.py` and `git_hook_commands.py`, `worktrees.py` (a linked worktree of the registered source) |
-| stealth source | `stealth_manifest.py` (the `[stealth]` table and the allowed slices), `stealth_registry.py` (`stealth.toml`), `stealth_commands.py` (`stealth add\|list\|remove` and selection for `sync` and `check`), `stealth_targets.py` and `stealth_git.py` (expanding patterns, probing a folder, every git question), `stealth_render.py` and `stealth_renderers.py` (`STEALTH_PRESET`, what each harness gets), `stealth_documents.py` and `json_paths.py` (owned keys and rules in shared documents), `claude_json.py` (leaves in `~/.claude.json`), `stealth_record.py` (the record), `stealth_plan.py` (the pure per-target decision), `stealth_sync.py` (applying it), `stealth_check.py`, `exclude.py` (the `info/exclude` and global ignore blocks), `stealth_lock.py`, `stealth_kits.py` (linked kits: resolving them and composing them beneath the stealth source's own content), `stealth_kit_commands.py` (`kit add\|list --stealth`), `stealth_seams.py` (the private names it imports, pinned by `tests/test_stealth_seams.py`) |
+| stealth source | `stealth_manifest.py` (the `[stealth]` table and the allowed slices), `stealth_registry.py` (`stealth.toml`), `stealth_commands.py` (`stealth add\|list\|remove` and selection for `sync` and `check`), `stealth_targets.py` and `stealth_git.py` (expanding patterns, probing a folder, every git question), `stealth_preset.py` (`STEALTH_PRESET`, target facts and the pieces the personal tier shares, importing neither `emit` nor the seams hub), `stealth_render.py` and `stealth_renderers.py` (what each harness gets), `stealth_documents.py` and `json_paths.py` (owned keys and rules in shared documents), `claude_json.py` (leaves in `~/.claude.json`), `stealth_record.py` (the record), `stealth_plan.py` (the pure per-target decision), `stealth_sync.py` (applying it), `stealth_check.py`, `exclude.py` (the `info/exclude` and global ignore blocks), `stealth_lock.py`, `stealth_kits.py` (linked kits: resolving them and composing them beneath the stealth source's own content), `stealth_kit_commands.py` (`kit add\|list --stealth`), `stealth_seams.py` (the private names it imports, pinned by `tests/test_stealth_seams.py`) |
 | kits | `kits.py` (resolution, vendored copies), `kit_catalog.py`, `kit_discover.py`, `kit_vendor.py` (vendoring and updating copies, `vendored_state`), `bundled_kits.py`, `kit_push.py` (a vendored copy's edits back to its source), `kit_fanout.py` (the projects a sync at the global source reaches, and the push offer; `stealth_commands.py` selection calls it, hooks never do) |
 | bundled skill | `skill_installation.py`, `bundled_skill.py` |
 

@@ -22,6 +22,7 @@ from loadout.personal import (
     PersonalReport,
     PersonalTier,
     adopted_claude_servers,
+    adopted_facts,
     adopted_target,
     clash_refusal,
     personal_inputs,
@@ -254,6 +255,19 @@ def test_a_source_being_removed_is_unknown(fake_home: Path) -> None:
     assert [(s.name, s.health) for s in personal_tier(root).sources] == [("mine", "unknown")]
 
 
+def test_a_source_being_removed_elsewhere_leaves_this_tier_alone(fake_home: Path) -> None:
+    root = _project(fake_home / "work/app", '"pi"')
+    other = _project(fake_home / "work/other", '"pi"')
+    mine = _stealth(fake_home, "mine", root, "[pi]\n", {"mcp.toml": MINE_SERVER})
+    gone = _stealth(fake_home, "gone", other, "[pi]\n", {"mcp.toml": MINE_SERVER})
+    _register(RegisteredStealth("gone", gone, removing=True), RegisteredStealth("mine", mine))
+
+    tier = personal_tier(root)
+
+    assert [(s.name, s.health) for s in tier.sources] == [("mine", "matched")]
+    assert [(s.name, s.health) for s in personal_tier(other).sources] == [("gone", "unknown")]
+
+
 def test_an_unreadable_registry_is_one_unknown_source_named_registry(fake_home: Path) -> None:
     root = _project(fake_home / "work/app", '"pi"')
     path = config_dir() / "stealth.toml"
@@ -275,6 +289,21 @@ def test_a_project_below_the_top_level_gets_no_tier_and_a_note(fake_home: Path) 
 
     assert not adopted_target(root)
     assert personal_tier(root) == PersonalTier((), BELOW_TOP_LEVEL)
+
+
+def test_a_project_below_the_top_level_no_source_targets_gets_no_note(fake_home: Path) -> None:
+    top = fake_home / "work/app"
+    top.mkdir(parents=True)
+    _git(top, "init", "-q", "-b", "main")
+    root = top / "sub"
+    (root / "loadout").mkdir(parents=True)
+    (root / "loadout/config.toml").write_text('harnesses = ["pi"]\n', encoding="utf-8")
+    elsewhere = fake_home / "work/other"
+    elsewhere.mkdir(parents=True)
+    folder = _stealth(fake_home, "mine", elsewhere.resolve(), "[pi]\n", {"mcp.toml": MINE_SERVER})
+    _register(RegisteredStealth("mine", folder))
+
+    assert personal_tier(root) == PersonalTier((), None)
 
 
 def test_the_default_context_renders_the_expected_output_with_a_matching_source_registered(
@@ -351,6 +380,26 @@ def test_a_personal_opencode_extra_cannot_widen_the_teams_verdict(fake_home: Pat
     permission = _json(render_project(root, _personal(root)), root / "opencode.json")["permission"]
 
     assert (permission["webfetch"], permission["bash_note"]) == ("deny", "deny")
+
+
+def test_a_personal_opencode_allow_cannot_loosen_a_team_ask(fake_home: Path) -> None:
+    root = _project(
+        fake_home / "work/app",
+        '"opencode"',
+        {"permissions.toml": '[opencode.extra]\nwebfetch = "ask"\nbash_note = "allow"\n'},
+    )
+    folder = _stealth(
+        fake_home,
+        "mine",
+        root,
+        "[opencode]\n",
+        {"permissions.toml": '[opencode.extra]\nwebfetch = "allow"\nbash_note = "ask"\n'},
+    )
+    _register(RegisteredStealth("mine", folder))
+
+    permission = _json(render_project(root, _personal(root)), root / "opencode.json")["permission"]
+
+    assert (permission["webfetch"], permission["bash_note"]) == ("ask", "ask")
 
 
 def test_a_git_failure_leaves_an_unknown_source_rather_than_an_empty_tier(
@@ -655,10 +704,9 @@ def test_a_server_two_sources_render_for_codex_and_claude_goes_to_the_first(
         f'wins; rename yours with [servers.mine] name = "<new>" in {second / "loadout.toml"}'
     )
     alpha, beta = tier.sources
-    assert list(adopted_claude_servers(root, alpha, parse_servers(root / "loadout/mcp.toml"))) == [
-        "mine"
-    ]
-    assert adopted_claude_servers(root, beta, parse_servers(root / "loadout/mcp.toml")) == {}
+    facts = adopted_facts(root, parse_servers(root / "loadout/mcp.toml"))
+    assert list(adopted_claude_servers(facts, alpha)) == ["mine"]
+    assert adopted_claude_servers(facts, beta) == {}
 
 
 def test_a_claude_server_the_team_also_defines_stays_out_of_the_leaves(fake_home: Path) -> None:
@@ -670,10 +718,12 @@ def test_a_claude_server_the_team_also_defines_stays_out_of_the_leaves(fake_home
 
     render = render_project_detailed(root, RenderContext(personal=tier))
 
-    assert list(
-        adopted_claude_servers(root, tier.sources[0], parse_servers(root / "loadout/mcp.toml"))
-    ) == ["mine"]
-    assert list(adopted_claude_servers(root, tier.sources[0], {})) == ["team", "mine"]
+    facts = adopted_facts(root, parse_servers(root / "loadout/mcp.toml"))
+    assert list(adopted_claude_servers(facts, tier.sources[0])) == ["mine"]
+    assert list(adopted_claude_servers(adopted_facts(root, {}), tier.sources[0])) == [
+        "team",
+        "mine",
+    ]
     assert render.report.refusals == (
         clash_refusal("mine", "server", "team", folder / "loadout.toml"),
     )
@@ -945,6 +995,30 @@ def test_a_local_skill_replaces_the_teams_in_the_shared_skill_folder_and_notes_w
     assert render.report.refusals == ()
 
 
+def test_a_personal_skill_in_the_shared_skill_folder_notes_the_harness_it_also_reaches(
+    fake_home: Path,
+) -> None:
+    root = _project(fake_home / "work/app", '"codex", "pi"')
+    folder = _stealth(
+        fake_home,
+        "mine",
+        root,
+        "[codex]\n",
+        {"skills/probe/SKILL.md": SKILL.format(name="probe", body="Personal")},
+    )
+    _register(RegisteredStealth("mine", folder))
+
+    render = render_project_detailed(root, _personal(root))
+
+    assert root / ".agents/skills/probe/SKILL.md" in render.outputs
+    assert render.report.notes == (
+        (
+            "stealth mine: its skill probe is written to .agents/skills, so the personal copy "
+            "also reaches pi"
+        ),
+    )
+
+
 def _break(folder: Path) -> None:
     (folder / "loadout.toml").write_text("[stealth\n", encoding="utf-8")
 
@@ -1043,12 +1117,15 @@ def test_a_held_sources_settings_key_stays_while_another_source_renders(
     assert json.loads(path.read_text()) == {"model": "opus", "theme": "dark", "verbose": True}
 
 
-def test_a_root_with_a_line_break_is_not_an_adopted_target(fake_home: Path) -> None:
-    root = fake_home / "we\nird"
-    (root / "loadout").mkdir(parents=True)
-    (root / "loadout/config.toml").write_text('harnesses = ["pi"]\n', encoding="utf-8")
+@pytest.mark.parametrize(
+    ("name", "adopted"), [("we\nird", False), ("we\rird", False), ("weird", True)]
+)
+def test_a_root_with_a_line_break_is_not_an_adopted_target(
+    fake_home: Path, name: str, adopted: bool
+) -> None:
+    root = _project(fake_home / name, '"pi"')
 
-    assert not adopted_target(root)
+    assert adopted_target(root) is adopted
 
 
 def test_the_personal_fixture_denies_what_the_project_fixture_allows_through_the_real_tier(

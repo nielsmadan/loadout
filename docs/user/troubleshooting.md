@@ -29,7 +29,7 @@ the file and counting the lines that differ, and its abort message says to read 
 the file itself for step 1, then carry on with steps 2 to 4.
 
 A harness granting a permission interactively can change a generated file. Record that grant
-in `permissions.toml` or `permissions.local.toml` so it survives future syncs.
+in `permissions.toml`, or in a [stealth source](guides/stealth.md)'s `permissions.toml` when it is yours alone, so it survives future syncs.
 
 Loadout compares current output with the working source, committed source when available, and
 what it last recorded writing. A destination shared between machines can still trigger a warning,
@@ -148,7 +148,7 @@ error that every command reports, exit 3, so sync stops before it could retire t
 `plugins = []` to keep the settings.
 
 At project scope, Claude Code saves a "don't ask again" permission to `.claude/settings.local.json`,
-which a project source does not write (a [stealth source](guides/stealth.md) does, and keeps it); record it in `permissions.local.toml` to keep it with the source. A
+which a project source does not write (a [stealth source](guides/stealth.md) does, and keeps it); record it in a stealth source's `permissions.toml` to keep it with the source. A
 plugin enabled at project scope goes into `.claude/settings.json` or `.factory/settings.json`.
 Claude Code's `enabledPlugins` there stays as the harness wrote it until the project has a
 `loadout/settings/claude.json`; from then on that file holds every key no slice writes, and a key

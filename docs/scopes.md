@@ -120,9 +120,9 @@ Per-repo configuration, layered on top of global. Two sources per artifact type:
 | source | committed? | holds |
 |---|---|---|
 | project | yes | rules and instructions everyone working on this repo gets |
-| personal | **no** | your rules for this repo — machine paths, local tools |
+| personal | **no** | your rules for this repo — machine paths, local tools; a registered stealth source that targets the repo, not a file in it ([0058](decisions/0058-a-stealth-source-reaches-adopted-repositories.md)) |
 
-loadout merges the two and writes **generated outputs that are always gitignored** — twelve
+loadout merges the two, in one pass and with one writer per file, and writes **generated outputs that are always gitignored** — twelve
 documents across five harnesses (`claude`, `codex`, `droid`, `opencode`, `pi`), plus three for
 `cursor` (`.cursor/cli.json`, `.cursor/hooks.json`, `.cursor/mcp.json`) and three for `devin`
 (`.devin/config.json`, `.devin/hooks.v1.json`, `.devin/mcp_config.json`), of which `AGENTS.md` is
@@ -149,6 +149,8 @@ represented here, so the merge path
 must exist anyway, and the only thing native mechanisms would buy is committed outputs, which
 nobody needs given all-or-nothing adoption. Revisit only if that adoption model ever changes.
 That model changed for repositories that have not adopted loadout; see [0045](decisions/0045-an-overlay-source-renders-into-repositories-that-have-not-adopted-loadout.md).
+In an adopted repository a stealth source is a personal tier of the project's own render; see
+[0058](decisions/0058-a-stealth-source-reaches-adopted-repositories.md).
 
 Consequences:
 
@@ -230,8 +232,8 @@ nobody uses is one nobody notices breaking.
 
 **Project scope has no profiles**, and that is a decision rather than an omission:
 `render_project` takes no profile argument. A profile selects among machine-wide variants of one
-person's setup; a repo's configuration is the same for everyone who checks it out, which is what
-`permissions.local.toml` already exists to carve an exception out of.
+person's setup; a repo's configuration is the same for everyone who checks it out, and a stealth
+source that targets the repository is what carves a personal exception out of it.
 
 ## Still open
 

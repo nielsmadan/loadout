@@ -17,6 +17,8 @@ from .kit_fanout import (
     check_plain,
     check_projects,
     check_projects_json,
+    check_retired,
+    check_retired_json,
     project_index,
     retire_plain,
     sync_plain,
@@ -33,6 +35,7 @@ from .overlay_leftovers import (
     registry_notice,
 )
 from .personal import adopted_target, stranded_target
+from .personal_sync import Removal
 from .project import project_config_path
 from .stealth_check import StealthCheck, check_stealth, report_check
 from .stealth_git import GitFailure, identity
@@ -435,9 +438,10 @@ def _clone_kind(root: Path) -> str:
     return "stranded" if stranded_target(root) else "held"
 
 
-def adopted_clones(sources: Sequence[RegisteredStealth]) -> Clones:
+def adopted_clones(sources: Sequence[RegisteredStealth], *, prune: bool = True) -> Clones:
     listed = True
-    prune_vanished()
+    if prune:
+        prune_vanished()
     try:
         named = [root for stealth in sources for root in roots_naming_stealth(stealth.name)]
     except (LoadoutError, OSError) as error:
@@ -467,15 +471,23 @@ def _retire_stranded(clones: Clones) -> int:
     return retire_plain(clones.stranded)
 
 
-def _unscoped_clones(selection: Selection) -> Clones:
+def _unscoped_clones(selection: Selection, *, prune: bool = True) -> Clones:
     unscoped = [stealth for stealth, scope in selection.stealth_sources if scope is None]
     if not unscoped:
         return Clones()
-    return adopted_clones(unscoped).without((selection.root,))
+    return adopted_clones(unscoped, prune=prune).without((selection.root,))
 
 
-def _adopted_projects(selection: Selection, kit: Sequence[Path]) -> tuple[Path, ...]:
-    return _unscoped_clones(selection).without(kit).adopted
+def _check_clones(selection: Selection, kit: Sequence[Path]) -> Clones:
+    return _unscoped_clones(selection, prune=False).without(kit)
+
+
+def _stranded_syncs(selection: Selection, clones: Clones) -> tuple[tuple[Path, str], ...]:
+    names = [stealth.name for stealth, scope in selection.stealth_sources if scope is None]
+    return tuple(
+        (root, f"loadout sync --stealth {next((n for n in names if _names(root, n)), names[0])}")
+        for root in clones.stranded
+    )
 
 
 def cmd_sync_selection(selection: Selection, *, force: bool) -> int:
@@ -545,9 +557,11 @@ def _check_json(selection: Selection) -> int:
         for target, message in check.errors
     )
     kit = _projects(selection)
+    clones = _check_clones(selection, kit)
     projects = (
         *check_projects_json(kit),
-        *check_projects_json(_adopted_projects(selection, kit), previews=False),
+        *check_projects_json(clones.adopted, previews=False),
+        *check_retired_json(_stranded_syncs(selection, clones)),
     )
     drift.extend(item for project in projects for item in project.drift)
     notes.extend(
@@ -590,8 +604,10 @@ def cmd_check_selection(selection: Selection, *, as_json: bool) -> int:
         *(_report_one(_checked(stealth, scope)) for stealth, scope in rest),
     ]
     kit = _projects(selection)
+    clones = _check_clones(selection, kit)
     codes.append(check_projects(kit))
-    codes.append(check_plain(_adopted_projects(selection, kit)))
+    codes.append(check_plain(clones.adopted))
+    codes.append(check_retired(_stranded_syncs(selection, clones)))
     return max(codes)
 
 
@@ -747,7 +763,7 @@ def cmd_stealth_remove(name: str, *, force: bool, yes: bool) -> int:
     code = max(
         outcome.code,
         _retire_stranded(clones),
-        sync_plain(clones.adopted, retiring=frozenset({name})),
+        sync_plain(clones.adopted, removal=Removal(frozenset({name}), keep_edits=force)),
     )
     finished = (
         not outcome.code and clones.listed and not clones.held and not _still_naming(name, reached)

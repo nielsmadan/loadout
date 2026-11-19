@@ -410,3 +410,23 @@ def test_prune_vanished_removes_that_roots_block_and_keeps_another(tmp_path: Pat
     assert read_personal_block(common, live) == ("/.pi/APPEND_SYSTEM.md",)
     assert not written_state_path(gone, env).exists()
     assert written_state_path(live, env).exists()
+
+
+def test_prune_vanished_deletes_the_record_when_its_block_cannot_be_dropped(
+    tmp_path: Path,
+) -> None:
+    env = _env(tmp_path)
+    common = tmp_path / "common"
+    (common / "info" / "exclude").mkdir(parents=True)
+    gone, live = tmp_path / "gone", tmp_path / "live"
+    gone.mkdir()
+    live.mkdir()
+    record_written(gone, {}, env, common_dir=common)
+    record_written(live, {}, env, common_dir=common)
+    gone.rmdir()
+
+    prune_vanished(env)
+
+    assert not written_state_path(gone, env).exists()
+    assert written_state_path(live, env).exists()
+    assert (common / "info" / "exclude").is_dir()

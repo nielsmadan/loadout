@@ -180,8 +180,9 @@ yet; see [architecture.md](architecture.md#known-gaps).
 ## Stealth sources
 
 A [stealth source](../user/guides/stealth.md) renders into repositories that have not adopted loadout
-([0045](../decisions/0045-an-overlay-source-renders-into-repositories-that-have-not-adopted-loadout.md)).
-It shares the guard, the drift kinds and the diffs with everything above, and keeps its own
+([0045](../decisions/0045-an-overlay-source-renders-into-repositories-that-have-not-adopted-loadout.md)),
+and, in one that has, writes only its Claude servers while the project's sync renders the rest (see
+[the personal tier](#the-personal-tier-in-an-adopted-repository)). It shares the guard, the drift kinds and the diffs with everything above, and keeps its own
 record, claims and ignore lines. Code: `stealth_*.py`, `claude_json.py`, `exclude.py`,
 `json_paths.py`.
 
@@ -287,7 +288,10 @@ recorded target that no longer matches and cannot be examined is reported as ski
   loadout wrote it is kept, with a warning, and no longer recorded; one the team tracks or its
   `.gitignore` re-includes is left in place and no longer recorded, with a note), drops the personal
   exclude block and the `.gitignore` lines sync appended for files now gone, and clears the record's
-  personal fields. A plain `loadout sync` there does not. A root whose record names the source but
+  personal fields. A plain `loadout sync` there does not. An unscoped `check --stealth` or
+  `check --global` previews it without writing: each recorded personal file sync would retire is
+  `DRIFT (orphaned)` under `project PATH:`, and each one edited since is a `note:` that sync keeps
+  it (`personal_sync.stranded_preview`). A root whose record names the source but
   that git cannot probe or that is not a safe top-level checkout, with or without
   `loadout/config.toml`, is skipped with a `note:` naming it. `stealth
   remove` finishes only once no record names the source and no such root was skipped; a record
@@ -327,6 +331,13 @@ out of it.
 
 - One `flock` per stealth folder for the whole run, in
   `$XDG_STATE_HOME/loadout/stealth-locks/stealth-<key>.lock`.
+- One `flock` on the project folder itself for a whole `loadout sync` of a project, so two syncs of one clone do not interleave. It is a lock on the directory, not a file in
+  the state folder, so a sync leaves `HOME` and the state folder untouched. Only "would block" is
+  an error: if the filesystem refuses the lock (NFS, `ENOLCK`, `ENOTSUP`) or the folder cannot be
+  opened, sync carries on unlocked, the same stance as `record_written`. Two concurrent syncs there
+  can interleave their record writes, and the next sync repairs it. The stealth-folder lock and
+  this one are never held at once: the stealth part of a run releases its lock before any project
+  sync starts.
 - One `flock` per file edited in a read-modify-write: each `info/exclude`, the global ignore file,
   `stealth.toml` and `~/.claude.json`, keyed by the file's resolved path, with the PID written in.
   Git reads `info/exclude` and takes no lock on it (it writes the file only when a repository is
@@ -348,6 +359,99 @@ inode is still the one it made, since Claude takes over a lock older than ten se
 
 A wait ends after 30 seconds (15 for Claude's lock) with an error naming the holder where known.
 Neither lock is ever broken, and no message tells the user to delete one.
+
+### The personal tier in an adopted repository
+
+In a repository that holds `loadout/config.toml`, the project's sync renders every registered
+stealth source whose targets match it as a personal tier in the same pass
+([0058](../decisions/0058-a-stealth-source-reaches-adopted-repositories.md)). The project's record
+(`written/`) gains document-level fields: the personal paths with the source that produced each,
+the personal paths about to be written (pending), the sources that contributed anything,
+the `.gitignore` lines sync appended, the personal files loadout created (so one that ends up empty
+is deleted) and the git common dir. Code: `personal.py` (the tier and its composition),
+`personal_plan.py` (what a run writes, holds, releases and refuses), `personal_sync.py` (writing,
+recording and retiring), `exclude.py`, `written.py`.
+
+- **Several sources compose in the registry's order**, which is alphabetical by name. Nothing
+  else orders them: the first wins a name or a settings key and the others are refused naming it.
+- **Record first.** The personal paths are recorded as pending before any personal file is written.
+  If the record cannot be written, the personal tier is skipped with a `refused:` line and the team
+  syncs alone, exit 3.
+- **The exclude block is keyed by root.** The block in the common dir's `info/exclude` is named for
+  the worktree root, so the block of a clone that was moved or deleted can be recognised and dropped.
+A linked worktree is not a target (`stealth_targets.py`, `_skip` returns `linked-worktree`) and has
+no personal tier, so it writes no block. It lists the units only the
+  personal tier produces, found by also rendering the team config alone. It is written before the
+  files and a line is dropped only once its unit is gone from disk or the team renders it. Writing
+  a block also drops any other personal block in that file whose root no longer exists (a moved
+  clone), and a root whose
+  path holds a newline is not a target. `prune_vanished` drops a vanished root's block before its
+  record, and deletes the record even when the block cannot be dropped, since the common dir is
+  usually gone with the root.
+- **`.gitignore` is not used for personal units.** A `.gitignore` line the team render no longer
+  produces is removed only when it is one sync appended, and only when this run no longer writes the
+  path or the path is gone.
+- **A source can be held.** A source whose health is unknown (an unreadable manifest, an unresolved
+  kit, an unreadable registry, a git probe that failed where a source could match, or a `removing`
+  source in a repository its targets match) keeps every personal path, key and exclude line
+  recorded: the record does not name each key's source, so the hold is conservative and another
+  source's removed key lingers until the held one is fixed. Held sources stay in the contributors, so
+  `stealth remove` still reaches the clone. A held source exits 3; the team render does not fail.
+  While a source is held, `personal_plan._held_documents` also leaves on disk, unwritten and with a
+  `refused:` line, every existing team permission or non-Claude MCP document and every Claude, Codex,
+  Droid or Pi personal instruction document whose bytes this run would change: the held source's
+  rules or fragments are not rendered, so writing would drop its denies. A frozen personal document
+  joins `held`; a frozen team document only leaves the outputs and the record view.
+- **Owned keys.** A personal key-owned document (`.claude/settings.local.json`,
+  `.factory/settings.local.json`, the `instructions` key of `opencode.json`, keys of
+  `.codex/config.toml`) owns the union of what it renders now and what the record says it owned
+  last time, so a dropped key is stripped. A personal-only file loadout created that ends up empty is
+  deleted, not left as `{}`. Untracked co-owned *project* settings are a different mechanism and
+  keep [0030](../decisions/0030-adoption-rulings-recorded.md)'s handling.
+- **An unparsable personal document is refused alone.** A personal key-owned document that no
+  longer parses is left as it is with `refused: stealth NAME: FILE is not a JSON document loadout
+  can write its keys into` (or `remove its keys from`, once nothing renders it), and a recorded one
+  stays in the record, held; one loadout never wrote into is not recorded. Everything else, team
+  outputs included, is written, and sync exits 3; `check` reports it as `unparsable`, with advice
+  that `--force` does not replace one a stealth source writes. Only a team document that does not
+  parse stops the whole sync, and `--force` replaces only those.
+- **OpenCode's personal instructions have a second writer.** The `instructions` entry project sync
+  adds to `opencode.json` points at `<stealth folder>/.loadout/opencode-instructions.md`, which only
+  the stealth side writes (`stealth_render.opencode_shared`). A project sync, and so a git hook,
+  adds the entry without writing the file, so after an OpenCode instruction is added or edited the
+  file is missing or stale until `sync --stealth NAME` or `sync --global` runs.
+- **Tracked or re-included units** follow the stealth rule: never written, refused (exit 3), and a
+  recorded one is left in place, dropped from the record and noted. A team output that carries
+  personal content and is tracked is written with the team-only bytes.
+- **Refusals do not abort.** Clashes and a failed composition for one harness are refused for that
+  harness or unit; everything else is written and sync exits 3. A git hook prints the lines and keeps
+  the team's code. `check` renders with the same tier, so its drift matches `sync`, and prints neither
+  personal refusals nor the personal `note:` lines; `sync` prints both.
+- **Reach.** The stealth side, not the project's plain sync, retires a clone's tier when the
+  source stopped matching or the clone stopped being adopted ([scoped retirement](#scoped-retirement)),
+  and `stealth remove` finishes only when no record names the source. A plain sync in a clone that
+  stopped being adopted refuses each recorded personal path as claimed by the clone's own root, and
+  that refusal names `sync --stealth NAME` and `stealth remove NAME` (`stealth_plan._split`).
+  Re-rendering the project once per contributor to attribute paths is accepted for now: it costs one
+  render per extra source, only in clones with two or more, and is done once a run
+  (`personal_plan.rendered_by`). Every attribution reads it through one ladder,
+  `personal_plan.owner`: the first source in registry order whose render writes the path, else the
+  recorded owner, else the first held source. So the recorded owner, the source a tracked-path
+  refusal names (`personal_plan.sole_sources`, only when one source writes the unit) and the source
+  an unparsable refusal names all agree; the previous owner is kept only for a path no contributor
+  renders now, such as a held one, and a path two sources write moves to the remaining one when the
+  first is removed. An unparsable refusal names `loadout stealth remove N` as the rerun only when
+  its document belongs to N, the source being removed; otherwise it names `loadout sync`.
+- **`stealth remove N --force` releases only N's claims.** The removal's clone sync leaves N out of
+  the tier. A recorded personal file that was edited since is refused as usual, and the abort names
+  `loadout stealth remove N --force` instead of the plain sync advice, which holds N in that clone.
+  With `--force`, a file only N wrote is kept on disk, dropped from the record and reported as
+  `WARNING: kept PATH`; any other edited personal file, one another source still writes or another
+  source's own, is left as it is and still recorded under that source, reported as `WARNING: left
+  PATH as it is`, and the next plain sync stops on it as before. Either way the clone exits 0, so
+  the removal can finish. `--force` does not reach the guard for team files: an edited one still
+  stops the clone, and the abort says to port the edit with `/loadout` or undo it, then run the
+  removal again.
 
 ### Known limitations
 

@@ -8,7 +8,7 @@ loadout init global /work/dotfiles --harness pi --dry-run --json
 ```
 
 Scope is a subcommand: `init project` or `init global`. Global source selection defaults to cwd.
-`init project` exits 3 in a repository a stealth source has written into ("a stealth source writes personal files here"), and while any stealth record is unreadable or newer. Do not work around it: for personal configuration there, edit the stealth source (see “Stealth sources” in [configuration](configuration.md)); to adopt the repository, narrow the stealth source's `targets` so they no longer match it and run `loadout sync --stealth <name>` (a plain `loadout sync` inside the repository no longer reaches that stealth source), or run `loadout stealth remove <name>` when the user asks.
+`init project` exits 3 while any stealth record is unreadable or newer. It does not adopt personal items: a `.local` file, a path under a `.local` folder, a git-ignored path and a path a stealth source's record lists stay where they are, with a note (`personal; init leaves it where it is — manage it from a stealth source` or `written by stealth source <name>; it keeps rendering them`). Do not move them into `loadout/`: for personal configuration, edit a stealth source that targets the repository (see “Stealth sources” in [configuration](configuration.md)). After init, `loadout sync` renders every such stealth source with the team's configuration.
 Use a dedicated directory, never HOME or the filesystem
 root for a new repository. Without `--root`, project init resolves the enclosing Loadout/Git root
 from a nested directory; `--root` is used as given, so a monorepo folder such as `apps/web` becomes

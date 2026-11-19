@@ -56,8 +56,8 @@ records a separate controlled fixture and all staged-check timings.
 All required source/config/support files for the staged render must be staged. Global `[[source]]`
 entries can point to relative sibling directories within the same repository. Absolute/external sources, escaping
 source symlinks and submodule dependencies fail with a vendoring remedy. A gitignored personal
-file, such as `loadout/permissions.local.toml` or a `.local` skill, may be absent from the index;
-its working copy is never imported. A required input has to be staged in a form that can be
+file, such as a git-ignored co-owned settings file, may be absent from the index; its working copy
+is never imported. A required input has to be staged in a form that can be
 shared, never as a secret file added to Git.
 
 Every selected kit must be vendored and staged, including bundled `frontend` and `backend`.

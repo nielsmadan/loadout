@@ -31,7 +31,7 @@ A project's `.claude/settings.local.json` is left in place too, since loadout re
 settings.local.json ([0024](../decisions/0024-discovery-reads-an-allowlist.md)). Claude still
 applies its permissions and enabled servers, so the preview names it, `Keep in place:
 .claude/settings.local.json`, with a pointer to `/loadout`, which can move its permissions into
-`loadout/permissions.local.toml`.
+a stealth source's `permissions.toml`.
 
 Droid's legacy `.factory/hooks/hooks.json` is kept in place and named the same way. Droid still
 loads it and moves it to `.factory/hooks.json` the next time it saves hooks; init run again after
@@ -186,8 +186,8 @@ shared with the slices that write into them. Init adopts every top-level key no 
 `loadout/settings/claude.json`, `droid.json`, `devin.json` or `opencode.json`, and sync renders the file from that source plus the slices. Which
 keys a slice writes is read from its renderer, not listed by hand. A file Git tracks is adopted into
 committed source even when it holds a secret, since its content is already in the repository's
-history. An untracked or ignored one is private: its original stays in place and its settings source
-is written private and gitignored. An untracked `opencode.jsonc` is still deleted once its keys are
+history. An untracked one is private: its original stays in place and its settings source
+is written private and gitignored. One Git ignores is personal and left where it is. An untracked `opencode.jsonc` is still deleted once its keys are
 in that private source, since OpenCode would otherwise read both files. Every generated project file init lists in
 `.gitignore` is also removed from the index, so a clone renders it rather than checking out a stale
 copy. Droid's and Pi's `settings.json` count as partly runtime state only at global scope.
@@ -213,11 +213,16 @@ Existing generated destinations are reconstructed in isolation before approval.
 
 ## What init keeps private
 
-An original is adopted privately, into a gitignored source file that stays on this machine, when
-Git ignores it or its name holds `.local`. At project scope a co-owned settings file Git does not
-track is private too, since it may hold something personal, while one Git tracks is already in the
-team's history and goes into committed source. Everything else goes into the source it would go to
-anyway, in either scope.
+At global scope an original is adopted privately, into a gitignored source file that stays on this
+machine, when Git ignores it or its name holds `.local`. At project scope such an original is left
+where it is, with the note `personal; init leaves it where it is — manage it from a stealth
+source`, and so is a path a stealth source's record lists, noted as `written by stealth source
+NAME; it keeps rendering them`
+([0058](../decisions/0058-a-stealth-source-reaches-adopted-repositories.md)). A project's
+co-owned settings file Git does not track is still adopted privately, as 0030 decided, since it is
+usually a team file nobody has committed yet, into `loadout/settings/<harness>.json` with
+`/loadout/settings/local/` ignored; one Git tracks goes into committed source. Everything else
+goes into the source it would go to anyway, in either scope.
 
 What a file contains does not change where it goes ([0030](../decisions/0030-adoption-rulings-recorded.md)): a secret stays in the source, adopted
 as it is, and init warns about it. The preview lists each committable source file that

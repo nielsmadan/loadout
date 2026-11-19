@@ -11,25 +11,44 @@ from typing import TYPE_CHECKING, Any, Literal
 from .composition import for_destination
 from .errors import LoadoutError
 from .json_paths import JsonPath, display_path, with_path
-from .manifest import MANIFEST_NAME, Manifest, PermissionTarget
+from .manifest import MANIFEST_NAME, Manifest, PermissionTarget, declaring_file
 from .output import Merged, Output
 from .permissions.merge import merge_rules
-from .permissions.renderers import MCP_NAMESPACE_HARNESS, refuse_mcp_namespace_overlap
+from .permissions.renderers import (
+    MCP_NAMESPACE_HARNESS,
+    refuse_mcp_namespace_overlap,
+    render_codex_stealth_config,
+)
 from .permissions.rules import EMPTY_RULES, Rules
 from .project import load_project_config, project_config_path, project_slices
 from .servers import Server, render_claude_servers
-from .skill_policy import render_skill_for, selected_skill_agents, skill_aliases
-from .skills import Skill, check_skill_agents, renamed_skill
+from .skill_policy import aliased_skill, render_skill_for, selected_skill_agents, skill_aliases_in
+from .skills import Skill, check_skill_agents
 from .stealth_git import GitFailure, identity
 from .stealth_lock import same_path
+from .stealth_preset import (
+    NO_FACTS,
+    OPENCODE_INSTRUCTIONS,
+    STEALTH_PRESET,
+    TargetFacts,
+    instruction_document,
+    setting_keys,
+)
 from .stealth_registry import RegisteredStealth, load_registry, stealth_path
+from .stealth_targets import (
+    HarnessHomes,
+    SkippedTarget,
+    Target,
+    harness_homes,
+    matches_root,
+    probe,
+    stealth_folder_reason,
+)
 from .toml_paths import key_name
 from .written import WrittenEntry, recorded_keys
 
 if TYPE_CHECKING:
     from .stealth_manifest import StealthManifest
-    from .stealth_render import TargetFacts
-    from .stealth_targets import HarnessHomes, SkippedTarget, Target
 
 BELOW_TOP_LEVEL = (
     "the project is below the repository's top level, so no stealth source renders a "
@@ -121,14 +140,10 @@ def _original_server(stealth: StealthManifest, server: str) -> str | None:
 
 
 def _probe(root: Path, homes: HarnessHomes) -> Target | SkippedTarget:
-    from .stealth_targets import probe  # noqa: PLC0415 - stealth_targets imports emit
-
     return probe(root, homes, None)
 
 
 def _reachable(root: Path) -> bool:
-    from .stealth_targets import Target, harness_homes  # noqa: PLC0415 - stealth_targets imports emit
-
     resolved = str(root.resolve())
     if "\n" in resolved or "\r" in resolved:
         return False
@@ -143,24 +158,29 @@ def stranded_target(root: Path) -> bool:
     return root.is_dir() and not os.path.lexists(project_config_path(root)) and _reachable(root)
 
 
-def _below_top_level(root: Path) -> bool:
+def _top_level_above(root: Path) -> Path | None:
     try:
         found = identity(root.resolve())
     except GitFailure:
-        return False
-    return found is not None and not same_path(found.toplevel, root.resolve())
+        return None
+    if found is None or same_path(found.toplevel, root.resolve()):
+        return None
+    return found.toplevel
 
 
 def _unknown(name: str, problem: str) -> PersonalSource:
     return PersonalSource(name, None, "unknown", problem)
 
 
-def _source(registered: RegisteredStealth, root: Path, home: Path) -> PersonalSource | None:
-    from .stealth_manifest import load_stealth_manifest  # noqa: PLC0415 - it imports emit
-    from .stealth_targets import matches_root, stealth_folder_reason  # noqa: PLC0415 - same
+def _load(folder: Path) -> StealthManifest:
+    from .stealth_manifest import load_stealth_manifest  # noqa: PLC0415 - it reaches stealth_seams
 
+    return load_stealth_manifest(folder)
+
+
+def _source(registered: RegisteredStealth, root: Path, home: Path) -> PersonalSource | None:
     try:
-        stealth = load_stealth_manifest(registered.folder)
+        stealth = _load(registered.folder)
     except (LoadoutError, OSError) as error:
         return _unknown(registered.name, str(error))
     if not matches_root(stealth.settings.targets, root, home):
@@ -180,19 +200,14 @@ def _source(registered: RegisteredStealth, root: Path, home: Path) -> PersonalSo
 
 
 def _targets_root(registered: RegisteredStealth, root: Path, home: Path) -> bool:
-    from .stealth_manifest import load_stealth_manifest  # noqa: PLC0415 - it imports emit
-    from .stealth_targets import matches_root  # noqa: PLC0415 - stealth_targets imports emit
-
     try:
-        stealth = load_stealth_manifest(registered.folder)
+        stealth = _load(registered.folder)
     except (LoadoutError, OSError):
         return False
     return matches_root(stealth.settings.targets, root, home)
 
 
 def personal_tier(root: Path, *, retiring: Collection[str] = ()) -> PersonalTier:
-    from .stealth_targets import SkippedTarget, harness_homes  # noqa: PLC0415 - stealth_targets imports emit
-
     if not project_config_path(root).is_file():
         return NO_PERSONAL
     problem: str | None = None
@@ -212,7 +227,11 @@ def personal_tier(root: Path, *, retiring: Collection[str] = ()) -> PersonalTier
             _targets_root(entry, root, homes.home) for entry in registered
         ):
             return PersonalTier((_unknown("checkout", probed.reason),))
-        return PersonalTier((), BELOW_TOP_LEVEL if _below_top_level(root) else None)
+        top = _top_level_above(root)
+        noted = top is not None and any(
+            _targets_root(entry, path, homes.home) for entry in registered for path in (root, top)
+        )
+        return PersonalTier((), BELOW_TOP_LEVEL if noted else None)
     if problem is not None:
         return PersonalTier((_unknown("registry", problem),))
     found = (_source(entry, root.resolve(), homes.home) for entry in registered)
@@ -395,15 +414,27 @@ def claude_server_selection(
     return accepted, tuple(refusals)
 
 
-def adopted_claude_servers(
-    root: Path, source: PersonalSource, team_servers: Mapping[str, Server]
-) -> dict[str, Any]:
+@dataclass(frozen=True)
+class AdoptedFacts:
+    harnesses: tuple[str, ...]
+    team_servers: Mapping[str, Server]
+    matched: tuple[tuple[str, StealthManifest], ...]
+
+
+def adopted_facts(root: Path, team_servers: Mapping[str, Server]) -> AdoptedFacts:
+    return AdoptedFacts(
+        load_project_config(project_config_path(root)).harnesses,
+        team_servers,
+        personal_tier(root).matched,
+    )
+
+
+def adopted_claude_servers(facts: AdoptedFacts, source: PersonalSource) -> dict[str, Any]:
     if source.stealth is None:
         return {}
-    harnesses = load_project_config(project_config_path(root)).harnesses
-    earlier = tuple(takewhile(lambda entry: entry[0] != source.name, personal_tier(root).matched))
+    earlier = tuple(takewhile(lambda entry: entry[0] != source.name, facts.matched))
     accepted, _ = claude_server_selection(
-        (*earlier, (source.name, source.stealth)), harnesses, team_servers
+        (*earlier, (source.name, source.stealth)), facts.harnesses, facts.team_servers
     )
     return render_claude_servers(accepted.get(source.name, {}))
 
@@ -432,15 +463,12 @@ def _source_skills(
     policies = manifest.skill_policies
     trees = stealth.skill_trees
     check_skill_agents(tuple(s for s in trees if render_skill_for(s.name, policies)), frozenset())
-    try:
-        aliases = skill_aliases((skill.name for skill in trees), policies)
-    except LoadoutError as error:
-        raise LoadoutError(f"{stealth.folder / MANIFEST_NAME}: {error}") from error
+    aliases = skill_aliases_in(declaring_file(manifest), trees, policies)
     offered = tuple(item.harness for item in manifest.skills if item.harness in available)
     return tuple(
         PersonalSkill(
             name,
-            renamed_skill(skill, aliases[skill.name]) if skill.name in aliases else skill,
+            aliased_skill(skill, aliases),
             agents,
             render_skill_for(skill.name, policies),
         )
@@ -530,12 +558,6 @@ def setting_refusal(source: str, harness: str, path: JsonPath, manifest: Path, o
 def personal_parts(tier: PersonalTier, harnesses: Sequence[str]) -> PersonalParts:
     if not tier.matched:
         return PersonalParts()
-    from .stealth_render import (  # noqa: PLC0415 - stealth_render imports emit
-        instruction_fragments,
-        settings_fragment,
-    )
-    from .stealth_renderers import setting_keys  # noqa: PLC0415 - it imports emit
-
     instructions: dict[str, list[InstructionPart]] = {}
     settings: dict[str, list[PersonalSetting]] = {}
     owners: dict[tuple[str, JsonPath], str] = {}
@@ -545,7 +567,7 @@ def personal_parts(tier: PersonalTier, harnesses: Sequence[str]) -> PersonalPart
         shared = tuple(harness for harness in harnesses if harness in stealth.harnesses)
         for harness in shared:
             try:
-                text = instruction_fragments(stealth, harness)
+                text = stealth.instruction_fragments(harness)
             except (LoadoutError, OSError) as error:
                 refusals.append(
                     f"refused: stealth {name}: {error}; none of its instructions render "
@@ -561,7 +583,7 @@ def personal_parts(tier: PersonalTier, harnesses: Sequence[str]) -> PersonalPart
             if target is None:
                 continue
             try:
-                keys = setting_keys(harness, settings_fragment(target, stealth))
+                keys = setting_keys(harness, stealth.settings_fragment(target))
             except (LoadoutError, OSError) as error:
                 refusals.append(
                     f"refused: stealth {name}: {error}; none of its {harness} settings render"
@@ -584,8 +606,6 @@ def personal_parts(tier: PersonalTier, harnesses: Sequence[str]) -> PersonalPart
 def opencode_instruction_paths(parts: PersonalParts) -> tuple[str, ...]:
     if not parts.instructions.get("opencode"):
         return ()
-    from .stealth_render import OPENCODE_INSTRUCTIONS  # noqa: PLC0415 - it imports emit
-
     return tuple(
         str(part.folder / OPENCODE_INSTRUCTIONS) for part in parts.instructions.get("opencode", ())
     )
@@ -606,8 +626,6 @@ def _settings_document(
 def _codex_document(
     parts: PersonalParts, inputs: PersonalInputs, recorded: frozenset[str], *, held: bool
 ) -> Merged | None:
-    from .stealth_renderers import render_codex_stealth_config  # noqa: PLC0415 - it imports emit
-
     kept = recorded if held else frozenset()
     found = parts.instructions.get("codex", ())
     instructions = (
@@ -641,12 +659,6 @@ def personal_documents(
     facts: Callable[[], TargetFacts],
     recorded: Mapping[Path, WrittenEntry],
 ) -> dict[Path, Output]:
-    from .stealth_render import (  # noqa: PLC0415 - stealth_render imports emit
-        NO_FACTS,
-        STEALTH_PRESET,
-        instruction_document,
-    )
-
     def destination(harness: str, slice_name: str) -> Path:
         return root / str(STEALTH_PRESET[harness][slice_name].output)
 

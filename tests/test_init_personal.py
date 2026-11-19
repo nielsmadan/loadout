@@ -82,10 +82,10 @@ def test_init_adopts_no_personal_item_and_writes_no_ignore_line_for_one(
     assert (root / ".claude/skills/x.local/SKILL.md").is_file()
     assert (root / "loadout/skills/team/SKILL.md").is_file()
     assert sorted(path.name for path in (root / "loadout/skills").iterdir()) == ["team"]
-    ignored = (
-        (root / ".gitignore").read_text(encoding="utf-8") if (root / ".gitignore").exists() else ""
-    )
-    assert "local" not in ignored
+    ignored = (root / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert "/.claude/skills/team/" in ignored
+    assert "/CLAUDE.local.md" not in ignored
+    assert "/.claude/skills/x.local/" not in ignored
 
 
 def test_init_in_a_repository_a_stealth_source_targets_leaves_its_files_out(

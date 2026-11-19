@@ -754,3 +754,7 @@ def _build_manifest(
         agents=agent_definitions,
         server_policies=server_policies,
     )
+
+
+def declaring_file(manifest: Manifest) -> Path:
+    return manifest.config_paths[0] if manifest.config_paths else Path(MANIFEST_NAME)

@@ -467,8 +467,10 @@ loadout/skills/review/reference.md
 `<name>/SKILL.md` is the only skill form; supporting files sit beside it. A loose file directly
 in `skills/` is not a skill — `README.md` silently, anything else with a notice. A skill targets
 every configured harness by default; `[skills.review] agents = ["claude", "droid"]` restricts it.
-A private `review.local/SKILL.md` tree replaces the complete public skill.
-The same forms apply to global source catalogs without the `loadout/` prefix.
+A `<name>.local/` folder under a project's `skills/` is refused (`project.py`,
+`load_project_config`); a personal replacement belongs in a stealth source.
+The same forms apply to global source catalogs without the `loadout/` prefix, where a
+`<name>.local/SKILL.md` tree replaces the complete public skill.
 
 Codex, OpenCode, and Pi can share `.agents/skills` only when their rendered documents are
 byte-identical. Harness-specific sections and concept expansion still run before that decision.

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from .composition import HEADER, for_destination, load_fragment, render
 from .containment import is_read_through, refuse_escaping, refuse_external_links
@@ -23,6 +23,7 @@ from .manifest import (
     PermissionTarget,
     SkillsTarget,
     declared_profile_files,
+    declaring_file,
     load_manifest,
     load_profile,
     manifest_path,
@@ -77,18 +78,24 @@ from .resolve import INSTRUCTIONS, SETTINGS, ResolvedItem, json_slice, resolve_i
 from .runtime_paths import harness_owned
 from .server_policy import ServerPolicy, aliased_rules, aliased_servers
 from .servers import SERVERS_SOURCE, Server, parse_servers
-from .skill_policy import SkillPolicy, render_skill_for, selected_skill_agents, skill_aliases
+from .skill_policy import (
+    SkillPolicy,
+    aliased_skill,
+    render_skill_for,
+    selected_skill_agents,
+    skill_aliases_in,
+)
 from .skills import (
     EXCLUDED_DIRECTORIES,
     SKILL_DOCUMENT,
     Skill,
     check_skill_agents,
     discover_skills,
-    renamed_skill,
     render_skill,
     skill_source,
 )
 from .sources import Source, SourceParser, parse_sources, select_overrides
+from .stealth_preset import TargetFacts, target_facts
 from .stealth_registry import find_by_folder, load_registry, stealth_path
 from .subagents import (
     AGENTS_SUBDIR,
@@ -102,9 +109,6 @@ from .surgery import concat_documents
 from .toml_paths import key_name, leaf_values, overlapping_keys
 from .worktrees import linked_worktree_source
 from .written import WrittenEntry, codex_server_ownership, read_written
-
-if TYPE_CHECKING:
-    from .stealth_render import TargetFacts
 
 PERMISSIONS_SOURCE = "permissions.toml"
 PROJECT_DOCUMENTS = {"hooks": "hooks.json", "plugins": "plugins.json"}
@@ -232,10 +236,6 @@ def global_rules(manifest: Manifest) -> Rules:
     )
 
 
-def declaring_file(manifest: Manifest) -> Path:
-    return manifest.config_paths[0] if manifest.config_paths else Path(MANIFEST_NAME)
-
-
 def _defined_renames(
     policies: tuple[ServerPolicy, ...], defined: Mapping[str, Server]
 ) -> dict[str, str]:
@@ -259,19 +259,6 @@ def aliased_in(
         return aliased_servers(servers, policies)
     except LoadoutError as error:
         raise LoadoutError(f"{declared}: {error}") from error
-
-
-def skill_aliases_in(
-    declared: Path, trees: tuple[Skill, ...], policies: tuple[SkillPolicy, ...]
-) -> dict[str, str]:
-    try:
-        return skill_aliases((skill.name for skill in trees), policies)
-    except LoadoutError as error:
-        raise LoadoutError(f"{declared}: {error}") from error
-
-
-def aliased_skill(skill: Skill, aliases: Mapping[str, str]) -> Skill:
-    return renamed_skill(skill, aliases[skill.name]) if skill.name in aliases else skill
 
 
 def _load_base(path: Path) -> dict[str, Any]:
@@ -1455,8 +1442,6 @@ def _with_personal_instructions(
 def _personal_facts(
     root: Path, team: Mapping[Path, Output], recorded: Mapping[Path, WrittenEntry]
 ) -> TargetFacts:
-    from .stealth_render import target_facts  # noqa: PLC0415 - stealth_render imports emit
-
     resolved = root.resolve()
 
     def present(path: Path) -> bool:
@@ -1626,11 +1611,34 @@ def _expand_skill_catalog(
     return PersonalSkills(
         personal,
         (*offered.refusals, *refusals),
-        tuple(
-            _shared_folder_note(placed, original)
-            for placed, original in zip(widened, offered.skills, strict=True)
-            if placed in personal and placed.agents != original.agents
+        (
+            *(
+                _shared_folder_note(placed, original)
+                for placed, original in zip(widened, offered.skills, strict=True)
+                if placed in personal and placed.agents != original.agents
+            ),
+            *(
+                _shared_reader_note(placed, readers)
+                for placed in personal
+                if (readers := _unselected_readers(placed, skill_harnesses(config)))
+            ),
         ),
+    )
+
+
+def _unselected_readers(placed: PersonalSkill, declared: Sequence[str]) -> tuple[str, ...]:
+    if "codex" not in placed.agents:
+        return ()
+    return tuple(
+        agent for agent in declared if agent in SHARED_SKILL_READERS and agent not in placed.agents
+    )
+
+
+def _shared_reader_note(placed: PersonalSkill, readers: Sequence[str]) -> str:
+    return (
+        f"stealth {placed.source}: its skill {placed.skill.name} is written to "
+        f"{PROJECT_PRESET['codex']['skills'].output}, so the personal copy also reaches "
+        f"{', '.join(readers)}"
     )
 
 

@@ -12,7 +12,7 @@ rules describe different operations.
 | portable permission sources | no vote | union in tier order | identical rules use deny > ask > allow; catch-all uses strictest stated value |
 | global named fragments | search participating sources | source qualification selects exactly one item | duplicate unqualified names fail |
 | global skills/module files | collect offered items | whole item replacement through `source.overrides` | undeclared duplicate names/paths fail |
-| skill catalog variants | public skill targets configured consumers | `<name>.local/` replaces the whole skill; `agents` narrows consumers | a loose file in `skills/` is not a skill and is reported |
+| skill catalog variants | public skill targets configured consumers | `<name>.local/` replaces the whole skill (global and stealth catalogs; a project refuses it); `agents` narrows consumers | a loose file in `skills/` is not a skill and is reported |
 | skill frontmatter harness block | inherit shared keys, except Claude-only `model`, `effort`, `context`, `agent` outside Claude | harness value replaces the shared value | all harness blocks are stripped after selection |
 | MCP server definitions | keep other servers | later source replaces the whole same-named server | source order determines the winner |
 | project kit skills/MCP | keep other entries | later kit, then project, replaces the whole named entry | project declarations supply the highest tier |

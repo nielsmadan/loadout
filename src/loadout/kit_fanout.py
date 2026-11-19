@@ -14,7 +14,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .commands import check_result, cmd_check, cmd_sync, retire_personal
+from .commands import (
+    check_result,
+    check_stranded,
+    cmd_check,
+    cmd_sync,
+    retire_personal,
+    stranded_result,
+)
 from .diffs import report_diff
 from .errors import LoadoutError
 from .kit_push import Held, Level, Push, apply_push, plan_push, record_matching
@@ -28,6 +35,7 @@ from .kits import (
     vendored_path,
 )
 from .machine import resolve_profile
+from .personal_sync import NO_REMOVAL, Removal
 from .project import load_project_config, project_config_path
 from .resolve import ResolvedItem
 from .stealth_sync import shown
@@ -244,10 +252,10 @@ def check_projects(roots: Iterable[Path]) -> int:
     return max((_each(root, lambda found: _check_one(found, run)) for root in roots), default=0)
 
 
-def sync_plain(roots: Iterable[Path], *, retiring: frozenset[str] = frozenset()) -> int:
+def sync_plain(roots: Iterable[Path], *, removal: Removal = NO_REMOVAL) -> int:
     return max(
         (
-            _each(root, lambda found: cmd_sync(found, resolve_profile(found), retiring=retiring))
+            _each(root, lambda found: cmd_sync(found, resolve_profile(found), removal=removal))
             for root in roots
         ),
         default=0,
@@ -256,6 +264,27 @@ def sync_plain(roots: Iterable[Path], *, retiring: frozenset[str] = frozenset())
 
 def retire_plain(roots: Iterable[Path]) -> int:
     return max((_each(root, retire_personal) for root in roots), default=0)
+
+
+def check_retired(roots: Iterable[tuple[Path, str]]) -> int:
+    def checked(sync: str) -> Callable[[Path], int]:
+        return lambda found: check_stranded(found, sync)
+
+    return max((_each(root, checked(sync)) for root, sync in roots), default=0)
+
+
+def check_retired_json(roots: Iterable[tuple[Path, str]]) -> tuple[ProjectCheck, ...]:
+    return tuple(_retired_json_one(root, sync) for root, sync in roots)
+
+
+def _retired_json_one(root: Path, sync: str) -> ProjectCheck:
+    try:
+        result = stranded_result(root, sync)
+    except (LoadoutError, OSError) as error:
+        return ProjectCheck(root, 3, (), (), str(error))
+    return ProjectCheck(
+        root, int(result["exit_code"]), tuple(result["drift"]), tuple(result["notes"])
+    )
 
 
 def check_plain(roots: Iterable[Path]) -> int:

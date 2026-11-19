@@ -390,14 +390,14 @@ def test_sync_decides_the_registration_once_for_its_notes_too(
     """Review 6, batch 2.3: the notes after the write read the machine config again, so
     a registration gone by then refused a sync that had already written."""
     root = register(_source(tmp_path / "global"))
-    real = loadout.commands.deploy
+    real = loadout.personal_sync.deploy
 
     def deploy_then_unregister(*args, **kwargs):
         result = real(*args, **kwargs)
         (fake_home / ".config/loadout/config.toml").unlink()
         return result
 
-    monkeypatch.setattr(loadout.commands, "deploy", deploy_then_unregister)
+    monkeypatch.setattr(loadout.personal_sync, "deploy", deploy_then_unregister)
 
     assert loadout.main(["sync", "--root", str(root)]) == 0, capsys.readouterr().err
 

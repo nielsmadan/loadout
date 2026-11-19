@@ -797,7 +797,7 @@ def project_notices(
                 known = _marketplaces(agent, slice_name, document, environ)
                 documents.extend(notices_for(agent, slice_name, document, known))
     if "devin" in config.harnesses:
-        permissions.extend(devin_overridden(rules, devin_user_config(environ)))
+        permissions.extend(devin_overridden(rules["devin"], devin_user_config(environ)))
         settings = project_settings_path(root, "devin")
         found.extend(
             devin_claude_import(

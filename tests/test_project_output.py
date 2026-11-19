@@ -132,6 +132,20 @@ def test_a_local_skill_folder_is_refused_naming_its_replacement(project: Path) -
     )
 
 
+def test_one_refusal_names_the_permissions_file_and_every_local_skill(project: Path) -> None:
+    local = project / "loadout" / "permissions.local.toml"
+    local.write_text('[shell]\nallow = ["my-local-tool"]\n', encoding="utf-8")
+    for name in ("lint.local", "review.local"):
+        (project / "loadout" / "skills" / name).mkdir()
+    with pytest.raises(LoadoutError) as raised:
+        render_project(project)
+    message = str(raised.value)
+    assert message.startswith(f"{local}: `loadout/permissions.local.toml` is no longer read")
+    assert message.count("is no longer read") == 3
+    assert f"{project / 'loadout' / 'skills' / 'lint.local'}: " in message
+    assert f"{project / 'loadout' / 'skills' / 'review.local'}: " in message
+
+
 def test_claude_runtime_settings_file_is_not_a_loadout_output(project: Path) -> None:
     """Claude Code writes .claude/settings.local.json itself; loadout must not own it."""
     rendered = {str(p.relative_to(project)) for p in render_project(project)}

@@ -14,7 +14,8 @@ from pathlib import Path
 from loadout.output import Copied
 from loadout.stealth_documents import OwnedJson, apply_owned
 from loadout.stealth_manifest import load_stealth_manifest
-from loadout.stealth_render import gather_facts, render_stealth
+from loadout.stealth_preset import gather_facts
+from loadout.stealth_render import render_stealth
 from loadout.stealth_seams import serialize_json
 
 FIXTURES = Path(__file__).parent / "fixtures"

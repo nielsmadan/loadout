@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 from .errors import LoadoutError
 from .harnesses import KNOWN_HARNESSES
+from .skills import Skill, renamed_skill
 
 ALIAS = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
 
@@ -22,9 +24,15 @@ def parse_alias(block: dict[str, object], label: str) -> str | None:
     if "name" not in block:
         return None
     alias = block["name"]
-    if not isinstance(alias, str) or not ALIAS.fullmatch(alias) or alias.endswith(".local"):
+    if not isinstance(alias, str) or not ALIAS.fullmatch(alias):
         raise LoadoutError(
-            f"{label}.name {alias!r} is not a usable name; use letters, digits, '.', '_' and '-'"
+            f"{label}.name {alias!r} is not a usable name; use letters, digits, '.', '_' and "
+            "'-', starting with a letter or digit"
+        )
+    if alias.endswith(".local"):
+        raise LoadoutError(
+            f"{label}.name {alias!r} ends in '.local', which marks a replacement, not a name; "
+            "pick another name"
         )
     return alias
 
@@ -142,3 +150,16 @@ def render_skill_for(name: str, policies: tuple[SkillPolicy, ...]) -> bool:
 
 def skill_aliases(names: Iterable[str], policies: tuple[SkillPolicy, ...]) -> dict[str, str]:
     return aliased_names("skill", names, [(policy.name, policy.alias) for policy in policies])
+
+
+def skill_aliases_in(
+    declared: Path, trees: tuple[Skill, ...], policies: tuple[SkillPolicy, ...]
+) -> dict[str, str]:
+    try:
+        return skill_aliases((skill.name for skill in trees), policies)
+    except LoadoutError as error:
+        raise LoadoutError(f"{declared}: {error}") from error
+
+
+def aliased_skill(skill: Skill, aliases: Mapping[str, str]) -> Skill:
+    return renamed_skill(skill, aliases[skill.name]) if skill.name in aliases else skill

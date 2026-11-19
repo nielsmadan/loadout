@@ -65,7 +65,8 @@ for Cursor, Devin and Droid, and Droid's plugins.
 ## Stealth scope
 
 A [stealth source](../guides/stealth.md) renders instructions, MCP servers, permissions and skills for
-all seven harnesses into repositories that have not adopted loadout, and nothing else. Codex gets MCP
+all seven harnesses into repositories that have not adopted loadout. In a repository that has, the
+project's sync renders the same source as a personal tier. Nothing else is rendered. Codex gets MCP
 servers there, which project scope does not render. The files are in the
 [destination table](configuration.md#destinations).
 

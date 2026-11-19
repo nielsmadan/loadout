@@ -339,3 +339,14 @@ def test_a_table_left_empty_by_removing_its_owned_leaves_is_removed_too() -> Non
     owned = frozenset({"selectedModel.modelId", "selectedModel.parameters"})
 
     assert json.loads(apply_json(existing, owned, "{}")) == {"keep": 1}
+
+
+def test_removing_and_re_adding_a_table_twice_leaves_the_same_bytes() -> None:
+    owned = frozenset({"developer_instructions", "mcp_servers.vmctl"})
+    full = 'developer_instructions = "hi"\n\n[mcp_servers.vmctl]\ncommand = "vmctl"\n'
+    bare = 'developer_instructions = "hi"\n'
+    first = apply_toml(apply_toml(apply_toml("", owned, full), owned, bare), owned, full)
+
+    second = apply_toml(apply_toml(first, owned, bare), owned, full)
+
+    assert second == first == full

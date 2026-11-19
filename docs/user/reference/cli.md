@@ -75,7 +75,8 @@ about it and carries on), `unmanaged-link` (a link loadout did not create in suc
 nothing to port, so check where it points before deleting it), or `unparsable` (a file loadout shares with a harness, such as
 `~/.claude.json`, or in a project `.claude/settings.json`, `.devin/config.json`, `.factory/settings.json` or `opencode.json`, no longer parses, including one that is not even UTF-8, or parses but cannot hold loadout's keys, such as a JSON
 array or a TOML scalar where a table goes: fix or delete it and sync, or `sync --force` replaces it
-outright; plain `sync` refuses with exit 3 and names the file. One the source no longer renders
+outright, except a personal document a stealth source writes, which only fixing or deleting it
+clears; plain `sync` refuses with exit 3 and names the file. One the source no longer renders
 has nothing to replace it, so `sync` refuses it with or without `--force` until it is fixed or
 deleted). Settings a harness saves itself, such as Claude Code's `/model`, are drift too; see
 [settings a harness saves itself](../troubleshooting.md#settings-a-harness-saves-itself).
@@ -183,6 +184,18 @@ gone, and it takes the name of a record whose registration was lost. A file edit
 written is refused (exit 1) and `--force` retires it anyway; `--force` also forgets a target
 that cannot be reached and strips its `~/.claude.json` servers. While a removal is unfinished the
 stealth source is marked `removing`: `sync` and `check` refuse it and `stealth list` says to run
+`stealth remove NAME` again. The removal also syncs every adopted clone the stealth source matches
+and every clone whose project record names it, and retires the personal files of one that is no
+longer adopted. The mark stays until no record names the source, so it can be retried after a
+clone failed, was unreachable, or could not be examined (a root git cannot read is skipped with a
+note and keeps the mark). In an adopted clone, a personal file loadout wrote that you edited stops
+that clone's sync (exit 1) and the abort names `loadout stealth remove NAME --force`. With
+`--force`, the removal releases only this stealth source's claims: a file only it wrote is kept as
+it is, no longer recorded, and reported as `WARNING: kept PATH: ...`; an edited file another
+stealth source still writes, or another source's own, is left as it is and stays that source's,
+reported as `WARNING: left PATH as it is: ...`, so the next `sync` stops on it as before. Either
+way the removal finishes. `--force` never discards an edited team file in the clone: it still
+stops the removal, and the abort says to port the edit with `/loadout` or undo it, then run
 `stealth remove NAME` again. A stealth record written by a newer loadout, or one that cannot be
 read (without `--force`), stops `stealth remove` with exit 3 before it asks or marks anything.
 
@@ -202,8 +215,14 @@ read (without `--force`), stops `stealth remove` with exit 3 before it asks or m
   source retired its files here`. Inside such a repository its stealth sources run first and the
   project follows, so the project never finds the stealth source's files.
 - `--global`: the global source, then every registered stealth source in name order, then every
-  project that uses a kit (see [kit changes across projects](#kit-changes-across-projects)). A
-  missing machine config, or a global source that fails, such as on a fragment it cannot read, is
+  project that uses a kit (see [kit changes across projects](#kit-changes-across-projects)), then
+  every adopted clone a stealth source matches or its record names. `sync --stealth NAME` and
+  `stealth remove NAME` reach those clones too. A plain `loadout sync` in a clone does not reach other
+  clones, and does not retire the personal files of a clone that stopped being adopted: it refuses
+  each one (exit 3), naming `loadout sync --stealth NAME` or `loadout stealth remove NAME` as the
+  fix. `check --stealth NAME` and `check --global` preview that retirement without writing: under
+  `project PATH:`, each personal file sync would retire is `DRIFT (orphaned)`, and one you edited
+  is a `note:` that sync keeps it. A missing machine config, or a global source that fails, such as on a fragment it cannot read, is
   reported with exit 3 and the stealth sources and projects still run.
 - A `stealth.toml` that does not parse or is invalid is an error everywhere:
   `loadout: <file>: <problem>`, exit 3, an `errors` entry under `--json`, and the global source
@@ -285,6 +304,27 @@ a key that is not made only of letters, digits, `_` and `-` is written as a quot
   repository, a pattern whose parent folder cannot be listed, and the usual shell-rule notices
   for the stealth source's permissions.
 
+**In an adopted repository** (it holds `loadout/config.toml`), `loadout sync` and `check` render
+every registered stealth source whose `targets` match it as a personal tier. A refusal prints as
+`refused: stealth NAME: ...` on stderr; a path the team tracks or its `.gitignore` re-includes
+prints as `refused: stealth NAME: the team tracks PATH; ...` (or `refused: stealth NAME: PATH would
+show in git status: ...`) when one source writes it and without the source when several do. A
+personal document that no longer parses is refused alone, as `refused: stealth NAME: FILE is not a
+JSON document loadout can write its keys into; ...`, and the team and the rest of the tier still
+sync. `sync` prints a skipped harness, a project below the repository's top level that a stealth
+source targets, a skill that replaces another in a shared `.agents/skills` folder, a personal skill
+that reaches an unselected harness through that folder, and a recorded personal path the team now
+tracks or re-includes (left in place and no longer recorded) as `note: ...` on stdout.
+A refusal does not stop the sync: everything else is written, and the exit code is 3. A source
+that cannot be read, or one being removed, is held: it is named in a `refused:` line, its files
+stay, and the exit code is 3. While a source is held, a team permission or MCP file the personal
+tier writes into, or a personal instruction document another source still renders, is left as it is
+on disk whenever this run would change it, with `refused: stealth NAME: FILE is left as it is while
+the source is held, so none of its rules are dropped`. Several sources compose in the registry's order, which is
+alphabetical. The git hooks print the same lines but keep the exit code of the team's sync. `check`
+reports the same drift and prints neither refusal lines nor these notes. A personal path the team tracks is refused and
+a recorded one is left in place and dropped from the record.
+
 **Exit codes for stealth sources.** `1`: an output or a key edited or removed outside loadout (the
 guard), drift, or a shared document whose value loadout cannot merge into, such as
 `"permissions": "oops"` (`check` reports it as `unparsable` drift; fix the value by hand, since
@@ -324,16 +364,16 @@ configuration. Init needs git on PATH for `init global`, which keeps the source 
 and for a project inside a Git repository; without it, init exits 3 saying so before it plans
 anything. `sync` and `check` do not need git.
 
-`init project` refuses, exit 3, in a repository that a stealth source has written into, one its record
-lists ("a stealth source writes personal files here; adopting would sweep them into the team's
-source"), because adopting would move the stealth source's personal files into the team's source. A
-repository the patterns match but the stealth source has not yet synced is not refused. To adopt it, narrow the stealth source's
-`targets` so they no longer match the repository, then run `loadout sync --stealth NAME` so the
-stealth source retires what it wrote there, or run `stealth remove NAME`. A plain `loadout sync` inside
-the repository does not reach a stealth source that no longer matches it. It also refuses while any
-stealth record is unreadable or newer, in any repository, until that record is fixed or removed.
-A repository that adopts loadout without `init`, by pulling a committed `loadout/`, is released
-by its next `sync`, as [stealth selection](#stealth-sources) describes.
+`init project` does not adopt personal items. A file whose name holds `.local`, a path under a
+`.local` folder and a path Git ignores stay where they are, with the note `personal; init leaves
+it where it is — manage it from a stealth source`; a path a stealth source's record lists stays
+too, with `written by stealth source NAME; it keeps rendering them`. An untracked co-owned
+settings file, such as an uncommitted `.claude/settings.json`, is still adopted into a private
+`loadout/settings/<harness>.json`, as [0030](https://github.com/nielsmadan/loadout/blob/main/docs/decisions/0030-adoption-rulings-recorded.md)
+decided. Init refuses with exit 3 while any stealth record is unreadable or newer, in any
+repository, until that record is fixed or removed. After init, the project's `loadout sync` renders
+every stealth source that targets the repository as a personal tier, as
+[stealth selection](#stealth-sources) describes.
 
 **Approval.** Init first shows a read-only preview of the source and output writes, private
 exclusions and removals. At a terminal it then asks `Apply this migration? [y/N]`; declining
@@ -709,7 +749,7 @@ without it is refused.
 | `0` | Success: nothing to do, or a check that found no differences |
 | `1` | Drift, a refused safe update, or an init that failed, whether or not it could put everything back |
 | `2` | Invalid command-line usage (`--staged` or `--profile` with a stealth selection included), unresolved init choices, missing noninteractive approval (`stealth remove` included), or an interrupted init found by the next one |
-| `3` | Source, configuration, or resolution error: missing or invalid input, such as a source file that is not UTF-8, which the message names; an unsafe destination, or a folder loadout cannot write into, which the message names; or an ownership collision, including a stealth output the team tracks |
+| `3` | Source, configuration, or resolution error: missing or invalid input, such as a source file that is not UTF-8, which the message names; an unsafe destination, or a folder loadout cannot write into, which the message names; or an ownership collision, including a stealth output the team tracks; a `refused:` line for a stealth source's personal tier in an adopted repository, or a source held there, the sync otherwise completing (a git hook keeps the team's code) |
 | `4` | Unexpected internal error, with a traceback |
 | `130` | Stopped with Ctrl-C, without a traceback. `init` puts back every path it changed, or tries to; stopped before it applies anything, it has changed nothing. A Ctrl-C after the conversion finished lets init complete and exit `0`, saying so |
 

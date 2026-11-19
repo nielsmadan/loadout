@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from loadout.errors import LoadoutError
-from loadout.gitignore import append_lines, escape, remove_lines
+from loadout.gitignore import append_lines, escape, gitignore_to_remove, remove_lines
 
 
 def test_glob_characters_and_spaces_are_escaped() -> None:
@@ -55,3 +55,10 @@ def test_a_line_holding_a_unicode_separator_survives_a_removal(tmp_path: Path) -
     assert remove_lines(tmp_path, ["/CLAUDE.md"]) == 1
 
     assert (tmp_path / ".gitignore").read_text(encoding="utf-8") == "/notes\u2028draft\n"
+
+
+def test_gitignore_to_remove_returns_only_recorded_lines_the_team_dropped() -> None:
+    recorded = [".agents/", ".pi/", ".agents/"]
+
+    assert gitignore_to_remove(recorded, [".pi/", "unrecorded/"]) == (".agents/",)
+    assert gitignore_to_remove([], [".pi/"]) == ()

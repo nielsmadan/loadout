@@ -10,7 +10,8 @@ from loadout.output import Copied
 from loadout.stealth_check import _renderer_notes
 from loadout.stealth_documents import OwnedJson
 from loadout.stealth_manifest import load_stealth_manifest
-from loadout.stealth_render import TargetFacts, render_stealth
+from loadout.stealth_preset import TargetFacts
+from loadout.stealth_render import render_stealth
 from loadout.stealth_sync import _collisions
 
 NO_FACTS = TargetFacts(agents_md=False, claude_md_on_path=False)

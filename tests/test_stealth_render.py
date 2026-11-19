@@ -13,22 +13,17 @@ from loadout.composition import HEADER
 from loadout.emit import render_project
 from loadout.errors import LoadoutError
 from loadout.output import Copied, Output
-from loadout.permissions.renderers import CODEX_STEALTH_HEADER
+from loadout.permissions.renderers import CODEX_STEALTH_HEADER, render_codex_stealth_config
 from loadout.permissions.rules import Rules
 from loadout.servers import parse_servers
 from loadout.stealth_documents import OwnedJson
 from loadout.stealth_manifest import load_stealth_manifest
-from loadout.stealth_render import (
-    StealthOutput,
-    TargetFacts,
-    gather_facts,
-    render_stealth,
-)
+from loadout.stealth_preset import TargetFacts, gather_facts
+from loadout.stealth_render import StealthOutput, render_stealth
 from loadout.stealth_renderers import (
     claude_owned,
     droid_owned,
     opencode_owned,
-    render_codex_stealth_config,
     render_opencode_stealth_permission,
 )
 from loadout.stealth_seams import codex_rules

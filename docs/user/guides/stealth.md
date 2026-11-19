@@ -221,17 +221,42 @@ record, and noted.
 
 ## When a repository adopts loadout
 
-`loadout init project` is refused in a repository a stealth source has written into, because it would
-sweep the stealth source's personal files into the team's source. Release the repository first: narrow
-`targets` so they no longer match it, then run `loadout sync --stealth work`, which retires what
-the stealth source wrote there. A plain `loadout sync` inside the repository does not reach the stealth source
-once it no longer matches. After that, `init project` runs as usual.
+You do not have to change anything. When the team commits a `loadout/` folder and you pull it, your
+next `loadout sync` in the clone runs the stealth source first, which retires the files it wrote
+there, with the note `adopted loadout; the stealth source retired its files here`. The project's sync
+then renders the same stealth source as a personal tier, in one pass: your instructions, skills,
+MCP servers, permissions, settings fragments and kits, for the harnesses both the project and the
+source declare. A note names any it skipped. The stealth source itself writes only your Claude MCP
+servers into `~/.claude.json`.
 
-A repository can also adopt loadout without you, when the team commits a `loadout/` folder and
-you pull it. The next `loadout sync` in it runs the stealth source first, which retires its files there
-with the note `adopted loadout; the stealth source retired its files here`, and then syncs the project.
-From then on the project's sync renders the stealth source there, and the stealth source itself
-writes only its Claude MCP servers into `~/.claude.json`.
+`loadout init project` no longer refuses a repository a stealth source writes into. It leaves what
+the stealth source wrote where it is, with the note `written by stealth source NAME; it keeps
+rendering them`, and does not adopt it into the team's source.
+
+- **The team's name wins.** A skill or MCP server of yours with the name of one the team renders is
+  refused: `refused: stealth work: its skill review clashes with the team's skill review, which
+  wins; rename yours with [skills.review] name = "<new>" in <manifest> or name its folder
+  review.local to replace the team's`. Add the `name` and sync again.
+  A skill folder named `review.local` in the stealth source replaces the team's `review` instead.
+  A server alias also renames the permission rules that come from the same kit or source
+  (`figma/*` becomes `figma-work/*`); [aliases](../reference/configuration.md#aliases) has the rest.
+- **A refusal does not stop the sync.** The rest is written and the exit code is 3. A git hook
+  prints the refusal but keeps the team's exit code.
+- **A source that cannot be read keeps its files.** A broken manifest or an unresolved kit holds
+  what that source wrote until you fix it, and sync exits 3.
+- **Git stays clean.** The files are hidden by a block in the clone's `.git/info/exclude`, which
+  `.gitignore` never sees.
+- **Several sources** compose in alphabetical order of their names: the first wins a name or a
+  settings key, and the rules of all of them merge.
+- **Removing it.** `loadout sync --stealth work`, `loadout sync --global` and `loadout stealth remove
+  work` also sync the adopted clones the source matches and any clone whose record names it, and
+  retire the personal files of one that is no longer adopted. A plain `loadout sync` does not.
+  `stealth remove` keeps the stealth source marked `removing` until every clone is done, so run it
+  again if one was unreachable.
+
+The project's own `permissions.local.toml` and `skills/<name>.local/` no longer exist: sync refuses
+them and points here. Details are in
+[adopted repositories](../reference/configuration.md#adopted-repositories).
 
 ## Limits
 

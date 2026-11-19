@@ -1,6 +1,8 @@
 # 0052 — A target that adopts loadout is retired by the overlay
 
-**Status:** accepted (2026-11-04, overlay run 1 branch review). Supersedes the consequence in
+**Status:** superseded by
+[0058](0058-a-stealth-source-reaches-adopted-repositories.md) (2026-11-19); accepted 2026-11-04
+(overlay run 1 branch review). Supersedes the consequence in
 [0045](0045-an-overlay-source-renders-into-repositories-that-have-not-adopted-loadout.md) that a
 repository an overlay targets "can also be a project".
 

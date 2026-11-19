@@ -46,8 +46,8 @@ ask = ["docs/update"]
 MCP entries use `server/tool` or `server/*`. Check the
 [portability notes](../reference/harnesses.md#permission-portability) when rules overlap.
 
-The project version is `loadout/permissions.toml`. Personal project rules go in
-`loadout/permissions.local.toml`.
+The project version is `loadout/permissions.toml`. Personal project rules go in a
+[stealth source](stealth.md) that targets the repository.
 
 `[shell] default = "ask"` specifies the fallback decision for OpenCode, Pi and Devin. Claude's
 default mode is a native setting; Codex's approval policy is separate; Droid uses session

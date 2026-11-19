@@ -3,197 +3,44 @@ from __future__ import annotations
 import json
 import re
 import tomllib
-from collections.abc import Collection, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
 from .claude_json import escape_surrogates
-from .emit import ProjectRender, RenderContext, render_project_detailed
+from .containment import refuse_escaping
+from .emit import ProjectRender, RenderContext
 from .errors import LoadoutError
-from .exclude import anchored, block_after, block_before, write_personal_block
+from .exclude import block_after, block_before, write_personal_block
 from .files import document_format
-from .gitignore import gitignore_to_remove
+from .gitignore import gitignore_to_remove, remove_lines
 from .guarded_write import ChangedDuringSync, write_if_unchanged
 from .output import Merged, Output
-from .personal import NO_PERSONAL, PersonalReport, PersonalTier, personal_tier
-from .project import generated_units, gitignore_entries
-from .stealth_git import identity, reincluded, tracked_units
+from .personal_plan import PersonalView, owner, team_claimed, team_only, unparsable_refusal
+from .project import gitignore_entries
+from .retirement import retire
+from .state import SyncState
+from .stealth_git import identity
 from .surgery import apply
-from .written import ABSENT, PersonalRecord, WrittenEntry, merged_entry, recorded_keys
-
-
-@dataclass(frozen=True)
-class PersonalView:
-    outputs: dict[Path, Output]
-    team: dict[Path, Output]
-    written: Mapping[Path, WrittenEntry]
-    report: PersonalReport
-    personal: tuple[Path, ...] = ()
-    held: frozenset[Path] = frozenset()
-    released: frozenset[Path] = frozenset()
-    lines: tuple[str, ...] = ()
-    refusals: tuple[str, ...] = ()
-    notes: tuple[str, ...] = ()
-    active: bool = False
-
-
-def sync_tier(root: Path, retiring: Collection[str] = ()) -> PersonalTier:
-    resolved = str(root.resolve())
-    if "\n" in resolved or "\r" in resolved:
-        return NO_PERSONAL
-    return personal_tier(root, retiring=retiring)
-
-
-def _team(outputs: Mapping[Path, Output], project: ProjectRender) -> dict[Path, Output]:
-    own = {path: output for path, output in outputs.items() if path not in project.outputs}
-    return {**own, **project.team}
-
-
-def _unit(root: Path, path: Path) -> tuple[str, bool]:
-    unit = generated_units(root, (path,))[0]
-    return unit, unit != path.relative_to(root).as_posix()
-
-
-def _by_unit(root: Path, paths: Iterable[Path], skip: frozenset[str]) -> dict[str, list[Path]]:
-    found: dict[str, list[Path]] = {}
-    for path in paths:
-        if not path.is_relative_to(root):
-            continue
-        unit, _ = _unit(root, path)
-        if unit not in skip:
-            found.setdefault(unit, []).append(path)
-    return found
-
-
-def _line(root: Path, unit: str, paths: Sequence[Path]) -> str:
-    return anchored(unit, folder=any(_unit(root, path)[1] for path in paths))
-
-
-def team_claimed(root: Path, paths: Iterable[Path]) -> tuple[frozenset[Path], tuple[str, ...]]:
-    from .stealth_plan import tracked_note  # noqa: PLC0415 - it imports commands
-
-    units = _by_unit(root, paths, frozenset())
-    if not units:
-        return frozenset(), ()
-    folders = frozenset(
-        unit for unit, found in units.items() if any(_unit(root, path)[1] for path in found)
-    )
-    tracked = tracked_units(root, units)
-    loose = reincluded(root, [unit for unit in units if unit not in tracked], folders)
-    claimed = [unit for unit in units if unit in tracked or unit in loose]
-    notes = tuple(
-        tracked_note(unit)
-        if unit in tracked
-        else f"{loose[unit]} re-includes {unit}; it is left in place and no longer recorded"
-        for unit in claimed
-    )
-    return frozenset(path for unit in claimed for path in units[unit]), notes
-
-
-def team_only(
-    outputs: Mapping[Path, Output],
-    project: ProjectRender | None,
-    written: Mapping[Path, WrittenEntry],
-    record: PersonalRecord,
-    reason: str | None = None,
-) -> PersonalView:
-    report = project.report if project is not None else PersonalReport()
-    team = dict(outputs) if project is None else _team(outputs, project)
-    if reason is None:
-        return PersonalView(dict(outputs), team, written, report)
-    kept = frozenset({*record.personal, *record.pending})
-    return PersonalView(
-        team,
-        team,
-        {path: entry for path, entry in written.items() if path not in kept},
-        report,
-        refusals=(f"refused: {reason}; the personal tier was not synced",),
-    )
-
-
-def personal_view(
-    root: Path,
-    outputs: Mapping[Path, Output],
-    project: ProjectRender | None,
-    written: Mapping[Path, WrittenEntry],
-    record: PersonalRecord,
-) -> PersonalView:
-    from .stealth_plan import tracked_note, tracked_refusal  # noqa: PLC0415 - it imports commands
-
-    if project is None:
-        return team_only(outputs, project, written, record)
-    team = _team(outputs, project)
-    personal = [path for path in outputs if path not in team]
-    shared = [
-        path
-        for path in outputs
-        if path in project.outputs and path in project.team and outputs[path] != project.team[path]
-    ]
-    recorded = frozenset({*record.personal, *record.pending})
-    held = recorded - set(outputs) if project.report.held else frozenset()
-    if not (personal or shared or recorded or record.contributors):
-        return team_only(outputs, project, written, record)
-    team_units = frozenset(generated_units(root, team))
-    writing = _by_unit(root, personal, team_units)
-    orphans = _by_unit(root, recorded - set(outputs) - held, team_units)
-    shared_units = {path: _unit(root, path)[0] for path in shared if path.is_relative_to(root)}
-    names = tuple(dict.fromkeys((*writing, *orphans, *shared_units.values())))
-    folders = frozenset(
-        unit for unit, paths in writing.items() if any(_unit(root, path)[1] for path in paths)
-    )
-    tracked = tracked_units(root, names) if names else frozenset()
-    loose = reincluded(root, tuple(writing), folders) if writing else {}
-    kept = dict(outputs)
-    refusals: list[str] = []
-    notes: list[str] = []
-    released: set[Path] = set()
-    dropped = frozenset(unit for unit in writing if unit in tracked or unit in loose)
-    for unit in dropped:
-        paths = writing[unit]
-        for path in paths:
-            kept.pop(path, None)
-        before = [
-            path for path in recorded if path.is_relative_to(root) and _unit(root, path)[0] == unit
-        ]
-        if before:
-            released.update((*before, *paths))
-            notes.append(
-                tracked_note(unit)
-                if unit in tracked
-                else f"{loose[unit]} re-includes {unit}; it is left in place and no longer recorded"
-            )
-        elif unit in tracked:
-            refusals.append(f"refused: {tracked_refusal(root, unit).message}")
-        else:
-            refusals.append(
-                f"refused: {unit} would show in git status: {loose[unit]} re-includes it"
-            )
-    for unit, paths in orphans.items():
-        if unit in tracked:
-            released.update(paths)
-            notes.append(tracked_note(unit))
-    for path, unit in shared_units.items():
-        if unit in tracked:
-            kept[path] = project.team[path]
-            refusals.append(f"refused: {tracked_refusal(root, unit).message}")
-    lines = [
-        _line(root, unit, paths)
-        for unit, paths in {**_by_unit(root, held, team_units), **writing}.items()
-        if unit not in dropped
-    ]
-    return PersonalView(
-        kept,
-        team,
-        {path: entry for path, entry in written.items() if path not in held | released},
-        project.report,
-        personal=tuple(path for path in personal if path in kept),
-        held=held,
-        released=frozenset(released),
-        lines=tuple(dict.fromkeys(lines)),
-        refusals=tuple(dict.fromkeys(refusals)),
-        notes=tuple(dict.fromkeys(notes)),
-        active=True,
-    )
+from .sync import (
+    Unaccepted,
+    deploy,
+    newly_managed,
+    refuse_unparsable_orphans,
+    retire_orphans,
+    unaccepted_against_record,
+)
+from .written import (
+    ABSENT,
+    PersonalRecord,
+    WrittenEntry,
+    merged_entry,
+    owned_values,
+    read_personal,
+    read_written,
+    record_written,
+    recorded_keys,
+)
 
 
 def common_dir(root: Path) -> Path:
@@ -228,11 +75,15 @@ def lines_to_drop(
     )
 
 
-def hide_after(common: Path, root: Path, lines: Sequence[str]) -> None:
+def hide_after(common: Path, root: Path, lines: Sequence[str], team: Mapping[Path, Output]) -> None:
+    claimed = frozenset(gitignore_entries(root, team))
     write_personal_block(
         common,
         root,
-        lambda current: block_after(lines, [line for line in current if _on_disk(root, line)]),
+        lambda current: block_after(
+            lines,
+            [line for line in current if line not in claimed and _on_disk(root, line)],
+        ),
     )
 
 
@@ -263,6 +114,10 @@ def write_documents(
         expected = read.get(path)
         try:
             existing = "" if expected is None else expected.decode("utf-8")
+            if owned_values(existing, merged.owned, merged.format) is None:
+                refused.append(path)
+                refusals.append(unparsable_refusal(root, path, orphaned=False))
+                continue
             applied = apply(existing, merged.owned, merged.document, format_name=merged.format)
             if expected is None and empty_document(applied, merged.format):
                 continue
@@ -271,11 +126,11 @@ def write_documents(
             write_if_unchanged(path, applied, expected, merged.format)
         except ChangedDuringSync:
             refused.append(path)
-            refusals.append(f"refused: {_shown(root, path)} changed while syncing; run sync again")
+            refusals.append(f"refused: {_rel(root, path)} changed while syncing; run sync again")
             continue
         except (LoadoutError, UnicodeError, OSError) as error:
             refused.append(path)
-            refusals.append(f"refused: {_shown(root, path)}: {error}")
+            refusals.append(f"refused: {_rel(root, path)}: {error}")
             continue
         written.append(path)
         if expected is None:
@@ -283,7 +138,7 @@ def write_documents(
     return DocumentWrites(tuple(written), tuple(created), tuple(refused), tuple(refusals))
 
 
-def _shown(root: Path, path: Path) -> str:
+def _rel(root: Path, path: Path) -> str:
     return path.relative_to(root).as_posix() if path.is_relative_to(root) else str(path)
 
 
@@ -329,30 +184,250 @@ def empty_created(created: Iterable[Path]) -> tuple[Path, ...]:
     return tuple(path for path in created if path.is_file() and emptied(path))
 
 
-def path_owners(
+@dataclass(frozen=True)
+class Removal:
+    retiring: frozenset[str] = frozenset()
+    keep_edits: bool = False
+
+
+NO_REMOVAL = Removal()
+
+
+@dataclass(frozen=True)
+class PersonalRun:
+    root: Path
+    context: RenderContext
+    view: PersonalView
+    state: SyncState
+    record: PersonalRecord
+    common: Path | None
+
+
+@dataclass(frozen=True)
+class Deployed:
+    written: list[Path]
+    managed: list[tuple[Path, str, str]]
+    ignored: int
+    created: tuple[Path, ...]
+    refusals: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class Written:
+    retired: list[Path]
+    unignored: int
+
+
+@dataclass(frozen=True)
+class RemovalEdits:
+    released: frozenset[Path] = frozenset()
+    left: frozenset[Path] = frozenset()
+
+
+def recorded_edits(record: PersonalRecord, modified: Sequence[Unaccepted]) -> frozenset[Path]:
+    recorded = {*record.personal, *record.pending}
+    return frozenset(item.path for item in modified if item.path in recorded)
+
+
+def removal_edits(
+    record: PersonalRecord, modified: Sequence[Unaccepted], removal: Removal
+) -> RemovalEdits:
+    if not (removal.retiring and removal.keep_edits):
+        return RemovalEdits()
+    edited = recorded_edits(record, modified)
+    retiring = min(removal.retiring)
+    released = frozenset(
+        item.path
+        for item in modified
+        if item.path in edited
+        and item.orphaned
+        and record.personal.get(item.path, retiring) in removal.retiring
+    )
+    return RemovalEdits(released, edited - released)
+
+
+def released(view: PersonalView, kept: frozenset[Path]) -> PersonalView:
+    return replace(
+        view,
+        written={path: entry for path, entry in view.written.items() if path not in kept},
+        released=view.released | kept,
+    )
+
+
+def record_ahead(
     root: Path,
-    context: RenderContext,
-    paths: Sequence[Path],
-    report: PersonalReport,
-    recorded: Mapping[Path, str],
-) -> dict[Path, str]:
-    contributors = report.contributors
-    found: dict[Path, str] = {}
-    if len(contributors) > 1:
-        wanted = frozenset(paths)
-        for name in contributors:
-            alone = PersonalTier(tuple(s for s in context.personal.sources if s.name == name))
-            render = render_project_detailed(root, replace(context, personal=alone))
-            found.update(
-                {
-                    path: name
-                    for path in render.outputs
-                    if path in wanted and path not in render.team and path not in found
-                }
+    view: PersonalView,
+    rendered: tuple[Mapping[Path, Output], ProjectRender | None],
+    state: SyncState,
+    record: PersonalRecord,
+) -> tuple[PersonalView, Path | None]:
+    contributors = (*record.contributors, *view.report.contributors)
+    try:
+        if (
+            record_written(
+                root,
+                {},
+                pending=frozenset({*record.pending, *view.personal}),
+                contributors=dict.fromkeys(contributors),
             )
-    fallback = (*contributors, *report.held)
+            is None
+        ):
+            raise LoadoutError("the written record cannot be saved")
+        common = common_dir(root)
+        hide_before(common, root, view.lines)
+    except LoadoutError as error:
+        return team_only(*rendered, state.written, record, str(error)), None
+    return view, common
+
+
+def write_outputs(
+    run: PersonalRun,
+    documents: Mapping[Path, Merged],
+    as_read: Mapping[Path, bytes | None],
+    sources: Callable[[Path], str],
+    read: Mapping[Path, bytes | None],
+) -> Deployed:
+    root, view, state = run.root, run.view, run.state
+    # Read before writing: once deployed, the value a key held is gone.
+    managed = newly_managed(state, view.outputs)
+    rest = {path: output for path, output in view.outputs.items() if path not in documents}
+    written, ignored = deploy(state, rest, sources, read, ignored=view.team)
+    wrote = write_documents(root, documents, as_read)
+    if documents:
+        record_written(
+            root,
+            document_entries(
+                {
+                    path: merged
+                    for path, merged in documents.items()
+                    if path.is_file() and path not in wrote.refused
+                },
+                state.written,
+                held=bool(view.report.held),
+            ),
+            dropped=[
+                path for path in documents if not path.is_file() and path not in wrote.refused
+            ],
+            created=([*{*run.record.created, *wrote.created}] if run.common is not None else None),
+        )
+    return Deployed([*written, *wrote.written], managed, ignored, wrote.created, wrote.refusals)
+
+
+def finish_writes(run: PersonalRun, deployed: Deployed) -> Written:
+    root, view, state = run.root, run.view, run.state
+    personal = frozenset({*run.record.personal, *run.record.pending, *view.personal})
+    retired, unignored = retire_orphans(state, view.outputs, view.team, personal)
+    created = frozenset({*run.record.created, *deployed.created}) - view.released
+    emptied = empty_created(created) if run.common is not None else ()
+    for path in emptied:
+        path.unlink()
+    if state.project:
+        unignored += drop_team_lines(root, view.team, view.outputs)
+    if run.common is not None:
+        _record_personal(run, run.common, created, emptied)
+    return Written(list(dict.fromkeys((*retired, *emptied))), unignored)
+
+
+def drop_team_lines(root: Path, team: Mapping[Path, Output], outputs: Mapping[Path, Output]) -> int:
+    recorded = read_personal(root).gitignored
+    unwanted = lines_to_drop(root, recorded, team, outputs)
+    if not unwanted:
+        return 0
+    removed = remove_lines(root, unwanted)
+    record_written(root, {}, gitignored=[line for line in recorded if line not in unwanted])
+    return removed
+
+
+def _record_personal(
+    run: PersonalRun, common: Path, created: frozenset[Path], emptied: Sequence[Path]
+) -> None:
+    root, view = run.root, run.view
+    gone = frozenset(emptied)
     owners = {
-        path: found.get(path) or recorded.get(path) or (fallback[0] if fallback else None)
-        for path in paths
+        path: found
+        for path in (*view.held, *view.personal)
+        if (found := owner(path, view.renderers, run.record.personal, view.report)) is not None
     }
-    return {path: owner for path, owner in owners.items() if owner is not None}
+    record_written(
+        root,
+        {},
+        dropped=[*view.released, *gone],
+        personal={
+            path: source
+            for path, source in owners.items()
+            if path not in gone and path not in view.released
+        },
+        pending=(),
+        common_dir=common,
+        created=[
+            path
+            for path in created
+            if path.is_file() and path not in gone and (path in view.personal or path in view.held)
+        ],
+        contributors=dict.fromkeys((*view.report.contributors, *view.report.held)),
+    )
+    hide_after(common, root, view.lines, view.team)
+
+
+@dataclass(frozen=True)
+class Retired:
+    retired: tuple[Path, ...] = ()
+    unignored: int = 0
+    notes: tuple[str, ...] = ()
+    kept: tuple[Path, ...] = ()
+
+
+@dataclass(frozen=True)
+class _Stranded:
+    paths: frozenset[Path]
+    left: frozenset[Path]
+    notes: tuple[str, ...]
+    orphans: dict[Path, WrittenEntry]
+    kept: frozenset[Path]
+
+
+def _stranded(
+    root: Path, record: PersonalRecord, written: Mapping[Path, WrittenEntry]
+) -> _Stranded:
+    paths = frozenset({*record.personal, *record.pending})
+    left, notes = team_claimed(root, paths)
+    orphans = {path: entry for path, entry in written.items() if path in paths - left}
+    refuse_escaping(root, orphans)
+    refuse_unparsable_orphans(SyncState(root, False, orphans), {})
+    kept = frozenset(item.path for item in unaccepted_against_record({}, written, orphans))
+    return _Stranded(paths, left, notes, orphans, kept)
+
+
+def stranded_preview(root: Path) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
+    record = read_personal(root)
+    if not (record.personal or record.pending):
+        return (), ()
+    found = _stranded(root, record, read_written(root))
+    retired = sorted(path for path in found.orphans if path not in found.kept and path.is_file())
+    return tuple(retired), tuple(sorted(found.kept))
+
+
+def retire_tier(root: Path) -> Retired:
+    record = read_personal(root)
+    if not (record.personal or record.pending or record.contributors):
+        return Retired()
+    written = read_written(root)
+    found = _stranded(root, record, written)
+    paths, left, notes, orphans, kept = (
+        found.paths,
+        found.left,
+        found.notes,
+        found.orphans,
+        found.kept,
+    )
+    retired = retire({path: entry for path, entry in orphans.items() if path not in kept}, written)
+    emptied = empty_created(record.created - kept - left)
+    for path in emptied:
+        path.unlink()
+    if record.common_dir is not None:
+        write_personal_block(record.common_dir, root, lambda _: ())
+    unignored = drop_team_lines(root, {}, {})
+    record_written(root, {}, dropped=paths, personal={}, pending=(), created=(), contributors=())
+    return Retired(
+        tuple(dict.fromkeys((*retired, *emptied))), unignored, notes, tuple(sorted(kept))
+    )

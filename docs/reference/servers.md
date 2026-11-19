@@ -193,6 +193,27 @@ At project scope Claude reads `.mcp.json` — a file loadout owns outright, no C
 CLI problem is global-only, which is why project scope is the easier half despite being the
 motivating one.
 
+### A renamed server is renamed on every harness
+
+`[servers.<name>] name = "<new>"` renames a definition before any renderer sees it, so each harness
+gets the new key and the rules for it are rewritten once, on the neutral side
+(`server_policy.py`; the rules are the `[mcp]` entries of a `permissions.toml` that comes from the
+same kit or source as the server). Native `[claude.extra]` and `[opencode.extra]` entries are not
+rewritten: they are strings in each harness's own syntax. See [kits](kits.md#aliases-renaming-what-a-kit-supplies).
+
+### Personal Claude servers in `~/.claude.json`
+
+In a repository that adopted loadout the project writes `.mcp.json` for the team, so a stealth
+source's Claude servers cannot go there. The stealth machinery keeps writing them into
+`~/.claude.json`, one server at a time under the repository's `projects.<root>.mcpServers`, and
+that is the one file two writers touch in an adopted clone. Its clash set is the team render's
+servers, never the `.mcp.json` on disk; a server that clashes is refused with the one-line fix, naming the
+table to edit by its original key. A git hook
+never writes these leaves, and `loadout sync` inside a clone does not retire the leaves of a source
+that stopped matching: `sync --stealth NAME`, `sync --global` and `stealth remove NAME` do. Every
+other harness's personal servers merge into the team's file in the same render, so the file has one
+writer ([0058](../decisions/0058-a-stealth-source-reaches-adopted-repositories.md)).
+
 ## A server no policy names keeps each harness's default
 
 Loadout renders no approval rule for a server `mcp.toml` defines and no `[mcp]` entry names, so

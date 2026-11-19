@@ -12,22 +12,18 @@ from typing import Any, Literal
 from .atomic import atomic_install
 from .bundled_skill import bundled_skill_path
 from .color import BOLD_YELLOW, GREEN, print_styled
-from .containment import refuse_escaping
 from .diffs import diff_lines, report_diff, withheld
 from .emit import (
     SKILLS_SUBDIR,
     ProjectKits,
-    ProjectRender,
     RenderContext,
     kit_skills,
     refuse_unregistered_global,
     render_all_detailed,
 )
 from .errors import LoadoutError, UsageError
-from .exclude import write_personal_block
 from .files import Drift, DriftKind, pi_settings_as_read, refuse_unparsable
 from .git_privacy import still_tracked
-from .gitignore import remove_lines
 from .guarded_write import read_bytes
 from .kit_catalog import load_catalogs
 from .kit_discover import AvailableKit, available_kits
@@ -50,20 +46,21 @@ from .kits import (
 from .machine import Registration, fixed, registration, state_dir
 from .notices import collect_notices
 from .output import FrozenFile, Merged, Output, digests, output_record_paths
+from .personal_plan import PersonalView, left_as_is, planned_view, sync_tier
 from .personal_sync import (
-    PersonalView,
-    common_dir,
-    document_entries,
-    empty_created,
-    hide_after,
-    hide_before,
-    lines_to_drop,
-    path_owners,
-    personal_view,
-    sync_tier,
-    team_claimed,
-    team_only,
-    write_documents,
+    NO_REMOVAL,
+    Deployed,
+    PersonalRun,
+    Removal,
+    Written,
+    finish_writes,
+    record_ahead,
+    recorded_edits,
+    released,
+    removal_edits,
+    retire_tier,
+    stranded_preview,
+    write_outputs,
 )
 from .project import (
     PROJECT_CONFIG_NAME,
@@ -72,7 +69,6 @@ from .project import (
     load_project_config,
     project_config_path,
 )
-from .retirement import retire
 from .skill_installation import (
     SkillSourceLocation,
     SourceSkillState,
@@ -88,21 +84,11 @@ from .stealth_lock import project_lock
 from .sync import (
     Unaccepted,
     classified_drift,
-    deploy,
-    newly_managed,
     refuse_unparsable_orphans,
-    retire_orphans,
-    unaccepted_against_record,
     unaccepted_outputs,
 )
 from .unmanaged import unmanaged_entries
-from .written import (
-    PersonalRecord,
-    prune_vanished,
-    read_personal,
-    read_written,
-    record_written,
-)
+from .written import PersonalRecord, prune_vanished, read_personal
 
 KitMode = Literal["linked", "vendored"]
 
@@ -267,14 +253,14 @@ def cmd_sync(
     force: bool = False,
     *,
     from_hook: bool = False,
-    retiring: frozenset[str] = frozenset(),
+    removal: Removal = NO_REMOVAL,
 ) -> int:
     root = root.absolute()
     # One read of the registration decides the gate, the render and the guard.
     registered = fixed(registration())
     refuse_unregistered_global(root, RenderContext(registration=registered))
     with project_lock(root):
-        team, personal = _sync_locked(root, profile, force, registered, retiring)
+        team, personal = _sync_locked(root, profile, force, registered, removal)
     # A teammate's commit must not make every checkout's hook fail on a personal refusal.
     return team if from_hook else max(team, personal)
 
@@ -284,9 +270,9 @@ def _sync_locked(
     profile: str,
     force: bool,
     registered: Callable[[], Registration],
-    retiring: frozenset[str],
+    removal: Removal,
 ) -> tuple[int, int]:
-    context = RenderContext(registration=registered, personal=sync_tier(root, retiring))
+    context = RenderContext(registration=registered, personal=sync_tier(root, removal.retiring))
     prune_vanished()
     read = pi_settings_as_read()
     # Rendered once and reused for the guard, the write and the record, so what is
@@ -295,7 +281,9 @@ def _sync_locked(
     # The root as sync finds it, before writing anything.
     before = sync_state(root)
     record = read_personal(root)
-    view = _personal_view(root, rendered, project, before, record)
+    view = planned_view(
+        root, rendered, project, before.written, record, context=context, retiring=removal.retiring
+    )
     documents = {
         path: output for path in view.personal if isinstance(output := view.outputs[path], Merged)
     }
@@ -304,32 +292,30 @@ def _sync_locked(
     refuse_unparsable_orphans(state, view.outputs)
     # Each copied source is hashed once a sync: by the guard, the writer and the record.
     sources = digests()
+    guarded = _Guarded(view)
     if not force:
-        refuse_unparsable(view.outputs)
-        modified = unaccepted_outputs(state, view.outputs, sources, context)
-        if modified:
-            _report_abort(root, modified)
+        found = _guard(_GuardRun(state, view, record, sources, context), removal)
+        if found is None:
             return 1, 0
+        guarded = found
+    view = guarded.view
     common: Path | None = None
     if view.active:
-        view, common = _record_ahead(root, view, (rendered, project), before, record)
-    done = _write(
-        _Run(root, context, view, replace(before, written=view.written), record, common),
+        view, common = record_ahead(root, view, (rendered, project), before, record)
+    run = PersonalRun(root, context, view, replace(before, written=view.written), record, common)
+    deployed = write_outputs(
+        run,
         {path: output for path, output in documents.items() if path in view.personal},
         as_read,
         sources,
         read,
     )
+    _report_deployed(root, deployed)
+    done = finish_writes(run, deployed)
     # Only the abort it described made the full diff worth keeping.
     with contextlib.suppress(OSError):
         (state_dir() / ABORT_DIFF).unlink(missing_ok=True)
-    for path in done.retired:
-        print(f"retired {_display(path, root)}")
-    print(_sync_summary(view.outputs, done.written, done.retired))
-    if done.ignored:
-        print(f"added {done.ignored} entries to .gitignore")
-    if done.unignored:
-        print(f"removed {done.unignored} entries from .gitignore")
+    _report_written(root, view, deployed, done)
     _report_notices(root, profile, context)
     # Reported, never stopped on: sync overwrites nothing there, so stopping would
     # only block the outputs it does own.
@@ -340,209 +326,151 @@ def _sync_locked(
         print(f"WARNING: {_display(path, root)} is {advice}", file=sys.stderr)
     for unit in _tracked_outputs(root, view.team) if before.project else ():
         print(f"WARNING: {still_tracked_note(unit)}", file=sys.stderr)
-    refusals = (*view.report.refusals, *view.refusals, *done.refusals)
+    _report_kept(root, guarded.kept)
+    _report_left(root, guarded.left)
+    refusals = (*view.report.refusals, *view.refusals, *deployed.refusals)
     for note in (*view.report.notes, *view.notes):
-        print(f"note: {note}", file=sys.stderr)
+        print(f"note: {note}")
     for refusal in refusals:
         print(refusal, file=sys.stderr)
     return 0, 3 if refusals or view.report.held else 0
 
 
 @dataclass(frozen=True)
-class _Run:
-    root: Path
-    context: RenderContext
-    view: PersonalView
+class _GuardRun:
     state: SyncState
+    view: PersonalView
     record: PersonalRecord
-    common: Path | None
+    sources: Callable[[Path], str]
+    context: RenderContext
 
 
 @dataclass(frozen=True)
-class _Done:
-    written: list[Path]
-    retired: list[Path]
-    ignored: int
-    unignored: int
-    refusals: tuple[str, ...]
+class _Guarded:
+    view: PersonalView
+    kept: frozenset[Path] = frozenset()
+    left: frozenset[Path] = frozenset()
 
 
-def _write(
-    run: _Run,
-    documents: Mapping[Path, Merged],
-    as_read: Mapping[Path, bytes | None],
-    sources: Callable[[Path], str],
-    read: Mapping[Path, bytes | None],
-) -> _Done:
-    root, view, state = run.root, run.view, run.state
-    # Read before writing: once deployed, the value a key held is gone.
-    managed = newly_managed(state, view.outputs)
-    rest = {path: output for path, output in view.outputs.items() if path not in documents}
-    written, ignored = deploy(state, rest, sources, read, ignored=view.team)
-    wrote = write_documents(root, documents, as_read)
-    if documents:
-        record_written(
-            root,
-            document_entries(
-                {
-                    path: merged
-                    for path, merged in documents.items()
-                    if path.is_file() and path not in wrote.refused
-                },
-                state.written,
-                held=bool(view.report.held),
-            ),
-            dropped=[
-                path for path in documents if not path.is_file() and path not in wrote.refused
-            ],
-            created=([*{*run.record.created, *wrote.created}] if run.common is not None else None),
-        )
-    written = [*written, *wrote.written]
-    for path in written:
+def _guard(run: _GuardRun, removal: Removal) -> _Guarded | None:
+    root, view = run.state.root, run.view
+    refuse_unparsable(view.outputs)
+    modified = unaccepted_outputs(run.state, view.outputs, run.sources, run.context)
+    edits = removal_edits(run.record, modified, removal)
+    blocking = [item for item in modified if item.path not in {*edits.released, *edits.left}]
+    if blocking:
+        _report_abort(root, blocking, sentences=not removal.retiring)
+        if removal.retiring:
+            personal = recorded_edits(run.record, modified)
+            _report_removal_way_out(root, min(removal.retiring), blocking, personal)
+        return None
+    return _Guarded(
+        left_as_is(released(view, edits.released), edits.left), edits.released, edits.left
+    )
+
+
+def _report_deployed(root: Path, deployed: Deployed) -> None:
+    for path in deployed.written:
         print(f"wrote {_display(path, root)}")
-    for path, key, was in managed:
+    for path, key, was in deployed.managed:
         print(f"now managed: {key} in {_display(path, root)} (was {was})")
-    personal = frozenset({*run.record.personal, *run.record.pending, *view.personal})
-    retired, unignored = retire_orphans(state, view.outputs, view.team, personal)
-    created = frozenset({*run.record.created, *wrote.created})
-    emptied = empty_created(created) if run.common is not None else ()
-    for path in emptied:
-        path.unlink()
-    if state.project:
-        unignored += _drop_team_lines(root, view.team, view.outputs)
-    if run.common is not None:
-        _record_personal(run, run.common, created, emptied)
-    return _Done(
-        written, list(dict.fromkeys((*retired, *emptied))), ignored, unignored, wrote.refusals
-    )
 
 
-def _personal_view(
-    root: Path,
-    outputs: Mapping[Path, Output],
-    project: ProjectRender | None,
-    state: SyncState,
-    record: PersonalRecord,
-) -> PersonalView:
-    try:
-        return personal_view(root, outputs, project, state.written, record)
-    except LoadoutError as error:
-        return team_only(outputs, project, state.written, record, str(error))
-
-
-def _record_ahead(
-    root: Path,
-    view: PersonalView,
-    rendered: tuple[Mapping[Path, Output], ProjectRender | None],
-    state: SyncState,
-    record: PersonalRecord,
-) -> tuple[PersonalView, Path | None]:
-    contributors = (*record.contributors, *view.report.contributors)
-    try:
-        if (
-            record_written(
-                root,
-                {},
-                pending=frozenset({*record.pending, *view.personal}),
-                contributors=dict.fromkeys(contributors),
-            )
-            is None
-        ):
-            raise LoadoutError("the written record cannot be saved")
-        common = common_dir(root)
-        hide_before(common, root, view.lines)
-    except LoadoutError as error:
-        return team_only(*rendered, state.written, record, str(error)), None
-    return view, common
-
-
-def _drop_team_lines(
-    root: Path, team: Mapping[Path, Output], outputs: Mapping[Path, Output]
-) -> int:
-    recorded = read_personal(root).gitignored
-    unwanted = lines_to_drop(root, recorded, team, outputs)
-    if not unwanted:
-        return 0
-    removed = remove_lines(root, unwanted)
-    record_written(root, {}, gitignored=[line for line in recorded if line not in unwanted])
-    return removed
-
-
-def _record_personal(
-    run: _Run, common: Path, created: frozenset[Path], emptied: Sequence[Path]
-) -> None:
-    root, view = run.root, run.view
-    gone = frozenset(emptied)
-    owners = path_owners(root, run.context, view.personal, view.report, run.record.personal)
-    fallback = view.report.held[0] if view.report.held else None
-    held = {
-        path: owner
-        for path in view.held
-        if (owner := run.record.personal.get(path) or fallback) is not None
-    }
-    record_written(
-        root,
-        {},
-        dropped=[*view.released, *gone],
-        personal={
-            path: source
-            for path, source in {**held, **owners}.items()
-            if path not in gone and path not in view.released
-        },
-        pending=(),
-        common_dir=common,
-        created=[
-            path
-            for path in created
-            if path.is_file() and path not in gone and (path in view.personal or path in view.held)
-        ],
-        contributors=dict.fromkeys((*view.report.contributors, *view.report.held)),
-    )
-    hide_after(common, root, view.lines)
-
-
-def retire_personal(root: Path) -> int:
-    root = root.absolute()
-    prune_vanished()
-    with project_lock(root):
-        return _retire_personal_locked(root)
-
-
-def _retire_personal_locked(root: Path) -> int:
-    record = read_personal(root)
-    if not (record.personal or record.pending or record.contributors):
-        return 0
-    written = read_written(root)
-    paths = frozenset({*record.personal, *record.pending})
-    left, notes = team_claimed(root, paths)
-    orphans = {path: entry for path, entry in written.items() if path in paths - left}
-    refuse_escaping(root, orphans)
-    refuse_unparsable_orphans(SyncState(root, False, orphans), {})
-    kept = frozenset(item.path for item in unaccepted_against_record({}, written, orphans))
-    retired = retire({path: entry for path, entry in orphans.items() if path not in kept}, written)
-    emptied = empty_created(record.created - kept - left)
-    for path in emptied:
-        path.unlink()
-    if record.common_dir is not None:
-        write_personal_block(record.common_dir, root, lambda _: ())
-    unignored = _drop_team_lines(root, {}, {})
-    record_written(root, {}, dropped=paths, personal={}, pending=(), created=(), contributors=())
-    for path in dict.fromkeys((*retired, *emptied)):
+def _report_written(root: Path, view: PersonalView, deployed: Deployed, done: Written) -> None:
+    for path in done.retired:
         print(f"retired {_display(path, root)}")
-    if unignored:
-        print(f"removed {unignored} entries from .gitignore")
-    for note in notes:
-        print(f"note: {note}", file=sys.stderr)
+    print(_sync_summary(view.outputs, deployed.written, done.retired))
+    if deployed.ignored:
+        print(f"added {deployed.ignored} entries to .gitignore")
+    if done.unignored:
+        print(f"removed {done.unignored} entries from .gitignore")
+
+
+def _report_removal_way_out(
+    root: Path, name: str, blocking: Sequence[Unaccepted], personal: frozenset[Path]
+) -> None:
+    force = " --force" if personal else ""
+    others = [_display(item.path, root) for item in blocking if item.path not in personal]
+    if not others:
+        print(
+            f"\nTo finish removing stealth {name} and keep the edited file, run "
+            f"`loadout stealth remove {name} --force`.",
+            file=sys.stderr,
+        )
+        return
+    print(
+        f"\nTo finish removing stealth {name}, port the edit to {', '.join(others)} into the "
+        f"project source with /loadout, or undo it as the diff shows, then run "
+        f"`loadout stealth remove {name}{force}` again.",
+        file=sys.stderr,
+    )
+
+
+def _report_kept(root: Path, kept: Iterable[Path]) -> None:
     for path in sorted(kept):
         print(
             f"WARNING: kept {_display(path, root)}: it was modified since loadout wrote it, "
             "and loadout no longer manages it",
             file=sys.stderr,
         )
+
+
+def _report_left(root: Path, left: Iterable[Path]) -> None:
+    for path in sorted(left):
+        print(
+            f"WARNING: left {_display(path, root)} as it is: it was modified since loadout wrote "
+            "it, and loadout still manages it, so the next `loadout sync` stops on it",
+            file=sys.stderr,
+        )
+
+
+def stranded_result(root: Path, sync: str) -> dict[str, Any]:
+    retired, kept = stranded_preview(root)
+    return {
+        "status": "drift" if retired else "clean",
+        "exit_code": 1 if retired else 0,
+        "drift": [{"path": str(path), "kind": "orphaned"} for path in retired],
+        "notes": [
+            f"{_display(path, root)} was modified since loadout wrote it; `{sync}` keeps it "
+            "and stops managing it"
+            for path in kept
+        ],
+    }
+
+
+def check_stranded(root: Path, sync: str) -> int:
+    result = stranded_result(root, sync)
+    for note in result["notes"]:
+        print(f"note: {note}")
+    if not result["drift"]:
+        print("no personal file to retire")
+        return 0
+    for item in result["drift"]:
+        print(f"DRIFT (orphaned): {_display(Path(item['path']), root)}", file=sys.stderr)
+    print(
+        f"\nthis project no longer adopts loadout; run `{sync}` to retire the personal files "
+        "loadout wrote here",
+        file=sys.stderr,
+    )
+    return 1
+
+
+def retire_personal(root: Path) -> int:
+    root = root.absolute()
+    prune_vanished()
+    with project_lock(root):
+        done = retire_tier(root)
+    for path in done.retired:
+        print(f"retired {_display(path, root)}")
+    if done.unignored:
+        print(f"removed {done.unignored} entries from .gitignore")
+    for note in done.notes:
+        print(f"note: {note}")
+    _report_kept(root, done.kept)
     return 0
 
 
-def _report_abort(root: Path, modified: Sequence[Unaccepted]) -> None:
+def _report_abort(root: Path, modified: Sequence[Unaccepted], *, sentences: bool = True) -> None:
     full: list[str] = []
     truncated = False
     shown: set[str] = set()
@@ -560,7 +488,9 @@ def _report_abort(root: Path, modified: Sequence[Unaccepted]) -> None:
         full.extend(lines)
         truncated = report_diff(lines) or truncated
         (unshown if withheld(lines) else shown).add(item.kind)
-    for sentence in [*_abort_sentences(shown), *_abort_sentences(unshown, shown=False)]:
+    for sentence in (
+        [*_abort_sentences(shown), *_abort_sentences(unshown, shown=False)] if sentences else []
+    ):
         print(f"\n{sentence}", file=sys.stderr)
     # A blocking prompt the reader cannot see all of is one they learn to
     # skip, and skipping this one means reaching for --force, which is the
@@ -645,7 +575,8 @@ DRIFT_ADVICE: dict[DriftKind, str] = {
     "unmanaged": UNMANAGED_ADVICE,
     "unmanaged-link": UNMANAGED_LINK_ADVICE,
     "unparsable": "a file loadout shares with a harness no longer parses; fix or delete it, then "
-    "run `{sync}`; for one the source still renders, `{sync} --force` replaces it",
+    "run `{sync}`; `{sync} --force` replaces one the source still renders, but not one a stealth "
+    "source writes",
 }
 
 

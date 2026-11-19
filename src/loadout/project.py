@@ -99,28 +99,27 @@ def renamed_kit_spelling(data: dict[str, object], path: Path) -> LoadoutError | 
 
 def removed_personal_files(path: Path) -> LoadoutError | None:
     local = path.parent / "permissions.local.toml"
-    if local.is_file():
-        return LoadoutError(
-            f"{local}: `loadout/permissions.local.toml` is no longer read; personal permissions "
-            "come from a stealth source that targets this repository (`loadout stealth init`): "
-            "move its rules there and delete the file"
-        )
     skills = path.parent / "skills"
     folders = [
         entry
         for entry in sorted(skills.iterdir() if skills.is_dir() else ())
         if entry.is_dir() and entry.name.endswith(".local")
     ]
-    if not folders:
-        return None
-    return LoadoutError(
-        "; ".join(
+    permissions = (
+        f"{local}: `loadout/permissions.local.toml` is no longer read; personal permissions "
+        "come from a stealth source that targets this repository (`loadout stealth init`): "
+        "move its rules there and delete the file"
+    )
+    reasons = [
+        *((permissions,) if local.is_file() else ()),
+        *(
             f"{folder}: `loadout/skills/<name>.local/` is no longer read; move the skill into a "
             f"stealth source; name its folder `{folder.name}` there to replace the team's "
             f"`{folder.name.removesuffix('.local')}`"
             for folder in folders
-        )
-    )
+        ),
+    ]
+    return LoadoutError("; ".join(reasons)) if reasons else None
 
 
 def load_project_config(path: Path) -> ProjectConfig:
