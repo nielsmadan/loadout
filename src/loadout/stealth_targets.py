@@ -131,6 +131,11 @@ def expand_patterns(
     )
 
 
+def matches_root(patterns: Sequence[str], root: Path, home: Path) -> bool:
+    found, _ = expand_patterns(patterns, home)
+    return any(_same(folder, root) for folders in found.values() for folder in folders)
+
+
 def _same(left: Path, right: Path) -> bool:
     try:
         return os.path.samefile(left, right)
@@ -205,8 +210,10 @@ def unsafe_stealth_folder(folder: Path, homes: HarnessHomes) -> str | None:
     return _home_reason(folder.resolve(), homes, "a stealth folder")
 
 
-def _unsafe_reason(root: Path, homes: HarnessHomes, stealth_folder: Path) -> str | None:
-    return _home_reason(root, homes, "a target") or stealth_folder_reason(root, stealth_folder)
+def _unsafe_reason(root: Path, homes: HarnessHomes, stealth_folder: Path | None) -> str | None:
+    if (reason := _home_reason(root, homes, "a target")) is not None:
+        return reason
+    return stealth_folder_reason(root, stealth_folder) if stealth_folder is not None else None
 
 
 def _skip(
@@ -214,7 +221,7 @@ def _skip(
     found: stealth_git.GitIdentity,
     parent: Path | None,
     homes: HarnessHomes,
-    stealth_folder: Path,
+    stealth_folder: Path | None,
 ) -> tuple[SkipKind, str] | None:
     if not _same(found.toplevel, root):
         if not stealth_git.has_git_entry(root):
@@ -228,7 +235,7 @@ def _skip(
     return ("unsafe", reason) if reason is not None else None
 
 
-def probe(folder: Path, homes: HarnessHomes, stealth_folder: Path) -> Target | SkippedTarget:
+def probe(folder: Path, homes: HarnessHomes, stealth_folder: Path | None) -> Target | SkippedTarget:
     root = folder.resolve()
     try:
         found = stealth_git.identity(root)

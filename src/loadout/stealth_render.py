@@ -10,7 +10,7 @@ from . import stealth_seams
 from .composition import document, for_destination, joined
 from .emit import settings_document
 from .harnesses import SHARED_SKILL_READERS, SliceOutput
-from .manifest import Manifest, PermissionTarget
+from .manifest import PermissionTarget
 from .notices import cursor_permission_notices, devin_permission_notices
 from .output import Copied
 from .permissions.renderers import (
@@ -21,6 +21,7 @@ from .permissions.renderers import (
     render_pi_project,
 )
 from .permissions.rules import EMPTY_RULES, Rules
+from .personal import permission_target
 from .servers import (
     Server,
     render_claude_servers,
@@ -137,13 +138,6 @@ def gather_facts(target_root: Path, environ: Mapping[str, str] | None = None) ->
     )
 
 
-def _permission_target(
-    manifest: Manifest, harness: str, slice_name: str
-) -> PermissionTarget | None:
-    name = harness if slice_name == "permissions" else f"{harness}-{slice_name}"
-    return next((t for t in manifest.permissions if t.harness == harness and t.name == name), None)
-
-
 def _target_rules(target: PermissionTarget, rules: Rules) -> Rules:
     return rules if target.select_all else EMPTY_RULES
 
@@ -239,20 +233,20 @@ def _json_outputs(
             relative = str(STEALTH_PRESET[harness][slice_name].output)
             placed.append((root / relative, f"{harness}.{slice_name}", output))
 
-    if (target := _permission_target(manifest, "claude", "permissions")) is not None:
+    if (target := permission_target(manifest, "claude", "permissions")) is not None:
         owned = claude_owned(_target_rules(target, rules), _settings_fragment(target, stealth))
         put("claude", "permissions", _with_content(owned))
-    if (target := _permission_target(manifest, "droid", "permissions")) is not None:
+    if (target := permission_target(manifest, "droid", "permissions")) is not None:
         owned = droid_owned(_target_rules(target, rules), _settings_fragment(target, stealth))
         put("droid", "permissions", _with_content(owned))
-    if _permission_target(manifest, "droid", "mcp") is not None and servers:
+    if permission_target(manifest, "droid", "mcp") is not None and servers:
         put("droid", "mcp", stealth_seams.serialize_json(render_droid_servers(servers)))
-    if (target := _permission_target(manifest, "pi", "permissions")) is not None:
+    if (target := permission_target(manifest, "pi", "permissions")) is not None:
         document = render_pi_project(_target_rules(target, rules), {})
         if document != PI_EMPTY_PERMISSIONS:
             refuse_mcp_namespace_overlap("pi", rules, servers)
             put("pi", "permissions", stealth_seams.serialize_json(document))
-    if _permission_target(manifest, "pi", "mcp") is not None and servers:
+    if permission_target(manifest, "pi", "mcp") is not None and servers:
         refuse_mcp_namespace_overlap("pi", rules, servers)
         put("pi", "mcp", stealth_seams.serialize_json(render_pi_servers(servers)))
     return placed
@@ -262,9 +256,9 @@ def _codex_outputs(
     stealth: StealthManifest, name: str, root: Path, rules: Rules, servers: dict[str, Server]
 ) -> tuple[list[tuple[Path, str, StealthOutput]], tuple[str, ...]]:
     manifest = stealth.manifest
-    permissions = _permission_target(manifest, "codex", "permissions")
+    permissions = permission_target(manifest, "codex", "permissions")
     codex_rules = _target_rules(permissions, rules) if permissions is not None else EMPTY_RULES
-    defined = servers if _permission_target(manifest, "codex", "mcp") is not None else {}
+    defined = servers if permission_target(manifest, "codex", "mcp") is not None else {}
     instructions = _joined_fragments(stealth, "codex")
     placed: list[tuple[Path, str, StealthOutput]] = []
     notes = codex_stealth_notes(codex_rules, defined)
@@ -287,9 +281,9 @@ def _opencode_outputs(
 ) -> tuple[list[tuple[Path, str, StealthOutput]], dict[Path, str]]:
     manifest = stealth.manifest
     paths = _instruction_paths(stealth, "opencode")
-    permissions = _permission_target(manifest, "opencode", "permissions")
+    permissions = permission_target(manifest, "opencode", "permissions")
     opencode_rules = _target_rules(permissions, rules) if permissions is not None else None
-    defined = servers if _permission_target(manifest, "opencode", "mcp") is not None else {}
+    defined = servers if permission_target(manifest, "opencode", "mcp") is not None else {}
     shared: dict[Path, str] = {}
     instructions: Path | None = None
     if paths:
@@ -316,7 +310,7 @@ def _cursor_outputs(
         rule = root / str(preset["instructions"].output) / f"{name}.mdc"
         placed.append((rule, "cursor.instructions", for_destination(rule, document(paths))))
     notes: tuple[str, ...] = ()
-    if (permissions := _permission_target(manifest, "cursor", "permissions")) is not None:
+    if (permissions := permission_target(manifest, "cursor", "permissions")) is not None:
         cursor_rules = _target_rules(permissions, rules)
         notes = tuple(
             f"cursor: {notice.message}"
@@ -328,7 +322,7 @@ def _cursor_outputs(
             placed.append(
                 (root / relative, "cursor.permissions", stealth_seams.serialize_json(settings))
             )
-    if _permission_target(manifest, "cursor", "mcp") is not None and servers:
+    if permission_target(manifest, "cursor", "mcp") is not None and servers:
         config = render_cursor_servers(servers)
         relative = str(preset["mcp"].output)
         placed.append((root / relative, "cursor.mcp", stealth_seams.serialize_json(config)))
@@ -345,7 +339,7 @@ def _devin_outputs(
         rule = root / str(preset["instructions"].output) / f"{name}.md"
         placed.append((rule, "devin.instructions", for_destination(rule, document(paths))))
     notes: tuple[str, ...] = ()
-    if (permissions := _permission_target(manifest, "devin", "permissions")) is not None:
+    if (permissions := permission_target(manifest, "devin", "permissions")) is not None:
         devin_rules = _target_rules(permissions, rules)
         notes = tuple(
             f"devin: {notice.message}"
@@ -357,7 +351,7 @@ def _devin_outputs(
             placed.append(
                 (root / relative, "devin.permissions", stealth_seams.serialize_json(settings))
             )
-    if _permission_target(manifest, "devin", "mcp") is not None and servers:
+    if permission_target(manifest, "devin", "mcp") is not None and servers:
         relative = str(preset["mcp"].output)
         config = stealth_seams.serialize_json(render_devin_servers(servers))
         placed.append((root / relative, "devin.mcp", config))
@@ -395,7 +389,7 @@ def render_stealth(
 
     claude_servers = (
         render_claude_servers(servers)
-        if servers and _permission_target(manifest, "claude", "mcp") is not None
+        if servers and permission_target(manifest, "claude", "mcp") is not None
         else {}
     )
     return StealthRender(

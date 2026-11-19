@@ -48,6 +48,7 @@ from .permissions.renderers import (
     render_pi_project,
 )
 from .permissions.rules import EMPTY_RULES, Rules, parse_rules
+from .personal import NO_PERSONAL, PersonalInputs, PersonalReport, PersonalTier, personal_inputs
 from .project import (
     PROJECT_CONFIG_NAME,
     PROJECT_DIR,
@@ -100,6 +101,14 @@ class RenderContext:
     upstream: Callable[[str], ResolvedItem] = resolve_upstream_kit
     sources: SourceParser = parse_sources
     registration: Callable[[], Registration] = registration
+    personal: PersonalTier = NO_PERSONAL
+
+
+@dataclass(frozen=True)
+class ProjectRender:
+    outputs: dict[Path, Output]
+    team: dict[Path, Output]
+    report: PersonalReport
 
 
 def refuse_unregistered_global(root: Path, context: RenderContext | None = None) -> None:
@@ -1009,7 +1018,12 @@ def _expand_module_config(
 def render_all(
     root: Path, profile: str = "default", context: RenderContext | None = None
 ) -> dict[Path, Output]:
-    context = context or RenderContext()
+    return render_all_detailed(root, profile, context or RenderContext())[0]
+
+
+def render_all_detailed(
+    root: Path, profile: str, context: RenderContext
+) -> tuple[dict[Path, Output], ProjectRender | None]:
     outputs: dict[Path, Output] = {}
     has_global = manifest_path(root).is_file()
     has_project = project_config_path(root).is_file()
@@ -1022,15 +1036,16 @@ def render_all(
 
     global_outputs = render_global(root, profile, context) if has_global else {}
     outputs.update(global_outputs)
-    if has_project:
-        project_outputs = render_project(root, context)
-        collisions = sorted(str(p) for p in project_outputs if p in outputs)
-        if collisions:
-            raise LoadoutError(
-                f"path collision between global and project scope: {', '.join(collisions)}"
-            )
-        outputs.update(project_outputs)
-    return outputs
+    if not has_project:
+        return outputs, None
+    project = render_project_detailed(root, context)
+    collisions = sorted(str(p) for p in project.outputs if p in outputs)
+    if collisions:
+        raise LoadoutError(
+            f"path collision between global and project scope: {', '.join(collisions)}"
+        )
+    outputs.update(project.outputs)
+    return outputs, project
 
 
 def refuse_project_inputs(root: Path) -> None:
@@ -1040,6 +1055,20 @@ def refuse_project_inputs(root: Path) -> None:
 
 
 def render_project(root: Path, context: RenderContext | None = None) -> dict[Path, Output]:
+    return render_project_detailed(root, context or RenderContext()).outputs
+
+
+def render_project_detailed(root: Path, context: RenderContext) -> ProjectRender:
+    outputs, inputs = _render_project(root, context, context.personal)
+    if not inputs.report.contributors:
+        return ProjectRender(outputs, outputs, inputs.report)
+    team, _ = _render_project(root, context, NO_PERSONAL)
+    return ProjectRender(outputs, team, inputs.report)
+
+
+def _render_project(
+    root: Path, context: RenderContext, tier: PersonalTier
+) -> tuple[dict[Path, Output], PersonalInputs]:
     refuse_project_inputs(root)
     config = load_project_config(project_config_path(root))
     # Before any output is read: a shared document's keys loadout does not own are read
@@ -1050,15 +1079,16 @@ def render_project(root: Path, context: RenderContext | None = None) -> dict[Pat
         if spec.preserve_foreign and spec.output is not None
     ]
     refuse_escaping(root, shared)
-    kits = project_kits(root, config, context or RenderContext())
+    kits = project_kits(root, config, context)
+    rendered, inputs = _render_project_slices(root, config, kits, tier)
     outputs = {
         path: SharedText(output) if path in shared and isinstance(output, str) else output
-        for path, output in _render_project_slices(root, config, kits).items()
+        for path, output in rendered.items()
     }
     # Before anything compares or shows these: a diff of a file outside the project
     # would print it.
     refuse_escaping(root, (*outputs, *output_record_paths(outputs)), outputs)
-    return outputs
+    return outputs, inputs
 
 
 def project_rules(root: Path, kits: ProjectKits) -> Rules:
@@ -1088,7 +1118,7 @@ def layered_rules(kits: ProjectKits, own: Iterable[Rules]) -> Rules:
 
 
 def _retired_keys(
-    root: Path, config: ProjectConfig, contributes: Callable[[str], bool]
+    root: Path, config: ProjectConfig, contributes: Callable[[str, str], bool]
 ) -> dict[Path, set[str]]:
     """Keys a slice owns but will not write this time, by path.
 
@@ -1100,8 +1130,8 @@ def _retired_keys(
     them in the base keeps their position, and key order is load-bearing.
     """
     retired: dict[Path, set[str]] = {}
-    for _agent, slice_name, spec in project_slices(config.harnesses):
-        if spec.output is None or contributes(slice_name):
+    for agent, slice_name, spec in project_slices(config.harnesses):
+        if spec.output is None or contributes(agent, slice_name):
             continue
         keys = retired.setdefault(root / spec.output, set())
         if spec.owned_key:
@@ -1128,22 +1158,53 @@ def project_owned_keys(harnesses: tuple[str, ...], output: str) -> frozenset[str
     return frozenset(keys)
 
 
+def _trial_render(
+    root: Path, harness: str, rules: Rules, servers: Mapping[str, Server]
+) -> LoadoutError | None:
+    for _agent, slice_name, spec in project_slices((harness,)):
+        if spec.output is None or slice_name not in {"permissions", "mcp"}:
+            continue
+        if slice_name == "mcp" and not servers:
+            continue
+        contributor = PermissionTarget(
+            harness=harness,
+            name=harness if slice_name == "permissions" else f"{harness}-{slice_name}",
+            path=None,
+            renderer=spec.renderer or "",
+            owned_key=spec.owned_key,
+            content_slice=spec.source_slice,
+        )
+        content = dict(servers) if slice_name == "mcp" else {}
+        try:
+            if _rule_less(spec.renderer or "", rules):
+                continue
+            compose_permission_document([(contributor, {}, content)], rules, root / spec.output)
+        except LoadoutError as error:
+            return error
+    return None
+
+
 def _render_project_slices(
-    root: Path, config: ProjectConfig, kits: ProjectKits
-) -> dict[Path, Output]:
-    rules = project_rules(root, kits)
+    root: Path, config: ProjectConfig, kits: ProjectKits, tier: PersonalTier
+) -> tuple[dict[Path, Output], PersonalInputs]:
+    inputs = personal_inputs(
+        tier,
+        config.harnesses,
+        project_rules(root, kits),
+        project_servers(root, kits),
+        lambda harness, rules, servers: _trial_render(root, harness, rules, servers),
+    )
 
     instructions = project_instructions(root, config, kits)
     trees = project_skill_trees(root, kits)
-    servers = project_servers(root, kits)
     project_documents = {
         name: project_slice_document(root, name, kits) for name in PROJECT_DOCUMENTS
     }
 
-    def _contributes(slice_name: str) -> bool:
+    def _contributes(agent: str, slice_name: str) -> bool:
         """Whether this slice has anything to write this time."""
         if slice_name == "mcp":
-            return bool(servers)
+            return bool(inputs.servers[agent])
         if slice_name in project_documents:
             return project_documents[slice_name][1]
         return True
@@ -1186,11 +1247,12 @@ def _render_project_slices(
                     else instructions
                 )
             continue
-        if not _contributes(slice_name):
+        if not _contributes(agent, slice_name):
             # A source offering no mcp.toml contributes no tier, the same as a
             # kit offering no permissions.toml — nothing to write. The keys
             # it owns were retired above rather than left in the co-owner's base.
             continue
+        rules, servers = inputs.rules[agent], inputs.servers[agent]
         if _rule_less(spec.renderer or "", rules):
             continue
         if harness := MCP_NAMESPACE_HARNESS.get(spec.renderer or ""):
@@ -1225,8 +1287,9 @@ def _render_project_slices(
         # No records here: a record is tied to a source-slice fragment, and project
         # scope renders from the project's own config rather than the global
         # manifest's sources. No project slice has derived ownership today.
-        outputs[path] = compose_permission_document(contributors, rules, path)
-    return outputs
+        agent = contributors[0][0].harness or ""
+        outputs[path] = compose_permission_document(contributors, inputs.rules[agent], path)
+    return outputs, inputs
 
 
 PROJECT_SETTINGS_DIR = "settings"

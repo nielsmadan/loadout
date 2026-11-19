@@ -57,7 +57,7 @@ from .stealth_registry import (
     without_stealth,
 )
 from .stealth_sync import StealthRun, report, sync_stealth
-from .stealth_targets import expand_patterns, harness_homes, refuse_patterns_inside
+from .stealth_targets import harness_homes, matches_root, refuse_patterns_inside
 
 PROFILE_REFUSAL = (
     "stealth sources render the default profile only; --profile applies to a loadout source"
@@ -190,17 +190,12 @@ def _patterns(stealth: RegisteredStealth) -> tuple[str, ...]:
         return ()
 
 
-def _matches(patterns: tuple[str, ...], root: Path, home: Path) -> bool:
-    found, _ = expand_patterns(patterns, home)
-    return any(_same(folder, root) for folders in found.values() for folder in folders)
-
-
 def stealth_targeting(root: Path) -> tuple[tuple[RegisteredStealth, Path], ...]:
     home = harness_homes().home
     return tuple(
         (stealth, root)
         for stealth in load_registry(stealth_path())
-        if _matches(_patterns(stealth), root, home)
+        if matches_root(_patterns(stealth), root, home)
     )
 
 
