@@ -32,6 +32,8 @@ from pathlib import Path
 from typing import Any, Literal
 
 from .atomic import replace_atomically
+from .errors import LoadoutError
+from .exclude import write_personal_block
 from .machine import config_dir
 from .output import Merged, file_sha256, sha256
 from .toml_paths import key_name, key_path, overlapping_keys
@@ -248,13 +250,24 @@ def prune_vanished(env: Mapping[str, str] | None = None) -> None:
     except OSError:
         return
     for record in records:
-        root = _root(_document(record))
+        document = _document(record)
+        root = _root(document)
         if root is None or not _vanished(root):
             continue
+        common = _personal(document).common_dir
+        if common is not None:
+            _drop_block(common, root)
         try:
             record.unlink()
         except OSError:
             continue
+
+
+def _drop_block(common_dir: Path, root: Path) -> None:
+    try:
+        write_personal_block(common_dir, root, lambda _: ())
+    except (LoadoutError, OSError):
+        return
 
 
 def _root(document: object) -> Path | None:
@@ -272,12 +285,18 @@ def _vanished(path: Path) -> bool:
     return False
 
 
-def record_written(
+def record_written(  # noqa: PLR0913
     root: Path,
     entries: Mapping[Path, WrittenEntry],
     env: Mapping[str, str] | None = None,
     *,
     dropped: Iterable[Path] = (),
+    personal: Mapping[Path, str] | None = None,
+    pending: Iterable[Path] | None = None,
+    gitignored: Iterable[str] | None = None,
+    common_dir: Path | None = None,
+    created: Iterable[Path] | None = None,
+    contributors: Iterable[str] | None = None,
 ) -> Path | None:
     """Merge this run's writes into the record, keeping what earlier runs wrote.
 
@@ -287,9 +306,12 @@ def record_written(
     leaves the record.
     """
     path = written_state_path(root, env)
-    merged = dict(read_written(root, env))
+    previous = _document(path)
+    kept = _personal(previous)
+    merged = dict(_entries(previous))
     merged.update(entries)
-    for gone in dropped:
+    gone_paths = frozenset(dropped)
+    for gone in gone_paths:
         merged.pop(gone, None)
     document: dict[str, Any] = {
         "version": VERSION,
@@ -308,6 +330,20 @@ def record_written(
             }
             for dest, entry in sorted(merged.items(), key=lambda item: str(item[0]))
         },
+        **_personal_fields(
+            PersonalRecord(
+                personal={
+                    path: source
+                    for path, source in (kept.personal if personal is None else personal).items()
+                    if path not in gone_paths
+                },
+                pending=(kept.pending if pending is None else frozenset(pending)) - gone_paths,
+                gitignored=kept.gitignored if gitignored is None else tuple(gitignored),
+                common_dir=kept.common_dir if common_dir is None else common_dir,
+                created=(kept.created if created is None else frozenset(created)) - gone_paths,
+                contributors=kept.contributors if contributors is None else tuple(contributors),
+            )
+        ),
     }
     try:
         _write_record(path, document)
@@ -320,6 +356,70 @@ def record_written(
         # without granting the directory beside it.
         return None
     return path
+
+
+@dataclass(frozen=True)
+class PersonalRecord:
+    personal: Mapping[Path, str]
+    pending: frozenset[Path]
+    gitignored: tuple[str, ...]
+    common_dir: Path | None
+    created: frozenset[Path] = frozenset()
+    contributors: tuple[str, ...] = ()
+
+
+def _personal_fields(record: PersonalRecord) -> dict[str, Any]:
+    fields: dict[str, Any] = {
+        "personal": {str(path): source for path, source in sorted(record.personal.items())},
+        "pending": sorted(str(path) for path in record.pending),
+        "gitignored": list(record.gitignored),
+        "common_dir": str(record.common_dir) if record.common_dir is not None else None,
+        "created": sorted(str(path) for path in record.created),
+        "contributors": sorted(set(record.contributors)),
+    }
+    return {key: value for key, value in fields.items() if value}
+
+
+def _strings(raw: object) -> list[str]:
+    return [item for item in raw if isinstance(item, str)] if isinstance(raw, list) else []
+
+
+def _personal(document: object) -> PersonalRecord:
+    raw = document if isinstance(document, dict) and document.get("version") == VERSION else {}
+    owners = raw.get("personal")
+    common = raw.get("common_dir")
+    return PersonalRecord(
+        personal={
+            Path(path): source
+            for path, source in (owners.items() if isinstance(owners, dict) else ())
+            if isinstance(source, str)
+        },
+        pending=frozenset(Path(path) for path in _strings(raw.get("pending"))),
+        gitignored=tuple(_strings(raw.get("gitignored"))),
+        common_dir=Path(common) if isinstance(common, str) and Path(common).is_absolute() else None,
+        created=frozenset(Path(path) for path in _strings(raw.get("created"))),
+        contributors=tuple(_strings(raw.get("contributors"))),
+    )
+
+
+def read_personal(root: Path, env: Mapping[str, str] | None = None) -> PersonalRecord:
+    return _personal(_document(written_state_path(root, env)))
+
+
+def roots_naming_stealth(name: str, env: Mapping[str, str] | None = None) -> tuple[Path, ...]:
+    return tuple(root for root in recorded_roots(env) if _mentions(read_personal(root, env), name))
+
+
+def _mentions(record: PersonalRecord, name: str) -> bool:
+    return name in record.contributors or name in record.personal.values()
+
+
+def record_names_stealth(root: Path, name: str, env: Mapping[str, str] | None = None) -> bool:
+    try:
+        text = written_state_path(root, env).read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return False
+    return _mentions(_personal(json.loads(text)), name)
 
 
 def _write_record(path: Path, document: Mapping[str, Any]) -> None:
@@ -394,6 +494,13 @@ def codex_server_ownership(
 
 # The recorded hash of an owned key the document does not hold.
 ABSENT = ""
+
+
+def recorded_keys(entry: WrittenEntry | None) -> frozenset[str]:
+    if entry is None or entry.kind != "merged":
+        return frozenset()
+    hashes = dict(entry.owned_sha256)
+    return frozenset(key for key in entry.owned if hashes.get(key) != ABSENT)
 
 
 def canonical(value: object) -> str:

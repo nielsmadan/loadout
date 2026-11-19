@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .commands import check_result, cmd_check, cmd_sync
+from .commands import check_result, cmd_check, cmd_sync, retire_personal
 from .diffs import report_diff
 from .errors import LoadoutError
 from .kit_push import Held, Level, Push, apply_push, plan_push, record_matching
@@ -244,6 +244,27 @@ def check_projects(roots: Iterable[Path]) -> int:
     return max((_each(root, lambda found: _check_one(found, run)) for root in roots), default=0)
 
 
+def sync_plain(roots: Iterable[Path], *, retiring: frozenset[str] = frozenset()) -> int:
+    return max(
+        (
+            _each(root, lambda found: cmd_sync(found, resolve_profile(found), retiring=retiring))
+            for root in roots
+        ),
+        default=0,
+    )
+
+
+def retire_plain(roots: Iterable[Path]) -> int:
+    return max((_each(root, retire_personal) for root in roots), default=0)
+
+
+def check_plain(roots: Iterable[Path]) -> int:
+    return max(
+        (_each(root, lambda found: cmd_check(found, resolve_profile(found))) for root in roots),
+        default=0,
+    )
+
+
 def _each(root: Path, action: Callable[[Path], int]) -> int:
     print(f"\nproject {shown(root)}:")
     try:
@@ -342,15 +363,17 @@ class ProjectCheck:
     error: str | None = None
 
 
-def check_projects_json(roots: Iterable[Path]) -> tuple[ProjectCheck, ...]:
+def check_projects_json(
+    roots: Iterable[Path], *, previews: bool = True
+) -> tuple[ProjectCheck, ...]:
     """Each project's check result, with its kit previews among the notes."""
-    memo = Upstreams()
+    memo = Upstreams() if previews else None
     return tuple(_check_json_one(root, memo) for root in roots)
 
 
-def _check_json_one(root: Path, memo: Upstreams) -> ProjectCheck:
+def _check_json_one(root: Path, memo: Upstreams | None) -> ProjectCheck:
     try:
-        previews = kit_previews(root, memo)
+        previews = kit_previews(root, memo) if memo is not None else ()
         result = check_result(root, resolve_profile(root))
     except (LoadoutError, OSError) as error:
         return ProjectCheck(root, 3, (), (), str(error))

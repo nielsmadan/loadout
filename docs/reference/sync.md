@@ -10,9 +10,9 @@ Sync is not transactional: it writes the outputs one by one, records them, then 
 and an interrupt stops it wherever it is. Each step leaves a state the next sync finishes:
 
 - **Writing.** Each file is replaced atomically, and Ctrl-C waits until a temporary file's name
-  is held, so its cleanup always runs. The record is written only after every output, so it still
-  describes the previous sync; a file written since equals what the source renders, which the
-  guard accepts.
+  is held, so its cleanup always runs. What each output holds is recorded only after every output,
+  so the record still describes the previous sync; a file written since equals what the source
+  renders, which the guard accepts.
 - **Recording.** The record is replaced atomically: the previous one or the new one.
 - **Retiring.** The record still names every orphan until retirement ends. An orphan already
   deleted is skipped, and the skill folder it emptied is pruned then.
@@ -274,12 +274,24 @@ recorded target that no longer matches and cannot be examined is reported as ski
   file, as the current one is the current one, and its leaves are re-recorded under that spelling.
 - **`stealth remove` retires everything** from the record alone, and the stealth-folder file only
   after every recorded target was retired or dropped.
-- **A target that has adopted loadout is retired.** A recorded target that now holds
-  `loadout/config.toml` is retired like one the patterns stopped matching, in a scoped run too,
-  with the note `adopted loadout; the stealth source retired its files here`; an unrecorded one is
-  skipped. In a run that also renders the project, the stealth source part runs first, so the project
-  never adopts the stealth source's keys as foreign ones
+- **A target that has adopted loadout gets only its Claude servers.** A target that holds
+  `loadout/config.toml` renders only its `~/.claude.json` servers, and the files recorded there retire
+  through the normal plan, in a scoped run too, with the note `adopted loadout; the stealth source
+  retired its files here` on the first such run. In a run that also renders the project, the stealth
+  source part runs first, so the project never adopts the stealth source's keys as foreign ones
   ([0052](../decisions/0052-a-target-that-adopts-loadout-is-retired-by-the-overlay.md)).
+- **A clone that stops being adopted is released by the fan-out.** When a project record names a
+  stealth source but its root no longer holds `loadout/config.toml` and still probes as a safe,
+  top-level checkout, an unscoped `sync --stealth`, `sync --global` or `stealth remove` retires the
+  personal files recorded there (in `sync`, before the stealth sources run; one edited since
+  loadout wrote it is kept, with a warning, and no longer recorded; one the team tracks or its
+  `.gitignore` re-includes is left in place and no longer recorded, with a note), drops the personal
+  exclude block and the `.gitignore` lines sync appended for files now gone, and clears the record's
+  personal fields. A plain `loadout sync` there does not. A root whose record names the source but
+  that git cannot probe or that is not a safe top-level checkout, with or without
+  `loadout/config.toml`, is skipped with a `note:` naming it. `stealth
+  remove` finishes only once no record names the source and no such root was skipped; a record
+  listing or read that fails keeps it marked `removing`.
 
 ### Order and crashes
 

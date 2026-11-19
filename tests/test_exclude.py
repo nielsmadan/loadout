@@ -18,16 +18,22 @@ from loadout.exclude import (
     GLOBAL_END,
     GlobalIgnoreState,
     anchored,
+    block_after,
+    block_before,
     block_lines,
     global_pattern,
     offer_text,
+    personal_markers,
     read_global_state,
+    read_personal_block,
     user_covered,
     with_block,
     write_global_block,
     write_global_state,
+    write_personal_block,
     write_repo_block,
 )
+from loadout.gitignore import gitignore_to_remove
 from loadout.stealth_git import scratch_repo
 
 APP_BEGIN = BLOCK_BEGIN.format(name="app")
@@ -384,3 +390,102 @@ def test_offer_text_outside_a_repository_has_no_repository_clause(
     text = offer_text(["CLAUDE.local.md"], tmp_path / "plain" / "ignore")
     assert str(tmp_path / "plain" / "ignore") in text
     assert "git repository" not in text
+
+
+def test_the_block_before_is_the_ordered_union_of_old_and_new() -> None:
+    assert block_before(["/a", "/b"], ["/b", "/c"]) == ("/a", "/b", "/c")
+
+
+def test_the_block_after_keeps_an_unwanted_unit_still_on_disk() -> None:
+    assert block_after(["/a"], ["/b", "/a"]) == ("/a", "/b")
+    assert block_after(["/a"], []) == ("/a",)
+
+
+def test_gitignore_to_remove_returns_only_recorded_lines_the_team_dropped() -> None:
+    recorded = [".agents/", ".pi/", ".agents/"]
+
+    assert gitignore_to_remove(recorded, [".pi/", "unrecorded/"]) == (".agents/",)
+    assert gitignore_to_remove([], [".pi/"]) == ()
+
+
+def test_the_personal_block_is_keyed_by_the_resolved_root(tmp_path: Path) -> None:
+    common = tmp_path / "git"
+    (common / "info").mkdir(parents=True)
+    root = tmp_path / "clone"
+    root.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(root)
+    begin, end = personal_markers(link)
+
+    assert (
+        begin
+        == f"# >>> loadout personal {root.resolve()}: managed by loadout; lines inside this block are replaced"
+    )
+    assert end == f"# <<< loadout personal {root.resolve()}"
+    write_personal_block(common, link, lambda _: ["/CLAUDE.local.md"])
+    assert read_personal_block(common, root) == ("/CLAUDE.local.md",)
+
+
+def test_the_personal_block_callback_sees_the_current_units_and_empty_removes_it(
+    tmp_path: Path,
+) -> None:
+    common = tmp_path / "git"
+    (common / "info").mkdir(parents=True)
+    (common / "info" / "exclude").write_text("mine\n")
+    root = tmp_path / "clone"
+    root.mkdir()
+    write_personal_block(common, root, lambda current: block_before(current, ["/a"]))
+    seen: list[tuple[str, ...]] = []
+
+    def grow(current: tuple[str, ...]) -> tuple[str, ...]:
+        seen.append(current)
+        return block_before(current, ["/b"])
+
+    write_personal_block(common, root, grow)
+
+    assert seen == [("/a",)]
+    assert read_personal_block(common, root) == ("/a", "/b")
+    write_personal_block(common, root, lambda _: ())
+    assert (common / "info" / "exclude").read_text() == "mine\n"
+
+
+def test_a_new_block_sweeps_blocks_of_roots_that_no_longer_exist(tmp_path: Path) -> None:
+    common = tmp_path / "git"
+    (common / "info").mkdir(parents=True)
+    moved, live, fresh = tmp_path / "moved", tmp_path / "live", tmp_path / "fresh"
+    for folder in (moved, live, fresh):
+        folder.mkdir()
+    write_personal_block(common, moved, lambda _: ["/CLAUDE.local.md"])
+    write_personal_block(common, live, lambda _: ["/.pi/APPEND_SYSTEM.md"])
+    moved.rmdir()
+
+    write_personal_block(common, fresh, lambda _: ["/AGENTS.local.md"])
+
+    assert read_personal_block(common, moved) == ()
+    assert read_personal_block(common, live) == ("/.pi/APPEND_SYSTEM.md",)
+    assert read_personal_block(common, fresh) == ("/AGENTS.local.md",)
+
+
+def test_a_root_with_a_line_break_cannot_be_excluded(tmp_path: Path) -> None:
+    common = tmp_path / "git"
+    (common / "info").mkdir(parents=True)
+    weird = tmp_path / "we\nird"
+    weird.mkdir()
+
+    with pytest.raises(LoadoutError, match="line break"):
+        personal_markers(weird)
+    with pytest.raises(LoadoutError, match="line break"):
+        write_personal_block(common, weird, lambda _: ["/x"])
+
+
+def test_an_unreadable_exclude_file_is_a_loadout_error(tmp_path: Path) -> None:
+    common = tmp_path / "git"
+    (common / "info").mkdir(parents=True)
+    exclude = common / "info" / "exclude"
+    exclude.write_text("x\n")
+    exclude.chmod(0)
+    try:
+        with pytest.raises(LoadoutError, match="exclude"):
+            read_personal_block(common, tmp_path)
+    finally:
+        exclude.chmod(0o644)

@@ -17,7 +17,6 @@ SkipKind = Literal[
     "submodule",
     "linked-worktree",
     "not-a-checkout",
-    "adopted",
     "unexamined",
     "git-failed",
     "unsafe",

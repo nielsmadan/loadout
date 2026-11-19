@@ -78,7 +78,9 @@ def project(repository: Path, capsys) -> Path:
 def test_ctrl_c_while_sync_renders_exits_130(
     project: Path, capsys, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(commands, "render_all", _interrupting(commands.render_all))
+    monkeypatch.setattr(
+        commands, "render_all_detailed", _interrupting(commands.render_all_detailed)
+    )
 
     assert loadout.main(["sync", "--root", str(project)]) == 130
     assert capsys.readouterr().err == "loadout: sync stopped with Ctrl-C; run it again to finish\n"

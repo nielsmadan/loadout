@@ -196,11 +196,11 @@ read (without `--force`), stops `stealth remove` with exit 3 before it asks or m
 - Inside a target repository, by the working directory or `--root`: that repository, for every
   stealth source whose `targets` match it, found from the repository's top level so a subfolder works.
   When it has no manifest and no stealth source targets it, the error is the usual `no manifest found`.
-- A target repository that has adopted loadout (it holds `loadout/config.toml`) is not rendered
-  into. A stealth source that wrote there retires its files, with the note `adopted loadout; the
-  stealth source retired its files here`, and a stealth source that never did reports it as skipped. Inside
-  such a repository its stealth sources run first and the project follows, so the project never finds
-  the stealth source's files.
+- In a target repository that has adopted loadout (it holds `loadout/config.toml`), a stealth source
+  writes only its Claude MCP servers into `~/.claude.json`; the project's sync renders the rest. A
+  stealth source that wrote files there retires them, with the note `adopted loadout; the stealth
+  source retired its files here`. Inside such a repository its stealth sources run first and the
+  project follows, so the project never finds the stealth source's files.
 - `--global`: the global source, then every registered stealth source in name order, then every
   project that uses a kit (see [kit changes across projects](#kit-changes-across-projects)). A
   missing machine config, or a global source that fails, such as on a fragment it cannot read, is
@@ -294,8 +294,8 @@ defined, a unit git would not ignore, a git failure, an unsafe target, or a writ
 unreadable or newer record of any stealth source stops every other stealth source's `sync` and `stealth add`
 with `3`, and the global ignore block is left as it is until the record is fixed; fix the file,
 or run `loadout stealth remove NAME --force`, or delete a file that names no stealth source. A path that is not a git checkout, a submodule, a
-linked worktree, a repository that has adopted loadout, and a recorded target that no longer
-matches but cannot be examined (its outputs are kept) are skipped with exit 0. An output the
+linked worktree, and a recorded target that no longer matches but cannot be examined (its outputs
+are kept) are skipped with exit 0. An output the
 stealth source recorded that the team starts tracking is left in place, dropped from the record and
 noted, with exit 0, whenever the stealth source would retire it.
 

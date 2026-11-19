@@ -1,15 +1,22 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 from . import stealth_seams
-from .composition import document, for_destination, joined
-from .emit import aliased_skill, declaring_file, settings_document, skill_aliases_in
-from .harnesses import SHARED_SKILL_READERS, SliceOutput
+from .composition import HEADER, for_destination, joined
+from .emit import (
+    aliased_skill,
+    declaring_file,
+    settings_document,
+    skill_agents,
+    skill_aliases_in,
+    team_render_servers,
+)
+from .harnesses import SliceOutput
 from .manifest import PermissionTarget
 from .notices import cursor_permission_notices, devin_permission_notices
 from .output import Copied
@@ -21,7 +28,7 @@ from .permissions.renderers import (
     render_pi_project,
 )
 from .permissions.rules import EMPTY_RULES, Rules
-from .personal import permission_target
+from .personal import PersonalSource, adopted_claude_servers, permission_target
 from .servers import (
     Server,
     render_claude_servers,
@@ -105,6 +112,9 @@ class TargetFacts:
     claude_md_on_path: bool
 
 
+NO_FACTS = TargetFacts(agents_md=False, claude_md_on_path=False)
+
+
 @dataclass(frozen=True)
 class StealthRender:
     files: dict[Path, StealthOutput]
@@ -122,6 +132,12 @@ def _user_memory_file(environ: Mapping[str, str]) -> Path:
 
 
 def gather_facts(target_root: Path, environ: Mapping[str, str] | None = None) -> TargetFacts:
+    return target_facts(target_root, Path.is_file, environ)
+
+
+def target_facts(
+    target_root: Path, present: Callable[[Path], bool], environ: Mapping[str, str] | None = None
+) -> TargetFacts:
     env = os.environ if environ is None else environ
     root = target_root.resolve()
     user_memory = _user_memory_file(env).resolve()
@@ -131,10 +147,10 @@ def gather_facts(target_root: Path, environ: Mapping[str, str] | None = None) ->
         for name in ("CLAUDE.md", ".claude/CLAUDE.md")
     )
     local_above = (folder / "CLAUDE.local.md" for folder in root.parents)
-    found = any(path.is_file() and path.resolve() != user_memory for path in candidates)
+    found = any(present(path) and path.resolve() != user_memory for path in candidates)
     return TargetFacts(
-        agents_md=(root / "AGENTS.md").is_file(),
-        claude_md_on_path=found or any(path.is_file() for path in local_above),
+        agents_md=present(root / "AGENTS.md"),
+        claude_md_on_path=found or any(present(path) for path in local_above),
     )
 
 
@@ -142,29 +158,27 @@ def _target_rules(target: PermissionTarget, rules: Rules) -> Rules:
     return rules if target.select_all else EMPTY_RULES
 
 
-def _instruction_paths(stealth: StealthManifest, harness: str) -> tuple[Path, ...]:
-    return stealth_instruction_sources(
+def instruction_fragments(stealth: StealthManifest, harness: str) -> str | None:
+    paths = stealth_instruction_sources(
         stealth.manifest, stealth.kits, harness, kit_parts=stealth.takes_kit_instructions(harness)
+    )
+    return joined(paths) if paths else None
+
+
+def instruction_document(harness: str, fragments: Sequence[str], facts: TargetFacts) -> str:
+    if harness != "claude":
+        return "\n\n".join([HEADER, *fragments]) + "\n"
+    return render_claude_local(
+        "\n\n".join(fragments), import_agents=facts.agents_md and not facts.claude_md_on_path
     )
 
 
 def _instructions(stealth: StealthManifest, harness: str, facts: TargetFacts) -> str | None:
-    paths = _instruction_paths(stealth, harness)
-    if not paths:
-        return None
-    if harness != "claude":
-        return document(paths)
-    return render_claude_local(
-        joined(paths), import_agents=facts.agents_md and not facts.claude_md_on_path
-    )
+    fragments = instruction_fragments(stealth, harness)
+    return None if fragments is None else instruction_document(harness, (fragments,), facts)
 
 
-def _joined_fragments(stealth: StealthManifest, harness: str) -> str | None:
-    paths = _instruction_paths(stealth, harness)
-    return joined(paths) if paths else None
-
-
-def _settings_fragment(target: PermissionTarget, stealth: StealthManifest) -> dict[str, Any]:
+def settings_fragment(target: PermissionTarget, stealth: StealthManifest) -> dict[str, Any]:
     return settings_document(target, stealth.manifest, stealth.folder)
 
 
@@ -188,25 +202,10 @@ def _skill_files(stealth: StealthManifest, root: Path) -> list[tuple[Path, str, 
         selected = selected_skill_agents(original.name, available, manifest.skill_policies)
         rendered = render_skill_for(original.name, manifest.skill_policies)
         skill = aliased_skill(original, aliases)
-        for agent in _skill_agents(skill, selected, rendered):
+        for agent in skill_agents(skill, selected, rendered):
             base = root / str(STEALTH_PRESET[agent]["skills"].output)
             placed.extend(_skill_outputs(skill, agent, base, rendered))
     return placed
-
-
-def _skill_agents(skill: Skill, selected: tuple[str, ...], rendered: bool) -> list[str]:
-    remaining = list(selected)
-    if "codex" not in selected:
-        return remaining
-    shared = frozenset(SHARED_SKILL_READERS).intersection(selected)
-    variants = {
-        agent: render_skill(skill, agent) if rendered else skill.document.read_bytes()
-        for agent in shared
-    }
-    if len(variants) > 1 and len(set(variants.values())) == 1:
-        remaining = [agent for agent in remaining if agent not in SHARED_SKILL_READERS]
-        remaining.insert(0, "codex")
-    return remaining
 
 
 def _skill_outputs(
@@ -236,10 +235,10 @@ def _json_outputs(
             placed.append((root / relative, f"{harness}.{slice_name}", output))
 
     if (target := permission_target(manifest, "claude", "permissions")) is not None:
-        owned = claude_owned(_target_rules(target, rules), _settings_fragment(target, stealth))
+        owned = claude_owned(_target_rules(target, rules), settings_fragment(target, stealth))
         put("claude", "permissions", _with_content(owned))
     if (target := permission_target(manifest, "droid", "permissions")) is not None:
-        owned = droid_owned(_target_rules(target, rules), _settings_fragment(target, stealth))
+        owned = droid_owned(_target_rules(target, rules), settings_fragment(target, stealth))
         put("droid", "permissions", _with_content(owned))
     if permission_target(manifest, "droid", "mcp") is not None and servers:
         put("droid", "mcp", stealth_seams.serialize_json(render_droid_servers(servers)))
@@ -261,7 +260,7 @@ def _codex_outputs(
     permissions = permission_target(manifest, "codex", "permissions")
     codex_rules = _target_rules(permissions, rules) if permissions is not None else EMPTY_RULES
     defined = servers if permission_target(manifest, "codex", "mcp") is not None else {}
-    instructions = _joined_fragments(stealth, "codex")
+    instructions = instruction_fragments(stealth, "codex")
     placed: list[tuple[Path, str, StealthOutput]] = []
     notes = codex_stealth_notes(codex_rules, defined)
     if instructions is not None or defined:
@@ -278,19 +277,23 @@ def _codex_outputs(
     return placed, notes
 
 
+def opencode_shared(stealth: StealthManifest, fragments: str | None) -> dict[Path, str]:
+    if fragments is None:
+        return {}
+    document = instruction_document("opencode", (fragments,), NO_FACTS)
+    return {stealth.folder / OPENCODE_INSTRUCTIONS: document}
+
+
 def _opencode_outputs(
     stealth: StealthManifest, root: Path, rules: Rules, servers: dict[str, Server]
 ) -> tuple[list[tuple[Path, str, StealthOutput]], dict[Path, str]]:
     manifest = stealth.manifest
-    paths = _instruction_paths(stealth, "opencode")
+    fragments = instruction_fragments(stealth, "opencode")
     permissions = permission_target(manifest, "opencode", "permissions")
     opencode_rules = _target_rules(permissions, rules) if permissions is not None else None
     defined = servers if permission_target(manifest, "opencode", "mcp") is not None else {}
-    shared: dict[Path, str] = {}
-    instructions: Path | None = None
-    if paths:
-        instructions = stealth.folder / OPENCODE_INSTRUCTIONS
-        shared[instructions] = document(paths)
+    shared = opencode_shared(stealth, fragments)
+    instructions = next(iter(shared), None)
     refuse_mcp_namespace_overlap(
         "opencode", EMPTY_RULES if opencode_rules is None else opencode_rules, defined
     )
@@ -308,9 +311,10 @@ def _cursor_outputs(
     manifest = stealth.manifest
     preset = STEALTH_PRESET["cursor"]
     placed: list[tuple[Path, str, StealthOutput]] = []
-    if paths := _instruction_paths(stealth, "cursor"):
+    if (fragments := instruction_fragments(stealth, "cursor")) is not None:
         rule = root / str(preset["instructions"].output) / f"{name}.mdc"
-        placed.append((rule, "cursor.instructions", for_destination(rule, document(paths))))
+        text = instruction_document("cursor", (fragments,), NO_FACTS)
+        placed.append((rule, "cursor.instructions", for_destination(rule, text)))
     notes: tuple[str, ...] = ()
     if (permissions := permission_target(manifest, "cursor", "permissions")) is not None:
         cursor_rules = _target_rules(permissions, rules)
@@ -399,4 +403,16 @@ def render_stealth(
         claude_servers=claude_servers,
         shared=shared,
         notes=(*notes, *cursor_notes, *devin_notes),
+    )
+
+
+def render_adopted(stealth: StealthManifest, name: str, target_root: Path) -> StealthRender:
+    source = PersonalSource(name, stealth, "matched")
+    return StealthRender(
+        files={},
+        claude_servers=adopted_claude_servers(
+            target_root, source, team_render_servers(target_root)
+        ),
+        shared=opencode_shared(stealth, instruction_fragments(stealth, "opencode")),
+        notes=(),
     )

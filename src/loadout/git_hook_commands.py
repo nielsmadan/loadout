@@ -41,7 +41,7 @@ def run_hook(
         return 0
     advice = "Preserve output edits, reconcile the reported conflict"
     try:
-        result = cmd_sync(root, profile)
+        result = cmd_sync(root, profile, from_hook=True)
     except Exception as error:  # noqa: BLE001 - a failing sync must not crash the git operation
         print(f"loadout: {error}", file=sys.stderr)
         result = 3

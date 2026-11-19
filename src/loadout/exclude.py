@@ -20,6 +20,10 @@ BLOCK_BEGIN = (
     "# >>> loadout stealth {name}: managed by loadout; lines inside this block are replaced"
 )
 BLOCK_END = "# <<< loadout stealth {name}"
+PERSONAL_BEGIN = (
+    "# >>> loadout personal {root}: managed by loadout; lines inside this block are replaced"
+)
+PERSONAL_END = "# <<< loadout personal {root}"
 GLOBAL_BEGIN = "# >>> loadout stealth: personal files, managed by loadout"
 GLOBAL_END = "# <<< loadout stealth"
 PERSONAL_UNITS: tuple[str, ...] = (
@@ -151,6 +155,60 @@ def write_repo_block(common_dir: Path, name: str, patterns: Sequence[str]) -> bo
     wanted = (*own, TEMP_PATTERN) if own else ()
     begin, end = BLOCK_BEGIN.format(name=name), BLOCK_END.format(name=name)
     return _edit(path, lambda text: with_block(text, begin, end, wanted), common_dir, parents=False)
+
+
+def personal_markers(root: Path) -> tuple[str, str]:
+    resolved = str(root.resolve())
+    if "\n" in resolved or "\r" in resolved:
+        raise LoadoutError(f"{resolved!r} has a line break in its path and cannot be excluded")
+    return PERSONAL_BEGIN.format(root=resolved), PERSONAL_END.format(root=resolved)
+
+
+def block_before(old_units: Iterable[str], new_units: Iterable[str]) -> tuple[str, ...]:
+    return tuple(dict.fromkeys((*old_units, *new_units)))
+
+
+def block_after(new_units: Iterable[str], on_disk: Iterable[str]) -> tuple[str, ...]:
+    return tuple(dict.fromkeys((*new_units, *on_disk)))
+
+
+def read_personal_block(common_dir: Path, root: Path) -> tuple[str, ...]:
+    begin, end = personal_markers(root)
+    path = exclude_path(common_dir)
+    try:
+        text, _ = _read_text(path)
+    except OSError as error:
+        raise LoadoutError(f"cannot read {path}: {error}") from None
+    return block_lines(_transformed(path, lambda current: current, text), begin, end) or ()
+
+
+def write_personal_block(
+    common_dir: Path, root: Path, units: Callable[[tuple[str, ...]], Sequence[str]]
+) -> bool:
+    if not common_dir.is_dir():
+        raise LoadoutError(f"the git directory {common_dir} does not exist")
+    path = exclude_path(common_dir)
+    no_symlinks(path.parent, common_dir)
+    no_symlinks(path, common_dir)
+    begin, end = personal_markers(root)
+
+    def transform(text: str) -> str:
+        current = block_lines(text, begin, end) or ()
+        swept = _without_vanished_personal_blocks(text, begin)
+        return with_block(swept, begin, end, tuple(dict.fromkeys(units(current))))
+
+    return _edit(path, transform, common_dir, parents=False)
+
+
+def _without_vanished_personal_blocks(text: str, keep_begin: str) -> str:
+    prefix, suffix = PERSONAL_BEGIN.split("{root}")
+    for line in text.splitlines():
+        if line == keep_begin or not (line.startswith(prefix) and line.endswith(suffix)):
+            continue
+        root = line[len(prefix) : len(line) - len(suffix)]
+        if not Path(root).exists():
+            text = with_block(text, line, PERSONAL_END.format(root=root), ())
+    return text
 
 
 @dataclass(frozen=True)

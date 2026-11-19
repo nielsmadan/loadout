@@ -13,7 +13,7 @@ from typing import Literal, assert_never
 from . import git_runner
 from .containment import refuse_escaping, within
 from .credentials import findings, names_a_secret
-from .emit import RenderContext, declared_profiles, render_all
+from .emit import RenderContext, declared_profiles, render_all, render_all_detailed
 from .errors import LoadoutError
 from .files import (
     Drift,
@@ -33,7 +33,7 @@ from .files import (
     write_outputs,
 )
 from .git_tree import render_inputs, tree_entries, write_snapshot
-from .gitignore import append_lines, remove_lines, require_plain_gitignore
+from .gitignore import appended_lines, remove_lines, require_plain_gitignore
 from .machine import is_registered, registered_at
 from .output import (
     Copied,
@@ -45,6 +45,7 @@ from .output import (
     output_record_paths,
     sha256,
 )
+from .personal_sync import personal_view, team_only
 from .project import gitignore_entries
 from .retirement import orphan_drift, orphaned, retire, stripped
 from .state import SyncState, sync_state
@@ -63,6 +64,7 @@ from .written import (
     normalise,
     owned_hashes,
     owned_values,
+    read_personal,
     record_written,
     text_entry,
 )
@@ -503,11 +505,18 @@ def refuse_unparsable_orphans(state: SyncState, outputs: Mapping[Path, Output]) 
             raise UnparsableDocument(path, format_name, orphaned=True)
 
 
-def retire_orphans(state: SyncState, outputs: Mapping[Path, Output]) -> tuple[list[Path], int]:
+def retire_orphans(
+    state: SyncState,
+    outputs: Mapping[Path, Output],
+    ignored: Mapping[Path, Output] | None = None,
+    unlisted: frozenset[Path] = frozenset(),
+) -> tuple[list[Path], int]:
     """Retire every recorded destination this run no longer renders, once the guard
     has passed or been forced, and forget them. Returns the paths changed on disk and
     how many `.gitignore` entries were dropped. The record read before deploying names
-    the same orphans: deploying records only what this run renders."""
+    the same orphans: deploying records only what this run renders. `ignored` is what
+    `.gitignore` lists, when that is less than `outputs`; `unlisted` are paths sync never
+    lists there, so a line naming one is not sync's to drop."""
     root = state.root
     orphans = orphaned(state.written, outputs)
     if not orphans:
@@ -518,9 +527,12 @@ def retire_orphans(state: SyncState, outputs: Mapping[Path, Output]) -> tuple[li
         return retired, 0
     # Gone, whether retiring deleted it just now or it was deleted by hand before.
     deleted = [
-        path for path, entry in orphans.items() if entry.kind != "merged" and not path.exists()
+        path
+        for path, entry in orphans.items()
+        if entry.kind != "merged" and not path.exists() and path not in unlisted
     ]
-    unwanted = set(gitignore_entries(root, deleted)) - set(gitignore_entries(root, outputs))
+    listed = outputs if ignored is None else ignored
+    unwanted = set(gitignore_entries(root, deleted)) - set(gitignore_entries(root, listed))
     return retired, remove_lines(root, unwanted)
 
 
@@ -529,10 +541,13 @@ def deploy(
     outputs: Mapping[Path, Output],
     sources: Callable[[Path], str] | None = None,
     read: Mapping[Path, bytes | None] | None = None,
+    *,
+    ignored: Mapping[Path, Output] | None = None,
 ) -> tuple[list[Path], int]:
     """Write rendered outputs, record them, and ignore them: what sync does once the
     guard has passed, shared with init's first render. Returns the paths written and
-    how many `.gitignore` entries were added."""
+    how many `.gitignore` entries were added; the record keeps the entries themselves.
+    `ignored` is what `.gitignore` lists, when that is not `outputs`."""
     root = state.root
     if state.project:
         require_plain_gitignore(root)
@@ -556,8 +571,12 @@ def deploy(
     # Root-anchored, the form init's migration writes: a bare "CLAUDE.md"
     # would also ignore loadout/instructions/native/claude/CLAUDE.md, and
     # `git add loadout` then silently drops that source from the index.
-    entries = list(gitignore_entries(root, outputs))
-    return written, append_lines(root, entries)
+    entries = list(gitignore_entries(root, outputs if ignored is None else ignored))
+    appended = appended_lines(root, entries)
+    if appended:
+        lines = read_personal(root).gitignored
+        record_written(root, {}, gitignored=dict.fromkeys((*lines, *appended)))
+    return written, len(appended)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -648,8 +667,14 @@ def classified_drift(root: Path, profile: str, context: RenderContext | None = N
     A merged output the guard refuses has an edited owned key. An orphan the guard
     accepts is orphaned; one it refuses is hand-edited, because sync will refuse it.
     """
-    outputs = render_all(root, profile, context)
-    state = sync_state(root)
+    rendered, project = render_all_detailed(root, profile, context or RenderContext())
+    found_state = sync_state(root)
+    try:
+        view = personal_view(root, rendered, project, found_state.written, read_personal(root))
+    except LoadoutError as error:
+        view = team_only(rendered, project, found_state.written, read_personal(root), str(error))
+    outputs = view.outputs
+    state = replace(found_state, written=view.written)
     orphans = orphaned(state.written, outputs)
     # First, since it refuses an unsafe orphan before any orphan is read, as the reads
     # below would.

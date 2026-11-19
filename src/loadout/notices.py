@@ -40,6 +40,7 @@ from .emit import (
     project_instruction_sources,
     project_kits,
     project_rules,
+    project_servers,
     project_settings_path,
     project_skill_trees,
     project_slice_document,
@@ -49,6 +50,7 @@ from .emit import (
     skill_trees,
     slice_document,
     source_agents,
+    trial_render,
 )
 from .errors import LoadoutError
 from .harnesses import GLOBAL_PRESET
@@ -75,6 +77,7 @@ from .permissions.renderers import (
     devin_word_prefix,
 )
 from .permissions.rules import Rules, exact_command, is_exact, is_glob
+from .personal import NO_PERSONAL, PersonalTier, personal_inputs
 from .plugins import ADDRESSED_BY, marketplaces, unaddressable, unregistered_marketplaces
 from .project import (
     PROJECT_DIR,
@@ -687,7 +690,7 @@ def collect_notices(
     """Advisory findings about project setup and global slice fragments."""
     environ = os.environ if environ is None else environ
     found: list[Notice] = [
-        *project_notices(root, environ),
+        *project_notices(root, environ, context.personal if context else NO_PERSONAL),
         *kit_notices(root),
     ]
     if not manifest_path(root).is_file():
@@ -743,7 +746,9 @@ def collect_notices(
     return tuple(found)
 
 
-def project_notices(root: Path, environ: Mapping[str, str]) -> tuple[Notice, ...]:
+def project_notices(
+    root: Path, environ: Mapping[str, str], personal: PersonalTier = NO_PERSONAL
+) -> tuple[Notice, ...]:
     """What project scope rendered while doing less than its source says.
 
     Three kinds: a permission rule the selected renderer cannot carry, a slice
@@ -774,12 +779,18 @@ def project_notices(root: Path, environ: Mapping[str, str]) -> tuple[Notice, ...
         )
     )
     kits = project_kits(root, config, RenderContext())
-    rules = project_rules(root, kits, config.server_policies)
+    rules = personal_inputs(
+        personal,
+        config.harnesses,
+        project_rules(root, kits, config.server_policies),
+        project_servers(root, kits, config.server_policies),
+        lambda harness, rules, servers: trial_render(root, harness, rules, servers),
+    ).rules
     permissions: list[Notice] = []
     documents: list[Notice] = []
     for agent, slice_name, spec in project_slices(config.harnesses):
         if slice_name == "permissions" and spec.renderer:
-            permissions.extend(_renderer_notices(agent, spec.renderer, rules))
+            permissions.extend(_renderer_notices(agent, spec.renderer, rules[agent]))
         elif slice_name in PROJECT_DOCUMENTS:
             document, contributed = project_slice_document(root, slice_name, kits)
             if contributed:

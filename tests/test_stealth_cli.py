@@ -13,11 +13,12 @@ import pytest
 
 import loadout
 from fixture_root import STEALTH_FIXTURES, build_root
-from loadout import stealth_record, stealth_sync
+from loadout import stealth_commands, stealth_record, stealth_sync
 from loadout.exclude import (
     BLOCK_BEGIN,
     GlobalIgnoreState,
     global_pattern,
+    read_personal_block,
     write_global_state,
 )
 from loadout.init_workflow import INTERRUPTED
@@ -29,6 +30,7 @@ from loadout.stealth_record import (
     write_stealth_record,
 )
 from loadout.stealth_registry import load_registry, stealth_path
+from loadout.written import read_personal
 from registration import register
 
 pytestmark = pytest.mark.integration
@@ -340,28 +342,31 @@ def _project(home: Path) -> Path:
     return root
 
 
-def test_a_project_the_stealth_source_never_wrote_is_skipped_and_checks_as_one_object(
+def test_a_project_the_stealth_source_never_wrote_gets_its_servers_and_checks_as_one_object(
     fake_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    _stealth(fake_home)
+    folder, _ = _stealth(fake_home)
     root = _project(fake_home)
     monkeypatch.chdir(root)
-    skipped = (
-        f"stealth {NAME}: ~/{root.name}: skipped: adopted loadout (it has loadout/config.toml); "
-        "the stealth source does not write here"
-    )
 
     assert loadout.main(["sync"]) == 0
-    assert skipped in capsys.readouterr().err
+    assert _claude_servers(fake_home, root) == ["docs", "local-tool"]
+    assert _record(folder)["targets"][str(root)]["written"] == {}
+    assert "# Personal" in (root / LOCAL).read_text(encoding="utf-8")
     assert (root / "CLAUDE.md").is_file()
     (root / "CLAUDE.md").unlink()
+    capsys.readouterr()
 
     assert loadout.main(["check", "--json"]) == 1
 
     result = json.loads(capsys.readouterr().out)
     assert (result["status"], result["exit_code"], result["errors"]) == ("drift", 1, [])
     assert result["drift"] == [{"path": str(root / "CLAUDE.md"), "kind": "missing"}]
-    assert skipped in result["notes"]
+
+
+def _claude_servers(home: Path, root: Path) -> list[str]:
+    projects = json.loads((home / ".claude.json").read_text(encoding="utf-8"))["projects"]
+    return sorted(projects.get(str(root), {}).get("mcpServers", {}))
 
 
 def _registry_names() -> dict[str, bool]:
@@ -1246,20 +1251,360 @@ def test_a_target_that_adopts_loadout_is_retired_by_the_stealth_source_before_th
     assert f"{note}files here" in out
     assert out.index(note) < out.index("CLAUDE.md")
     assert _files(root) == [
+        ".claude/mcp-permissions.json",
         ".claude/settings.json",
+        ".claude/settings.local.json",
+        ".claude/skills/probe/SKILL.md",
+        ".claude/skills/probe/reference.md",
         ".gitignore",
         "AGENTS.md",
+        "CLAUDE.local.md",
         "CLAUDE.md",
         "loadout/config.toml",
         "loadout/instructions/team.md",
     ]
-    assert str(root) not in _record(folder)["targets"]
-    projects = json.loads((fake_home / ".claude.json").read_text(encoding="utf-8"))["projects"]
-    assert projects[str(root)]["mcpServers"] == {}
+    assert _git(root, "status", "--porcelain") == "?? .gitignore\n"
+    assert _record(folder)["targets"][str(root)]["written"] == {}
+    assert _claude_servers(fake_home, root) == ["docs", "local-tool"]
+    capsys.readouterr()
+
+    assert loadout.main(["sync"]) == 0
+    assert note not in capsys.readouterr().out
 
     assert loadout.main(["stealth", "remove", NAME, "--yes"]) == 0
     assert (root / "CLAUDE.md").is_file()
+    assert not (root / LOCAL).exists()
+    assert _claude_servers(fake_home, root) == []
     assert loadout.main(["check"]) == 0
+
+
+def _adopted_clones(home: Path) -> tuple[Path, list[Path]]:
+    folder, roots = _stealth(home, "a", "b")
+    for root in roots:
+        _adopt(root)
+    return folder, roots
+
+
+def _personal_block(root: Path) -> tuple[str, ...]:
+    return read_personal_block(root / ".git", root)
+
+
+def test_sync_by_name_writes_the_servers_and_personal_files_of_every_adopted_clone(
+    fake_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _, roots = _adopted_clones(fake_home)
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--stealth", NAME]) == 0
+
+    out = capsys.readouterr().out
+    for root in roots:
+        assert f"project ~/{root.name}:" in out
+        assert _claude_servers(fake_home, root) == ["docs", "local-tool"]
+        assert "# Personal" in (root / LOCAL).read_text(encoding="utf-8")
+        assert (root / "CLAUDE.md").read_text(encoding="utf-8").endswith("Team.\n")
+        assert "/CLAUDE.local.md" in _personal_block(root)
+        assert _git(root, "status", "--porcelain") == "?? .gitignore\n"
+
+
+def test_a_plain_sync_in_one_adopted_clone_leaves_the_other_alone(
+    fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    folder, (first, second) = _adopted_clones(fake_home)
+    assert loadout.main(["sync", "--stealth", NAME]) == 0
+    _edit_source(folder)
+    stamps = _stamps(second)
+    monkeypatch.chdir(first)
+
+    assert loadout.main(["sync"]) == 0
+
+    assert "Edited." in (first / LOCAL).read_text(encoding="utf-8")
+    assert _stamps(second) == stamps
+
+
+def test_check_by_name_checks_every_adopted_clone(
+    fake_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    folder, roots = _adopted_clones(fake_home)
+    assert loadout.main(["sync", "--stealth", NAME]) == 0
+    _edit_source(folder)
+    capsys.readouterr()
+
+    assert loadout.main(["check", "--stealth", NAME]) == 1
+
+    captured = capsys.readouterr()
+    assert captured.err.count(f"DRIFT (source-changed): {LOCAL}") == len(roots)
+    for root in roots:
+        assert f"project ~/{root.name}:" in captured.out
+        assert "Edited." not in (root / LOCAL).read_text(encoding="utf-8")
+
+
+def test_narrowing_the_targets_retires_the_other_clones_files_and_servers(
+    fake_home: Path,
+) -> None:
+    folder, (first, second) = _adopted_clones(fake_home)
+    assert loadout.main(["sync", "--stealth", NAME]) == 0
+    _retarget(folder, "~/stealth-fixture-a")
+
+    assert loadout.main(["sync", "--stealth", NAME]) == 0
+
+    assert (first / LOCAL).is_file()
+    assert _claude_servers(fake_home, first) == ["docs", "local-tool"]
+    assert not (second / LOCAL).exists()
+    assert _claude_servers(fake_home, second) == []
+    assert (second / "CLAUDE.md").is_file()
+    assert _personal_block(second) == ()
+
+
+def test_stealth_remove_retires_every_adopted_clone_and_unregisters(
+    fake_home: Path,
+) -> None:
+    folder, roots = _adopted_clones(fake_home)
+    assert loadout.main(["sync", "--stealth", NAME]) == 0
+    assert all((root / LOCAL).is_file() for root in roots)
+
+    assert loadout.main(["stealth", "remove", NAME, "--yes"]) == 0
+
+    for root in roots:
+        assert not (root / LOCAL).exists()
+        assert _claude_servers(fake_home, root) == []
+        assert (root / "CLAUDE.md").is_file()
+        assert _personal_block(root) == ()
+    assert _registry_names() == {}
+    assert not stealth_record_path(folder).exists()
+
+
+def test_stealth_remove_keeps_the_mark_while_a_clone_fails_and_a_retry_finishes(
+    fake_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    folder, (first, second) = _adopted_clones(fake_home)
+    assert loadout.main(["sync", "--stealth", NAME]) == 0
+    config = second / "loadout" / "config.toml"
+    good = config.read_text(encoding="utf-8")
+    config.write_text("harnesses = [\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert loadout.main(["stealth", "remove", NAME, "--yes"]) == 3
+
+    err = capsys.readouterr().err
+    assert f"project ~/{second.name}: ERROR: " in err
+    assert f"`loadout stealth remove {NAME}` again" in err
+    assert _registry_names() == {NAME: True}
+    assert not (first / LOCAL).exists()
+    assert (second / LOCAL).is_file()
+
+    config.write_text(good, encoding="utf-8")
+    assert loadout.main(["stealth", "remove", NAME, "--yes"]) == 0
+
+    assert not (second / LOCAL).exists()
+    assert _registry_names() == {}
+    assert not stealth_record_path(folder).exists()
+
+
+def _stranded(home: Path) -> tuple[Path, Path, tuple[Path, ...]]:
+    folder, (first, second) = _adopted_clones(home)
+    assert loadout.main(["sync", "--stealth", NAME]) == 0
+    personal = tuple(read_personal(second).personal)
+    _git(second, "rm", "-q", "-r", "loadout")
+    _git(second, "commit", "-q", "-m", "drop loadout")
+    return folder, first, (second, *personal)
+
+
+def test_stealth_remove_retires_the_personal_tier_of_a_clone_that_stopped_being_adopted(
+    fake_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    folder, _, (second, *personal) = _stranded(fake_home)
+    assert second / LOCAL in personal
+    assert all(path.is_file() for path in personal)
+    assert "/CLAUDE.local.md" in _personal_block(second)
+    capsys.readouterr()
+
+    assert loadout.main(["stealth", "remove", NAME, "--yes"]) == 0
+
+    assert f"retired {LOCAL}" in capsys.readouterr().out
+    assert [path for path in personal if path.exists()] == []
+    assert not (second / ".claude" / "skills" / "probe").exists()
+    assert (second / "CLAUDE.md").is_file()
+    assert _personal_block(second) == ()
+    record = read_personal(second)
+    assert (record.personal, record.contributors) == ({}, ())
+    assert _registry_names() == {}
+    assert not stealth_record_path(folder).exists()
+
+
+def test_a_clone_that_stopped_being_adopted_keeps_a_personal_file_the_user_edited(
+    fake_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _, _, (second, *personal) = _stranded(fake_home)
+    local = second / LOCAL
+    local.write_text(local.read_text(encoding="utf-8") + "Mine.\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert loadout.main(["stealth", "remove", NAME, "--yes"]) == 0
+
+    captured = capsys.readouterr()
+    assert f"WARNING: kept {LOCAL}: it was modified since loadout wrote it" in captured.err
+    assert local.read_text(encoding="utf-8").endswith("Mine.\n")
+    assert [path for path in personal if path.exists()] == [local]
+    assert read_personal(second).personal == {}
+    assert _registry_names() == {}
+
+
+def test_sync_by_name_releases_a_clone_that_stopped_being_adopted_before_writing_into_it(
+    fake_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    folder, first, (second, *_) = _stranded(fake_home)
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--stealth", NAME]) == 0
+
+    assert f"retired {LOCAL}" in capsys.readouterr().out
+    assert read_personal(second).contributors == ()
+    assert str(second / LOCAL) in _record(folder)["targets"][str(second)]["written"]
+    assert "# Personal" in (second / LOCAL).read_text(encoding="utf-8")
+    assert read_personal(first).contributors == (NAME,)
+
+
+def test_a_clone_that_stopped_being_adopted_keeps_a_personal_file_the_team_tracks(
+    fake_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _, _, (second, *personal) = _stranded(fake_home)
+    _git(second, "add", "-f", LOCAL)
+    _git(second, "commit", "-q", "-m", "track the local file")
+    committed = _git(second, "show", f"HEAD:{LOCAL}")
+    capsys.readouterr()
+
+    assert loadout.main(["stealth", "remove", NAME, "--yes"]) == 0
+
+    captured = capsys.readouterr()
+    assert f"note: the team tracks {LOCAL}; it is left in place and no longer recorded" in (
+        captured.err
+    )
+    assert (second / LOCAL).read_text(encoding="utf-8") == committed
+    assert _git(second, "status", "--porcelain") == "?? .gitignore\n"
+    assert [path for path in personal if path.exists()] == [second / LOCAL]
+    assert read_personal(second).personal == {}
+    assert _registry_names() == {}
+
+
+def test_an_adopted_clone_git_cannot_read_keeps_its_personal_files_and_the_removal_mark(
+    fake_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    folder, (first, second) = _adopted_clones(fake_home)
+    assert loadout.main(["sync", "--stealth", NAME]) == 0
+    personal = tuple(read_personal(second).personal)
+    (second / ".git").rename(second / ".git.off")
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--stealth", NAME]) == 0
+
+    out = capsys.readouterr().out
+    assert f"note: project ~/{second.name}: skipped;" in out
+    assert all(path.is_file() for path in personal)
+
+    assert loadout.main(["stealth", "remove", NAME, "--yes", "--force"]) == 3
+
+    captured = capsys.readouterr()
+    assert f"note: project ~/{second.name}: skipped;" in captured.out
+    assert f"`loadout stealth remove {NAME}` again" in captured.err
+    assert _registry_names() == {NAME: True}
+    assert not (first / LOCAL).exists()
+    assert all(path.is_file() for path in personal)
+    assert read_personal(second).contributors == (NAME,)
+
+    (second / ".git.off").rename(second / ".git")
+    assert loadout.main(["stealth", "remove", NAME, "--yes"]) == 0
+    assert [path for path in personal if path.exists()] == []
+    assert _registry_names() == {}
+    assert not stealth_record_path(folder).exists()
+
+
+def test_stealth_remove_keeps_the_mark_when_the_synced_projects_cannot_be_listed(
+    fake_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    folder, (root,) = _stealth(fake_home, "a")
+    assert loadout.main(["sync", "--stealth", NAME]) == 0
+
+    def unlisted(name: str) -> tuple[Path, ...]:
+        raise OSError("denied")
+
+    monkeypatch.setattr(stealth_commands, "roots_naming_stealth", unlisted)
+    capsys.readouterr()
+
+    assert loadout.main(["stealth", "remove", NAME, "--yes"]) == 3
+
+    err = capsys.readouterr().err
+    assert "WARNING: cannot list the projects this machine has synced: denied" in err
+    assert f"`loadout stealth remove {NAME}` again" in err
+    assert _registry_names() == {NAME: True}
+    assert stealth_record_path(folder).exists()
+    assert not (root / LOCAL).exists()
+
+
+def test_stealth_remove_keeps_the_mark_while_a_clone_record_cannot_be_read(
+    fake_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    folder, roots = _adopted_clones(fake_home)
+    assert loadout.main(["sync", "--stealth", NAME]) == 0
+
+    broken = [True]
+    names = stealth_commands.record_names_stealth
+
+    def unreadable(root: Path, name: str) -> bool:
+        if broken:
+            raise OSError("denied")
+        return names(root, name)
+
+    monkeypatch.setattr(stealth_commands, "record_names_stealth", unreadable)
+    capsys.readouterr()
+
+    assert loadout.main(["stealth", "remove", NAME, "--yes"]) == 3
+
+    err = capsys.readouterr().err
+    assert "WARNING: cannot read what loadout recorded for" in err
+    assert _registry_names() == {NAME: True}
+    assert all(not (root / LOCAL).exists() for root in roots)
+
+    broken.clear()
+    assert loadout.main(["stealth", "remove", NAME, "--yes"]) == 0
+    assert _registry_names() == {}
+    assert not stealth_record_path(folder).exists()
+
+
+def test_one_adopted_clone_failing_is_reported_and_the_other_still_syncs(
+    fake_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _, (first, second) = _adopted_clones(fake_home)
+    (second / "loadout" / "config.toml").write_text("harnesses = [\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--stealth", NAME]) == 3
+
+    assert f"project ~/{second.name}: ERROR: " in capsys.readouterr().err
+    assert "# Personal" in (first / LOCAL).read_text(encoding="utf-8")
+    assert _claude_servers(fake_home, first) == ["docs", "local-tool"]
+
+
+def test_a_team_server_keeps_the_personal_server_of_its_name_out_of_claude_json(
+    fake_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _, (root,) = _stealth(fake_home, "a")
+    (root / "loadout").mkdir()
+    (root / "loadout" / "mcp.toml").write_text(
+        '[docs]\ntransport = "http"\nurl = "https://team.example/mcp"\n', encoding="utf-8"
+    )
+    _adopt(root)
+    capsys.readouterr()
+
+    assert loadout.main(["sync", "--stealth", NAME]) == 3
+
+    assert _claude_servers(fake_home, root) == ["local-tool"]
+    team = json.loads((root / ".mcp.json").read_text(encoding="utf-8"))["mcpServers"]
+    assert team["docs"]["url"] == "https://team.example/mcp"
+    assert (
+        f"refused: stealth {NAME}: its server docs clashes with the team's server docs"
+        in capsys.readouterr().err
+    )
 
 
 def test_a_run_scans_the_stealth_source_records_as_often_for_three_targets_as_for_one(

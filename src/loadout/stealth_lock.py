@@ -6,8 +6,8 @@ import os
 import signal
 import threading
 import time
-from collections.abc import Iterator, Mapping
-from contextlib import AbstractContextManager, contextmanager, nullcontext
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import AbstractContextManager, contextmanager, nullcontext, suppress
 from pathlib import Path
 
 from . import machine
@@ -50,6 +50,18 @@ def _held_message(lock_path: Path, what: str) -> str:
     return f"another loadout process (pid {pid}) is syncing {what}; wait for it to finish"
 
 
+def _acquire(fd: int, held: Callable[[], str]) -> None:
+    deadline = time.monotonic() + LOCK_TIMEOUT_SECONDS
+    while True:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return
+        except BlockingIOError:
+            if time.monotonic() >= deadline:
+                raise LoadoutError(held()) from None
+            time.sleep(_POLL_SECONDS)
+
+
 @contextmanager
 def _flocked(lock_path: Path, what: str) -> Iterator[None]:
     try:
@@ -58,15 +70,7 @@ def _flocked(lock_path: Path, what: str) -> Iterator[None]:
     except OSError as error:
         raise LoadoutError(f"{lock_path}: {error}") from None
     try:
-        deadline = time.monotonic() + LOCK_TIMEOUT_SECONDS
-        while True:
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except BlockingIOError:
-                if time.monotonic() >= deadline:
-                    raise LoadoutError(_held_message(lock_path, what)) from None
-                time.sleep(_POLL_SECONDS)
+        _acquire(fd, lambda: _held_message(lock_path, what))
         os.ftruncate(fd, 0)
         os.write(fd, str(os.getpid()).encode())
         try:
@@ -85,6 +89,25 @@ def _lock_file(kind: str, path: Path) -> Path:
 def stealth_lock(folder: Path) -> Iterator[None]:
     with _flocked(_lock_file("stealth", folder), str(folder)):
         yield
+
+
+@contextmanager
+def project_lock(root: Path) -> Iterator[None]:
+    try:
+        fd: int | None = os.open(root.resolve(), os.O_RDONLY | os.O_DIRECTORY)
+    except OSError:
+        fd = None
+    if fd is None:
+        yield
+        return
+    try:
+        with suppress(OSError):
+            _acquire(
+                fd, lambda: f"another loadout process is syncing {root}; wait for it to finish"
+            )
+        yield
+    finally:
+        os.close(fd)
 
 
 @contextmanager

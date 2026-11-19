@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .composition import HEADER, for_destination, load_fragment, render
 from .containment import is_read_through, refuse_escaping, refuse_external_links
 from .destinations import resolve_destination
 from .documents import merge_documents
 from .errors import LoadoutError
-from .harnesses import DIRECTORY_SLICES, SHARED_SKILL_READERS
+from .harnesses import DIRECTORY_SLICES, SHARED_SKILL_READERS, SliceOutput
 from .kit_catalog import Catalog, contribution_paths, load_catalogs
 from .kits import resolve_kit, resolve_upstream_kit
 from .machine import Registration, is_registered, registration, unregistered
@@ -48,7 +48,21 @@ from .permissions.renderers import (
     render_pi_project,
 )
 from .permissions.rules import EMPTY_RULES, Rules, parse_rules
-from .personal import NO_PERSONAL, PersonalInputs, PersonalReport, PersonalTier, personal_inputs
+from .personal import (
+    NO_PERSONAL,
+    PersonalInputs,
+    PersonalParts,
+    PersonalReport,
+    PersonalSkill,
+    PersonalSkills,
+    PersonalTier,
+    claude_server_selection,
+    opencode_instruction_paths,
+    personal_documents,
+    personal_inputs,
+    personal_parts,
+    personal_skills,
+)
 from .project import (
     PROJECT_CONFIG_NAME,
     PROJECT_DIR,
@@ -87,7 +101,10 @@ from .subagents import (
 from .surgery import concat_documents
 from .toml_paths import key_name, leaf_values, overlapping_keys
 from .worktrees import linked_worktree_source
-from .written import codex_server_ownership, read_written
+from .written import WrittenEntry, codex_server_ownership, read_written
+
+if TYPE_CHECKING:
+    from .stealth_render import TargetFacts
 
 PERMISSIONS_SOURCE = "permissions.toml"
 PROJECT_LOCAL_SOURCE = "permissions.local.toml"
@@ -1114,7 +1131,7 @@ def render_project(root: Path, context: RenderContext | None = None) -> dict[Pat
 
 def render_project_detailed(root: Path, context: RenderContext) -> ProjectRender:
     outputs, inputs = _render_project(root, context, context.personal)
-    if not inputs.report.contributors:
+    if not inputs.report.contributors and not inputs.report.held:
         return ProjectRender(outputs, outputs, inputs.report)
     team, _ = _render_project(root, context, NO_PERSONAL)
     return ProjectRender(outputs, team, inputs.report)
@@ -1231,7 +1248,7 @@ def project_owned_keys(harnesses: tuple[str, ...], output: str) -> frozenset[str
     return frozenset(keys)
 
 
-def _trial_render(
+def trial_render(
     root: Path, harness: str, rules: Rules, servers: Mapping[str, Server]
 ) -> LoadoutError | None:
     for _agent, slice_name, spec in project_slices((harness,)):
@@ -1260,14 +1277,16 @@ def _trial_render(
 def _render_project_slices(
     root: Path, config: ProjectConfig, kits: ProjectKits, tier: PersonalTier
 ) -> tuple[dict[Path, Output], PersonalInputs]:
+    team_servers = project_servers(root, kits, config.server_policies)
     inputs = personal_inputs(
         tier,
         config.harnesses,
         project_rules(root, kits, config.server_policies),
-        project_servers(root, kits, config.server_policies),
-        lambda harness, rules, servers: _trial_render(root, harness, rules, servers),
+        team_servers,
+        lambda harness, rules, servers: trial_render(root, harness, rules, servers),
     )
 
+    parts = personal_parts(tier, config.harnesses)
     instructions = project_instructions(root, config, kits)
     trees = project_skill_trees(root, kits)
     project_documents = {
@@ -1298,8 +1317,7 @@ def _render_project_slices(
     # slice writes "permission" into, so both must reach compose_permission_document
     # together rather than each overwriting the other's call.
     groups: dict[Path, list[tuple[PermissionTarget, dict[str, Any], dict[str, Any]]]] = {}
-    _check_skill_agents(trees, config.skill_policies, project_agents(root))
-    _expand_project_catalog(root, config, trees, expansion)
+    skills = _expand_skill_catalog(root, config, trees, tier, expansion)
     for agent, slice_name, spec in project_slices(config.harnesses):
         if spec.output is None:
             continue
@@ -1339,9 +1357,11 @@ def _render_project_slices(
             owned_key=spec.owned_key,
             content_slice=spec.source_slice,
         )
-        residual = _project_residual(root, agent, path) if spec.preserve_foreign else {}
-        if drop := retired.get(path):
-            residual = {key: value for key, value in residual.items() if key not in drop}
+        residual = _slice_residual(root, agent, path, spec, retired.get(path, set()))
+        if agent == "opencode" and slice_name == "permissions":
+            residual = _with_personal_instructions(
+                residual, opencode_instruction_paths(parts), held=bool(inputs.report.held)
+            )
         content = (
             dict(servers)
             if slice_name == "mcp"
@@ -1362,7 +1382,97 @@ def _render_project_slices(
         # manifest's sources. No project slice has derived ownership today.
         agent = contributors[0][0].harness or ""
         outputs[path] = compose_permission_document(contributors, inputs.rules[agent], path)
-    return outputs, inputs
+    documents = _personal_documents(root, parts, inputs, outputs)
+    claude, claude_refusals = claude_server_selection(tier.matched, config.harnesses, team_servers)
+    return {**outputs, **documents}, _with_personal_report(
+        tier,
+        inputs,
+        (*claude_refusals, *skills.refusals, *parts.refusals),
+        skills.notes,
+        frozenset(
+            {
+                *(name for name, servers in claude.items() if servers),
+                *(placed.source for placed in skills.skills),
+                *parts.contributors,
+            }
+        ),
+    )
+
+
+def _slice_residual(
+    root: Path, agent: str, path: Path, spec: SliceOutput, drop: set[str]
+) -> dict[str, Any]:
+    residual = _project_residual(root, agent, path) if spec.preserve_foreign else {}
+    return {key: value for key, value in residual.items() if key not in drop}
+
+
+def _personal_documents(
+    root: Path, parts: PersonalParts, inputs: PersonalInputs, team: Mapping[Path, Output]
+) -> dict[Path, Output]:
+    if not parts.contributors and not inputs.added.get("codex") and not inputs.report.held:
+        return {}
+    recorded = read_written(root)
+    return personal_documents(
+        root, parts, inputs, lambda: _personal_facts(root, team, recorded), recorded
+    )
+
+
+def _with_personal_report(
+    tier: PersonalTier,
+    inputs: PersonalInputs,
+    refusals: tuple[str, ...],
+    notes: tuple[str, ...],
+    added: frozenset[str],
+) -> PersonalInputs:
+    report = inputs.report
+    contributors = {*report.contributors, *added}
+    return replace(
+        inputs,
+        report=replace(
+            report,
+            refusals=tuple(dict.fromkeys((*refusals, *report.refusals))),
+            notes=(*report.notes, *notes),
+            contributors=tuple(name for name, _ in tier.matched if name in contributors),
+        ),
+    )
+
+
+def _personal_entry(entry: object) -> bool:
+    return isinstance(entry, str) and PurePosixPath(entry).parts[-2:] == (
+        ".loadout",
+        "opencode-instructions.md",
+    )
+
+
+def _with_personal_instructions(
+    residual: dict[str, Any], personal: tuple[str, ...], *, held: bool
+) -> dict[str, Any]:
+    current = residual.get("instructions")
+    if not isinstance(current, list):
+        return {**residual, "instructions": list(personal)} if personal else residual
+    kept = current if held else [entry for entry in current if not _personal_entry(entry)]
+    wanted = [*kept, *(entry for entry in personal if entry not in kept)]
+    if wanted:
+        return {**residual, "instructions": wanted}
+    return {key: value for key, value in residual.items() if key != "instructions"}
+
+
+def _personal_facts(
+    root: Path, team: Mapping[Path, Output], recorded: Mapping[Path, WrittenEntry]
+) -> TargetFacts:
+    from .stealth_render import target_facts  # noqa: PLC0415 - stealth_render imports emit
+
+    resolved = root.resolve()
+
+    def present(path: Path) -> bool:
+        if not path.is_relative_to(resolved):
+            return path.is_file()
+        local = root / path.relative_to(resolved)
+        if local in team:
+            return True
+        return local not in recorded and path.is_file()
+
+    return target_facts(root, present)
 
 
 PROJECT_SETTINGS_DIR = "settings"
@@ -1414,6 +1524,13 @@ def layered_skill_trees(kits: ProjectKits, own: Iterable[Skill]) -> tuple[Skill,
     return tuple(sorted(collected.values(), key=lambda s: s.name))
 
 
+def team_render_servers(root: Path) -> dict[str, Server]:
+    refuse_project_inputs(root)
+    config = load_project_config(project_config_path(root))
+    kits = project_kits(root, config, RenderContext())
+    return project_servers(root, kits, config.server_policies)
+
+
 def project_servers(
     root: Path, kits: ProjectKits, policies: tuple[ServerPolicy, ...] = ()
 ) -> dict[str, Server]:
@@ -1454,33 +1571,133 @@ def _write_skill(
         outputs[path] = Copied(source=skill.supporting_root / relative)
 
 
-def _expand_project_catalog(
+def skill_agents(skill: Skill, selected: tuple[str, ...], rendered: bool) -> list[str]:
+    remaining = list(selected)
+    if "codex" not in selected:
+        return remaining
+    shared = frozenset(SHARED_SKILL_READERS).intersection(selected)
+    variants = {
+        agent: render_skill(skill, agent) if rendered else skill.document.read_bytes()
+        for agent in shared
+    }
+    if len(variants) > 1 and len(set(variants.values())) == 1:
+        remaining = [agent for agent in remaining if agent not in SHARED_SKILL_READERS]
+        remaining.insert(0, "codex")
+    return remaining
+
+
+def skill_harnesses(config: ProjectConfig) -> tuple[str, ...]:
+    return tuple(agent for agent in config.harnesses if "skills" in PROJECT_PRESET[agent])
+
+
+def _team_skills(
+    root: Path, config: ProjectConfig, trees: tuple[Skill, ...]
+) -> tuple[tuple[Skill, tuple[str, ...], bool], ...]:
+    available = skill_harnesses(config)
+    aliases = skill_aliases_in(project_config_path(root), trees, config.skill_policies)
+    return tuple(
+        (
+            aliased_skill(original, aliases),
+            selected_skill_agents(original.name, available, config.skill_policies),
+            render_skill_for(original.name, config.skill_policies),
+        )
+        for original in trees
+    )
+
+
+def _place_skill(
+    root: Path, skill: Skill, selected: tuple[str, ...], rendered: bool, state: _Expansion
+) -> None:
+    for agent in skill_agents(skill, selected, rendered):
+        spec = PROJECT_PRESET[agent]["skills"]
+        assert spec.output is not None
+        _write_skill(skill, agent, root / spec.output, state, render=rendered)
+
+
+def _expand_skill_catalog(
     root: Path,
     config: ProjectConfig,
     trees: tuple[Skill, ...],
+    tier: PersonalTier,
+    state: _Expansion,
+) -> PersonalSkills:
+    _check_skill_agents(trees, config.skill_policies, project_agents(root))
+    team = _team_skills(root, config, trees)
+    selected = {skill.name: agents for skill, agents, _ in team}
+    offered = personal_skills(tier, skill_harnesses(config), selected)
+    widened = tuple(_replacing_shared_folder(placed, selected) for placed in offered.skills)
+    personal, refusals = _renderable_skills(root, widened)
+    _expand_project_catalog(root, team, personal, state)
+    return PersonalSkills(
+        personal,
+        (*offered.refusals, *refusals),
+        tuple(
+            _shared_folder_note(placed, original)
+            for placed, original in zip(widened, offered.skills, strict=True)
+            if placed in personal and placed.agents != original.agents
+        ),
+    )
+
+
+def _replacing_shared_folder(
+    placed: PersonalSkill, team: Mapping[str, tuple[str, ...]]
+) -> PersonalSkill:
+    selected = team.get(placed.skill.name, ())
+    shared = frozenset(SHARED_SKILL_READERS)
+    if not (
+        placed.skill.local
+        and "codex" in {*placed.agents, *selected}
+        and shared.intersection(placed.agents)
+        and shared.intersection(selected)
+    ):
+        return placed
+    readers = (agent for agent in selected if agent in shared and agent not in placed.agents)
+    return replace(placed, agents=(*placed.agents, *readers))
+
+
+def _shared_folder_note(placed: PersonalSkill, original: PersonalSkill) -> str:
+    readers = [agent for agent in placed.agents if agent not in original.agents]
+    return (
+        f"stealth {placed.source}: its skill {placed.skill.name} replaces the team's in "
+        f"{PROJECT_PRESET['codex']['skills'].output}, so the personal copy also reaches "
+        f"{', '.join(readers)}"
+    )
+
+
+def _renderable_skills(
+    root: Path, personal: tuple[PersonalSkill, ...]
+) -> tuple[tuple[PersonalSkill, ...], tuple[str, ...]]:
+    failed: dict[str, str] = {}
+    for placed in personal:
+        if placed.source in failed:
+            continue
+        try:
+            _place_skill(root, placed.skill, placed.agents, placed.rendered, _Expansion({}, {}))
+        except (LoadoutError, OSError) as error:
+            failed[placed.source] = (
+                f"refused: stealth {placed.source}: {error}; none of its skills render"
+            )
+    return (
+        tuple(placed for placed in personal if placed.source not in failed),
+        tuple(failed.values()),
+    )
+
+
+def _expand_project_catalog(
+    root: Path,
+    team: tuple[tuple[Skill, tuple[str, ...], bool], ...],
+    personal: tuple[PersonalSkill, ...],
     state: _Expansion,
 ) -> None:
-    available = tuple(agent for agent in config.harnesses if "skills" in PROJECT_PRESET[agent])
-    aliases = skill_aliases_in(project_config_path(root), trees, config.skill_policies)
-    for original in trees:
-        selected = selected_skill_agents(original.name, available, config.skill_policies)
-        should_render = render_skill_for(original.name, config.skill_policies)
-        skill = aliased_skill(original, aliases)
-        remaining = list(selected)
-        convention = frozenset(SHARED_SKILL_READERS)
-        if "codex" in selected:
-            shared = convention.intersection(selected)
-            variants = {
-                agent: render_skill(skill, agent) if should_render else skill.document.read_bytes()
-                for agent in shared
-            }
-            if len(variants) > 1 and len(set(variants.values())) == 1:
-                remaining = [agent for agent in remaining if agent not in convention]
-                remaining.insert(0, "codex")
-        for agent in remaining:
-            spec = PROJECT_PRESET[agent]["skills"]
-            assert spec.output is not None
-            _write_skill(skill, agent, root / spec.output, state, render=should_render)
+    replaced: dict[str, set[str]] = {}
+    for placed in personal:
+        if placed.skill.local:
+            replaced.setdefault(placed.skill.name, set()).update(placed.agents)
+    for skill, selected, rendered in team:
+        kept = tuple(agent for agent in selected if agent not in replaced.get(skill.name, ()))
+        _place_skill(root, skill, kept, rendered, state)
+    for placed in personal:
+        _place_skill(root, placed.skill, placed.agents, placed.rendered, state)
 
 
 # Claude reads AGENTS.md only when no CLAUDE.md is on the path, so with another

@@ -14,9 +14,12 @@ from .errors import LoadoutError, UsageError
 from .exclude import exclude_path
 from .git_runner import toplevel
 from .kit_fanout import (
+    check_plain,
     check_projects,
     check_projects_json,
     project_index,
+    retire_plain,
+    sync_plain,
     sync_projects,
     sync_with_push,
     warn,
@@ -29,10 +32,11 @@ from .overlay_leftovers import (
     check_registry,
     registry_notice,
 )
+from .personal import adopted_target, stranded_target
 from .project import project_config_path
 from .stealth_check import StealthCheck, check_stealth, report_check
 from .stealth_git import GitFailure, identity
-from .stealth_lock import same_path
+from .stealth_lock import same_path, stealth_lock
 from .stealth_manifest import holds_stealth, load_stealth_manifest
 from .stealth_record import (
     NEWER_RECORD,
@@ -56,8 +60,9 @@ from .stealth_registry import (
     with_stealth,
     without_stealth,
 )
-from .stealth_sync import StealthRun, report, sync_stealth
+from .stealth_sync import StealthRun, adopted_roots, report, shown, sync_stealth
 from .stealth_targets import harness_homes, matches_root, refuse_patterns_inside
+from .written import prune_vanished, record_names_stealth, roots_naming_stealth
 
 PROFILE_REFUSAL = (
     "stealth sources render the default profile only; --profile applies to a loadout source"
@@ -403,6 +408,76 @@ def _projects(selection: Selection) -> tuple[Path, ...]:
     return index.roots
 
 
+@dataclass(frozen=True)
+class Clones:
+    adopted: tuple[Path, ...] = ()
+    stranded: tuple[Path, ...] = ()
+    held: tuple[Path, ...] = ()
+    listed: bool = True
+
+    def without(self, skip: Sequence[Path | None]) -> Clones:
+        skipped = {os.path.realpath(path) for path in skip if path is not None}
+
+        def kept(roots: tuple[Path, ...]) -> tuple[Path, ...]:
+            return tuple(root for root in roots if os.path.realpath(root) not in skipped)
+
+        return replace(
+            self,
+            adopted=kept(self.adopted),
+            stranded=kept(self.stranded),
+            held=kept(self.held),
+        )
+
+
+def _clone_kind(root: Path) -> str:
+    if adopted_target(root):
+        return "adopted"
+    return "stranded" if stranded_target(root) else "held"
+
+
+def adopted_clones(sources: Sequence[RegisteredStealth]) -> Clones:
+    listed = True
+    prune_vanished()
+    try:
+        named = [root for stealth in sources for root in roots_naming_stealth(stealth.name)]
+    except (LoadoutError, OSError) as error:
+        print(
+            f"WARNING: cannot list the projects this machine has synced: {error}", file=sys.stderr
+        )
+        named, listed = [], False
+    found = [*(root for stealth in sources for root in adopted_roots(stealth)), *named]
+    chosen: dict[str, tuple[Path, str]] = {}
+    for root in found:
+        key = os.path.realpath(root)
+        if key not in chosen:
+            chosen[key] = (root, _clone_kind(root))
+
+    def of(kind: str) -> tuple[Path, ...]:
+        return tuple(root for root, sort in chosen.values() if sort == kind)
+
+    return Clones(adopted=of("adopted"), stranded=of("stranded"), held=of("held"), listed=listed)
+
+
+def _retire_stranded(clones: Clones) -> int:
+    for root in clones.held:
+        print(
+            f"note: project {shown(root)}: skipped; its record names a stealth source, but it "
+            "is not a safe top-level checkout git can read, so its personal files stay until it is"
+        )
+    return retire_plain(clones.stranded)
+
+
+def _unscoped_clones(selection: Selection) -> Clones:
+    unscoped = [stealth for stealth, scope in selection.stealth_sources if scope is None]
+    if not unscoped:
+        return Clones()
+    return adopted_clones(unscoped).without((selection.root,))
+
+
+def _adopted_projects(selection: Selection, kit: Sequence[Path]) -> tuple[Path, ...]:
+    return _unscoped_clones(selection).without(kit).adopted
+
+
 def cmd_sync_selection(selection: Selection, *, force: bool) -> int:
     def root_sync(root: Path, profile: str) -> int:
         ask = _ask_terminal if interactive() else None
@@ -411,12 +486,16 @@ def cmd_sync_selection(selection: Selection, *, force: bool) -> int:
     if _root_alone(selection):
         return _root_only(selection, root_sync)
     scoped, rest = _scoped_first(selection)
+    clones = _unscoped_clones(selection)
     codes = [
+        _retire_stranded(clones),
         *(_sync_one(stealth, scope, selection.stealth_force) for stealth, scope in scoped),
         _root_part(selection, root_sync),
         *(_sync_one(stealth, scope, selection.stealth_force) for stealth, scope in rest),
-        sync_projects(_projects(selection)),
     ]
+    kit = _projects(selection)
+    codes.append(sync_projects(kit))
+    codes.append(sync_plain(clones.without(kit).adopted))
     return max(codes)
 
 
@@ -465,7 +544,11 @@ def _check_json(selection: Selection) -> int:
         for check in checks
         for target, message in check.errors
     )
-    projects = check_projects_json(_projects(selection))
+    kit = _projects(selection)
+    projects = (
+        *check_projects_json(kit),
+        *check_projects_json(_adopted_projects(selection, kit), previews=False),
+    )
     drift.extend(item for project in projects for item in project.drift)
     notes.extend(
         f"project {project.root}: {note}" for project in projects for note in project.notes
@@ -505,8 +588,10 @@ def cmd_check_selection(selection: Selection, *, as_json: bool) -> int:
         *(_report_one(_checked(stealth, scope)) for stealth, scope in scoped),
         _root_part(selection, root_check),
         *(_report_one(_checked(stealth, scope)) for stealth, scope in rest),
-        check_projects(_projects(selection)),
     ]
+    kit = _projects(selection)
+    codes.append(check_projects(kit))
+    codes.append(check_plain(_adopted_projects(selection, kit)))
     return max(codes)
 
 
@@ -652,18 +737,49 @@ def cmd_stealth_remove(name: str, *, force: bool, yes: bool) -> int:
         return 0
     if registered:
         update_registry(lambda current: marked_removing(current, name))
+    clones = adopted_clones((stealth,))
+    reached = (*clones.adopted, *clones.stranded)
+    deferred = bool(reached) or bool(clones.held) or not clones.listed
+    finish = _finisher(stealth, registered)
     run = StealthRun(
         stealth=replace(stealth, removing=True),
         scope=None,
         force=force,
         interactive=False,
         retire_all=True,
-        finish=_finisher(stealth, registered),
+        finish=finish if not deferred else lambda: None,
     )
     outcome = sync_stealth(run)
     report(outcome)
-    if outcome.code:
+    code = max(
+        outcome.code,
+        _retire_stranded(clones),
+        sync_plain(clones.adopted, retiring=frozenset({name})),
+    )
+    finished = (
+        not outcome.code and clones.listed and not clones.held and not _still_naming(name, reached)
+    )
+    if finished and deferred:
+        try:
+            with stealth_lock(stealth.folder):
+                finish()
+        except (LoadoutError, OSError) as error:
+            print(f"stealth {name}: ERROR: {error}", file=sys.stderr)
+            finished, code = False, 3
+    if not finished:
         print(f"stealth {name}: {_failed_removal(stealth, registered)}", file=sys.stderr)
-        return outcome.code
+        return code or 3
     print(f"removed stealth source {name}")
-    return 0
+    return code
+
+
+def _still_naming(name: str, clones: Sequence[Path]) -> bool:
+    return any(_names(root, name) for root in clones)
+
+
+def _names(root: Path, name: str) -> bool:
+    try:
+        return record_names_stealth(root, name)
+    except (OSError, ValueError) as error:
+        print(f"WARNING: cannot read what loadout recorded for {root}: {error}", file=sys.stderr)
+        return True

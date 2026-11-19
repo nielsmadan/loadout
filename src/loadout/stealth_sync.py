@@ -3,7 +3,6 @@ from __future__ import annotations
 import functools
 import json
 import os
-import stat
 import sys
 import tempfile
 import tomllib
@@ -13,12 +12,10 @@ from pathlib import Path
 from typing import Any
 
 from . import stealth_seams
-from .atomic import replace_atomically
 from .claude_json import (
     LeafResult,
     LeafVerdict,
     claude_json_path,
-    escape_surrogates,
     leaf_refusal,
     server_path,
     write_leaves,
@@ -39,11 +36,14 @@ from .exclude import (
     write_global_state,
     write_repo_block,
 )
-from .files import Drift, process_umask, text_mode, write_outputs
+from .files import Drift, write_outputs
+from .guarded_write import ChangedDuringSync as _Changed
+from .guarded_write import read_bytes as _read_bytes
+from .guarded_write import write_if_unchanged as _write_document
 from .json_paths import JsonPath, leaf_digest
 from .native_documents import jsonc_to_json
 from .overlay_leftovers import check_exclude
-from .project import project_config_path
+from .personal import adopted_target
 from .retirement import retire
 from .stealth_documents import OwnedJson
 from .stealth_git import (
@@ -98,7 +98,7 @@ from .stealth_record import (
     write_stealth_record,
 )
 from .stealth_registry import RegisteredStealth
-from .stealth_render import StealthRender, gather_facts, render_stealth
+from .stealth_render import StealthRender, gather_facts, render_adopted, render_stealth
 from .stealth_targets import (
     Expansion,
     HarnessHomes,
@@ -121,9 +121,6 @@ _EMPTY_DISK = DiskFacts(documents={}, document_bytes={}, claimed={}, claimed_lea
 _NO_GIT = GitFacts(tracked=frozenset(), covered=frozenset(), branches={})
 _YES = frozenset({"y", "yes"})
 ADOPTED_NOTE = "adopted loadout; the stealth source retired its files here"
-ADOPTED_SKIP = (
-    "adopted loadout (it has loadout/config.toml); the stealth source does not write here"
-)
 
 _USER_SERVERS: tuple[tuple[str, str, str], ...] = (
     ("codex", "${CODEX_HOME:-~/.codex}/config.toml", "mcp_servers"),
@@ -158,12 +155,6 @@ class StealthOutcome:
     folder: Path | None = None
     shared_written: tuple[Path, ...] = ()
     shared_retired: tuple[Path, ...] = ()
-
-
-class _Changed(Exception):
-    def __init__(self, path: Path) -> None:
-        super().__init__(str(path))
-        self.path = path
 
 
 class _Failed(Exception):
@@ -243,13 +234,6 @@ def _rel(root: Path, path: Path) -> str:
     return path.relative_to(root).as_posix() if path.is_relative_to(root) else str(path)
 
 
-def _read_bytes(path: Path) -> bytes | None:
-    try:
-        return path.read_bytes()
-    except FileNotFoundError:
-        return None
-
-
 def _parsed(raw: bytes) -> dict[str, Any] | None:
     try:
         document = json.loads(raw)
@@ -280,6 +264,8 @@ def _folders(root: Path, units: Sequence[str], paths: Sequence[Path]) -> frozens
 def _render(context: _Context, target: Target) -> StealthRender:
     if context.manifest is None:
         raise LoadoutError(f"stealth {context.stealth.name}: no manifest to render from")
+    if adopted_target(target.root):
+        return render_adopted(context.manifest, context.stealth.name, target.root)
     facts = gather_facts(target.root)
     return render_stealth(context.manifest, context.stealth.name, target.root, facts)
 
@@ -628,28 +614,22 @@ def _failed(record: StealthRecord, status: RecordStatus, *errors: str) -> _Prepa
     return _Prepared(record, status, EMPTY_EXPANSION, {}, (), errors, None)
 
 
-def _adopted(expansion: Expansion, record: StealthRecord) -> tuple[Expansion, dict[Path, Target]]:
-    adopted = {
-        target.root: target
-        for target in expansion.targets
-        if os.path.isfile(project_config_path(target.root))
-    }
-    if not adopted:
-        return expansion, {}
-    skips = tuple(
-        SkippedTarget(folder=root, kind="adopted", reason=ADOPTED_SKIP)
-        for root in adopted
-        if root not in record.targets
-    )
-    return replace(
-        expansion,
-        targets=tuple(target for target in expansion.targets if target.root not in adopted),
-        skipped=(*expansion.skipped, *skips),
-    ), {root: target for root, target in adopted.items() if root in record.targets}
+def _first_adopted_run(item: _Planned) -> _Planned:
+    recorded = item.recorded
+    if recorded is None or not (recorded.files or recorded.documents):
+        return item
+    if not adopted_target(item.target.root):
+        return item
+    return replace(item, plan=replace(item.plan, notes=(*item.plan.notes, ADOPTED_NOTE)))
 
 
-def _noted(item: _Planned, note: str) -> _Planned:
-    return replace(item, plan=replace(item.plan, notes=(*item.plan.notes, note)))
+def adopted_roots(stealth: RegisteredStealth) -> tuple[Path, ...]:
+    try:
+        manifest = load_stealth_manifest(stealth.folder)
+        expansion = expand_targets(manifest.settings, harness_homes(), stealth.folder)
+    except (LoadoutError, OSError):
+        return ()
+    return tuple(target.root for target in expansion.targets if adopted_target(target.root))
 
 
 def _gathered(
@@ -668,7 +648,7 @@ def _gathered(
         return _failed(record, status, *collisions)
     context = replace(context, manifest=manifest)
     expanded = expand_targets(manifest.settings, homes, folder, only=run.scope)
-    expansion, adopted = _adopted(_respelled(expanded, record), record)
+    expansion = _respelled(expanded, record)
     fates, healthy = _unmatched(record, expansion, homes, folder) if run.scope is None else ({}, {})
     if run.scope is None:
         expansion = replace(
@@ -677,19 +657,16 @@ def _gathered(
     actions, refusals = classify_recorded(
         record, expansion, fates, scope=run.scope, home=homes.home, force=run.force
     )
-    actions = {**actions, **dict.fromkeys(adopted, "retire")}
     rendered = [
-        _plan_isolated(context, target, record.targets.get(target.root), rendering=True)
+        _first_adopted_run(
+            _plan_isolated(context, target, record.targets.get(target.root), rendering=True)
+        )
         for target in expansion.targets
     ]
     retired = [
         _retired(context, root, record.targets[root], healthy.get(root))
         for root, action in actions.items()
-        if action == "retire" and root not in adopted
-    ]
-    retired += [
-        _noted(_retired(context, root, record.targets[root], target), ADOPTED_NOTE)
-        for root, target in adopted.items()
+        if action == "retire"
     ]
     errors = tuple(refusal.message for refusal in refusals)
     return _Prepared(
@@ -796,30 +773,6 @@ def _commit_leaves(
             entry = settled_leaves(entry, file, result)
         updated = with_target(updated, root, entry)
     return _store(record, _without_empty(updated, retired))
-
-
-def _mode(path: Path) -> int | None:
-    try:
-        return stat.S_IMODE(path.stat().st_mode)
-    except FileNotFoundError:
-        return None
-
-
-def _write_document(path: Path, text: str, expected: bytes | None) -> None:
-    try:
-        data = escape_surrogates(text).encode("utf-8")
-    except UnicodeEncodeError as error:
-        raise LoadoutError(f"{path} cannot be written as UTF-8: {error.reason}") from None
-    path.parent.mkdir(parents=True, exist_ok=True)
-    mode = text_mode(_mode(path), data, "json", process_umask())
-
-    def unchanged_since_planned() -> None:
-        if _read_bytes(path) != expected:
-            raise _Changed(path)
-
-    replace_atomically(
-        path, lambda handle: handle.write(data), mode=mode, before_rename=unchanged_since_planned
-    )
 
 
 def _delete(

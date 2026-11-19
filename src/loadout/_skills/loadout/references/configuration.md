@@ -356,10 +356,11 @@ message (or says `overlays.toml` cannot be read). Then use `loadout stealth`, `-
    `settings/<name>.json` and sync. `preserve` is refused in a stealth source, so the key cannot be
    handed to the harness: removing it from the fragment makes the next sync delete it from the
    file, the harness's value with it. Do that only when the user asks, and say so first.
-6. A repository that has adopted loadout (it has `loadout/config.toml`) is not a stealth target.
-   Its stealth sources retire their files there on the next sync, before the project syncs. When `check`
-   there prints `adopted loadout; the stealth source retired its files here`, or `skipped: adopted
-   loadout`, run `loadout sync` before porting anything: the stealth source's files in it are the user's
+6. In a repository that has adopted loadout (it has `loadout/config.toml`), a stealth source writes
+   only its Claude MCP servers into `~/.claude.json`; the project's sync renders the rest. Stealth files
+   written there before adoption retire on the next sync, before the project syncs. When `check`
+   there prints `adopted loadout; the stealth source retired its files here`, run `loadout sync`
+   before porting anything: the stealth source's files in it are the user's
    personal configuration, never the project's, and must not be ported into `loadout/`.
 7. Stealth refusals have their own meaning. A path the team tracks, a path another owner records,
    a key or server the user defined and a path git would not ignore (exit 3) cannot be forced:

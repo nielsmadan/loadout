@@ -48,22 +48,29 @@ def _non_empty_lists(
     return tuple(((*prefix, name), tuple(document[name])) for name in names if document.get(name))
 
 
+def setting_keys(harness: str, fragment: Mapping[str, Any]) -> tuple[tuple[JsonPath, Any], ...]:
+    if harness == "claude":
+        return _fragment_keys(fragment, {"permissions": CLAUDE_RULE_LISTS})
+    return tuple(
+        (path, value)
+        for path, value in _fragment_keys(fragment, {})
+        if path[0] not in DROID_RULE_LISTS
+    )
+
+
 def claude_owned(rules: Rules, fragment: Mapping[str, Any]) -> OwnedJson:
     permissions = render_claude_project(rules, {})["permissions"]
     return OwnedJson(
-        keys=_fragment_keys(fragment, {"permissions": CLAUDE_RULE_LISTS}),
+        keys=setting_keys("claude", fragment),
         rules=_non_empty_lists(permissions, CLAUDE_RULE_LISTS, ("permissions",)),
     )
 
 
 def droid_owned(rules: Rules, fragment: Mapping[str, Any]) -> OwnedJson:
     lists = render_droid(rules, {})
-    keys = tuple(
-        (path, value)
-        for path, value in _fragment_keys(fragment, {})
-        if path[0] not in DROID_RULE_LISTS
+    return OwnedJson(
+        keys=setting_keys("droid", fragment), rules=_non_empty_lists(lists, DROID_RULE_LISTS, ())
     )
-    return OwnedJson(keys=keys, rules=_non_empty_lists(lists, DROID_RULE_LISTS, ()))
 
 
 def codex_stealth_notes(rules: Rules, servers: Mapping[str, Server]) -> tuple[str, ...]:

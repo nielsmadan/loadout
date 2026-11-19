@@ -403,3 +403,56 @@ def test_global_selection_resolves_through_the_cli_resolver(
 
     assert loadout.main(["sync", "--global", "--profile", "work"]) == 0
     assert synced == [(source, "work-chosen")]
+
+
+def _fan_out(
+    monkeypatch: pytest.MonkeyPatch, root: Path, kit: tuple[Path, ...]
+) -> dict[str, list[tuple[Path, ...]]]:
+    clones = [root.parent / name for name in ("one", "two", "three")]
+    reached: dict[str, list[tuple[Path, ...]]] = {"sync": [], "check": []}
+    monkeypatch.setattr(stealth_commands, "adopted_roots", lambda stealth: (root, *clones[:2]))
+    monkeypatch.setattr(stealth_commands, "roots_naming_stealth", lambda name: clones[1:])
+    monkeypatch.setattr(stealth_commands, "adopted_target", lambda found: True)
+    monkeypatch.setattr(stealth_commands, "_projects", lambda selection: kit)
+    monkeypatch.setattr(stealth_commands, "_sync_one", lambda stealth, scope, force: 0)
+    monkeypatch.setattr(stealth_commands, "_root_part", lambda selection, action: 0)
+    monkeypatch.setattr(stealth_commands, "sync_projects", lambda roots: 0)
+    monkeypatch.setattr(stealth_commands, "check_projects", lambda roots: 0)
+    monkeypatch.setattr(stealth_commands, "_report_one", lambda check: 0)
+    monkeypatch.setattr(stealth_commands, "_checked", lambda stealth, scope: None)
+    monkeypatch.setattr(
+        stealth_commands, "sync_plain", lambda roots: reached["sync"].append(tuple(roots)) or 0
+    )
+    monkeypatch.setattr(
+        stealth_commands, "check_plain", lambda roots: reached["check"].append(tuple(roots)) or 0
+    )
+    return reached
+
+
+def test_an_unscoped_stealth_run_reaches_its_adopted_clones_but_not_the_root_or_kit_projects(
+    fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = fake_home / "project"
+    kit = (fake_home / "three",)
+    reached = _fan_out(monkeypatch, root, kit)
+    app = RegisteredStealth("app", fake_home / "app")
+    selection = Selection(root, "default", None, ((app, None),), False)
+
+    assert stealth_commands.cmd_sync_selection(selection, force=False) == 0
+    assert cmd_check_selection(selection, as_json=False) == 0
+
+    clones = (fake_home / "one", fake_home / "two")
+    assert reached == {"sync": [clones], "check": [clones]}
+
+
+def test_a_stealth_run_scoped_to_one_target_reaches_no_other_clone(
+    fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = fake_home / "project"
+    reached = _fan_out(monkeypatch, root, ())
+    app = RegisteredStealth("app", fake_home / "app")
+    selection = Selection(root, "default", None, ((app, root),), False)
+
+    assert stealth_commands.cmd_sync_selection(selection, force=False) == 0
+
+    assert reached["sync"] == [()]

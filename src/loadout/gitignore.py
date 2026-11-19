@@ -54,13 +54,19 @@ def with_lines(text: str, lines: Iterable[str]) -> str:
 
 def append_lines(root: Path, lines: Iterable[str]) -> int:
     """Append the lines not already there; returns how many that was."""
+    return len(appended_lines(root, lines))
+
+
+def appended_lines(root: Path, lines: Iterable[str]) -> tuple[str, ...]:
+    lines = tuple(lines)
     path = gitignore_path(root)
     text = path.read_text(encoding="utf-8") if path.is_file() else ""
     updated = with_lines(text, lines)
     if updated == text:
-        return 0
+        return ()
     replace_text(path, updated, root)
-    return len(_lines(updated)) - len(_lines(text))
+    present = set(_lines(text))
+    return tuple(line for line in dict.fromkeys(lines) if line not in present)
 
 
 def remove_lines(root: Path, lines: Iterable[str]) -> int:
@@ -82,3 +88,10 @@ def replace_text(path: Path, text: str, boundary: Path) -> None:
     every other name of a hard-linked file."""
     mode = stat.S_IMODE(path.stat().st_mode) if path.is_file() else 0o644
     atomic_install(path, FrozenFile(text.encode("utf-8"), mode), boundary)
+
+
+def gitignore_to_remove(
+    recorded_lines: Iterable[str], team_lines: Iterable[str]
+) -> tuple[str, ...]:
+    wanted = frozenset(team_lines)
+    return tuple(line for line in dict.fromkeys(recorded_lines) if line not in wanted)

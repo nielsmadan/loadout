@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 
 from fixture_root import EXPECTED, STEALTH_FIXTURES
-from loadout import stealth_lock, stealth_sync
+from loadout import guarded_write, stealth_lock, stealth_sync
 from loadout.exclude import GLOBAL_BEGIN, GLOBAL_END, block_lines
 from loadout.stealth_git import GitFailure
 from loadout.stealth_lock import stealth_lock as hold_stealth_lock
@@ -182,7 +182,7 @@ def test_an_approval_saved_mid_sync_is_kept_beside_the_stealth_sources_rules(
 ) -> None:
     stealth, (root,) = _stealth(fake_home, "a")
     settings = root / SETTINGS
-    real = stealth_sync.replace_atomically
+    real = guarded_write.replace_atomically
     saved: list[Path] = []
 
     def saving(path: Path, fill: Any, **options: Any) -> None:
@@ -199,7 +199,7 @@ def test_an_approval_saved_mid_sync_is_kept_beside_the_stealth_sources_rules(
 
         real(path, fill, before_rename=approve_then_check, **options)
 
-    monkeypatch.setattr(stealth_sync, "replace_atomically", saving)
+    monkeypatch.setattr(guarded_write, "replace_atomically", saving)
 
     outcome = sync_stealth(_run(stealth))
 
@@ -518,7 +518,7 @@ def test_a_replan_keeps_owning_the_rules_of_a_document_written_before_it(
 ) -> None:
     stealth, (raced, calm) = _stealth(fake_home, "a", "b")
     droid = raced / ".factory" / "settings.local.json"
-    real = stealth_sync.replace_atomically
+    real = guarded_write.replace_atomically
     saved: list[Path] = []
 
     def saving(path: Path, fill: Any, **options: Any) -> None:
@@ -533,7 +533,7 @@ def test_a_replan_keeps_owning_the_rules_of_a_document_written_before_it(
 
         real(path, fill, before_rename=save_then_check, **options)
 
-    monkeypatch.setattr(stealth_sync, "replace_atomically", saving)
+    monkeypatch.setattr(guarded_write, "replace_atomically", saving)
 
     outcome = sync_stealth(_run(stealth))
 

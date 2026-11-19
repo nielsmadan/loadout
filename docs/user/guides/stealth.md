@@ -85,8 +85,8 @@ settings = "local"
 
 `targets` are absolute or `~/` patterns, expanded again on every run, so a clone added later is
 picked up by the next `sync`. Each match must be the top of a git checkout. A match that is not
-a checkout, a submodule, a linked worktree, a folder inside a checkout without its own `.git`, or
-a repository that has adopted loadout (it holds `loadout/config.toml`) is skipped with a message;
+a checkout, a submodule, a linked worktree, or a folder inside a checkout without its own `.git` is
+skipped with a message;
 a match that is the home folder, holds a harness home or the stealth folder, sits inside the
 stealth folder, or has its own `.git` without being its checkout's top is refused.
 
@@ -230,8 +230,8 @@ once it no longer matches. After that, `init project` runs as usual.
 A repository can also adopt loadout without you, when the team commits a `loadout/` folder and
 you pull it. The next `loadout sync` in it runs the stealth source first, which retires its files there
 with the note `adopted loadout; the stealth source retired its files here`, and then syncs the project.
-From then on the stealth source skips the repository; use the project's
-[personal files](../reference/configuration.md#personal-files) for configuration of your own.
+From then on the project's sync renders the stealth source there, and the stealth source itself
+writes only its Claude MCP servers into `~/.claude.json`.
 
 ## Limits
 
