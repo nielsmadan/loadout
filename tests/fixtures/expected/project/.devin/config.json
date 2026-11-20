@@ -4,8 +4,8 @@
       "Exec(omicron build)",
       "Exec(alpha)",
       "Exec(beta sub)",
+      "Exec(zeta)",
       "ExecExact(mu status)",
-      "Exec(kappa only-here)",
       "mcp__tmpl_server__*",
       "mcp__svc__*"
     ],
@@ -18,7 +18,6 @@
       "Exec(omicron publish)",
       "Exec(iota push)",
       "ExecExact(nu wipe)",
-      "Exec(zeta)",
       "mcp__blocked__*"
     ]
   }
