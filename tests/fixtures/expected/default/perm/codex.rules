@@ -4,6 +4,7 @@
 prefix_rule(pattern = ["alpha"], decision = "allow")
 prefix_rule(pattern = ["beta", "sub"], decision = "allow")
 prefix_rule(pattern = ["eta"], decision = "allow")
+prefix_rule(pattern = ["theta", "check", "--fast"], decision = "allow")
 
 prefix_rule(pattern = ["zeta"], decision = "forbidden")
 prefix_rule(pattern = ["iota", "push"], decision = "forbidden")
@@ -15,3 +16,4 @@ prefix_rule(pattern = ["theta", "check"], decision = "prompt")
 # (these fall through to Codex's normal approval prompt):
 #   gamma-*
 #   delta run --tag=*
+#   kappa run *

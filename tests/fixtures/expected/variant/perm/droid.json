@@ -10,7 +10,8 @@
   "commandAllowlist": [
     "alpha",
     "beta sub",
-    "eta"
+    "eta",
+    "theta check --fast"
   ],
   "commandDenylist": [
     "theta check"

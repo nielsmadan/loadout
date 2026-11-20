@@ -20,13 +20,16 @@
       "eta": "allow",
       "eta *": "allow",
       "mu status": "allow",
+      "theta check --fast": "allow",
+      "theta check --fast *": "allow",
       "zeta": "deny",
       "zeta *": "deny",
       "iota push": "deny",
       "iota push *": "deny",
       "nu wipe": "deny",
       "theta check": "ask",
-      "theta check *": "ask"
+      "theta check *": "ask",
+      "kappa run *": "ask"
     },
     "svc_*": "allow",
     "web_two_read": "allow",

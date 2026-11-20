@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Exec(alpha)",
+      "Exec(beta sub)",
+      "Exec(eta)",
+      "ExecExact(mu status)",
+      "mcp__svc__*",
+      "mcp__web.two__read",
+      "Exec(*)"
+    ],
+    "ask": [
+      "Exec(theta check)",
+      "Exec(kappa run)",
+      "mcp__svc__write"
+    ],
+    "deny": [
+      "Exec(zeta)",
+      "Exec(iota push)",
+      "ExecExact(nu wipe)",
+      "mcp__blocked__*",
+      "mcp__svc__purge"
+    ]
+  }
+}

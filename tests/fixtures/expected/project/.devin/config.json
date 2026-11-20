@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Exec(omicron build)",
+      "Exec(alpha)",
+      "Exec(beta sub)",
+      "ExecExact(mu status)",
+      "Exec(kappa only-here)",
+      "mcp__tmpl_server__*",
+      "mcp__svc__*"
+    ],
+    "ask": [
+      "Exec(theta check)",
+      "mcp__svc__write",
+      "Exec(*)"
+    ],
+    "deny": [
+      "Exec(omicron publish)",
+      "Exec(iota push)",
+      "ExecExact(nu wipe)",
+      "Exec(zeta)",
+      "mcp__blocked__*"
+    ]
+  }
+}

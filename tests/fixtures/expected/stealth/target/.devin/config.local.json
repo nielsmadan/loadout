@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Exec(ls)",
+      "Exec(git status)",
+      "mcp__docs__search"
+    ],
+    "ask": [
+      "Exec(git push)"
+    ],
+    "deny": [
+      "Exec(rm -rf)"
+    ]
+  }
+}

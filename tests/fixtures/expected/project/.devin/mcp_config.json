@@ -1,0 +1,27 @@
+{
+  "mcpServers": {
+    "jina": {
+      "url": "https://mcp.jina.ai/v1",
+      "transport": "http",
+      "headers": {
+        "Authorization": "Bearer ${env:JINA_API_KEY}"
+      }
+    },
+    "docs": {
+      "url": "https://docs.example/mcp",
+      "transport": "http",
+      "headers": {
+        "Authorization": "Bearer ${env:DOCS_TOKEN}",
+        "X-Team": "core"
+      }
+    },
+    "context7": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@upstash/context7-mcp"
+      ],
+      "transport": "stdio"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "svc": {
+      "url": "https://svc.example/mcp",
+      "transport": "http",
+      "headers": {
+        "Authorization": "Bearer ${env:SVC_TOKEN}",
+        "X-Team": "core"
+      }
+    },
+    "tools": {
+      "command": "tools-mcp",
+      "args": [
+        "--stdio"
+      ],
+      "env": {
+        "TOOLS_MODE": "fixture"
+      },
+      "transport": "stdio"
+    }
+  }
+}

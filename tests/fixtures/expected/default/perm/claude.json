@@ -9,6 +9,7 @@
       "Bash(delta run --tag=*)",
       "Bash(eta:*)",
       "Bash(mu status)",
+      "Bash(theta check --fast:*)",
       "mcp__svc__*",
       "mcp__web.two__read",
       "Read(//tmp/**)"
@@ -23,6 +24,7 @@
     ],
     "ask": [
       "Bash(theta check:*)",
+      "Bash(kappa run *)",
       "mcp__svc__write"
     ],
     "defaultMode": "hand-maintained, must survive after the owned lists"
