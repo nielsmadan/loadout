@@ -45,16 +45,23 @@ GLOBAL_ROOTS = {
     "codex": ("CODEX_HOME", ".codex"),
     # Only cli-config.json follows the variable; see `live_roots`.
     "cursor": ("CURSOR_CONFIG_DIR", ".cursor"),
+    "devin": ("XDG_CONFIG_HOME", ".config"),
     "droid": ("FACTORY_HOME_OVERRIDE", ".factory"),
     "opencode": ("XDG_CONFIG_HOME", ".config"),
     "pi": ("PI_CODING_AGENT_DIR", ".pi/agent"),
 }
+# Harnesses whose root is the variable's directory with their own name appended.
+XDG_SUFFIXED = frozenset({"devin", "opencode"})
 # What the destinations depend on, captured at discovery and checked again before applying.
-DESTINATION_ENVIRONMENT = (
-    "HOME",
-    *(name for name, _ in GLOBAL_ROOTS.values()),
-    "OPENCODE_CONFIG",
-    "OPENCODE_CONFIG_DIR",
+DESTINATION_ENVIRONMENT = tuple(
+    dict.fromkeys(
+        (
+            "HOME",
+            *(name for name, _ in GLOBAL_ROOTS.values()),
+            "OPENCODE_CONFIG",
+            "OPENCODE_CONFIG_DIR",
+        )
+    )
 )
 # The global document each harness also writes runtime state into, and that state's keys.
 # Claude's `.claude.json` is runtime state apart from `mcpServers`.
@@ -62,15 +69,18 @@ RUNTIME_DOCUMENTS = {
     "claude": ".claude.json",
     "codex": "config.toml",
     "cursor": CURSOR_CONFIG,
+    "devin": "config.json",
     "droid": "settings.json",
     "pi": "settings.json",
 }
 # A runtime document of which a person writes one key and the harness all the rest.
 AUTHORED_KEY = {"claude": "mcpServers", "cursor": "permissions"}
 # The keys a harness writes for itself: what its preset carries over from the live
-# destination, and Codex's own, which no slice of loadout's declares.
+# destination, and Codex's and Devin's own, which no slice of loadout's declares: Devin
+# writes these on its first run (docs/reference/devin.md#what-devin-writes-into-configjson-itself).
 RUNTIME_KEYS = {
     "codex": frozenset({"projects", "trust"}),
+    "devin": frozenset({"version", "devin", "shell", "theme_mode"}),
     **{
         agent: keys
         for agent, slices in GLOBAL_PRESET.items()
@@ -81,6 +91,7 @@ PROJECT_ROOTS = {
     "claude": ".claude",
     "codex": ".codex",
     "cursor": ".cursor",
+    "devin": ".devin",
     "droid": ".factory",
     "opencode": ".opencode",
     "pi": ".pi",
@@ -120,6 +131,14 @@ MANAGED_PATHS: dict[str, dict[str, tuple[str, ...]]] = {
             "hooks/",
             "scripts/",
         ),
+        "devin": (
+            "AGENTS.md",
+            "config.json",
+            "mcp_config.json",
+            "skills/",
+            "agents/",
+            *_MODULE_TREES,
+        ),
         "droid": (
             "AGENTS.md",
             "settings.json",
@@ -157,6 +176,7 @@ MANAGED_PATHS: dict[str, dict[str, tuple[str, ...]]] = {
         "claude": ("settings.json", "mcp-permissions.json", "skills/", "agents/"),
         "codex": ("rules/", "agents/"),
         "cursor": ("cli.json", "hooks.json", "mcp.json", "skills/", "agents/"),
+        "devin": ("config.json", "hooks.v1.json", "mcp_config.json", "skills/", "agents/"),
         "droid": (
             "settings.json",
             "hooks.json",
@@ -227,8 +247,8 @@ def live_roots(home: Path, environ: Mapping[str, str]) -> tuple[RootMapping, ...
         root = _home_path(value, home) if value else home / fallback
         if agent == "droid" and value:
             root /= ".factory"
-        if agent == "opencode":
-            root /= "opencode"
+        if agent in XDG_SUFFIXED:
+            root /= agent
         if not root.is_absolute() or ".." in root.parts:
             raise LoadoutError(f"{variable} must identify an absolute harness root")
         template = (
@@ -236,7 +256,7 @@ def live_roots(home: Path, environ: Mapping[str, str]) -> tuple[RootMapping, ...
             if agent == "droid"
             else "~/.cursor"
             if agent == "cursor"
-            else f"${{{variable}:-~/{fallback}}}" + ("/opencode" if agent == "opencode" else "")
+            else f"${{{variable}:-~/{fallback}}}" + (f"/{agent}" if agent in XDG_SUFFIXED else "")
         )
         result.append(RootMapping(root, root, (agent,), destination_template=template))
     claude_parent = (
@@ -397,6 +417,8 @@ def _category(relative: Path, agent: str) -> str | None:
         **dict.fromkeys((CURSOR_CONFIG, "cli.json"), "permissions"),
         "hooks.json": "hooks",
     }
+    if agent == "devin":
+        names |= {"config.json": "settings", "mcp_config.json": "mcp", "hooks.v1.json": "hooks"}
     fallback = "module-config" if agent == "pi" and relative.suffix == ".json" else None
     return directories.get(first, names.get(relative.name, fallback))
 

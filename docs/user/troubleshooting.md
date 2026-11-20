@@ -72,8 +72,8 @@ drift like any other edit: `check` reports it and `sync` refuses to overwrite it
 
 Which keys count depends on the file. Claude Code's and Droid's `settings.json`, OpenCode's
 `opencode.json` and Pi's `settings.json` are written whole, so any key the harness adds or changes
-there is `hand-edited`, whether the source sets it or not. Codex's `config.toml` and Cursor's `cli-config.json` are shared: loadout
-compares only the keys the source sets, reports a change to one as `owned-key`, and leaves every
+there is `hand-edited`, whether the source sets it or not. Codex's `config.toml`, Cursor's `cli-config.json` and Devin's `config.json`
+are shared: loadout compares only the keys the source sets, reports a change to one as `owned-key`, and leaves every
 other key to Codex.
 
 There are two answers:
@@ -122,6 +122,9 @@ What each harness writes, by the version checked:
 | | Trusting a project | `projects` | same | nothing; `init` leaves it to Codex |
 | Cursor CLI 2026.11.05 | Any start of the CLI, `/model`, `/sandbox` and other settings | `version`, `editor`, `model`, `approvalMode` and every other key but `permissions` | `cli-config.json` | nothing; loadout owns only `permissions` (the start was observed in a container) |
 | | "Add to allowlist" at an approval prompt | `permissions` | same | a change to the key loadout owns (read from the bundle, not observed) |
+| Devin CLI 3000.14.30821 | The first command that loads config, and the first signed-in run | `version`, `devin`, `shell`, `theme_mode` | `config.json` | nothing; loadout leaves these keys to Devin |
+| | Turning subagents off in a session | `subagents_enabled` | same | `owned-key` when a settings fragment sets it; nothing otherwise |
+| | "Allow globally" at an approval prompt | `permissions` | same | a change to the key loadout owns (from Devin's docs, not observed) |
 | Droid 0.251.0 | `/model`, and the reasoning-effort and autonomy pickers | `sessionDefaultSettings` | `~/.factory/settings.json` | `hand-edited` |
 | | `/settings` | `theme` and the other keys it sets | same | `hand-edited` |
 | | Installing or enabling a plugin, adding a marketplace | `enabledPlugins`, `extraKnownMarketplaces` | same | `hand-edited` |
@@ -165,7 +168,7 @@ target's outputs, and the other targets, to proceed unless noted. See the
 | `X would show in git status: …` (exit 3) | After the `info/exclude` block was written, git would still show the path, because a later `!` line in an ignore file re-includes it or nothing ignores it. Remove that line |
 | `X exists and loadout did not write it` or `X was edited outside loadout` (exit 1) | A guard finding; the whole target is held back. Port the edit into the stealth source, or `sync --stealth NAME --force`. For a file that existed before the stealth source, `--force` replaces it and the exclude block then hides what was there |
 | `… already holds a value the stealth source did not write` or `MCP server S … was not written by loadout` (exit 3) | A key in a shared document, or a server in `~/.claude.json`, has a different value that the stealth source never wrote. `--force` does not replace it; remove it, or move it into the stealth source |
-| `F already defines the MCP server S, which the stealth source also defines` (exit 3) | A user-level file of Codex, Droid, OpenCode or Pi defines that name; the stealth source would merge into or replace it. Rename one |
+| `F already defines the MCP server S, which the stealth source also defines` (exit 3) | A user-level file of Codex, Cursor, Devin, Droid, OpenCode or Pi defines that name; the stealth source would merge into or replace it. Rename one |
 | `the stealth record F cannot be read` or `… was written by a newer loadout; upgrade loadout` (exit 3) | Fix the file; `--force` treats an unreadable record as empty, and never a newer one. Another stealth source's bad record blocks `sync`: run `loadout stealth remove NAME --force` for it, or delete it when the message says it names no stealth source |
 | `another loadout process (pid N) is syncing …`, `another process holds L; wait for it to finish …` or `Claude Code holds F.lock` (exit 3) | A concurrent run (with no live loadout pid to name, the lock file `L` is named instead), or a Claude session saving `~/.claude.json`. Wait and run again. If it keeps failing with no `claude` process running, `F.lock` was left by a killed process: Claude reclaims one older than 10 seconds, or remove that directory by hand ([below](#sync-waits-then-fails-naming-a-lock)) |
 | `Claude Code reads F, not …/.claude.json` (exit 3) | A legacy `.config.json` or `CLAUDE_CODE_CUSTOM_OAUTH_URL` makes Claude read another file. Move the legacy file, or unset the variable |

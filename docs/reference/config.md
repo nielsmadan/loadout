@@ -11,6 +11,9 @@ the verified negatives below are precisely what a decision to re-add would have 
 Cursor CLI was added 2026-11-08 and has a Summary column only; its per-kind detail is in
 [cursor.md](cursor.md), against the 2026.11.05 bundle.
 
+Devin CLI was added 2026-11-20 and has a Summary column only; its per-kind detail is in
+[devin.md](devin.md), against 3000.14.30821.
+
 This page records *where things are*. Matcher semantics and rendering behaviour live in the
 per-harness pages; [README.md](README.md) indexes those.
 
@@ -35,16 +38,16 @@ filename in another harness proves nothing.
 
 ## Summary
 
-| | Claude | Codex | Cursor | Droid | OpenCode | Pi | Antigravity |
-|---|---|---|---|---|---|---|---|
-| settings | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| instructions | ✓ | ✓ | ✓ project only | ✓ | ✓ | ✓ | ✓ |
-| permissions | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| hooks | ✓ declarative | ✓ declarative | ✓ declarative | ✓ declarative | ✓ **in code** | ✓ **in code** | ✓ declarative |
-| mcp | ✓ CLI only | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| plugins | ✓ | ✓ | ✓ app-installed | ✓ | ✓ npm | ✓ | ✓ |
-| skills | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ project only |
-| agents | ✓ | ✓ TOML | ✓ | ✓ | ✓ | ✓ via `pi-subagents` | not verified |
+| | Claude | Codex | Cursor | Devin | Droid | OpenCode | Pi | Antigravity |
+|---|---|---|---|---|---|---|---|---|
+| settings | ✓ | ✓ | ✓ | ✓ user only | ✓ | ✓ | ✓ | ✓ |
+| instructions | ✓ | ✓ | ✓ project only | ✓ | ✓ | ✓ | ✓ | ✓ |
+| permissions | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| hooks | ✓ declarative | ✓ declarative | ✓ declarative | ✓ declarative | ✓ declarative | ✓ **in code** | ✓ **in code** | ✓ declarative |
+| mcp | ✓ CLI only | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| plugins | ✓ | ✓ | ✓ app-installed | ✓ account-installed | ✓ | ✓ npm | ✓ | ✓ |
+| skills | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ project only |
+| agents | ✓ | ✓ TOML | ✓ | ✓ | ✓ | ✓ | ✓ via `pi-subagents` | not verified |
 
 Four structural facts fall out of the detail below, and each matters more than any individual
 path.
@@ -60,8 +63,8 @@ while keeping hooks and MCP definitions separate. Codex splits settings (`config
 permissions (`rules/`) and hooks (`hooks.json`) into three. Pi splits them four ways. Any design
 assuming one slice ↔ one file is wrong on four of six harnesses.
 
-**All six supported harnesses have hooks; four declare them and two register them in code.**
-Claude, Codex, Cursor and Droid take a JSON document of events. OpenCode and Pi have no hooks *file*, which is
+**All seven supported harnesses have hooks; five declare them and two register them in code.**
+Claude, Codex, Cursor, Devin and Droid take a JSON document of events. OpenCode and Pi have no hooks *file*, which is
 not the same as having no hooks — both expose a documented event API that a TypeScript
 plugin/extension subscribes to, and Pi's is larger than Claude's.
 
@@ -136,6 +139,10 @@ Four of the six harnesses recorded here read a shared, harness-neutral directory
 | instructions | | | | | | `.agents/rules/` |
 | hooks | | | | | | `.agents/hooks.json` |
 
+Cursor and Devin, which have no column here, read it too: both read `~/.agents/skills/` and
+`.agents/skills/`, and Devin also reads agents from `~/.agents/agents/` and `.agents/agents/`
+([cursor.md](cursor.md), [devin.md](devin.md#skills)).
+
 **Claude reads nothing under `.agents/`** — zero occurrences in the 2.1.226 bundle. Droid uses
 its own `.factory` paths for the slices Loadout supports. Antigravity
 is the broadest adopter, with `rules/`, `hooks.json`, `plugins/`, `skills/`, `skills.json` and
@@ -145,7 +152,7 @@ The practical consequence for the skills slice: writing `~/.agents/skills/<name>
 Codex, OpenCode and Pi, and `.agents/skills/` serves Codex, OpenCode, Pi and Antigravity at project
 scope (OpenCode's project row corrected 2026-08-16 from upstream) — leaving only Claude and Droid
 needing their own directories. Loadout's project preset writes Codex's skills there, and
-OpenCode's and Pi's too when their rendered copies are byte-identical to Codex's. Pi can
+Cursor's, Devin's, OpenCode's and Pi's too when their rendered copies are byte-identical to Codex's. Pi can
 additionally be *configured* to read `~/.claude/skills` and `~/.codex/skills` directly, so a Pi
 user who already has Claude skills need not copy them.
 
@@ -491,11 +498,11 @@ Every other harness has its own skills directory at global scope, so `~/.agents/
 reverse holds: `.agents/skills/` is the only option for Codex and Antigravity, while OpenCode and
 Pi — which both read it — have `.opencode/skills/` and `.pi/skills/` as alternatives.
 
-All six have a skills mechanism. An earlier draft of this page recorded Pi and Antigravity as
+All seven have a skills mechanism. An earlier draft of this page recorded Pi and Antigravity as
 having none, on the evidence that no skills were *installed* for them on this machine — a
 mistake, and exactly the inference the never-generalise rule forbids.
 
-Pi's shipped `docs/skills.md` is the most explicit of the six and worth reading directly. Two
+Pi's shipped `docs/skills.md` is the most explicit of the seven and worth reading directly. Two
 details from it that no other harness documents:
 
 - Discovery differs by directory. In `~/.pi/agent/skills/` and `.pi/skills/`, a bare root `.md`

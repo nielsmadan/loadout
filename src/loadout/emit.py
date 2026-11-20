@@ -379,19 +379,31 @@ def _compose_merged(
 
     json_specs = [spec for spec in specs if isinstance(spec, MergedJsonSpec)]
     if json_specs:
-        if len(contributors) > 1:
-            names = ", ".join(target.name for target, _, _ in contributors)
+        if len(json_specs) != len(specs):
             raise LoadoutError(
-                f"permissions.{first.name}: {path} takes one merged JSON slice, but "
-                f"{names} all write it; JSON fragments cannot be concatenated the way "
-                f"TOML tables can"
+                f"permissions.{first.name}: {path} is JSON to one slice and TOML to another"
             )
-        json_spec = json_specs[0]
-        _, residual, content = contributors[0]
-        rendered = json_spec.fn(rules if first.select_all else EMPTY_RULES, content)
-        settings = _settings_leaves(first, residual, json_spec.owns)
-        document = json.dumps({**residual, **rendered}, indent=2, ensure_ascii=False)
-        return Merged(json_spec.owns | settings, document, format="json")
+        owned_keys: frozenset[str] = frozenset()
+        residuals: dict[str, Any] = {}
+        rendered: dict[str, Any] = {}
+        for (target, residual, content), json_spec in zip(contributors, json_specs, strict=True):
+            taken = sorted(owned_keys & json_spec.owns)
+            if taken:
+                raise LoadoutError(
+                    f"permissions.{target.name}: {', '.join(taken)} is already owned by "
+                    f"another slice writing {path}"
+                )
+            owned_keys |= json_spec.owns
+            residuals.update(residual)
+            rendered.update(json_spec.fn(rules if target.select_all else EMPTY_RULES, content))
+        settings = frozenset().union(
+            *(
+                _settings_leaves(target, residual, owned_keys)
+                for target, residual, _ in contributors
+            )
+        )
+        document = json.dumps({**residuals, **rendered}, indent=2, ensure_ascii=False)
+        return Merged(owned_keys | settings, document, format="json")
 
     owned: set[str] = set()
     fragments: list[str] = []

@@ -81,6 +81,7 @@ PI_PREFIXES = (
 SKILL_FOLDERS = {
     "claude": ".claude/skills",
     "cursor": ".cursor/skills",
+    "devin": ".devin/skills",
     "opencode": ".opencode/skills",
     "pi": ".pi/skills",
 }
@@ -284,7 +285,12 @@ def _skill_notes(view: TargetView, machine: Machine, harnesses: Sequence[str]) -
     found += [
         f"the skill {name} is in .agents/skills and in {folder} because its rendering differs "
         "between harnesses, so the harness that reads both sees it twice"
-        for folder in (SKILL_FOLDERS["cursor"], SKILL_FOLDERS["opencode"], SKILL_FOLDERS["pi"])
+        for folder in (
+            SKILL_FOLDERS["cursor"],
+            SKILL_FOLDERS["devin"],
+            SKILL_FOLDERS["opencode"],
+            SKILL_FOLDERS["pi"],
+        )
         for name in sorted(shared & _skill_names(view.outputs, folder))
     ]
     return tuple(found)
@@ -311,6 +317,19 @@ def _cursor_notes(view: TargetView, harnesses: Sequence[str]) -> tuple[str, ...]
     )
 
 
+def _devin_notes(view: TargetView, harnesses: Sequence[str]) -> tuple[str, ...]:
+    if "devin" not in harnesses:
+        return ()
+    read = _skill_names(view.outputs, SKILL_FOLDERS["devin"]) | _skill_names(
+        view.outputs, SHARED_SKILLS
+    )
+    return tuple(
+        f"Devin also reads .claude/skills while its claude import is on (the default), so the "
+        f"skill {name} reaches it twice"
+        for name in sorted(read & _skill_names(view.outputs, SKILL_FOLDERS["claude"]))
+    )
+
+
 def _branch_notes(view: TargetView) -> tuple[str, ...]:
     return tuple(
         f"{unit} is tracked on the local branch {', '.join(branches)}; checking it out replaces "
@@ -327,6 +346,7 @@ def target_notes(view: TargetView, machine: Machine, harnesses: Sequence[str]) -
         *_shadowing(view.stealth_opencode, view.team_opencode),
         *_skill_notes(view, machine, harnesses),
         *_cursor_notes(view, harnesses),
+        *_devin_notes(view, harnesses),
         *_branch_notes(view),
         *(PI_MCP_NOTE,) * view.pi_mcp_edited,
         *view.render_notes,

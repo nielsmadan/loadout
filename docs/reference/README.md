@@ -42,27 +42,32 @@ depends on, and the ones a docs page will not tell you have changed.
 [0012](../decisions/0012-antigravity-is-dropped-until-it-matures.md). Its rows are kept because
 the findings were expensive to establish and re-adding support depends on them.
 
-| | [Claude](claude-code.md) | [Codex](codex.md) | [Droid](droid.md) | [Antigravity](antigravity.md) | [OpenCode](opencode.md) | [Pi](pi.md) |
-|---|---|---|---|---|---|---|
-| resolution | deny → ask → allow | most-restrictive | native lists | deny > ask > allow | last match | last match |
-| specificity affects order | no | no | no | no | n/a | n/a |
-| glob patterns | yes | **no** | **no** | **no** | yes | yes |
-| bare matches with-args | yes, via `:*` | yes (prefix) | native list semantics | yes (prefix) | yes since v1.1.15 (`foo *`) | yes since v5.12.0 (`foo *`) |
-| exact match | yes, `Bash(x)` | **no** | **no** | not evaluated | yes, bare `x` | yes, bare `x` |
-| permissions in own file | no | **yes** | no | no | no | **yes** |
-| emission order matters | no | no | no | no | **yes** | **yes** |
+| | [Claude](claude-code.md) | [Codex](codex.md) | [Devin](devin.md) | [Droid](droid.md) | [Antigravity](antigravity.md) | [OpenCode](opencode.md) | [Pi](pi.md) |
+|---|---|---|---|---|---|---|---|
+| resolution | deny → ask → allow | most-restrictive | deny > ask > allow | native lists | deny > ask > allow | last match | last match |
+| specificity affects order | no | no | **yes**: an allow as specific as an ask beats it | no | no | n/a | n/a |
+| glob patterns | yes | **no** | **no** | **no** | **no** | yes | yes |
+| bare matches with-args | yes, via `:*` | yes (prefix) | yes (whole-word prefix) | native list semantics | yes (prefix) | yes since v1.1.15 (`foo *`) | yes since v5.12.0 (`foo *`) |
+| exact match | yes, `Bash(x)` | **no** | yes, `ExecExact(x)` | **no** | not evaluated | yes, bare `x` | yes, bare `x` |
+| permissions in own file | no | **yes** | no | no | no | no | **yes** |
+| emission order matters | no | no | no | no | no | **yes** | **yes** |
 
 ## Cross-cutting rules
 
 ### Order-independent vs last-match
 
-Claude, Codex and Antigravity resolve by decision priority, so emission order carries no
+Claude, Codex, Devin and Antigravity resolve by decision priority, so emission order carries no
 meaning. OpenCode and Pi take the last matching rule, so **denies must be emitted after
 the allows they refine**. Both renderers do this, and Pi additionally deletes and
 reinserts a key to move it to the end of the map when a later category overwrites an
 earlier one.
 
-This is why `dedupe()` is order-preserving and never uses `set()`: on two of six
+Devin adds one exception to its priority: an allow at least as specific as a matching ask
+overrides it. The source's ask wins outright, so loadout drops an allow that falls inside an ask
+and reports it, and the commands it covered keep prompting
+([devin.md](devin.md#permissions)).
+
+This is why `dedupe()` is order-preserving and never uses `set()`: on two of seven
 harnesses, order is semantic.
 
 ### Globs
@@ -75,6 +80,11 @@ docs only ever show literal command strings. Droid escapes every regex metachara
 building its matcher, so `*` matches an asterisk — see
 [droid.md](droid.md#how-an-entry-matches-and-what-that-costs-a-glob).
 
+**Devin has no glob either**: `Exec(x)` matches whole words from the start of the command. An
+`allow` glob is dropped with a notice. An `ask` or `deny` glob is widened to the words before its
+`*`, which covers more, never less, and a glob with `*` inside its first word is refused there,
+since no rule can cover it ([devin.md](devin.md#the-shell-matcher)).
+
 Skipping is fail-closed where the harness's fall-through is a prompt: an `allow` entry that is
 skipped withholds a pre-approval, and Codex and Antigravity fall through to an approval prompt.
 **Droid is the exception in the `deny` direction.** Its fall-through is the session autonomy
@@ -85,8 +95,8 @@ skips-with-a-report only in `allow` and `ask`.
 ### Exact entries
 
 A source entry starting with `=` matches one whole command: `=git status` and not
-`git status --short`. Claude writes it as `Bash(git status)` with no `:*`, and OpenCode and Pi
-as the bare form alone, without the `git status *` companion a prefix gets. **Codex and Droid
+`git status --short`. Claude writes it as `Bash(git status)` with no `:*`, Devin as
+`ExecExact(git status)`, and OpenCode and Pi as the bare form alone, without the `git status *` companion a prefix gets. **Codex and Droid
 have no whole-command form** — a token prefix and a whole-word run — so the two directions are
 handled oppositely:
 
@@ -119,13 +129,14 @@ renderer emits only the `<entry> *` form.
 ### The catch-all default
 
 `[shell] default` sets the verdict for everything no rule matches. It is authored for
-**OpenCode and Pi only** — not because every other harness cannot express a catch-all, but because
+**OpenCode, Pi and Devin only** — not because every other harness cannot express a catch-all, but because
 of where each keeps one and who owns that key:
 
 | harness | catch-all lives in | loadout |
 |---|---|---|
 | OpenCode | `permission.bash["*"]`, first key of the map it renders | authors it |
 | Pi | `permission.bash["*"]`, same | authors it; at project scope only when the source states one, since the project map is merged over the global one |
+| Devin | `Exec(*)` in `permissions.allow` or `permissions.ask` | authors it only when the source states one; `default = "deny"` renders as ask, with a notice, since a deny of everything would also block what the source allows |
 | Claude | `permissions.defaultMode`, in the same `settings.json` | **preserves** it — hand-maintained through the settings slice, and `render_claude` copies it back rather than writing a second spelling |
 | Codex | `approval_policy` in `config.toml` | writes the global file's `mcp_servers`, plugin tables and `defaults`, so a `defaults/codex.json` fragment sets it there; the project's `.codex/config.toml` it does not write |
 | Droid | session autonomy level | reports that the portable default is not represented |
@@ -208,6 +219,7 @@ only.
 | Codex | `.codex/rules/permissions.rules` | `config.toml` → `[mcp_servers.<name>].tools.<tool>`, owned by declared key | split |
 | Droid | `settings.json` → three command lists | not rendered | shell only |
 | Cursor | `cli-config.json` / `.cursor/cli.json` → `permissions.{allow,deny}` as `Shell(…)` | the same lists, as `Mcp(<server>:<tool>)` | shared |
+| Devin | `config.json` / `.devin/config.json` → `permissions.{allow,ask,deny}` as `Exec(…)` | the same lists, as `mcp__<server>__<tool>` | shared |
 | OpenCode | `opencode.json` → `permission.bash` | the same `opencode.json` → `permission.<server>_<tool>` | shared |
 | Pi | `extensions/pi-permission-system/config.json` → `permission.bash` | the same document → `permission.mcp__<server>__<tool>` | shared |
 
@@ -221,7 +233,7 @@ file.
 
 ### Relocating the config directory
 
-Six of the seven let an environment variable move the directory `loadout` writes into.
+Seven of the eight let an environment variable move the directory `loadout` writes into.
 The variable differs in name *and in kind* — this is the case the "never generalise from
 Claude" rule exists for.
 
@@ -233,6 +245,7 @@ Claude" rule exists for.
 | Pi | `PI_CODING_AGENT_DIR` | `~/.pi/agent`, and `extensions/` under it |
 | OpenCode | `XDG_CONFIG_HOME` | the global config dir: `(XDG_CONFIG_HOME ?? ~/.config) / "opencode"` |
 | Cursor | `CURSOR_CONFIG_DIR` | only `cli-config.json` (and `permissions.json`); unset, `$XDG_CONFIG_HOME/cursor` on every platform, then `~/.cursor`. `mcp.json`, `hooks.json`, `skills/` and `agents/` stay in `~/.cursor` — see [cursor.md](cursor.md#destinations) |
+| Devin | `XDG_CONFIG_HOME` | the whole config dir: `(XDG_CONFIG_HOME ?? ~/.config) / "devin"`, the same kind as OpenCode's — see [devin.md](devin.md#destinations) |
 | Antigravity | **none** | `~/.gemini/antigravity-cli/settings.json` is built from `$HOME` and nothing else |
 
 **Verified 2026-08-09** by inspecting the installed binaries: Claude Code **2.1.226**
@@ -269,6 +282,7 @@ matching what a harness actually enforces.
 | Droid | https://docs.factory.ai/docs/autonomy-and-safety/auto-run | https://docs.factory.ai/cli/configuration/settings |
 | OpenCode | https://opencode.ai/docs/permissions/ | https://opencode.ai/docs/config/ |
 | Cursor | https://cursor.com/docs/cli/reference/permissions | https://cursor.com/docs/cli/reference/configuration |
+| Devin | https://docs.devin.ai/cli/ (also shipped in the platform npm package, under `share/devin/docs/`) | |
 | Antigravity | https://antigravity.google/docs/cli-features | |
 | Pi | `@gotgenes/pi-permission-system` package docs | |
 

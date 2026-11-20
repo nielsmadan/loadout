@@ -20,6 +20,7 @@ RELOCATION_VARIABLE = {
     "claude": "CLAUDE_CONFIG_DIR",
     "codex": "CODEX_HOME",
     "cursor": "CURSOR_CONFIG_DIR",
+    "devin": "XDG_CONFIG_HOME",
     "droid": "FACTORY_HOME_OVERRIDE",
     "opencode": "XDG_CONFIG_HOME",
     "pi": "PI_CODING_AGENT_DIR",
@@ -27,8 +28,9 @@ RELOCATION_VARIABLE = {
 
 
 def test_the_preset_covers_exactly_the_supported_agents() -> None:
-    """antigravity was dropped (ADR 0012); nothing else has been added quietly."""
-    assert set(GLOBAL_PRESET) == {"claude", "codex", "cursor", "droid", "opencode", "pi"}
+    """antigravity was dropped (ADR 0012) and Devin added (ADR 0058); nothing else has
+    been added quietly."""
+    assert set(GLOBAL_PRESET) == {"claude", "codex", "cursor", "devin", "droid", "opencode", "pi"}
 
 
 @pytest.mark.parametrize("agent", sorted(GLOBAL_PRESET))
@@ -68,6 +70,7 @@ def test_every_destination_resolves_to_the_documented_default(
         "claude": "/.claude/",
         "codex": "/.codex/",
         "cursor": "/.cursor/",
+        "devin": "/.config/devin/",
         "droid": "/.factory/",
         "opencode": "/.config/opencode/",
         "pi": "/.pi/agent/",

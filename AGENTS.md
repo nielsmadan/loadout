@@ -1,7 +1,7 @@
 # AGENTS.md
 
-`loadout` renders one source of truth into config for six AI coding harnesses: Claude Code,
-Codex, Cursor CLI, Factory Droid, OpenCode and Pi. Antigravity (`agy`) was dropped — see
+`loadout` renders one source of truth into config for seven AI coding harnesses: Claude Code,
+Codex, Cursor CLI, Devin CLI, Factory Droid, OpenCode and Pi. Antigravity (`agy`) was dropped — see
 [0012](docs/decisions/0012-antigravity-is-dropped-until-it-matures.md).
 
 ## Commands

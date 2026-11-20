@@ -54,6 +54,7 @@ schema, so the harness decides. (Validation invented from one machine's files is
 | Droid | `~/.factory/settings.json` → `enabledPlugins`, `extraKnownMarketplaces` | enablement plus each used marketplace registration |
 | Pi | `~/.pi/agent/settings.json` → `packages` | the source, or an object carrying its filters |
 | OpenCode | — | nothing; the file goes through module-config, see below |
+| Devin | — | nothing; a user's plugins live in their Devin account, not in a local file ([devin.md](devin.md#plugins)) |
 
 **Claude's is the fourth slice landing in `settings.json`**, after settings, permissions and
 hooks. It owns one key and nothing else in the file.
@@ -201,4 +202,6 @@ Each is a real gap, not a judgement that the feature is absent:
   [0015](../decisions/0015-enablement-is-rendered-installation-is-reported.md) may be
   incomplete.
 - Project scope outside Droid. Droid's project preset renders plugin declarations to
-  `.factory/settings.json`; the other harnesses have no project plugin declaration route.
+  `.factory/settings.json`; the other harnesses have no project plugin declaration route. Devin's
+  `requiredPlugins` and its siblings in `.devin/config.json` are kept when loadout writes that
+  file, but not rendered.

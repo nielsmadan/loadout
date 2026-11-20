@@ -124,9 +124,10 @@ Per-repo configuration, layered on top of global. Two sources per artifact type:
 
 loadout merges the two and writes **generated outputs that are always gitignored** — twelve
 documents across five harnesses (`claude`, `codex`, `droid`, `opencode`, `pi`), plus three for
-`cursor` (`.cursor/cli.json`, `.cursor/hooks.json`, `.cursor/mcp.json`), of which `AGENTS.md` is
-one file five of them read, plus a skills directory and an agents directory for each of the six
-(Codex, Cursor, OpenCode and Pi may share `.agents/skills`, below).
+`cursor` (`.cursor/cli.json`, `.cursor/hooks.json`, `.cursor/mcp.json`) and three for `devin`
+(`.devin/config.json`, `.devin/hooks.v1.json`, `.devin/mcp_config.json`), of which `AGENTS.md` is
+one file six of them read, plus a skills directory and an agents directory for each of the seven
+(Codex, Cursor, Devin, OpenCode and Pi may share `.agents/skills`, below).
 Claude's fourth non-skill file is
 `.mcp.json`, the document its `mcp` slice adds at project scope on top of its permission and
 instruction outputs — OpenCode's `mcp` key composes into `opencode.json`, an
@@ -142,8 +143,8 @@ people through the committed *source*, which works precisely because adoption is
 all-or-nothing.
 
 **loadout merges the tiers itself rather than using each harness's native mechanism.** Three
-of the six do have one — Claude's `CLAUDE.local.md`, Codex's `AGENTS.override.md`, OpenCode's
-`instructions` config key — but they are three different shapes, Cursor, Droid and Pi have no equivalent
+of the seven do have one — Claude's `CLAUDE.local.md`, Codex's `AGENTS.override.md`, OpenCode's
+`instructions` config key — but they are three different shapes, Cursor, Devin, Droid and Pi have no equivalent
 represented here, so the merge path
 must exist anyway, and the only thing native mechanisms would buy is committed outputs, which
 nobody needs given all-or-nothing adoption. Revisit only if that adoption model ever changes.
@@ -163,18 +164,19 @@ Consequences:
   place for `/loadout` to merge. A repo declaring no order generates neither document, which is
   what keeps a permissions-only adopter's hand-written `CLAUDE.md` its own.
 - **Per-entry ownership tracking still is not needed, but "loadout is the sole writer of every
-  generated file" turned out to be false for three of the outputs.** `opencode.json`,
-  `.claude/settings.json` and `.factory/settings.json` are a harness's own multi-purpose config
-  file — the ported system preserved foreign top-level keys in the first two (`$schema` in the
+  generated file" turned out to be false for four of the outputs.** `opencode.json`,
+  `.claude/settings.json`, `.factory/settings.json` and `.devin/config.json` are a harness's own
+  multi-purpose config file — the ported system preserved foreign top-level keys in the first two (`$schema` in the
   former; `enabledPlugins`, `sandbox`, `deny` in the latter), Droid's is its settings document
-  as well as the home of the permission lists and plugin keys loadout writes, and rendering any
+  as well as the home of the permission lists and plugin keys loadout writes, Devin's also holds
+  `read_config_from` and plugin governance, and rendering any
   of them from `{}` would silently delete that content. loadout now reads the existing output as
-  the renderer's base for those three targets and carries forward any key it does not itself
+  the renderer's base for those four targets and carries forward any key it does not itself
   generate, an amendment to [0001](decisions/0001-render-never-reads-its-own-output.md) rather
   than ownership tracking: the owned subtree is still regenerated unconditionally on every
   render, so it can never feed back — only foreign keys survive. A project that keeps those keys
   in `loadout/settings/<harness>.json` gets them from that fragment instead of from the file, so
-  a fresh clone renders them too. The other nine documents are loadout-only and still render
+  a fresh clone renders them too. The other fourteen documents are loadout-only and still render
   from a blank document.
 
 **Both scopes now describe a slice the same way.** `SliceOutput` is one type in two tables —
@@ -186,16 +188,16 @@ is not its author. So a project entry sets `output` and never `destination`, and
 
 Two consequences worth stating because they look inconsistent side by side:
 
-- **Project instructions are one order for the repo, not one per harness.** Codex, Droid,
-  OpenCode and Pi all read a repo-root `AGENTS.md`
+- **Project instructions are one order for the repo, not one per harness.** Codex, Cursor,
+  Devin, Droid, OpenCode and Pi all read a repo-root `AGENTS.md`
   ([reference/config.md](reference/config.md#instructions)),
-  so one path would have to hold four orders. With Claude among other harnesses, `CLAUDE.md`
+  so one path would have to hold six orders. With Claude among other harnesses, `CLAUDE.md`
   imports `AGENTS.md` rather than repeating it
   ([0027](decisions/0027-project-claude-md-imports-agents-md.md)).
 - **Skills share a source catalog, not necessarily rendered bytes.** `render_skill` takes a
   harness: `::: <harness>` sections are kept or dropped and `:concept[…]` expands per harness.
-  Loadout therefore renders each selected harness separately. Codex, OpenCode, and Pi share
-  `.agents/skills` only when their variants are byte-identical; otherwise their verified
+  Loadout therefore renders each selected harness separately. Codex, Cursor, Devin, OpenCode
+  and Pi share `.agents/skills` only when their variants are byte-identical; otherwise their verified
   destinations remain distinct.
 
   **This is why OpenCode needs `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1`.** It scans Claude's
@@ -222,7 +224,8 @@ Two consequences worth stating because they look inconsistent side by side:
 about which scope built it — so a value renderer or a generated adapter works there the moment a
 preset entry names one. Droid has those entries: `loadout/hooks.json` renders to
 `.factory/hooks.json`, and `loadout/plugins.json` to the plugin keys of `.factory/settings.json`.
-For the other four they are deliberately not built: nothing asks for them yet, and a slice
+Cursor and Devin have a hooks entry too, rendering to `.cursor/hooks.json` and
+`.devin/hooks.v1.json`. For the other four they are deliberately not built: nothing asks for them yet, and a slice
 nobody uses is one nobody notices breaking.
 
 **Project scope has no profiles**, and that is a decision rather than an omission:

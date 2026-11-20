@@ -32,6 +32,7 @@ from loadout.servers import (
     Server,
     render_codex_servers,
     render_cursor_servers,
+    render_devin_servers,
     render_droid_servers,
     render_opencode_servers,
     render_pi_servers,
@@ -144,9 +145,9 @@ def test_every_harness_with_plugins_says_how_it_addresses_one() -> None:
 
 
 def test_every_harness_with_agents_says_how_it_spells_effort() -> None:
-    """Cursor and OpenCode have no effort key: their agents get a note instead."""
+    """Cursor, Devin and OpenCode have no effort key: their agents get a note instead."""
     assert set(EFFORT_LEVELS) == set(EFFORT_KEY)
-    assert set(EFFORTLESS) == {"cursor", "opencode"}
+    assert set(EFFORTLESS) == {"cursor", "devin", "opencode"}
     assert set(EFFORT_KEY) | set(EFFORTLESS) == _harnesses_with("agents")
 
 
@@ -161,13 +162,14 @@ def test_the_shared_skill_readers_include_the_harness_that_writes_there() -> Non
 
 def test_runtime_keys_are_the_keys_the_presets_preserve() -> None:
     """Review 3, batch 4.3: a mutation of these survived the suite while the presets
-    said the same thing; Codex's are its own, outside any slice."""
+    said the same thing; Codex's and Devin's are their own, outside any slice."""
     preserved = {
         agent: frozenset(key for spec in slices.values() for key in spec.preserve)
         for agent, slices in GLOBAL_PRESET.items()
     }
     assert {
         "codex": frozenset({"projects", "trust"}),
+        "devin": frozenset({"version", "devin", "shell", "theme_mode"}),
         **{agent: keys for agent, keys in preserved.items() if keys},
     } == discovery.RUNTIME_KEYS
 
@@ -223,6 +225,7 @@ HARNESS_NAMES = {
     "Claude": "claude",
     "Codex": "codex",
     "Cursor": "cursor",
+    "Devin": "devin",
     "Droid": "droid",
     "OpenCode": "opencode",
     "Pi": "pi",
@@ -316,6 +319,7 @@ def test_the_user_server_tables_a_stealth_source_reads_are_the_keys_the_global_r
     rendered = {
         "codex": tomllib.loads(render_codex_servers(servers)),
         "cursor": render_cursor_servers(servers),
+        "devin": render_devin_servers(servers),
         "droid": render_droid_servers(servers),
         "opencode": {GLOBAL_PRESET["opencode"]["mcp"].owned_key: render_opencode_servers(servers)},
         "pi": render_pi_servers(servers),

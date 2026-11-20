@@ -17,6 +17,7 @@ from ..hooks import (
     render_claude_hooks,
     render_codex_hooks,
     render_cursor_hooks,
+    render_devin_hooks,
     render_droid_hooks,
 )
 from ..plugins import (
@@ -32,6 +33,7 @@ from ..servers import (
     render_claude_project_servers,
     render_codex_servers,
     render_cursor_servers,
+    render_devin_servers,
     render_droid_servers,
     render_opencode_servers,
     render_pi_servers,
@@ -67,8 +69,9 @@ CATEGORIES = ("allow", "deny", "ask")
 # `[shell] default` can reach. Declared once, for `notices.py` to report the
 # targets it does not reach. `pi-project` writes one only when the source states
 # a default: pi-permission-system merges the project `bash` map over the global
-# one, so an unstated `*` there would override the global catch-all.
-CATCH_ALL_RENDERERS = frozenset({"opencode", "pi", "pi-project"})
+# one, so an unstated `*` there would override the global catch-all. Devin writes
+# `Exec(*)` only for a stated default, in whichever list states it.
+CATCH_ALL_RENDERERS = frozenset({"devin", "devin-project", "opencode", "pi", "pi-project"})
 
 
 @dataclass(frozen=True)
@@ -146,10 +149,9 @@ class DocumentJsonSpec:
 class MergedJsonSpec:
     """`MergedTomlSpec`'s JSON sibling, for a JSON file loadout does not own.
 
-    Does not compose: JSON fragments cannot be concatenated the way TOML tables
-    can, so `_merged_document` refuses more than one contributor per file rather
-    than inventing a merge. One slice per file is the only shape this supports,
-    and the only shape needed — Claude's `mcpServers` is alone in `.claude.json`.
+    Composes only by key: several slices may write one file when the top-level keys
+    they own are disjoint, as Devin's `permissions` and `hooks` share its
+    `config.json`. Two slices owning one key are refused rather than merged.
     """
 
     fn: Callable[[Rules, dict[str, Any]], dict[str, Any]]
@@ -815,6 +817,116 @@ def render_cursor_project(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
     return config
 
 
+# --------------------------------------------------------------------------
+# devin — `permissions` in config.json (global, shared with the CLI) and
+# .devin/config.json (project): three lists, deny over ask over allow regardless
+# of order, except that an allow as specific as an ask overrides it. `Exec(x)`
+# matches whole words; `ExecExact(x)` the whole command; `Exec(*)` everything.
+# There is no glob. See docs/reference/devin.md#permissions.
+# --------------------------------------------------------------------------
+
+DEVIN_CATCH_ALL = "Exec(*)"
+
+
+def devin_word_prefix(entry: str) -> str:
+    """The words of a glob before the first one holding a `*`."""
+    words = entry.split()
+    starred = next((index for index, word in enumerate(words) if "*" in word), len(words))
+    return " ".join(words[:starred])
+
+
+def _devin_range(entry: str, category: str) -> tuple[bool, str] | None:
+    """What a shell entry becomes in Devin, as (exact, command), or None when it is dropped."""
+    if is_exact(entry):
+        return True, exact_command(entry)
+    if not is_glob(entry):
+        return False, entry
+    if category == "allow":
+        return None
+    prefix = devin_word_prefix(entry)
+    if not prefix:
+        raise LoadoutError(
+            f"devin: cannot render {category} {entry!r} — Devin matches whole words and has no "
+            f"glob, so no rule covers a '*' inside the first word, and dropping the rule would "
+            f"leave the {category} list wider than the source asks for. Name the commands it "
+            f"means instead. See docs/reference/devin.md#the-shell-matcher."
+        )
+    return False, prefix
+
+
+def _devin_within(inner: tuple[bool, str], outer: tuple[bool, str]) -> bool:
+    """Whether every command `inner` matches is one `outer` matches too."""
+    inner_exact, inner_command = inner
+    outer_exact, outer_command = outer
+    if outer_exact:
+        return inner_exact and inner_command == outer_command
+    return inner_command == outer_command or inner_command.startswith(f"{outer_command} ")
+
+
+def _devin_mcp_within(inner: str, outer: str) -> bool:
+    (server, tool), (outer_server, outer_tool) = mcp_parts(inner), mcp_parts(outer)
+    return server == outer_server and outer_tool in {"*", tool}
+
+
+def devin_unasked(rules: Rules) -> tuple[list[str], list[str]]:
+    """The shell and MCP allows Devin would let override an ask.
+
+    At one level Devin lets an allow at least as specific as a matching ask win,
+    where the source's ask wins outright. An allow inside an ask's range is
+    dropped, so the commands it covered keep prompting.
+    """
+    asks = [form for entry in rules.ask if (form := _devin_range(entry, "ask")) is not None]
+    shell = [
+        entry
+        for entry in rules.allow
+        if (form := _devin_range(entry, "allow")) is not None
+        and any(_devin_within(form, ask) for ask in asks)
+    ]
+    mcp = [
+        entry
+        for entry in rules.mcp_allow
+        if any(_devin_mcp_within(entry, ask) for ask in rules.mcp_ask)
+    ]
+    return shell, mcp
+
+
+def devin_rule(form: tuple[bool, str]) -> str:
+    exact, command = form
+    return f"ExecExact({command})" if exact else f"Exec({command})"
+
+
+def devin_permissions(rules: Rules) -> dict[str, list[str]]:
+    shell_dropped, mcp_dropped = devin_unasked(rules)
+    lists: dict[str, list[str]] = {}
+    for category in PROJECT_CATEGORIES:
+        dropped = shell_dropped if category == "allow" else ()
+        shell = [
+            devin_rule(form)
+            for entry in rules.shell(category)
+            if entry not in dropped and (form := _devin_range(entry, category)) is not None
+        ]
+        excluded = mcp_dropped if category == "allow" else ()
+        mcp = [mcp_native(entry) for entry in rules.mcp(category) if entry not in excluded]
+        lists[category] = dedupe(shell + mcp)
+    if rules.default is not None:
+        # Devin has no verdict for "every command no rule names" but ask and allow, and
+        # a deny of everything would also block what the source allows; ask is the
+        # narrowest it can say.
+        verdict = "ask" if rules.default == "deny" else rules.default
+        lists[verdict] = dedupe([*lists[verdict], DEVIN_CATCH_ALL])
+    return lists
+
+
+def render_devin(rules: Rules, content: dict[str, Any]) -> dict[str, Any]:
+    return {"permissions": devin_permissions(rules)}
+
+
+def render_devin_project(rules: Rules, base: dict[str, Any]) -> dict[str, Any]:
+    config = copy.deepcopy(base)
+    config["permissions"] = devin_permissions(rules)
+    return config
+
+
 PROJECT_CATEGORIES = ("allow", "ask", "deny")
 
 CODEX_PROJECT_DECISION = {"allow": "allow", "ask": "prompt", "deny": "forbidden"}
@@ -943,6 +1055,14 @@ RENDERERS: dict[
     "cursor-project": JsonSpec(render_cursor_project),
     "cursor-hooks": DocumentJsonSpec(render_cursor_hooks),
     "cursor-servers": DocumentJsonSpec(render_cursor_servers),
+    "devin": MergedJsonSpec(render_devin, frozenset({"permissions"})),
+    "devin-project": JsonSpec(render_devin_project),
+    "devin-hooks": MergedJsonSpec(
+        lambda _rules, hooks: {"hooks": render_devin_hooks(hooks)} if hooks else {},
+        frozenset({"hooks"}),
+    ),
+    "devin-project-hooks": DocumentJsonSpec(render_devin_hooks),
+    "devin-servers": DocumentJsonSpec(render_devin_servers),
     "codex-servers": DocumentTextSpec(render_codex_servers),
     "codex-config": MergedTomlSpec(render_codex_config, frozenset({"mcp_servers"})),
     "codex-settings": MergedTomlSpec(render_codex_settings, _fragment_keys),

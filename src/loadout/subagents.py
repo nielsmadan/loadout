@@ -50,9 +50,11 @@ EFFORT_KEY = {
 }
 EXTENSION = {"codex": ".toml"}
 # Harnesses whose agent files have no effort key. Cursor takes effort inside the
-# model ID, and which options a model accepts depends on the model.
+# model ID, and which options a model accepts depends on the model. Devin's effort is
+# a session option its agent loader refuses.
 EFFORTLESS = {
     "cursor": ("Cursor", "; give it in the model, as cursor: <model>[effort=<level>]"),
+    "devin": ("Devin", ""),
     "opencode": ("OpenCode", ""),
 }
 SOURCE_KEYS = frozenset({"name", "description", "model", "effort"})
@@ -275,7 +277,7 @@ def _models(block: tuple[str, list[str]] | None, label: str) -> dict[str, str]:
             return {}
         raise LoadoutError(
             f"{label}: model {_unquote(value)!r} would name one model for every harness, and "
-            f"no model name means the same thing in all six; give a per-harness map, one "
+            f"no model name means the same thing in all seven; give a per-harness map, one "
             f"indented `<harness>: <model>` line each, or `inherit`"
         )
     models = _harness_map(children, label, "model")

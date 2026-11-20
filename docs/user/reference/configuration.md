@@ -229,8 +229,8 @@ the `hooks` slice names by path, an OpenCode plugin's `.ts` file. Files under
 `<source>/module-config/<harness>/` are copied verbatim to the same relative path beneath that
 harness's config directory, keeping the module's formatting and any executable bit. The path is
 authored rather than derived because it has to be: `pi-subagents` reads
-`extensions/subagent/config.json`. Module configuration renders for Claude, Droid, OpenCode and
-Pi. See [module config](https://github.com/nielsmadan/loadout/blob/main/docs/reference/module-config.md).
+`extensions/subagent/config.json`. Module configuration renders for Claude, Cursor, Devin, Droid,
+OpenCode and Pi. See [module config](https://github.com/nielsmadan/loadout/blob/main/docs/reference/module-config.md).
 
 ### Codex defaults
 
@@ -327,12 +327,41 @@ headless `-p` runs included, saves that model over `selectedModel`. `check` then
 owned key edited outside loadout, and `sync` stops there, as it does for any such key: put the
 model in the fragment to keep it, or run `loadout sync --force` to put yours back.
 
+### Devin settings
+
+Devin keeps its settings in `config.json`, beside the `permissions` and `hooks` loadout writes and
+the keys the CLI writes itself, such as `version` and `theme_mode`. `settings` under `[devin]`
+names fragments resolved as `<source>/settings/<name>.json`, and loadout sets the keys they hold
+and leaves every other key alone:
+
+```toml
+[devin]
+settings = "devin"        # settings/devin.json
+```
+
+```json
+{
+  "permission_mode": "accept-edits",
+  "agent": { "model": "swe" },
+  "read_config_from": { "claude": false }
+}
+```
+
+Ownership works as for [Cursor settings](#cursor-settings): a nested object owns its leaves, so
+`agent.model` is set and Devin's other `agent` keys stay, and the `settings/<name>.owned` record
+removes a key you take out of the fragment. The fragment cannot set `permissions` or `hooks`, which
+their own slices write. Model names are Devin's, such as `swe` or `opus`. `read_config_from` turns
+off the files Devin reads from other tools; see
+[harness support](harnesses.md#devin-cli).
+
+Loadout reads `config.json` as plain JSON, so a comment in it makes `sync` refuse.
+
 ### Where harness blocks write
 
 Each destination in the preset carries that harness's config-directory variable:
 `${CLAUDE_CONFIG_DIR:-~/.claude}`, `${CODEX_HOME:-~/.codex}`,
-`${FACTORY_HOME_OVERRIDE:-~}/.factory`, `${XDG_CONFIG_HOME:-~/.config}/opencode` and
-`${PI_CODING_AGENT_DIR:-~/.pi/agent}`. Relocating a harness is followed automatically, and with the
+`${FACTORY_HOME_OVERRIDE:-~}/.factory`, `${XDG_CONFIG_HOME:-~/.config}/opencode`,
+`${XDG_CONFIG_HOME:-~/.config}/devin` and `${PI_CODING_AGENT_DIR:-~/.pi/agent}`. Relocating a harness is followed automatically, and with the
 variable unset each resolves to that harness's own default. The paths per harness are in
 [harness support](harnesses.md).
 
@@ -577,9 +606,9 @@ loadout/instructions/            ordered instruction fragments
 loadout/skills/                  skills, one folder each, with supporting files
 loadout/agents/                  subagents, one Markdown file each
 loadout/mcp.toml                 MCP server definitions, optional
-loadout/hooks.json               hook declarations, for Droid
+loadout/hooks.json               hook declarations, for Cursor, Devin and Droid
 loadout/plugins.json             plugin declarations, for Droid
-loadout/settings/<harness>.json  the rest of a shared settings file, for claude, droid or opencode
+loadout/settings/<harness>.json  the rest of a shared settings file, for claude, devin, droid or opencode
 loadout/kits/                    vendored kits
 ```
 
@@ -706,12 +735,13 @@ Each destination is relative to the target's root. The files a stealth source ow
 | Claude | `CLAUDE.local.md` (whole) | `~/.claude.json`, one server at a time under `projects.<root>.mcpServers` | `.claude/settings.local.json` (shared) | `.claude/skills/<name>/` |
 | Codex | `developer_instructions` in `.codex/config.toml` (whole) | `mcp_servers` in `.codex/config.toml` | `.codex/rules/<name>.rules` (whole) | `.agents/skills/<name>/` |
 | Cursor | `.cursor/rules/<name>.mdc` (whole) | `.cursor/mcp.json` (whole) | `.cursor/cli.json` (whole) | `.cursor/skills/<name>/` |
+| Devin | `.devin/rules/<name>.md` (whole) | `.devin/mcp_config.local.json` (whole) | `.devin/config.local.json` (whole) | `.devin/skills/<name>/` |
 | Droid | `.factory/AGENTS.md` (whole) | `.factory/mcp.json` (whole) | `.factory/settings.local.json` (shared) | `.factory/skills/<name>/` |
 | OpenCode | `instructions` in `opencode.json` (shared), naming a file in the stealth folder | `mcp` in `opencode.json` | `permission` in `opencode.json` | `.opencode/skills/<name>/` |
 | Pi | `.pi/APPEND_SYSTEM.md` (whole) | `.pi/mcp.json` (whole) | `.pi/extensions/pi-permission-system/config.json` (whole) | `.pi/skills/<name>/` |
 
-- Skills are rendered as at project scope. When Codex, Cursor, OpenCode and Pi render a skill
-  identically, one `.agents/skills/<name>/` copy serves them all.
+- Skills are rendered as at project scope. When Codex, Cursor, Devin, OpenCode and Pi render a
+  skill identically, one `.agents/skills/<name>/` copy serves them all.
 - Codex's `.codex/config.toml` holds the instructions and the servers together, and Codex applies
   it only in a trusted project. A project `developer_instructions` replaces the user-level one. The
   rules file is written only when the stealth source has a shell rule Codex can express.
@@ -723,6 +753,9 @@ Each destination is relative to the target's root. The files a stealth source ow
   at project scope. With its third-party imports on (the default) Cursor also reads
   `CLAUDE.local.md` and `.claude/skills/`, so a stealth source that declares Claude too reaches it
   twice; `check` says so.
+- Devin's instructions are a rule named for the stealth source, starting with
+  `trigger: always_on`, so they load in every session. Its servers and permissions go to the
+  `.local.` files Devin treats as personal.
 - OpenCode's `opencode.json` is written at the repository root, where a tracked
   `.opencode/opencode.json` outranks it. The `instructions` entry names
   `<stealth folder>/.loadout/opencode-instructions.md`, a file the stealth source renders into its own
@@ -823,7 +856,7 @@ under the same name replaces the kit's.
 
 A subagent is one Markdown file, `agents/<name>.md` in a global source or `loadout/agents/<name>.md`
 in a project, and it reaches every configured harness: Claude, Codex (as `<name>.toml`), Cursor,
-Droid (as a custom droid), OpenCode and Pi (read by the `pi-subagents` package, which Pi needs
+Devin, Droid (as a custom droid), OpenCode and Pi (read by the `pi-subagents` package, which Pi needs
 installed).
 
 ```markdown
@@ -844,8 +877,8 @@ Review the staged diff.
 The body is the agent's instructions, with `::: <harness>` sections as in a skill. The file name is
 the agent's name; a `name` field must match it. `model` is `inherit` or a map per harness, and a
 harness it leaves out inherits; one name for every harness is refused, since no model name means
-the same thing in all six. `effort` is one word from `off` to `max`, translated per harness, or a
-map. A harness lacking the level gets the nearest lower one, and Cursor and OpenCode none, each with a
+the same thing in all seven. `effort` is one word from `off` to `max`, translated per harness, or a
+map. A harness lacking the level gets the nearest lower one, and Cursor, Devin and OpenCode none, each with a
 note; Cursor takes effort in the model instead, as `cursor: claude-opus-5[effort=high]`.
 A block keyed by a harness holds what only that harness reads; Droid's `droid:` block takes only
 `tools`, `mcpServers` and `version`, since Droid drops any other key when it rewrites its droids
@@ -940,7 +973,8 @@ deny = ["docs/delete"]
   dropping its rules. `[opencode.extra]` takes any key.
 - The strictest decision wins when the same entry appears in several tiers.
 - An omitted shell default casts no vote in composition. An explicitly stated default does.
-- `[shell] default` is rendered for OpenCode and Pi. Claude and Codex use native settings;
+- `[shell] default` is rendered for OpenCode, Pi and Devin, which writes it as `Exec(*)` and
+  renders `deny` as ask. Claude and Codex use native settings;
   Droid uses session autonomy; Cursor uses `approvalMode`. `loadout sync` names the targets a stated default does not reach.
   `default = "allow"` with a deny list is weaker than it looks; see
   [the catch-all default](https://github.com/nielsmadan/loadout/blob/main/docs/reference/README.md#the-catch-all-default).
@@ -949,18 +983,21 @@ deny = ["docs/delete"]
   starting with `=` is exact: `"=git status"` matches that command and nothing longer. An exact
   entry may not contain `*`.
 
-Exact entries render exactly for Claude, Cursor, OpenCode, and Pi. Codex and Droid cannot match a whole
+Exact entries render exactly for Claude, Cursor, Devin, OpenCode, and Pi. Codex and Droid cannot match a whole
 command, so Loadout omits an exact `allow` or `ask` for them, leaving the command to their own
 approval, and renders an exact `deny` as its prefix, which blocks more rather than less.
 `loadout sync` reports each one.
 
 Trailing shell globs can be represented by Claude, Cursor, OpenCode, and Pi. Loadout skips them for
 Codex's literal prefix rules and Droid's literal permission lists. Cursor's `*` stops at `/`, so a
-Cursor deny glob past the first word is widened to its word prefix.
+Cursor deny glob past the first word is widened to its word prefix. Devin has no glob: Loadout
+leaves out an `allow` glob, widens an `ask` or `deny` glob to the words before its `*`, and refuses
+one whose `*` is inside the first word in `ask` or `deny`.
 
 Cursor has no `ask` list. An `ask` entry is left to Cursor's `approvalMode`, and an `allow` that
-would also cover an `ask` is left out for Cursor, so that command still prompts. `loadout sync`
-reports both. Different matching behavior remains visible in the
+would also cover an `ask` is left out for Cursor, so that command still prompts. Devin lets an
+`allow` at least as specific as an `ask` override it, so such an `allow` is left out for Devin too.
+`loadout sync` reports each of these. Different matching behavior remains visible in the
 [harness reference](harnesses.md#permission-portability).
 
 The same format serves a global source's `permissions.toml`, a project's `loadout/permissions.toml`,

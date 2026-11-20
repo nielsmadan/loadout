@@ -7,7 +7,7 @@
 one-process-per-command CLI, but a long-lived embedding must clear or bypass that cache after
 replacing a source directory or symlink; otherwise a stale root can surface as a misleading
 escape error.
-`extract.py` runs `permissions/renderers.py` backwards. `EXTRACTORS` covers the ten permission
+`extract.py` runs `permissions/renderers.py` backwards. `EXTRACTORS` covers the fourteen permission
 renderers and `VALUE_EXTRACTORS` the hooks, plugins and servers renderers; six `RENDERERS` keys
 have no extractor: `codex-config`, `codex-plugins`, `codex-servers`, `codex-settings`,
 `opencode-hooks` and `pi-hooks`. Init unions the extracted harnesses' permissions through
@@ -174,6 +174,9 @@ Left as they are on purpose; each says what it costs.
   record. Codex 0.166.0 names no lock for `config.toml`, `hooks.json`, `rules/` or `AGENTS.md`
   (verified negative: every `.lock` and lock-error string in the binary). Whether OpenCode locks
   `opencode.json` is not established: its binary is unreadable from the sandbox.
+- **Devin's `config.json` is read as plain JSON.** Devin accepts comments in it and keeps them
+  when it writes the file itself, but loadout cannot parse them, so sync refuses a `config.json`
+  that holds one rather than drop it ([devin.md](devin.md#what-loadout-writes)).
 - **The guard judges `~/.claude.json` and Pi's `settings.json` before their harness lock is
   taken.** Sync's write of `~/.claude.json` merges again inside the lock, so Claude's own keys
   survive, but a Claude save to a key loadout owns that lands between the guard and the write is

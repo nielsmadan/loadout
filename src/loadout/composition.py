@@ -19,12 +19,18 @@ HEADER = (
 )
 
 
-# Cursor ignores a rule whose frontmatter is not the first thing in the file.
+# Cursor and Devin ignore a rule's frontmatter unless it is the first thing in the
+# file, and without it neither loads the rule in every session.
 CURSOR_RULE = "---\nalwaysApply: true\n---\n\n"
+DEVIN_RULE = "---\ntrigger: always_on\n---\n\n"
 
 
 def for_destination(path: Path, content: str) -> str:
-    return CURSOR_RULE + content if path.suffix.lower() == ".mdc" else content
+    if path.suffix.lower() == ".mdc":
+        return CURSOR_RULE + content
+    if path.parent.name == "rules" and path.parent.parent.name == ".devin":
+        return DEVIN_RULE + content
+    return content
 
 
 def load_fragment(path: Path) -> str:

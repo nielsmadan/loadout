@@ -227,6 +227,19 @@ PROJECT_PRESET: dict[str, dict[str, SliceOutput]] = {
         "skills": SliceOutput(output=".cursor/skills"),
         "agents": SliceOutput(output=".cursor/agents"),
     },
+    "devin": {
+        # The file also holds read_config_from and plugin governance, which stay.
+        "permissions": SliceOutput(
+            renderer="devin-project", output=".devin/config.json", preserve_foreign=True
+        ),
+        "hooks": SliceOutput(
+            renderer="devin-project-hooks", output=".devin/hooks.v1.json", source_slice="hooks"
+        ),
+        "mcp": SliceOutput(renderer="devin-servers", output=".devin/mcp_config.json"),
+        "instructions": SliceOutput(output="AGENTS.md"),
+        "skills": SliceOutput(output=".devin/skills"),
+        "agents": SliceOutput(output=".devin/agents"),
+    },
     "droid": {
         "permissions": SliceOutput(
             renderer="droid", output=".factory/settings.json", preserve_foreign=True

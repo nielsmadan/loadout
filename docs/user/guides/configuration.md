@@ -49,7 +49,7 @@ MCP entries use `server/tool` or `server/*`. Check the
 The project version is `loadout/permissions.toml`. Personal project rules go in
 `loadout/permissions.local.toml`.
 
-`[shell] default = "ask"` specifies the fallback decision for OpenCode and Pi. Claude's
+`[shell] default = "ask"` specifies the fallback decision for OpenCode, Pi and Devin. Claude's
 default mode is a native setting; Codex's approval policy is separate; Droid uses session
 autonomy.
 A bare `"*"` permission entry is rejected. See the
@@ -85,9 +85,9 @@ Use the OpenCode-specific workflow here.
 
 Keep supporting files in the same tree. They travel with the skill. Project skills render to
 `.claude/skills/` for Claude, `.agents/skills/` for Codex and `.factory/skills/` for Droid.
-Cursor, OpenCode and Pi read `.agents/skills/` too, so when Codex is selected and they would get
-the same bytes, the skill is written there once for all of them; otherwise they get
-`.cursor/skills/`, `.opencode/skills/` and `.pi/skills/`.
+Cursor, Devin, OpenCode and Pi read `.agents/skills/` too, so when Codex is selected and they would
+get the same bytes, the skill is written there once for all of them; otherwise they get
+`.cursor/skills/`, `.devin/skills/`, `.opencode/skills/` and `.pi/skills/`.
 
 For the bundled configuration skill, see [global setup](global.md#configure-through-your-agent).
 
@@ -113,7 +113,7 @@ is `inherit` or a map per harness; a harness it leaves out inherits. `effort` ru
 nearest lower one, or none, and `sync` prints a note saying so.
 
 Every configured harness receives it: Claude in `agents/`, Codex as a TOML file in `agents/`,
-Droid in `droids/`, OpenCode in `agents/`, and Pi in `agents/` for the `pi-subagents` package,
+Cursor and Devin in `agents/`, Droid in `droids/`, OpenCode in `agents/`, and Pi in `agents/` for the `pi-subagents` package,
 which Pi needs installed. The [support table](../reference/harnesses.md) lists the paths at
 both scopes. In a global manifest the slice is automatic; opt a harness block out with
 `agents = false`. Removing or renaming the file retires the old agent everywhere.
@@ -138,8 +138,8 @@ args = ["--stdio"]
 Use your actual server URL or command. `auth_env_var` is the environment variable's name,
 not the secret value.
 
-At project scope, the file is `loadout/mcp.toml`. Claude receives `.mcp.json`, Droid receives
-`.factory/mcp.json`, OpenCode receives its `mcp` configuration key, and Pi receives
+At project scope, the file is `loadout/mcp.toml`. Claude receives `.mcp.json`, Cursor receives
+`.cursor/mcp.json`, Devin receives `.devin/mcp_config.json`, Droid receives `.factory/mcp.json`, OpenCode receives its `mcp` configuration key, and Pi receives
 `.pi/mcp.json`, which it reads once you trust the project.
 
 At global scope, Loadout writes the selected harness's server configuration, including Claude's
@@ -164,7 +164,9 @@ Select the fragment:
 settings = "claude"
 ```
 
-Claude, Droid, and OpenCode carry native settings alongside rendered slices. Codex top-level
+Claude, Droid, and OpenCode carry native settings alongside rendered slices. Cursor and Devin set
+the keys a fragment names in a file their CLI also writes; see
+[Devin settings](../reference/configuration.md#devin-settings). Codex top-level
 settings use a separate, explicitly selected `defaults` slice:
 
 ```json title="defaults/codex.json"
@@ -212,7 +214,9 @@ A fragment uses event names and hook definitions:
 ```
 
 Claude, Codex, and Droid receive native hook configuration. Cursor receives its own `hooks.json`,
-translated the way Cursor translates Claude's hooks. OpenCode and Pi receive generated adapters
+translated the way Cursor translates Claude's hooks. Devin receives Claude's shape with tool
+matchers translated to Devin's tool names, in the `hooks` key of its `config.json` and in a
+project's `.devin/hooks.v1.json`. OpenCode and Pi receive generated adapters
 for supported command hooks. Event mapping and payload differences matter, so test hooks in
 each harness you enable. Hook scripts can travel through module configuration.
 
@@ -263,6 +267,6 @@ module-config/
 Loadout copies it beneath the corresponding global harness directory, preserving bytes and
 executable permissions. The consuming module determines the filename.
 
-The slice is automatic for Claude, Cursor, Droid, OpenCode, and Pi; opt out with
+The slice is automatic for Claude, Cursor, Devin, Droid, OpenCode, and Pi; opt out with
 `module-config = false`.
 Files must not collide with another slice's output.

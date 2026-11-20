@@ -253,7 +253,7 @@ STEALTH_FIXTURE = Path(__file__).parent / "fixtures" / "stealth"
 
 def test_the_stealth_fixture_declares_every_harness_and_one_differing_fragment_order() -> None:
     manifest = load_stealth_manifest(STEALTH_FIXTURE)
-    assert manifest.harnesses == ("claude", "codex", "cursor", "droid", "opencode", "pi")
+    assert manifest.harnesses == ("claude", "codex", "cursor", "devin", "droid", "opencode", "pi")
     orders = {t.name: t.fragments for t in manifest.manifest.targets}
     assert len(set(orders.values())) == 2
 
@@ -275,6 +275,16 @@ def test_the_stealth_fixture_has_an_http_and_a_stdio_server_and_a_settings_fragm
 def test_the_stealth_fixture_skill_has_a_supporting_file() -> None:
     assert (STEALTH_FIXTURE / "skills/probe/SKILL.md").is_file()
     assert (STEALTH_FIXTURE / "skills/probe/reference.md").is_file()
+
+
+def test_a_shell_allow_sits_inside_a_shell_ask() -> None:
+    """Devin lets an allow as specific as an ask beat it, so it drops one inside an ask."""
+    assert any(allow.startswith(f"{ask} ") for allow in RULES.allow for ask in RULES.ask)
+
+
+def test_an_ask_glob_runs_past_the_first_word() -> None:
+    """Devin has no glob and widens one to the words before its `*`."""
+    assert any(is_glob(ask) and " " in ask.split("*")[0].strip() for ask in RULES.ask)
 
 
 def test_an_mcp_allow_covers_an_mcp_ask() -> None:

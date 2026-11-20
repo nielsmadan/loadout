@@ -12,14 +12,17 @@ __all__ = [
     "CLAUDE_EVENTS",
     "CODEX_EVENTS",
     "CURSOR_EVENTS",
+    "DEVIN_EVENTS",
     "DROID_EVENTS",
     "HARNESS_PREFIXES",
     "adaptable_document",
     "cursor_hooks",
+    "devin_hooks",
     "foreign_variables",
     "render_claude_hooks",
     "render_codex_hooks",
     "render_cursor_hooks",
+    "render_devin_hooks",
     "render_droid_hooks",
     "unrecognised_events",
 ]
@@ -313,6 +316,107 @@ def render_cursor_hooks(document: Mapping[str, Any]) -> dict[str, Any]:
     return cursor_hooks(document)[0]
 
 
+# Devin 3000.14.30821 takes Claude's hooks shape and event names, but its matcher is a
+# regex over its own tool names, found anywhere in the name unless anchored. The events
+# below loaded in that binary; Notification and SubagentStop are accepted and never
+# loaded, and PostToolUseFailure and SubagentStart are skipped with a warning
+# (docs/reference/devin.md#hooks).
+DEVIN_EVENTS = frozenset(
+    {
+        "PreToolUse",
+        "PostToolUse",
+        "PermissionRequest",
+        "UserPromptSubmit",
+        "Stop",
+        "PreCompact",
+        "PostCompact",
+        "PostCompaction",
+        "ContextInput",
+        "SessionStart",
+        "SessionEnd",
+    }
+)
+DEVIN_TOOL_EVENTS = frozenset({"PreToolUse", "PostToolUse", "PermissionRequest"})
+DEVIN_HOOK_TYPES = frozenset({"command", "prompt"})
+DEVIN_TOOL_NAMES: dict[str, tuple[str, ...]] = {
+    "Bash": ("exec",),
+    "Read": ("read",),
+    "Write": ("write",),
+    "Edit": ("edit", "apply_patch"),
+    "MultiEdit": ("edit", "apply_patch"),
+    "NotebookEdit": ("notebook_edit",),
+    "Glob": ("glob",),
+    "Grep": ("grep",),
+    "WebFetch": ("webfetch",),
+    "WebSearch": ("web_search",),
+    "Task": ("run_subagent",),
+    "Agent": ("run_subagent",),
+    "Skill": ("skill",),
+    "TodoWrite": ("todo_write",),
+    "ExitPlanMode": ("exit_plan_mode",),
+    "AskUserQuestion": ("ask_user_question",),
+}
+
+
+def _devin_matcher(matcher: str) -> str:
+    """A Claude tool matcher as an anchored regex over Devin's tool names."""
+    if matcher in {"", "*"}:
+        return ""
+    names: list[str] = []
+    for part in matcher.split("|"):
+        tool = part.strip()
+        for name in DEVIN_TOOL_NAMES.get(tool, (tool,)):
+            if name not in names:
+                names.append(name)
+    return f"^{names[0]}$" if len(names) == 1 else f"^({'|'.join(names)})$"
+
+
+def devin_hooks(document: Mapping[str, Any]) -> tuple[dict[str, Any], tuple[str, ...]]:
+    """Devin's hooks object for a Claude hooks document, and what it leaves out."""
+    hooks: dict[str, Any] = {}
+    skipped: list[str] = []
+    for event, entries in document.items():
+        if not isinstance(entries, list):
+            hooks[event] = copy.deepcopy(entries)
+            continue
+        converted: list[Any] = []
+        for entry in entries:
+            if not isinstance(entry, Mapping) or not isinstance(entry.get("hooks"), list):
+                converted.append(copy.deepcopy(entry))
+                continue
+            kept = [
+                copy.deepcopy(dict(hook))
+                for hook in entry["hooks"]
+                if isinstance(hook, Mapping) and hook.get("type") in DEVIN_HOOK_TYPES
+            ]
+            skipped += [
+                f"{event}: {hook.get('type') if isinstance(hook, Mapping) else None}"
+                for hook in entry["hooks"]
+                if not (isinstance(hook, Mapping) and hook.get("type") in DEVIN_HOOK_TYPES)
+            ]
+            if not kept:
+                continue
+            rendered = {**copy.deepcopy(dict(entry)), "hooks": kept}
+            matcher = entry.get("matcher")
+            if isinstance(matcher, str) and event in DEVIN_TOOL_EVENTS:
+                rendered["matcher"] = _devin_matcher(matcher)
+            elif "matcher" in entry:
+                if matcher not in {"", "*", None}:
+                    skipped.append(f"{event}: matcher {matcher!r}, which Devin has none of here")
+                del rendered["matcher"]
+            converted.append(rendered)
+        if converted:
+            hooks[event] = converted
+    return hooks, tuple(skipped)
+
+
+def render_devin_hooks(document: Mapping[str, Any]) -> dict[str, Any]:
+    """Devin's hooks object: the value of `hooks` in config.json, and the whole of
+    `.devin/hooks.v1.json`."""
+    _reject_foreign_variables(document, "devin")
+    return devin_hooks(document)[0]
+
+
 def adaptable_document(
     document: Mapping[str, Any], adaptable: frozenset[str] = ADAPTABLE_TYPES
 ) -> tuple[dict[str, Any], tuple[str, ...]]:
@@ -376,6 +480,7 @@ HARNESS_PREFIXES = {
     "claude": "CLAUDE_",
     "codex": "CODEX_",
     "cursor": "CURSOR_",
+    "devin": "DEVIN_",
     "droid": ("FACTORY_", "DROID_"),
 }
 # Variables a harness defines inside another's namespace. Cursor sets

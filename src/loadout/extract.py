@@ -13,8 +13,8 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from .errors import LoadoutError
-from .hooks import CURSOR_EVENT_NAMES, foreign_variables
-from .permissions.renderers import render_codex, render_codex_project
+from .hooks import CURSOR_EVENT_NAMES, DEVIN_TOOL_EVENTS, DEVIN_TOOL_NAMES, foreign_variables
+from .permissions.renderers import DEVIN_CATCH_ALL, render_codex, render_codex_project
 from .permissions.rules import (
     CATCH_ALL_ENTRY,
     DECISIONS,
@@ -25,6 +25,7 @@ from .permissions.rules import (
     Rules,
     is_glob,
     mcp_parts,
+    strictest,
 )
 from .plugins import MARKETPLACES, PLUGINS
 from .servers import Server, auth_conflict, literal_header
@@ -1247,7 +1248,11 @@ OPENCODE_SERVER_KEYS = frozenset({"type", "url", "headers", "command", "environm
 
 # Transports the harness documents and the source cannot hold. Claude: "add `"type": "http"`,
 # `"type": "sse"`, or `"type": "ws"`"; Droid: "`type` | `"stdio" | "http" | "sse"`".
-SUPPORTED_UNCARRIED_TYPES = {"claude-servers": ("sse", "ws"), "droid-servers": ("sse",)}
+SUPPORTED_UNCARRIED_TYPES = {
+    "claude-servers": ("sse", "ws"),
+    "devin-servers": ("sse",),
+    "droid-servers": ("sse",),
+}
 
 # One variable name and nothing else: `${VAR:-x}` falls back to `x`, which an auth variable
 # cannot say, so it stays a header reference.
@@ -1913,7 +1918,222 @@ def extract_cursor_hooks(document: Any) -> ValueExtraction:
     return ValueExtraction(value, (*notes, *_foreign_variable_notes(value, "cursor")))
 
 
+# --------------------------------------------------------------------------
+# devin — the five renderers run backwards. A permission list holds typed rules, of
+# which `Exec`, `ExecExact` and `mcp__server__tool` are the source's and `Exec(*)` is
+# the catch-all; a dropped deny is lost, since Devin would then allow what it blocked.
+# --------------------------------------------------------------------------
+
+DEVIN_TOKEN = re.compile(r"^(?P<kind>Exec|ExecExact)\((?P<inner>[^()]*)\)$")
+DEVIN_MCP = re.compile(r"^mcp__(?P<server>.+?)__(?P<tool>.+)$")
+
+
+def _devin_token(token: Any, category: str) -> tuple[str, str] | Note:
+    """One rule as ("shell" | "mcp" | "default", entry), or what it costs to leave it out."""
+    if token == DEVIN_CATCH_ALL or (token == "exec" and category != "deny"):
+        return "default", category
+    match = DEVIN_TOKEN.match(token) if isinstance(token, str) else None
+    inner = match["inner"] if match is not None else ""
+    if match is not None and inner == inner.strip() and inner and "*" not in inner:
+        return "shell", f"{EXACT_MARK}{inner}" if match["kind"] == "ExecExact" else inner
+    server = DEVIN_MCP.match(token) if isinstance(token, str) else None
+    if server is not None and "/" not in server["server"]:
+        return "mcp", f"{server['server']}/{server['tool']}"
+    if category == "deny":
+        return Note("lost", f"devin: deny {token!r}", "Devin would allow what it blocks")
+    return Note("cannot", f"devin: {category} {token!r} has no source form, so it is not adopted")
+
+
+def _devin_rules(document: Any, label: str) -> tuple[Rules, tuple[Note, ...]]:
+    if not isinstance(document, Mapping):
+        return Rules(), (Note("unrecognised", f"{label}: document is not a map"),)
+    permissions = document.get("permissions", {})
+    if not isinstance(permissions, Mapping):
+        return Rules(), (Note("unrecognised", f"{label}: permissions is not a map"),)
+    found: dict[str, dict[str, list[str]]] = {"shell": {}, "mcp": {}}
+    defaults: list[Decision] = []
+    notes: list[Note] = []
+    for category in DECISIONS:
+        tokens = permissions.get(category, [])
+        if not isinstance(tokens, list):
+            notes.append(Note("unrecognised", f"{label}: permissions.{category} is not a list"))
+            continue
+        for token in tokens:
+            result = _devin_token(token, category)
+            if isinstance(result, Note):
+                notes.append(result)
+            elif result[0] == "default":
+                defaults.append(category)
+            else:
+                found[result[0]].setdefault(category, []).append(result[1])
+    stray = sorted(set(permissions) - set(CATEGORIES))
+    if stray:
+        notes.append(Note("unrecognised", f"{label}: permissions holds {', '.join(stray)}"))
+    if len(defaults) > 1:
+        notes.append(Note("unrecognised", f"{label}: {DEVIN_CATCH_ALL} is in more than one list"))
+    shell, mcp = found["shell"], found["mcp"]
+    return Rules(
+        allow=tuple(shell.get("allow", ())),
+        ask=tuple(shell.get("ask", ())),
+        deny=tuple(shell.get("deny", ())),
+        mcp_allow=tuple(mcp.get("allow", ())),
+        mcp_ask=tuple(mcp.get("ask", ())),
+        mcp_deny=tuple(mcp.get("deny", ())),
+        default=strictest(defaults) if defaults else None,
+    ), tuple(notes)
+
+
+def extract_devin(document: Any) -> Extraction:
+    """config.json -> rules. The rest of the file is the settings slice's or the CLI's."""
+    rules, notes = _devin_rules(document, "devin")
+    return Extraction(rules, notes=notes)
+
+
+def extract_devin_project(document: Any) -> Extraction:
+    rules, notes = _devin_rules(document, "devin-project")
+    base = {key: value for key, value in document.items() if key != "permissions"}
+    return Extraction(rules, copy.deepcopy(base) if isinstance(document, Mapping) else {}, notes)
+
+
+DEVIN_SERVER_KEYS = frozenset({"url", "transport", "headers", "command", "args", "env"})
+DEVIN_BEARER = re.compile(r"^Bearer \$\{env:(?P<var>[A-Za-z_][A-Za-z0-9_]*)\}$")
+
+
+def _extract_devin_server(name: str, entry: Any) -> tuple[Server | None, tuple[Note, ...]]:
+    label = "devin-servers"
+    if not isinstance(entry, Mapping):
+        return None, (Note("unrecognised", f"{label}: {name} is not a table"),)
+    notes: list[Note] = []
+    stray = sorted(set(entry) - DEVIN_SERVER_KEYS)
+    if stray:
+        notes.append(_stray_server_keys(label, name, stray))
+    transport = entry.get("transport")
+    if transport in SUPPORTED_UNCARRIED_TYPES[label]:
+        lost = Note(
+            "lost",
+            f"{label}: {name} is a {transport} server",
+            "the source has no such transport, so the harness would lose the server",
+        )
+        return None, (*notes, lost)
+    if transport not in {None, "http", "stdio"}:
+        return None, (*notes, Note("unrecognised", f"{label}: {name} unknown type {transport!r}"))
+    if isinstance(entry.get("url"), str):
+        auth_env_var, headers, found = _extract_headers(
+            entry.get("headers", {}), DEVIN_BEARER, f"{label}: {name}"
+        )
+        notes.extend(found)
+        headers, found = _one_auth(auth_env_var, headers, f"{label}: {name}", "Bearer ${env:VAR}")
+        notes.extend(found)
+        server = Server(
+            name=name,
+            transport="http",
+            url=entry["url"],
+            auth_env_var=auth_env_var,
+            headers=headers,
+        )
+        return server, tuple(notes)
+    if isinstance(entry.get("command"), str):
+        server = Server(
+            name=name,
+            transport="stdio",
+            command=entry["command"],
+            args=tuple(entry.get("args", ())),
+            env=dict(entry.get("env", {})),
+        )
+        return server, tuple(notes)
+    notes.append(Note("unrecognised", f"{label}: {name} has neither a url nor a command"))
+    return None, tuple(notes)
+
+
+def extract_devin_servers(document: Any) -> ValueExtraction:
+    if not isinstance(document, Mapping):
+        return ValueExtraction(
+            {}, (Note("unrecognised", "devin-servers: document is not a table"),)
+        )
+    servers, notes = _collect_servers(
+        document.get("mcpServers", {}),
+        _extract_devin_server,
+        "devin-servers: mcpServers is not a table",
+    )
+    return ValueExtraction(
+        servers, (*_unowned(document, "devin-servers: mcp_config.json", frozenset("*")), *notes)
+    )
+
+
+_DEVIN_ANCHORED = re.compile(r"^\^(?:\((?P<group>[^()]*)\)|(?P<single>[^()|]*))\$$")
+
+
+def _claude_tools(matcher: Any) -> str | None:
+    """A Devin tool matcher in Claude's names, or None when it is not one loadout writes."""
+    if matcher == "":
+        return ""
+    match = _DEVIN_ANCHORED.match(matcher) if isinstance(matcher, str) else None
+    if match is None:
+        return None
+    names = (match["group"] if match["group"] is not None else match["single"]).split("|")
+    tools: list[str] = []
+    while names:
+        claude = next(
+            (
+                tool
+                for tool, devin in DEVIN_TOOL_NAMES.items()
+                if tuple(names[: len(devin)]) == devin
+            ),
+            None,
+        )
+        taken = len(DEVIN_TOOL_NAMES[claude]) if claude is not None else 1
+        tools.append(claude if claude is not None else names[0])
+        names = names[taken:]
+    return "|".join(tools)
+
+
+def _devin_hook_value(hooks: Any, label: str) -> ValueExtraction:
+    if not isinstance(hooks, Mapping):
+        return ValueExtraction({}, (Note("unrecognised", f"{label}: hooks is not a table"),))
+    value: dict[str, Any] = {}
+    notes: list[Note] = []
+    for event, entries in hooks.items():
+        if not isinstance(entries, list):
+            value[event] = copy.deepcopy(entries)
+            continue
+        kept: list[Any] = []
+        for entry in entries:
+            matcher = entry.get("matcher") if isinstance(entry, Mapping) else None
+            if matcher is None or event not in DEVIN_TOOL_EVENTS:
+                kept.append(copy.deepcopy(entry))
+                continue
+            tools = _claude_tools(matcher)
+            if tools is None:
+                notes.append(
+                    Note(
+                        "lost",
+                        f"{label}: a {event} hook matches {matcher!r}, which no Claude tool "
+                        "name renders to",
+                        "Devin would not run it",
+                    )
+                )
+                continue
+            kept.append({**copy.deepcopy(dict(entry)), "matcher": tools})
+        if kept:
+            value[event] = kept
+    return ValueExtraction(value, (*notes, *_foreign_variable_notes(value, "devin")))
+
+
+def extract_devin_hooks(document: Any) -> ValueExtraction:
+    """config.json -> the hooks fragment. The rest of the file has other owners."""
+    hooks = document.get("hooks", {}) if isinstance(document, Mapping) else {}
+    return _devin_hook_value(hooks, "devin-hooks")
+
+
+def extract_devin_project_hooks(document: Any) -> ValueExtraction:
+    """`.devin/hooks.v1.json`, which is the hooks object itself."""
+    return _devin_hook_value(document, "devin-project-hooks")
+
+
 VALUE_EXTRACTORS: dict[str, ValueExtractor] = {
+    "devin-hooks": extract_devin_hooks,
+    "devin-project-hooks": extract_devin_project_hooks,
+    "devin-servers": extract_devin_servers,
     "cursor-hooks": extract_cursor_hooks,
     "cursor-servers": extract_cursor_servers,
     "claude-hooks": extract_claude_hooks,
@@ -1939,6 +2159,8 @@ EXTRACTORS: dict[str, Extractor] = {
     "codex-project": extract_codex_project,
     "cursor": extract_cursor,
     "cursor-project": extract_cursor_project,
+    "devin": extract_devin,
+    "devin-project": extract_devin_project,
     "droid": extract_droid,
     "opencode": extract_opencode,
     "pi": extract_pi,

@@ -15,6 +15,7 @@ on upstream documentation only.
 | Claude | **yes**: `model`, `effort`; `context: fork` + `agent` | Markdown + YAML frontmatter | `~/.claude/agents/`, `.claude/agents/` | `sonnet`, `opus`, `haiku`, `fable`, a full ID, `inherit` | `effort` |
 | Codex | no | **TOML** | `~/.codex/agents/*.toml`, `.codex/agents/*.toml` | an OpenAI model ID | `model_reasoning_effort` |
 | Cursor | no | Markdown + `key: value` frontmatter, read without YAML unquoting | `~/.cursor/agents/`, `.cursor/agents/` | `inherit` or a model ID | none; in the ID, `<id>[effort=high]` ([cursor.md](cursor.md#agents-subagents)) |
+| Devin | `model` is in the binary's skill field list; what it does was not observed | Markdown + YAML frontmatter | `${XDG_CONFIG_HOME:-~/.config}/devin/agents/`, `.devin/agents/` | Devin's names: a family such as `swe` or `opus`, or a full slug | none; a session option, and the agent loader rejects `effort` ([devin.md](devin.md#agents)) |
 | OpenCode | no | Markdown + YAML frontmatter | `~/.config/opencode/agents/`, `.opencode/agents/` | `provider/model-id` | none documented |
 | Droid | no | Markdown + YAML frontmatter ("custom droids") | `~/.factory/droids/`, `.factory/droids/` | `inherit`, a public model ID, `custom:<id>` | `reasoningEffort` |
 | Pi | no | none in core; `pi-subagents` package: Markdown | `~/.pi/agent/agents/`, `.pi/agents/` (package) | Pi model ID, `:level` suffix | `thinking` |
@@ -22,7 +23,8 @@ on upstream documentation only.
 Two facts dominate any design built on this:
 
 - **A model on a skill is Claude-only.** Every other harness enumerates its skill frontmatter, and none
-  of them includes a model.
+  of them includes a model, except Devin, whose binary lists a `model` key that was not observed
+  doing anything.
 - **Model values do not carry across harnesses.** `opus`, an OpenAI ID, `provider/model-id` and a
   Factory ID are four vocabularies. All four harnesses that have subagents fall back to the parent's
   model when none is given (`inherit`), which is the one portable value.

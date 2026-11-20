@@ -73,6 +73,7 @@ OWNERS: dict[str, dict[str, tuple[str, ...]]] = {
     "codex": {"mcp": ("mcp_servers",), "plugins": ("plugins", "marketplaces")},
     # The rest of cli-config.json is the CLI's own defaults and state, never a settings base.
     "cursor": {"permissions": ("permissions",)},
+    "devin": {"permissions": ("permissions",), "hooks": ("hooks",)},
     "droid": {
         "permissions": ("commandAllowlist", "commandDenylist", "commandBlocklist"),
         "plugins": ("enabledPlugins", "extraKnownMarketplaces"),
@@ -467,6 +468,7 @@ class _PlanBuilder:
         composite = candidate.document_name in {
             "settings.json",
             "settings.local.json",
+            "config.json",
             "config.toml",
             "opencode.json",
         }
@@ -1080,6 +1082,8 @@ class _PlanBuilder:
                 / (
                     "config.toml"
                     if agent == "codex"
+                    else "config.json"
+                    if agent == "devin"
                     else "opencode.json"
                     if agent == "opencode"
                     else "settings.json"
@@ -1109,54 +1113,63 @@ class _PlanBuilder:
             self.available_categories.add((agent, "skills"))
             if not project:
                 self.global_slices[agent].update(DIRECTORY_SLICES)
-            if agent == "claude":
-                self.dormant(root / "hooks", (agent,), "hooks", "tree")
-                if not project:
-                    self.dormant(root / "commands", (agent,), "instructions", "tree")
-                self.dormant(root / "mcp-permissions.json", (agent,), "mcp-permissions", "json")
-                mcp = (
-                    self.inventory.root / ".mcp.json"
-                    if project
-                    else next(
+            self.harness_routes(agent, root, project)
+
+    def harness_routes(self, agent: str, root: Path, project: bool) -> None:
+        """The dormant destinations only one harness has."""
+        if agent == "claude":
+            self.dormant(root / "hooks", (agent,), "hooks", "tree")
+            if not project:
+                self.dormant(root / "commands", (agent,), "instructions", "tree")
+            self.dormant(root / "mcp-permissions.json", (agent,), "mcp-permissions", "json")
+            mcp = (
+                self.inventory.root / ".mcp.json"
+                if project
+                else next(
+                    m.destination
+                    for m in self.inventory.mappings
+                    if m.kind == "file" and m.destination.name == ".claude.json"
+                )
+            )
+            self.dormant(mcp, (agent,), "mcp", "json")
+        elif agent == "codex":
+            self.dormant(root / "rules/permissions.rules", (agent,), "permissions")
+            if not project:
+                self.dormant(root / "hooks.json", (agent,), "hooks", "json")
+                self.available_categories.add((agent, "plugins"))
+        elif agent == "cursor":
+            config = (
+                root / "cli.json"
+                if project
+                else next(
+                    (
                         m.destination
                         for m in self.inventory.mappings
-                        if m.kind == "file" and m.destination.name == ".claude.json"
-                    )
+                        if m.kind == "file" and m.harnesses == (agent,)
+                    ),
+                    root / CURSOR_CONFIG,
                 )
-                self.dormant(mcp, (agent,), "mcp", "json")
-            elif agent == "codex":
-                self.dormant(root / "rules/permissions.rules", (agent,), "permissions")
-                if not project:
-                    self.dormant(root / "hooks.json", (agent,), "hooks", "json")
-                    self.available_categories.add((agent, "plugins"))
-            elif agent == "cursor":
-                config = (
-                    root / "cli.json"
-                    if project
-                    else next(
-                        (
-                            m.destination
-                            for m in self.inventory.mappings
-                            if m.kind == "file" and m.harnesses == (agent,)
-                        ),
-                        root / CURSOR_CONFIG,
-                    )
-                )
-                self.dormant(config, (agent,), "permissions", "json")
-                self.dormant(root / "hooks.json", (agent,), "hooks", "json")
-                self.dormant(root / "mcp.json", (agent,), "mcp", "json")
-            elif agent == "opencode":
-                self.available_categories.add((agent, "hooks"))
-                self.dormant(root / "plugins", (agent,), "plugins", "tree")
-            elif agent == "pi":
-                self.dormant(
-                    root / "extensions/pi-permission-system/config.json",
-                    (agent,),
-                    "permissions",
-                    "json",
-                )
-                self.available_categories.add((agent, "hooks"))
-                self.dormant(root / "mcp.json", (agent,), "mcp", "json")
+            )
+            self.dormant(config, (agent,), "permissions", "json")
+            self.dormant(root / "hooks.json", (agent,), "hooks", "json")
+            self.dormant(root / "mcp.json", (agent,), "mcp", "json")
+        elif agent == "devin":
+            self.dormant(root / "config.json", (agent,), "permissions", "json")
+            if project:
+                self.dormant(root / "hooks.v1.json", (agent,), "hooks", "json")
+            self.dormant(root / "mcp_config.json", (agent,), "mcp", "json")
+        elif agent == "opencode":
+            self.available_categories.add((agent, "hooks"))
+            self.dormant(root / "plugins", (agent,), "plugins", "tree")
+        elif agent == "pi":
+            self.dormant(
+                root / "extensions/pi-permission-system/config.json",
+                (agent,),
+                "permissions",
+                "json",
+            )
+            self.available_categories.add((agent, "hooks"))
+            self.dormant(root / "mcp.json", (agent,), "mcp", "json")
 
 
 def _permission_renderer(candidate: Candidate, project: bool) -> str | None:

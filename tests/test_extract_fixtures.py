@@ -51,6 +51,8 @@ GLOBAL_RENDERERS = {
     "codex-mcp.toml": "codex-mcp-permissions",
     "cursor.json": "cursor",
     "cursor-servers.json": "cursor-servers",
+    "devin.json": "devin",
+    "devin-servers.json": "devin-servers",
     "droid.json": "droid",
     "opencode.json": "opencode",
     "pi.json": "pi",
@@ -215,6 +217,7 @@ def test_the_shipped_codex_rules_reports_the_globs_it_cannot_categorise(profile:
     assert [note.detail for note in extraction.notes] == [
         "codex: skipped glob 'gamma-*' has no category",
         "codex: skipped glob 'delta run --tag=*' has no category",
+        "codex: skipped glob 'kappa run *' has no category",
     ]
     assert _rerender(path, "codex") == path.read_text().split("\n# Skipped")[0].rstrip("\n") + "\n"
 

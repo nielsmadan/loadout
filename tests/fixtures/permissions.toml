@@ -21,10 +21,12 @@ allow = [
   "zeta",                     # also in deny, and not last: shows Pi's key-move
   "eta",                      # follows zeta, so "moved to the end" is observable
   "=mu status",               # exact: kept on 4 harnesses, omitted on Codex and Droid
+  "theta check --fast",       # inside the ask below: Devin and Cursor drop it
 ]
 
 ask = [
   "theta check",
+  "kappa run *",              # glob past the first word: Devin widens it to its prefix
 ]
 
 deny = [

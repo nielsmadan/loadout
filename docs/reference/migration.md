@@ -38,6 +38,11 @@ loads it and moves it to `.factory/hooks.json` the next time it saves hooks; ini
 that adopts it. Hooks in a Droid `settings.json` move into the hooks slice when there is no
 `hooks.json`; see [droid.md](droid.md#hooks).
 
+Devin's global `config.json` is split three ways: `permissions` into the permissions source, `hooks`
+into the hooks slice, and its other keys into a `settings/devin.json` fragment. The keys Devin
+writes itself, `version`, `devin`, `shell` and `theme_mode`, are not adopted and stay in the file;
+see [devin.md](devin.md#what-devin-writes-into-configjson-itself).
+
 pi-mcp-adapter's server files are kept in place and named the same way, when Pi is declared:
 `${XDG_CONFIG_HOME:-~/.config}/mcp/mcp.json`, `~/.agents/mcp.json` and `~/.agents/mcp/mcp.json`
 at global scope, and a project's `.mcp.json` when Claude is not also declared (with Claude it is
@@ -62,6 +67,7 @@ Global scope:
 | `${CODEX_HOME:-~/.codex}` | `AGENTS.md`, `AGENTS.override.md`, `config.toml`, `hooks.json`, `rules/`, `skills/`, `agents/` |
 | `~/.cursor` | `hooks.json`, `mcp.json`, `skills/`, `agents/`, `hooks/`, `scripts/` |
 | `${CURSOR_CONFIG_DIR:-~/.cursor}/cli-config.json` | the file itself (only `permissions` is adopted; unset, the variable defaults to `$XDG_CONFIG_HOME/cursor` when that is set) |
+| `${XDG_CONFIG_HOME:-~/.config}/devin` | `AGENTS.md`, `config.json`, `mcp_config.json`, `skills/`, `agents/`, `hooks/`, `rules/`, `scripts/` |
 | `${FACTORY_HOME_OVERRIDE:-~}/.factory` | `AGENTS.md`, `settings.json`, `hooks.json`, `mcp.json`, `skills/`, `droids/`, `plugins/`, `hooks/`, `rules/`, `scripts/` |
 | `${XDG_CONFIG_HOME:-~/.config}/opencode`, and `$OPENCODE_CONFIG_DIR` as well when it is set | `AGENTS.md`, `opencode.json`, `opencode.jsonc`, `skills/`, `agents/`, `plugins/`, `plugin/`, `hooks/`, `rules/`, `scripts/` |
 | `$OPENCODE_CONFIG` | the file itself |
@@ -83,13 +89,14 @@ Project scope, relative to the repository root:
 | `.claude` | `settings.json`, `mcp-permissions.json`, `skills/`, `agents/` |
 | `.codex` | `rules/`, `agents/` |
 | `.cursor` | `cli.json`, `hooks.json`, `mcp.json`, `skills/`, `agents/` |
+| `.devin` | `config.json`, `hooks.v1.json`, `mcp_config.json`, `skills/`, `agents/` |
 | `.factory` | `settings.json`, `hooks.json`, `mcp.json`, `skills/`, `droids/` |
 | `.opencode` | `skills/`, `agents/` |
 | `.pi` | `extensions/pi-permission-system/config.json`, `skills/`, `agents/` |
 | `.agents` | `skills/`, for Codex only, see below |
 | repository | `opencode.json`, `opencode.jsonc`, `.mcp.json`, and every `AGENTS.md`, `AGENTS.override.md`, `CLAUDE.md`, `CLAUDE.local.md` and `opencode.md` outside the harness roots |
 
-Codex, Cursor, OpenCode and Pi all read `.agents/skills`, but init adopts a shared file only for a harness
+Codex, Cursor, Devin, OpenCode and Pi all read `.agents/skills`, but init adopts a shared file only for a harness
 whose loadout output is that folder, since anything else renders to another one and the
 reconstruction would find the original missing. That is Codex in project scope, whose project
 skills render to `.agents/skills`, and no harness in global scope, where every skill renders to
@@ -174,9 +181,9 @@ every harness, and so does an allow nothing contradicts. MCP servers combine by 
 
 ## Project settings
 
-`.claude/settings.json`, `.factory/settings.json` and `opencode.json` are shared with the slices that
-write into them. Init adopts every top-level key no slice writes into `loadout/settings/claude.json`,
-`droid.json` or `opencode.json`, and sync renders the file from that source plus the slices. Which
+`.claude/settings.json`, `.factory/settings.json`, `.devin/config.json` and `opencode.json` are
+shared with the slices that write into them. Init adopts every top-level key no slice writes into
+`loadout/settings/claude.json`, `droid.json`, `devin.json` or `opencode.json`, and sync renders the file from that source plus the slices. Which
 keys a slice writes is read from its renderer, not listed by hand. A file Git tracks is adopted into
 committed source even when it holds a secret, since its content is already in the repository's
 history. An untracked or ignored one is private: its original stays in place and its settings source

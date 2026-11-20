@@ -11,12 +11,13 @@ from .composition import document, for_destination, joined
 from .emit import settings_document
 from .harnesses import SHARED_SKILL_READERS, SliceOutput
 from .manifest import Manifest, PermissionTarget
-from .notices import cursor_permission_notices
+from .notices import cursor_permission_notices, devin_permission_notices
 from .output import Copied
 from .permissions.renderers import (
     refuse_mcp_namespace_overlap,
     render_codex_stealth,
     render_cursor_project,
+    render_devin_project,
     render_pi_project,
 )
 from .permissions.rules import EMPTY_RULES, Rules
@@ -24,6 +25,7 @@ from .servers import (
     Server,
     render_claude_servers,
     render_cursor_servers,
+    render_devin_servers,
     render_droid_servers,
     render_pi_servers,
 )
@@ -61,6 +63,12 @@ STEALTH_PRESET: dict[str, dict[str, SliceOutput]] = {
         "permissions": SliceOutput(output=".cursor/cli.json"),
         "skills": SliceOutput(output=".cursor/skills"),
     },
+    "devin": {
+        "instructions": SliceOutput(output=".devin/rules"),
+        "mcp": SliceOutput(output=".devin/mcp_config.local.json"),
+        "permissions": SliceOutput(output=".devin/config.local.json"),
+        "skills": SliceOutput(output=".devin/skills"),
+    },
     "droid": {
         "instructions": SliceOutput(output=".factory/AGENTS.md"),
         "mcp": SliceOutput(output=".factory/mcp.json"),
@@ -84,6 +92,8 @@ STEALTH_PRESET: dict[str, dict[str, SliceOutput]] = {
 PI_EMPTY_PERMISSIONS: dict[str, Any] = {"permission": {"bash": {}}}
 
 CURSOR_EMPTY_PERMISSIONS: dict[str, Any] = {"permissions": {"allow": [], "deny": []}}
+
+DEVIN_EMPTY_PERMISSIONS: dict[str, Any] = {"permissions": {"allow": [], "ask": [], "deny": []}}
 
 OPENCODE_INSTRUCTIONS = PurePosixPath(".loadout/opencode-instructions.md")
 
@@ -325,6 +335,35 @@ def _cursor_outputs(
     return placed, notes
 
 
+def _devin_outputs(
+    stealth: StealthManifest, name: str, root: Path, rules: Rules, servers: dict[str, Server]
+) -> tuple[list[tuple[Path, str, StealthOutput]], tuple[str, ...]]:
+    manifest = stealth.manifest
+    preset = STEALTH_PRESET["devin"]
+    placed: list[tuple[Path, str, StealthOutput]] = []
+    if paths := _instruction_paths(stealth, "devin"):
+        rule = root / str(preset["instructions"].output) / f"{name}.md"
+        placed.append((rule, "devin.instructions", for_destination(rule, document(paths))))
+    notes: tuple[str, ...] = ()
+    if (permissions := _permission_target(manifest, "devin", "permissions")) is not None:
+        devin_rules = _target_rules(permissions, rules)
+        notes = tuple(
+            f"devin: {notice.message}"
+            for notice in devin_permission_notices("devin", "devin-project", devin_rules)
+        )
+        settings = render_devin_project(devin_rules, {})
+        if settings != DEVIN_EMPTY_PERMISSIONS:
+            relative = str(preset["permissions"].output)
+            placed.append(
+                (root / relative, "devin.permissions", stealth_seams.serialize_json(settings))
+            )
+    if _permission_target(manifest, "devin", "mcp") is not None and servers:
+        relative = str(preset["mcp"].output)
+        config = stealth_seams.serialize_json(render_devin_servers(servers))
+        placed.append((root / relative, "devin.mcp", config))
+    return placed, notes
+
+
 def render_stealth(
     stealth: StealthManifest, name: str, target_root: Path, facts: TargetFacts
 ) -> StealthRender:
@@ -341,8 +380,10 @@ def render_stealth(
     codex_placed, notes = _codex_outputs(stealth, name, target_root, rules, servers)
     opencode_placed, shared = _opencode_outputs(stealth, target_root, rules, servers)
     cursor_placed, cursor_notes = _cursor_outputs(stealth, name, target_root, rules, servers)
+    devin_placed, devin_notes = _devin_outputs(stealth, name, target_root, rules, servers)
     placed.extend(codex_placed)
     placed.extend(cursor_placed)
+    placed.extend(devin_placed)
     placed.extend(opencode_placed)
     placed.extend(_skill_files(stealth, target_root))
 
@@ -358,5 +399,8 @@ def render_stealth(
         else {}
     )
     return StealthRender(
-        files=files, claude_servers=claude_servers, shared=shared, notes=(*notes, *cursor_notes)
+        files=files,
+        claude_servers=claude_servers,
+        shared=shared,
+        notes=(*notes, *cursor_notes, *devin_notes),
     )

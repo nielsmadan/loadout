@@ -95,6 +95,16 @@ render = "pi-servers"
 output = "perm/cursor-servers.json"
 render = "cursor-servers"
 
+# Devin's owned `permissions` key of config.json: word prefixes, exact rules, no glob,
+# and the stated catch-all as Exec(*).
+[permissions.devin]
+output = "perm/devin.json"
+render = "devin"
+
+[permissions.devin-servers]
+output = "perm/devin-servers.json"
+render = "devin-servers"
+
 # `permissions = []` selects no rules, so all three lists render empty while the
 # settings around them still render — the autonomous profile's mechanism.
 [claude]

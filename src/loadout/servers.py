@@ -32,6 +32,7 @@ __all__ = [
     "render_claude_servers",
     "render_codex_servers",
     "render_cursor_servers",
+    "render_devin_servers",
     "render_droid_servers",
     "render_opencode_servers",
     "render_pi_servers",
@@ -267,6 +268,32 @@ def render_cursor_servers(servers: dict[str, Server]) -> dict[str, Any]:
             entry = {"command": server.command, "args": list(server.args)}
             if server.env:
                 entry["env"] = dict(server.env)
+        entries[name] = entry
+    return {"mcpServers": entries}
+
+
+# --------------------------------------------------------------------------
+# devin — mcp_config.json at both scopes, the whole file. Devin expands
+# `${env:NAME}` in headers, and `devin mcp add` writes `transport` on every entry.
+# --------------------------------------------------------------------------
+
+
+def render_devin_servers(servers: dict[str, Server]) -> dict[str, Any]:
+    entries: dict[str, Any] = {}
+    for name, server in servers.items():
+        entry: dict[str, Any]
+        if is_http(server):
+            assert server.url is not None
+            entry = {"url": server.url, "transport": "http"}
+            headers = _bearer_headers(server, f"${{env:{server.auth_env_var}}}")
+            if headers:
+                entry["headers"] = headers
+        else:
+            assert server.command is not None
+            entry = {"command": server.command, "args": list(server.args)}
+            if server.env:
+                entry["env"] = dict(server.env)
+            entry["transport"] = "stdio"
         entries[name] = entry
     return {"mcpServers": entries}
 

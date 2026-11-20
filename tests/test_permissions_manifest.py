@@ -16,9 +16,9 @@ def write(tmp_path: Path, body: str) -> Path:
     return path
 
 
-def test_fixture_manifest_declares_fourteen_permission_targets() -> None:
+def test_fixture_manifest_declares_sixteen_permission_targets() -> None:
     manifest = load_manifest(FIXTURES / "loadout.toml")
-    assert len(manifest.permissions) == 14
+    assert len(manifest.permissions) == 16
 
 
 def test_permission_target_fields(tmp_path: Path) -> None:

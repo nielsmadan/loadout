@@ -10,6 +10,7 @@ from loadout.permissions.renderers import (
     CODEX_PROJECT_HEADER,
     RENDERERS,
     JsonSpec,
+    MergedJsonSpec,
     TextSpec,
     claude_pattern,
     codex_rule,
@@ -77,12 +78,14 @@ def test_only_the_declared_renderers_seed_a_catch_all() -> None:
     renderers actually do. Derived by rendering, not restated."""
     seeds = set()
     for name, spec in RENDERERS.items():
-        if not isinstance(spec, JsonSpec):
+        if not isinstance(spec, JsonSpec | MergedJsonSpec):
             continue
         document = spec.fn(Rules(allow=("pwd",), default="deny"), {})
         permission = document.get("permission", {})
         bash = permission.get("bash", {}) if isinstance(permission, dict) else {}
-        if bash.get("*") == "deny":
+        lists = document.get("permissions", {})
+        devin = isinstance(lists, dict) and "Exec(*)" in lists.get("ask", ())
+        if bash.get("*") == "deny" or devin:
             seeds.add(name)
     assert seeds == set(CATCH_ALL_RENDERERS)
 

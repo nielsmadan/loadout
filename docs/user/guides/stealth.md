@@ -9,7 +9,7 @@ Your own agent config in repos you don't control, kept out of git.
 
 A project source is for a repository whose team has adopted loadout. A **stealth source** is for
 the other case: you work in clones of team repositories that have not adopted it, and you want
-your own instructions, MCP servers, permissions and skills in each of them, for any of the six
+your own instructions, MCP servers, permissions and skills in each of them, for any of the seven
 harnesses, without committing anything. This is loadout's stealth mode.
 
 A stealth source is a folder outside those repositories. Its `loadout.toml` has a `[stealth]` table

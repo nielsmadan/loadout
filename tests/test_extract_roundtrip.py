@@ -445,8 +445,59 @@ def _cursor_carried(rules: Rules) -> Rules:
     )
 
 
+def _devin_prefix(entry: str) -> str:
+    words = entry.split()
+    return " ".join(words[: next((i for i, w in enumerate(words) if "*" in w), len(words))])
+
+
+def _devin_form(entry: str, category: str) -> str | None:
+    """No glob: an allow glob is dropped, an ask or deny one widens to its word prefix."""
+    if not is_glob(entry) or is_exact(entry):
+        return entry
+    return None if category == "allow" else _devin_prefix(entry)
+
+
+def _devin_inside(entry: str, ask: str) -> bool:
+    """Whether every command `entry` names is one `ask` names too."""
+    if is_exact(ask):
+        return entry == ask
+    command = exact_command(entry)
+    return command == ask or command.startswith(f"{ask} ")
+
+
+def _devin_mcp_inside(entry: str, ask: str) -> bool:
+    (server, tool), (ask_server, ask_tool) = mcp_parts(entry), mcp_parts(ask)
+    return server == ask_server and ask_tool in {"*", tool}
+
+
+def _devin_carried(rules: Rules) -> Rules:
+    """Three lists and no glob. An allow inside an ask is dropped, since Devin would let it
+    win; a catch-all deny comes back as the ask it is rendered as."""
+    asks = [form for e in rules.ask if (form := _devin_form(e, "ask")) is not None]
+    return Rules(
+        allow=tuple(
+            dict.fromkeys(
+                form
+                for e in rules.allow
+                if (form := _devin_form(e, "allow")) is not None
+                and not any(_devin_inside(form, ask) for ask in asks)
+            )
+        ),
+        ask=tuple(dict.fromkeys(asks)),
+        deny=tuple(dict.fromkeys(f for e in rules.deny if (f := _devin_form(e, "deny")))),
+        mcp_allow=tuple(
+            e for e in rules.mcp_allow if not any(_devin_mcp_inside(e, a) for a in rules.mcp_ask)
+        ),
+        mcp_ask=rules.mcp_ask,
+        mcp_deny=rules.mcp_deny,
+        default="ask" if rules.default == "deny" else rules.default,
+    )
+
+
 PROJECTIONS = {
     "cursor": _cursor_carried,
+    "devin": _devin_carried,
+    "devin-project": _devin_carried,
     "cursor-project": _cursor_carried,
     "claude": _claude_carried,
     "claude-project": _claude_carried,
@@ -471,8 +522,15 @@ def carried(name: str, rules: Rules) -> Rules:
 # asserts the refusal fires and that the space provoked it at least once, so a
 # renderer that quietly started carrying one fails rather than widening in
 # silence.
+def _devin_refuses(rules: Rules) -> bool:
+    """A glob in ask or deny with no whole word before its `*` has no Devin rule."""
+    return any(is_glob(e) and not _devin_prefix(e) for e in (*rules.ask, *rules.deny))
+
+
 REFUSES: dict[str, Callable[[Rules], bool]] = {
     "droid": lambda rules: any(is_glob(entry) for entry in rules.deny),
+    "devin": _devin_refuses,
+    "devin-project": _devin_refuses,
 }
 
 

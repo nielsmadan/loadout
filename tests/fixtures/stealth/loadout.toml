@@ -15,6 +15,9 @@ instructions = ["workflow", "personal"]
 [cursor]
 instructions = ["workflow", "personal"]
 
+[devin]
+instructions = ["workflow", "personal"]
+
 [droid]
 instructions = ["personal", "workflow"]
 settings = "local"

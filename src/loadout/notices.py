@@ -40,26 +40,40 @@ from .emit import (
     project_instruction_sources,
     project_kits,
     project_rules,
+    project_settings_path,
     project_skill_trees,
     project_slice_document,
     refuse_unregistered_global,
     selected_target,
+    settings_document,
     skill_trees,
     slice_document,
     source_agents,
 )
 from .errors import LoadoutError
+from .harnesses import GLOBAL_PRESET
 from .hooks import (
     CLAUDE_EVENTS,
     CODEX_EVENTS,
     CURSOR_EVENTS,
+    DEVIN_EVENTS,
     DROID_EVENTS,
     cursor_hooks,
+    devin_hooks,
     unrecognised_events,
 )
 from .kits import kit_divergence, unverifiable_kits
 from .manifest import Manifest, load_profile, manifest_path
-from .permissions.renderers import CATCH_ALL_RENDERERS, cursor_shell, cursor_unasked
+from .native_documents import jsonc_to_json
+from .permissions.renderers import (
+    CATCH_ALL_RENDERERS,
+    DEVIN_CATCH_ALL,
+    cursor_shell,
+    cursor_unasked,
+    devin_permissions,
+    devin_unasked,
+    devin_word_prefix,
+)
 from .permissions.rules import Rules, exact_command, is_exact, is_glob
 from .plugins import ADDRESSED_BY, marketplaces, unaddressable, unregistered_marketplaces
 from .project import (
@@ -166,6 +180,8 @@ def known_events(agent: str) -> frozenset[str]:
         return DROID_EVENTS
     if agent == "cursor":
         return CURSOR_EVENTS
+    if agent == "devin":
+        return DEVIN_EVENTS
     return _ADAPTED.get(agent, frozenset())
 
 
@@ -268,6 +284,11 @@ def notices_for(
     if slice_name == "hooks" and agent == "cursor":
         for skipped in cursor_hooks(document)[1]:
             add(f"{skipped} — Cursor's translation of a Claude hook leaves it out")
+    elif slice_name == "hooks" and agent == "devin":
+        for skipped in devin_hooks(document)[1]:
+            add(f"{skipped} — left out, because Devin cannot run it")
+        for event in unrecognised_events(document, DEVIN_EVENTS):
+            add(f"{event} is not an event Devin loads, so it will not fire")
     elif slice_name == "hooks":
         adapted = agent in _ADAPTED
         for event in unrecognised_events(document, known_events(agent)):
@@ -392,6 +413,192 @@ def cursor_permission_notices(agent: str, renderer: str, rules: Rules) -> tuple[
     )
 
 
+def devin_permission_notices(agent: str, renderer: str, rules: Rules) -> tuple[Notice, ...]:
+    """What Devin's word-prefix rules cannot say: a glob, an ask an allow would beat, and a
+    catch-all deny."""
+    if renderer not in {"devin", "devin-project"}:
+        return ()
+
+    def notice(message: str) -> Notice:
+        return Notice(owner=agent, slice="permissions", message=message)
+
+    shell, mcp = devin_unasked(rules)
+    return (
+        *(
+            notice(
+                f"allow {entry!r} is not rendered because Devin has no glob; the command falls "
+                f"through to Devin's own approval"
+            )
+            for entry in rules.allow
+            if is_glob(entry)
+        ),
+        *(
+            notice(
+                f"{category} {entry!r} is rendered as 'Exec({devin_word_prefix(entry)})' "
+                f"because Devin has no glob, so it also covers that command with any arguments"
+            )
+            for category in ("ask", "deny")
+            for entry in rules.shell(category)
+            if is_glob(entry)
+        ),
+        *(
+            notice(
+                f"allow {entry!r} is not rendered because Devin lets an allow at least as "
+                f"specific as an ask override it, so it would approve what the source asks about"
+            )
+            for entry in (*shell, *mcp)
+        ),
+        *(
+            (
+                notice(
+                    '[shell] default = "deny" is rendered as an ask of every command, because '
+                    "Devin cannot deny what no rule names without also denying what the source "
+                    "allows"
+                ),
+            )
+            if rules.default == "deny"
+            else ()
+        ),
+    )
+
+
+DEVIN_OVERRIDING_MODES = frozenset({"dangerous", "yolo", "bypass"})
+_DEVIN_RULE = re.compile(r"^(?P<kind>Exec|ExecExact)\((?P<inner>.+)\)$")
+_DEVIN_MCP_RULE = re.compile(r"^mcp__(?P<server>.+?)__(?P<tool>.+)$")
+
+
+def _devin_reach(token: object) -> tuple[str, ...] | None:
+    """What one Devin rule matches: every command, a prefix, an exact command, or MCP tools."""
+    if token in {DEVIN_CATCH_ALL, "exec"}:
+        return ("all",)
+    if token == "mcp__*":
+        return ("mcp", "*", "*")
+    if not isinstance(token, str):
+        return None
+    if (shell := _DEVIN_RULE.match(token)) is not None:
+        return ("exact" if shell["kind"] == "ExecExact" else "prefix", shell["inner"])
+    if (mcp := _DEVIN_MCP_RULE.match(token)) is not None:
+        return ("mcp", mcp["server"], mcp["tool"])
+    return None
+
+
+def _devin_covers(prefix: tuple[str, ...], other: tuple[str, ...]) -> bool:
+    """Whether a prefix rule matches some command another shell rule matches."""
+    command = other[1]
+    reached = command == prefix[1] or command.startswith(f"{prefix[1]} ")
+    longer = other[0] == "prefix" and prefix[1].startswith(f"{command} ")
+    return reached or longer
+
+
+def _devin_overlap(allow: tuple[str, ...], rule: tuple[str, ...]) -> bool:
+    """Whether some call matches both rules."""
+    if allow[0] == "all":
+        return rule[0] in {"prefix", "exact"}
+    if "mcp" in {allow[0], rule[0]}:
+        same_kind = allow[0] == rule[0]
+        servers = same_kind and (allow[1] == rule[1] or "*" in {allow[1], rule[1]})
+        return servers and (allow[2] == rule[2] or "*" in {allow[2], rule[2]})
+    if allow[0] == "prefix":
+        return _devin_covers(allow, rule)
+    if rule[0] == "prefix":
+        return _devin_covers(rule, allow)
+    return allow[1] == rule[1]
+
+
+def devin_overridden(rules: Rules, user: Mapping[str, Any]) -> tuple[Notice, ...]:
+    """The project's Devin denies and asks that the user's own config.json overrides.
+
+    Devin 3000.14 applies a project deny or ask only while the user level neither
+    allows the call nor runs in dangerous mode (docs/reference/devin.md#observed-decisions),
+    so the project file is written and these are said out loud.
+    """
+    lists = devin_permissions(rules)
+    restricting = [
+        (category, token)
+        for category in ("deny", "ask")
+        for token in lists[category]
+        if token != DEVIN_CATCH_ALL
+    ]
+    if not restricting:
+        return ()
+    see = "see docs/reference/devin.md#observed-decisions"
+    mode = user.get("permission_mode")
+    if mode in DEVIN_OVERRIDING_MODES:
+        return (
+            Notice(
+                "devin",
+                "permissions",
+                f"your Devin config.json sets permission_mode {mode!r}, which overrides every "
+                f"project deny and ask, so this project's Devin rules have no effect; {see}",
+            ),
+        )
+    permissions = user.get("permissions")
+    listed = permissions.get("allow", []) if isinstance(permissions, Mapping) else []
+    allows = listed if isinstance(listed, list) else []
+    found: list[Notice] = []
+    for category, token in restricting:
+        rule = _devin_reach(token)
+        overriding = next(
+            (
+                allow
+                for allow in allows
+                if rule is not None
+                and (reach := _devin_reach(allow)) is not None
+                and _devin_overlap(reach, rule)
+            ),
+            None,
+        )
+        if overriding is not None:
+            found.append(
+                Notice(
+                    "devin",
+                    "permissions",
+                    f"{category} {token!r} in .devin/config.json does not apply where "
+                    f"{overriding!r} in your Devin config.json allows the same call, because "
+                    f"Devin lets a user-level allow override a project rule; {see}",
+                )
+            )
+    return tuple(found)
+
+
+def devin_claude_import(
+    harnesses: Iterable[str], settings: Mapping[str, Any]
+) -> tuple[Notice, ...]:
+    """Devin reads Claude's instructions, skills and hooks unless its `claude` import is off,
+    so with both declared it sees what loadout writes for Claude beside its own copy."""
+    imports = settings.get("read_config_from")
+    off = isinstance(imports, Mapping) and imports.get("claude") is False
+    if off or not {"claude", "devin"}.issubset(harnesses):
+        return ()
+    return (
+        Notice(
+            "devin",
+            "settings",
+            "Devin also reads Claude's instructions, skills and hooks while its claude import is "
+            "on, as it is by default, so it sees what loadout writes for Claude beside its own "
+            'copy; set {"read_config_from": {"claude": false}} in a Devin settings fragment to '
+            "stop it; see docs/reference/devin.md#third-party-imports",
+        ),
+    )
+
+
+def _devin_settings(manifest: Manifest, root: Path) -> Mapping[str, Any]:
+    target = next((t for t in manifest.permissions if t.harness == "devin" and t.settings), None)
+    return settings_document(target, manifest, root) if target is not None else {}
+
+
+def devin_user_config(environ: Mapping[str, str]) -> Mapping[str, Any]:
+    """The user's live Devin config.json, read for a notice and never for output (ADR 0008)."""
+    template = GLOBAL_PRESET["devin"]["permissions"].destination
+    assert template is not None
+    try:
+        path = resolve_destination(template, "devin.permissions", environ)
+        document = json.loads(jsonc_to_json(path.read_text(encoding="utf-8")))
+    except (LoadoutError, OSError, ValueError):
+        return {}
+    return document if isinstance(document, dict) else {}
+
+
 def _renderer_notices(agent: str, renderer: str, rules: Rules) -> list[Notice]:
     """What a renderer cannot carry of these rules."""
     unreached = unreached_catch_all(agent, renderer, rules.default) if rules.default else ()
@@ -400,6 +607,7 @@ def _renderer_notices(agent: str, renderer: str, rules: Rules) -> list[Notice]:
         *unsupported_shell_globs(agent, renderer, rules),
         *inexact_shell_entries(agent, renderer, rules),
         *cursor_permission_notices(agent, renderer, rules),
+        *devin_permission_notices(agent, renderer, rules),
     ]
 
 
@@ -494,6 +702,12 @@ def collect_notices(
         )
     )
     found.extend(_global_skill_race(manifest, environ))
+    declared = (
+        {target.harness for target in manifest.permissions if target.harness}
+        | {target.harness for target in manifest.skills}
+        | {target.harness for target in manifest.agents}
+    )
+    found.extend(devin_claude_import(declared, _devin_settings(manifest, root)))
     found.extend(_agent_notices(source_agents(manifest), tuple(t.harness for t in manifest.agents)))
     found.extend(
         Notice(
@@ -571,6 +785,14 @@ def project_notices(root: Path, environ: Mapping[str, str]) -> tuple[Notice, ...
             if contributed:
                 known = _marketplaces(agent, slice_name, document, environ)
                 documents.extend(notices_for(agent, slice_name, document, known))
+    if "devin" in config.harnesses:
+        permissions.extend(devin_overridden(rules, devin_user_config(environ)))
+        settings = project_settings_path(root, "devin")
+        found.extend(
+            devin_claude_import(
+                config.harnesses, json.loads(settings.read_text()) if settings.is_file() else {}
+            )
+        )
     trees = project_skill_trees(root, kits)
     return (
         *found,

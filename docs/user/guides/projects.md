@@ -72,7 +72,7 @@ After adding an instruction order to a project that previously generated only pe
 loadout sync
 ```
 
-All selected harnesses use one project instruction order, because four harnesses share `AGENTS.md`.
+All selected harnesses use one project instruction order, because six harnesses share `AGENTS.md`.
 With Claude and any other harness, the content goes to `AGENTS.md` and `CLAUDE.md` holds only the
 banner and `@AGENTS.md`: Claude reads `AGENTS.md` only when no `CLAUDE.md` is on the path, and its
 docs promise the import never makes it read `AGENTS.md` twice. A Claude-only project writes the
@@ -108,8 +108,8 @@ writes that Git still tracks is named in a `WARNING` with the `git rm -r --cache
 untracks it, and `check` reports the same as a note rather than drift, since the file is as
 rendered.
 
-Of the twelve documents a project can generate, three are also the harness's own settings files:
-`.claude/settings.json`, `.factory/settings.json` and `opencode.json`. Loadout writes its own keys
+Of the eighteen documents a project can generate, four are also the harness's own settings files:
+`.claude/settings.json`, `.devin/config.json`, `.factory/settings.json` and `opencode.json`. Loadout writes its own keys
 into them (permissions, MCP servers, plugins) and keeps the rest; see
 [shared settings files](#shared-settings-files). Edit permission rules in the Loadout source.
 
@@ -126,6 +126,7 @@ Loadout derives every output path from its project preset. Each harness can gene
 | `claude` | `.claude/settings.json`, `.claude/mcp-permissions.json`, `.mcp.json`, `CLAUDE.md`, `.claude/skills/`, `.claude/agents/` |
 | `codex` | `.codex/rules/permissions.rules`, `AGENTS.md`, `.agents/skills/`, `.codex/agents/` (`<name>.toml`) |
 | `cursor` | `.cursor/cli.json`, `.cursor/hooks.json`, `.cursor/mcp.json`, `AGENTS.md`, `.cursor/skills/`, `.cursor/agents/` |
+| `devin` | `.devin/config.json`, `.devin/hooks.v1.json`, `.devin/mcp_config.json`, `AGENTS.md`, `.devin/skills/`, `.devin/agents/` |
 | `droid` | `.factory/settings.json`, `.factory/hooks.json`, `.factory/mcp.json`, `AGENTS.md`, `.factory/skills/`, `.factory/droids/` |
 | `opencode` | `opencode.json`, `AGENTS.md`, `.opencode/skills/`, `.opencode/agents/` |
 | `pi` | `.pi/extensions/pi-permission-system/config.json`, `.pi/mcp.json`, `AGENTS.md`, `.pi/skills/`, `.pi/agents/` |
@@ -141,9 +142,9 @@ Which permission files are written with no rules in them is in the same
 ### Skills
 
 Codex's copy of a skill goes to `.agents/skills/`. When Codex is selected and its copy is
-byte-identical to Cursor's, OpenCode's and Pi's, whichever of those are selected, the one copy in
-`.agents/skills/` serves them all; otherwise Cursor's goes to `.cursor/skills/`, OpenCode's to
-`.opencode/skills/` and Pi's to `.pi/skills/`.
+byte-identical to Cursor's, Devin's, OpenCode's and Pi's, whichever of those are selected, the one
+copy in `.agents/skills/` serves them all; otherwise Cursor's goes to `.cursor/skills/`, Devin's to
+`.devin/skills/`, OpenCode's to `.opencode/skills/` and Pi's to `.pi/skills/`.
 
 OpenCode needs `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1` in your shell, or it also scans
 `.claude/skills/` and picks between the two copies of each skill at random. `loadout check` says so
@@ -154,16 +155,18 @@ code. When Codex and OpenCode need different variants of the same skill, also se
 
 ### MCP servers
 
-`loadout/mcp.toml` reaches Claude (`.mcp.json`), Droid (`.factory/mcp.json`), OpenCode
+`loadout/mcp.toml` reaches Claude (`.mcp.json`), Cursor (`.cursor/mcp.json`), Devin
+(`.devin/mcp_config.json`), Droid (`.factory/mcp.json`), OpenCode
 (`opencode.json`'s `mcp` key) and Pi (`.pi/mcp.json`, read once the project is trusted). Codex gets
 none at project scope; a [stealth source](stealth.md) writes Codex servers. A kit contributes its
 own `mcp.toml` beneath the project.
 
 ### Shared settings files
 
-`.claude/settings.json`, `.factory/settings.json` and `opencode.json` are shared: loadout writes its
-own keys into them, and `loadout/settings/claude.json`, `droid.json` or `opencode.json` holds
-everything else, such as Claude's `env` or OpenCode's `theme`. `sync` renders the file from both,
+`.claude/settings.json`, `.devin/config.json`, `.factory/settings.json` and `opencode.json` are
+shared: loadout writes its own keys into them, and `loadout/settings/claude.json`, `devin.json`,
+`droid.json` or `opencode.json` holds everything else, such as Claude's `env`, Devin's
+`read_config_from` or OpenCode's `theme`. `sync` renders the file from both,
 so a clone gets the same file, and an edit to it outside loadout is reported like any other.
 Without a settings file, the keys loadout does not write are kept from the file on disk.
 

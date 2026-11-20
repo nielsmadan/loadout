@@ -73,7 +73,7 @@ one line with no diff, since its content is the source's),
 skills folder or Codex's rules folder; port it with `/loadout`, then delete it — `sync` warns
 about it and carries on), `unmanaged-link` (a link loadout did not create in such a folder; it has
 nothing to port, so check where it points before deleting it), or `unparsable` (a file loadout shares with a harness, such as
-`~/.claude.json`, or in a project `.claude/settings.json`, `.factory/settings.json` or `opencode.json`, no longer parses, including one that is not even UTF-8, or parses but cannot hold loadout's keys, such as a JSON
+`~/.claude.json`, or in a project `.claude/settings.json`, `.devin/config.json`, `.factory/settings.json` or `opencode.json`, no longer parses, including one that is not even UTF-8, or parses but cannot hold loadout's keys, such as a JSON
 array or a TOML scalar where a table goes: fix or delete it and sync, or `sync --force` replaces it
 outright; plain `sync` refuses with exit 3 and names the file. One the source no longer renders
 has nothing to replace it, so `sync` refuses it with or without `--force` until it is fixed or
@@ -275,6 +275,8 @@ a key that is not made only of letters, digits, `_` and `-` is written as a quot
 - A tracked `.opencode/opencode.json` outranks the stealth source's `opencode.json` and names the servers
   and rules it overrides.
 - A skill reaches OpenCode twice, through `.claude/skills` or `.agents/skills`.
+- A skill is in `.agents/skills` and in Cursor's, Devin's, OpenCode's or Pi's own folder because
+  its rendering differs between harnesses, so that harness sees it twice.
 - A local branch tracks a stealth path: checking it out replaces the stealth source's copy.
 - A permission Claude saved that the stealth source did not write, to add to `permissions.toml` or
   delete; it never causes drift or blocks `sync`. A saved rule that holds a secret is shown as
@@ -309,7 +311,7 @@ loadout init global --dry-run --json
 
 | Option | Commands | Meaning |
 | --- | --- | --- |
-| `--harness NAME` | `init project`, `init global` | Select a harness: `claude`, `codex`, `cursor`, `droid`, `opencode` or `pi`; repeat for several |
+| `--harness NAME` | `init project`, `init global` | Select a harness: `claude`, `codex`, `cursor`, `devin`, `droid`, `opencode` or `pi`; repeat for several |
 | `--root PATH` | `init project` | Project directory to initialise, used as given, also a folder below the repository's top level such as `apps/web`; default the Loadout or Git root enclosing the current directory |
 | `DIR` (positional) | `init global` | Existing directory: a global source, or the directory to hold a new one; default the current directory |
 | `--registration keep\|replace` | `init global` | Resolve a conflict with the source this machine already registers |
@@ -447,7 +449,7 @@ exits 2 with `"status": "interrupted"`. See
 
 `loadout integrate skill copy --harness NAME` (repeatable) copies the bundled skill as it is into
 `~/.claude/skills/loadout` for Claude, `~/.factory/skills/loadout` for Droid and
-`~/.agents/skills/loadout` for Codex, Cursor, OpenCode and Pi, following `CLAUDE_CONFIG_DIR` and
+`~/.agents/skills/loadout` for Codex, Cursor, Devin, OpenCode and Pi, following `CLAUDE_CONFIG_DIR` and
 `FACTORY_HOME_OVERRIDE`. It is a plain copy: no source holds it and `sync` never touches it. An
 identical copy already there is left as it is; one that differs is refused before anything is
 copied, exit 3. It then says how to start the skill in each harness.
@@ -472,7 +474,7 @@ Add the name to `harnesses` in `loadout/config.toml`, then run `loadout sync`:
 harnesses = ["claude", "opencode", "pi"]
 ```
 
-The accepted names are `claude`, `codex`, `cursor`, `droid`, `opencode`, and `pi`. `sync` writes the new
+The accepted names are `claude`, `codex`, `cursor`, `devin`, `droid`, `opencode`, and `pi`. `sync` writes the new
 harness's outputs and extends `.gitignore` to cover every generated path. Removing a harness from
 the list retires its outputs on the next sync and drops their `.gitignore` entries. What each
 harness generates is in [project setup](../guides/projects.md#what-sync-generates).

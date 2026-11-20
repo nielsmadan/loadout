@@ -68,7 +68,7 @@ DIRECTORY_SLICES = ("skills", "agents")
 # Factory calls its subagents droids, and keeps them in a folder of that name.
 DROID_AGENTS_DIRECTORY = "droids"
 # The harnesses that read the cross-harness `.agents/skills` folder, at both scopes.
-SHARED_SKILL_READERS = ("codex", "cursor", "opencode", "pi")
+SHARED_SKILL_READERS = ("codex", "cursor", "devin", "opencode", "pi")
 
 # Destinations carry each harness's config-directory variable rather than a
 # literal path. The variables differ in name and in kind, and two of OpenCode's
@@ -200,6 +200,30 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
         ),
         "mcp": SliceOutput(renderer="cursor-servers", destination="~/.cursor/mcp.json"),
     },
+    "devin": {
+        "skills": SliceOutput(destination="${XDG_CONFIG_HOME:-~/.config}/devin/skills"),
+        "agents": SliceOutput(destination="${XDG_CONFIG_HOME:-~/.config}/devin/agents"),
+        "module-config": SliceOutput(destination="${XDG_CONFIG_HOME:-~/.config}/devin"),
+        "instructions": SliceOutput(destination="${XDG_CONFIG_HOME:-~/.config}/devin/AGENTS.md"),
+        # A file the CLI writes its own state into, so loadout owns `permissions`, the
+        # leaves a settings fragment names and, from the hooks slice, `hooks`.
+        "permissions": SliceOutput(
+            renderer="devin",
+            destination="${XDG_CONFIG_HOME:-~/.config}/devin/config.json",
+            takes_settings=True,
+        ),
+        # Devin reads global hooks only from this key; a hooks.v1.json beside it is
+        # project-only.
+        "hooks": SliceOutput(
+            renderer="devin-hooks",
+            destination="${XDG_CONFIG_HOME:-~/.config}/devin/config.json",
+            source_slice="hooks",
+        ),
+        "mcp": SliceOutput(
+            renderer="devin-servers",
+            destination="${XDG_CONFIG_HOME:-~/.config}/devin/mcp_config.json",
+        ),
+    },
     "droid": {
         "skills": SliceOutput(destination="${FACTORY_HOME_OVERRIDE:-~}/.factory/skills"),
         "agents": SliceOutput(
@@ -317,7 +341,8 @@ GLOBAL_PRESET: dict[str, dict[str, SliceOutput]] = {
 
 
 # Cursor has no plugins slice: plugins are installed by the app, with no enablement
-# key in a file.
+# key in a file. Devin has none either: a user's plugins are kept in their Devin
+# account.
 
 # A config-directory variable whose own default depends on another variable. Unset,
 # CURSOR_CONFIG_DIR falls back to $XDG_CONFIG_HOME/cursor when that is set, on every

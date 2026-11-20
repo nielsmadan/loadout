@@ -59,8 +59,9 @@ kits/python/
 └── plugins.json
 ```
 
-Every file is optional. The kit directory name is the name projects use. `hooks.json` and
-`plugins.json` reach Factory Droid only, the one harness with project hooks and plugins.
+Every file is optional. The kit directory name is the name projects use. `hooks.json`
+reaches Cursor, Devin and Factory Droid, the harnesses with project hooks, and `plugins.json`
+reaches Factory Droid only.
 
 ### Share parts between kits
 

@@ -1,8 +1,9 @@
 # Generated hook adapters
 
-Claude, Codex, Cursor and Droid read a hook document (Cursor's is translated from the source's
-Claude shape, see [cursor.md](cursor.md#what-loadout-writes)). **OpenCode and Pi register hooks in
-code**, so
+Claude, Codex, Cursor, Devin and Droid read a hook document (Cursor's is translated from the
+source's Claude shape, see [cursor.md](cursor.md#what-loadout-writes); Devin's keeps that shape and
+translates tool matchers to Devin's tool names, see [devin.md](devin.md#hooks)). **OpenCode and Pi
+register hooks in code**, so
 loadout generates the code — an OpenCode plugin and a Pi extension, both rendered by
 `src/loadout/adapters.py`.
 

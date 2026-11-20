@@ -120,19 +120,28 @@ def test_capability_matrix_pins_every_scope_mapping() -> None:
         ),
         "skills": (
             "`loadout/skills/<name>.local/SKILL.md`, replacing the shared skill of that name",
-            "supported for `claude`, `codex`, `cursor`, `droid`, `opencode`, `pi` via `loadout/skills/<name>/SKILL.md`",
+            (
+                "supported for `claude`, `codex`, `cursor`, `devin`, `droid`, `opencode`, `pi` "
+                "via `loadout/skills/<name>/SKILL.md`"
+            ),
             "`skills/<name>/SKILL.md` from selected sources",
         ),
         "agents": (
             "unsupported",
-            "supported for `claude`, `codex`, `cursor`, `droid`, `opencode`, `pi` via `loadout/agents/<name>.md`",
+            (
+                "supported for `claude`, `codex`, `cursor`, `devin`, `droid`, `opencode`, `pi` "
+                "via `loadout/agents/<name>.md`"
+            ),
             "`agents/<name>.md` from selected sources",
         ),
         "settings": (
             "unsupported",
-            "supported for `claude`, `droid`, `opencode` via `loadout/settings/<harness>.json`",
             (
-                "supported for `claude`, `cursor`, `droid`, `opencode` via "
+                "supported for `claude`, `devin`, `droid`, `opencode` via "
+                "`loadout/settings/<harness>.json`"
+            ),
+            (
+                "supported for `claude`, `cursor`, `devin`, `droid`, `opencode` via "
                 "`settings/<name>.json` "
                 "fragments, and for Pi only when `[pi]` also declares `plugins`; Codex uses "
                 "`defaults`"
@@ -145,7 +154,7 @@ def test_capability_matrix_pins_every_scope_mapping() -> None:
         ),
         "hooks": (
             "unsupported",
-            "Cursor and Droid via `loadout/hooks.json`",
+            "Cursor, Devin and Droid via `loadout/hooks.json`",
             "`hooks/<name>.json` fragments selected by harnesses offering hooks",
         ),
         "plugins": (
@@ -157,7 +166,7 @@ def test_capability_matrix_pins_every_scope_mapping() -> None:
             "unsupported",
             "unsupported",
             (
-                "supported for `claude`, `cursor`, `droid`, `opencode`, `pi` via "
+                "supported for `claude`, `cursor`, `devin`, `droid`, `opencode`, `pi` via "
                 "`module-config/<harness>/<relative path>`; Codex unsupported"
             ),
         ),
@@ -198,7 +207,7 @@ def test_settings_capability_names_only_agents_whose_render_preserves_settings(
     documented = {
         agent for agent in GLOBAL_PRESET if f"`{agent}`" in _global_capability("settings")
     }
-    assert actual == {"claude", "cursor", "droid", "opencode"}
+    assert actual == {"claude", "cursor", "devin", "droid", "opencode"}
     assert documented == actual
 
 
@@ -214,7 +223,7 @@ def test_project_settings_capability_names_only_agents_whose_file_keeps_other_ke
     documented = {
         agent for agent in PROJECT_PRESET if f"`{agent}`" in _capability_matrix()["settings"][1]
     }
-    assert actual == {"claude", "droid", "opencode"}
+    assert actual == {"claude", "devin", "droid", "opencode"}
     assert documented == actual
 
 
@@ -223,7 +232,7 @@ def test_project_skill_capability_names_only_agents_with_a_destination() -> None
     documented = {
         agent for agent in PROJECT_PRESET if f"`{agent}`" in _capability_matrix()["skills"][1]
     }
-    assert actual == {"claude", "codex", "cursor", "droid", "opencode", "pi"}
+    assert actual == {"claude", "codex", "cursor", "devin", "droid", "opencode", "pi"}
     assert documented == actual
 
 

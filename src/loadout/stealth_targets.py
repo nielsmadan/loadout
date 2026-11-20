@@ -28,6 +28,7 @@ _HOME_TEMPLATES = {
     "claude": "${CLAUDE_CONFIG_DIR:-~/.claude}",
     "codex": "${CODEX_HOME:-~/.codex}",
     "cursor": "~/.cursor",
+    "devin": "${XDG_CONFIG_HOME:-~/.config}/devin",
     "droid": "${FACTORY_HOME_OVERRIDE:-~}/.factory",
     "opencode": "${XDG_CONFIG_HOME:-~/.config}/opencode",
     "pi": "${PI_CODING_AGENT_DIR:-~/.pi/agent}",
