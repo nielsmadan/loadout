@@ -460,7 +460,7 @@ def test_personal_inputs_name_the_servers_each_source_added(fake_home: Path) -> 
     assert {name: source for name, (source, _) in inputs.added["pi"].items()} == {"mine": "mine"}
 
 
-ALL_HARNESSES = '"claude", "codex", "cursor", "droid", "opencode", "pi"'
+ALL_HARNESSES = '"claude", "codex", "cursor", "devin", "droid", "opencode", "pi"'
 SKILL = "---\nname: {name}\ndescription: d\n---\n{body}\n"
 
 
@@ -469,7 +469,7 @@ def _every_harness(instructions: str = 'instructions = ["mine"]\n') -> str:
         f"[{harness}]\n{instructions}"
         + ('settings = "local"\n' if harness in ("claude", "droid") else "")
         + "\n"
-        for harness in ("claude", "codex", "cursor", "droid", "opencode", "pi")
+        for harness in ("claude", "codex", "cursor", "devin", "droid", "opencode", "pi")
     )
 
 
@@ -509,6 +509,7 @@ def test_every_personal_only_destination_renders_and_the_team_render_has_none(
     assert outputs[root / ".factory/AGENTS.md"] == f"{HEADER}\n\nMine.\n"
     assert outputs[root / ".pi/APPEND_SYSTEM.md"] == f"{HEADER}\n\nMine.\n"
     assert "Mine." in str(outputs[root / ".cursor/rules/mine.mdc"])
+    assert "Mine." in str(outputs[root / ".devin/rules/mine.md"])
     codex = outputs[root / ".codex/config.toml"]
     assert isinstance(codex, Merged)
     assert codex.owned == {"developer_instructions", "mcp_servers.mine"}
@@ -528,6 +529,7 @@ def test_every_personal_only_destination_renders_and_the_team_render_has_none(
         ".factory/AGENTS.md",
         ".pi/APPEND_SYSTEM.md",
         ".cursor/rules/mine.mdc",
+        ".devin/rules/mine.md",
         ".codex/config.toml",
         ".claude/settings.local.json",
         ".factory/settings.local.json",
@@ -535,6 +537,7 @@ def test_every_personal_only_destination_renders_and_the_team_render_has_none(
         ".factory/skills/probe/SKILL.md",
         ".agents/skills/probe/SKILL.md",
         ".cursor/mcp.json",
+        ".devin/mcp_config.json",
         ".factory/mcp.json",
         ".pi/mcp.json",
     }

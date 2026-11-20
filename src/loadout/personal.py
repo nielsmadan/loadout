@@ -671,10 +671,11 @@ def personal_documents(
             outputs[destination(harness, "instructions")] = instruction_document(
                 harness, texts, known
             )
-    for part in parts.instructions.get("cursor", ()):
-        rule = destination("cursor", "instructions") / f"{part.source}.mdc"
-        text = instruction_document("cursor", (part.text,), NO_FACTS)
-        outputs[rule] = for_destination(rule, text)
+    for harness, suffix in (("cursor", ".mdc"), ("devin", ".md")):
+        for part in parts.instructions.get(harness, ()):
+            rule = destination(harness, "instructions") / f"{part.source}{suffix}"
+            text = instruction_document(harness, (part.text,), NO_FACTS)
+            outputs[rule] = for_destination(rule, text)
     codex = destination("codex", "instructions")
     owned = recorded_keys(recorded.get(codex))
     if (config := _codex_document(parts, inputs, owned, held=held)) is not None:
