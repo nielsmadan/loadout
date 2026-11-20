@@ -1,6 +1,15 @@
-<p align="center"><img src="docs/assets/logo.svg" alt="Loadout backpack" width="140"></p>
+<h1 align="center">Loadout</h1>
 
-# loadout
+<p align="center">
+  <img src="docs/assets/logo.svg" alt="Loadout backpack" width="320" height="320">
+</p>
+
+<p align="center">
+  <a href="https://github.com/nielsmadan/loadout/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/nielsmadan/loadout/ci.yml?branch=main&label=CI" alt="CI"></a>
+  <a href="https://github.com/nielsmadan/loadout/releases/latest"><img src="https://img.shields.io/github/v/release/nielsmadan/loadout" alt="Latest release"></a>
+  <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.13%2B-blue" alt="Python 3.13+"></a>
+  <a href="pyproject.toml"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
+</p>
 
 One source of truth for AI coding-agent configuration, rendered out to every harness.
 
