@@ -235,6 +235,120 @@ nobody uses is one nobody notices breaking.
 person's setup; a repo's configuration is the same for everyone who checks it out, and a stealth
 source that targets the repository is what carves a personal exception out of it.
 
+## Who a change is for
+
+Where a change goes depends on three things: what it changes, who it is for, and what the
+repository already has.
+
+**Who it is for:**
+
+- **Shared:** committed, so everyone working in the repository gets it.
+- **This checkout:** personal, for one clone only. Example: two clones run tests side by side, so
+  each names a different simulator.
+- **Every checkout:** personal, for all your clones of a project. Example: the instructions and
+  skill for testing in a macOS VM, wanted in every clone of five open-source repositories.
+
+**What the repository has:**
+
+- **Hand-written:** the team commits harness files itself, such as `AGENTS.md`, `CLAUDE.md` or
+  `.claude/settings.json`.
+- **Loadout:** the team committed `loadout/config.toml`, and every generated file is ignored.
+- **None:** no AI configuration is committed.
+
+### The mechanism in each cell
+
+Every personal change is a stealth source. What differs is who writes it: in a repository that has
+not adopted loadout the stealth source writes its own files, and in a loadout repository the
+project's sync renders it as a personal tier
+([0058](decisions/0058-a-stealth-source-reaches-adopted-repositories.md)).
+
+| Who it is for | Hand-written | Loadout | None |
+| --- | --- | --- | --- |
+| Shared | Outside loadout: edit the team's files. `loadout init project` adopts them, which makes it a loadout repository | The committed `loadout/` source | `loadout init project`, which makes it a loadout repository |
+| This checkout | A stealth source whose target is this clone | A stealth source whose target is this clone, rendered by the project's sync | A stealth source whose target is this clone |
+| Every checkout | A stealth source whose pattern matches every clone, such as `~/wrksp/juggler/*` | As for hand-written, rendered by the project's sync | As for hand-written |
+
+### What each cell can carry
+
+Shared changes are listed for a loadout repository only, since the other two kinds share through
+adoption. ✓ means all six harnesses, a list names the only harnesses, ✗ means there is no route,
+and – means the case does not arise.
+
+| What | Shared | Checkout, hand-written | Checkout, loadout² | Checkout, none | Every, hand-written | Every, loadout² | Every, none |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Instructions | ✓ | ✓¹ | ✓ | ✓ | ✓¹ | ✓ | ✓ |
+| Add a skill | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Replace a team skill | – | ✗³ | ✓ | – | ✗³ | ✓ | – |
+| Subagents | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| MCP servers | all but Codex | ✓¹ | ✓ | ✓ | ✓¹ | ✓ | ✓ |
+| Permissions | ✓ | ✓¹ | ✓ | ✓ | ✓¹ | ✓ | ✓ |
+| Hooks | Cursor, Droid | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Plugins | Droid | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Other settings, such as the model | Claude, Droid, OpenCode | Claude, Droid | Claude, Droid | Claude, Droid | Claude, Droid | Claude, Droid | Claude, Droid |
+| Module config | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+
+1. Except where the team tracks the file that harness reads; see the next table.
+2. For the harnesses both the project and the stealth source declare, and only when
+   `loadout/config.toml` is at the repository's top. Personal instructions go to the files the
+   team does not write, never `AGENTS.md` or `CLAUDE.md`; a Codex server goes to
+   `.codex/config.toml`, which project scope does not write, so Codex has a personal server route
+   where it has no shared one.
+3. The team's skill folder is tracked, and a stealth source never writes a tracked path.
+
+Module config renders at global scope only. A stealth source refuses subagents, hooks, plugins
+and module config; see [allowed slices](user/reference/configuration.md#allowed-slices).
+
+### Beside a team's hand-written files
+
+A stealth source writes a personal file next to the team's wherever the harness reads one. ✗
+marks where the harness reads only the file the team tracks, so a personal change has nowhere
+to go. Each ✗ applies only while the team tracks that file. A loadout repository has none of
+these limits: the team's files there are generated and ignored, and the personal tier merges
+into them.
+
+| Harness | Instructions | MCP servers | Permissions |
+| --- | --- | --- | --- |
+| Claude | `CLAUDE.local.md` | `~/.claude.json`, under the project's key | `.claude/settings.local.json` |
+| Codex | `developer_instructions` in `.codex/config.toml`⁴ | `.codex/config.toml`⁴ | `.codex/rules/<name>.rules` |
+| Cursor | `.cursor/rules/<name>.mdc` | ✗ `.cursor/mcp.json` | ✗ `.cursor/cli.json` |
+| Droid | `.factory/AGENTS.md` | ✗ `.factory/mcp.json` | `.factory/settings.local.json` |
+| OpenCode | ✗ `opencode.json`⁵ | ✗ `opencode.json`⁵ | ✗ `opencode.json`⁵ |
+| Pi | `.pi/APPEND_SYSTEM.md`⁶ | ✗ `.pi/mcp.json` | ✗ `.pi/extensions/pi-permission-system/config.json` |
+
+4. Read only in a trusted project. A project `developer_instructions` replaces the user-level one
+   ([codex.md](reference/codex.md)).
+5. OpenCode also reads `.opencode/opencode.json` and merges it with the root file
+   ([opencode.md](reference/opencode.md)). Whether a personal copy there serves when the team
+   tracks the root file has not been tested.
+6. Read only in a trusted project, and it displaces the user-level file
+   ([pi.md](reference/pi.md)). Pi 1.5.2 reads it only from `.pi/` in the folder Pi starts in, so a
+   session started in a subfolder misses it.
+
+### Gaps
+
+- **This checkout and every checkout combine only in a loadout repository, and cannot override
+  each other there.** In a loadout repository several stealth sources compose in alphabetical
+  order of their names: rules merge strictest-wins and instructions join, but on a server, skill
+  or settings key both set, the first name wins and the other is refused. So a per-clone source
+  cannot replace a project-wide source's server or setting unless its name sorts first. In the
+  other two kinds a second stealth source on the same repository is refused for every whole file
+  the first one writes (`claimed`, exit 3), `CLAUDE.local.md` among them.
+- **Subagents, hooks, plugins and module config have no personal route** in any repository.
+- **A personal server or kit cannot be limited to some harnesses.** A skill can, with
+  `[skills.<name>] agents = [...]`; for servers only `mcp = false` per harness table exists, which
+  switches off every server for that harness.
+- **Replacing a team skill works only in a loadout repository.** Beside hand-written files the
+  team's folder is tracked.
+- **Where the team tracks the harness's only project file**, a personal change for that harness
+  has nowhere to go: the ✗ cells above. This is a limit of the harness, not of loadout.
+- **Codex has no shared project MCP route.** Project scope writes no `.codex/config.toml`; see
+  [servers.md](reference/servers.md#codex-project-config-applies-in-a-trusted-project).
+- **Every checkout means every path the pattern matches.** A clone outside the pattern gets nothing
+  until the pattern is widened.
+- **`loadout/settings/local/` is still a second personal mechanism in a loadout repository**
+  ([0030](decisions/0030-adoption-rulings-recorded.md)); whether it moves to a stealth source is
+  open.
+
 ## Still open
 
 - Antigravity, if it matures. `agy` was dropped as a target — its generated permissions file is
