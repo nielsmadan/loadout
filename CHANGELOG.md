@@ -4,6 +4,29 @@ All notable user-facing changes to loadout. From 1.0 it follows
 [Semantic Versioning](https://semver.org): breaking changes land only in a major release and
 are called out under **Breaking Changes**.
 
+## [0.12.0] - 2026-11-21
+
+### Features
+
+- Add Cursor CLI harness support
+- Link kits into stealth sources
+- Render Cursor global instructions and settings
+- Render PostToolUseFailure hooks for Cursor
+- Sync kit changes to every project and push vendored edits back
+- Color check diffs on a terminal
+- Add Devin CLI harness support
+- Alias skills and MCP servers with a name key
+- Sync stealth sources into repositories that adopted loadout
+- Remove permissions.local.toml and .local project skills
+
+### Bug Fixes
+
+- Use kit in the Homebrew formula test (#7)
+- Tidy Cursor notes and rule detection
+- Preserve unmanaged codex mcp servers
+- Harden the personal tier after review
+- Render devin personal instructions in adopted repositories
+
 ## [0.11.0] - 2026-11-08
 
 ### Features
@@ -336,6 +359,7 @@ are called out under **Breaking Changes**.
 - Point release checks at the renamed docs recipe
 - Drop the GitHub CLI from the release flow
 
+[0.12.0]: https://github.com/nielsmadan/loadout/compare/v0.11.0..v0.12.0
 [0.11.0]: https://github.com/nielsmadan/loadout/compare/v0.10.0..v0.11.0
 [0.10.0]: https://github.com/nielsmadan/loadout/compare/v0.9.3..v0.10.0
 [0.9.3]: https://github.com/nielsmadan/loadout/compare/v0.9.2..v0.9.3
